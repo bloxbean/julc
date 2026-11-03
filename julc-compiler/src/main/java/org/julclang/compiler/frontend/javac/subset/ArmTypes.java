@@ -49,10 +49,11 @@ public final class ArmTypes {
         }
         if (facts.type(tree).getKind().isPrimitive()) return;
         var sum = sumOf(facts, facts.type(tree));
-        if (sum != null && arms.stream().allMatch(arm -> isOf(facts, facts.type(arm), sum))) return;
+        if (sum != null && arms.stream().allMatch(arm -> isOf(facts, armType(facts, arm), sum))) return;
+        if (isData(facts, facts.type(tree)) && arms.stream().allMatch(arm -> isData(facts, armType(facts, arm)))) return;
         TypeMirror first = null;
         for (var arm : arms) {
-            var type = boxed(facts, facts.type(arm));
+            var type = boxed(facts, armType(facts, arm));
             if (type.getKind() == TypeKind.NULL) continue;   // null has a rule of its own
             if (first == null) {
                 first = type;
@@ -91,6 +92,36 @@ public final class ArmTypes {
         if (element.equals(sum)) return true;
         return element.getKind() == ElementKind.RECORD && !facts.hasAnnotation(element, JavacNames.NEW_TYPE)
                 && facts.permitted(sum).contains(element);
+    }
+
+    /**
+     * An arm's type: javac's, but for an arm that is itself a choice, which javac types by its target (an arm of an argument of
+     * an {@code Object} parameter is {@code Object}), its own arms' one type when they have one.
+     */
+    private static TypeMirror armType(JavacFacts facts, ExpressionTree arm) {
+        while (arm instanceof ParenthesizedTree parenthesized) arm = parenthesized.getExpression();
+        List<? extends ExpressionTree> inner = arm instanceof ConditionalExpressionTree conditional
+                ? List.of(conditional.getTrueExpression(), conditional.getFalseExpression())
+                : arm instanceof SwitchExpressionTree selected ? SwitchResults.of(selected) : null;
+        if (inner == null || facts.type(arm).getKind().isPrimitive()) return facts.type(arm);
+        TypeMirror one = null;
+        for (var each : inner) {
+            var type = boxed(facts, armType(facts, each));
+            if (type.getKind() == TypeKind.NULL) continue;
+            if (one == null) one = type;
+            else if (!facts.types().isSameType(one, type)) return facts.type(arm);
+        }
+        return one == null ? facts.type(arm) : one;
+    }
+
+    /**
+     * Whether a value of {@code type} is {@code PlutusData} or one of its views: its arms' representations are the ones the
+     * lowering already keeps apart for those types (a list a builtin leaves, a map; ADR-068 r14), whatever view each arm has.
+     */
+    private static boolean isData(JavacFacts facts, TypeMirror type) {
+        if (!(type instanceof DeclaredType declared) || !(declared.asElement() instanceof TypeElement element)) return false;
+        String identity = facts.identity(element);
+        return identity.equals(JavacNames.PLUTUS_DATA) || identity.startsWith(JavacNames.PLUTUS_DATA + ".");
     }
 
     private static TypeMirror boxed(JavacFacts facts, TypeMirror type) {

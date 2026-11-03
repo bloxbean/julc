@@ -124,7 +124,7 @@ class Adr068EqualityHarnessTest {
         rows.add(refused("get", "JULC0078", M_INT + ") { return a.get(5L) == null; }", TRUE, m(i(5), i(1))));
         rows.add(refused("value", "JULC0078", M_INT + ") { return a.containsValue(1L); }", FALSE, m(i(5), i(1))));
         rows.add(refused("default", "JULC0078", M_INT + ") { return a.getOrDefault(5L, BigInteger.ONE).signum() > 0; }", TRUE, m(i(5), i(1))));
-        rows.add(refused("cond", "JULC0078", L_INT + ", boolean c, BigInteger b) { return a.contains(c ? b : \"x\"); }", FALSE, l(i(5)), FALSE, i(5)));
+        rows.add(refused("cond", "JULC0012", L_INT + ", boolean c, BigInteger b) { return a.contains(c ? b : \"x\"); }", FALSE, l(i(5)), FALSE, i(5)));
         // Containers compare by their type arguments.
         rows.add(refused("B12", "JULC0078", "public static boolean m(BigInteger a) { return Optional.of(a).equals(Optional.of(1)); }", FALSE, i(1)));
         rows.add(refused("B13", "JULC0078", "public static boolean m() { return Optional.of(1).equals(Optional.of(1L)); }", FALSE));

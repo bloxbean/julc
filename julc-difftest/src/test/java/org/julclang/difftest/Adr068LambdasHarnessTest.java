@@ -675,7 +675,8 @@ class Adr068LambdasHarnessTest {
         String head = "public static long m(boolean c, " + MAP_OF_BIG + " a, PlutusData d) { " + MAP_OF_BIG + " z = PlutusData.cast(";
         for (var c : List.of(bool(true), bool(false))) {
             assertJavacAgrees(run(head + "c ? a : a, JulcMap.class); return z.size(); }", List.of(c, mapOf(1, 2), mapOf(3, 4))));
-            assertJavacIsAMap(head + "c ? PlutusData.cast(d, JulcMap.class) : a, JulcMap.class); return z.size(); }", c, mapOf(1, 2), mapOf(3, 4));
+            // A raw map and a typed one are arms of two types (ADR-068 M5): JULC0012, closed.
+            assertStopsOnJavac(head + "c ? PlutusData.cast(d, JulcMap.class) : a, JulcMap.class); return z.size(); }", c, mapOf(1, 2), mapOf(3, 4));
         }
     }
 

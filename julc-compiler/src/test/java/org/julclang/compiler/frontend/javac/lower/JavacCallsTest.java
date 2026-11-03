@@ -173,6 +173,11 @@ class JavacCallsTest {
     @Test
     void equalsThatJavaCanAnswerTrueIsNotAlwaysFalse() {
         assertEquals("JULC0087", rejected("interface I { } record R(BigInteger v) implements I { } static boolean m(I i, BigInteger b) { return b.equals(i); }").code());
+        // An intersection, javac's type of a var of two variants, against their interface: undecided (review S03).
+        assertEquals("JULC0087", rejected("sealed interface S { record A() implements S { } record B() implements S { } } "
+                + "static boolean m(boolean c, S s) { var x = c ? new S.A() : new S.B(); return s.equals(x); }").code());
+        // Sealed against a class neither of its records extends: disjoint, Java's answer is false.
+        assertEquals("JULC0078", rejected("sealed interface S { record A() implements S { } } static boolean m(S s, BigInteger b) { return s.equals(b); }").code());
         assertEquals("JULC0012", rejected("static boolean m(boolean c, BigInteger a, PlutusData d) { return a.equals(c ? a : d); }").code());
         assertEquals("JULC0012", rejected("static boolean m(boolean c, BigInteger a) { BigInteger q = a; return q.equals(c ? 1 : a); }").code());
     }

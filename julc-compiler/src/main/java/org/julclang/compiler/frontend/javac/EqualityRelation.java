@@ -119,11 +119,17 @@ public final class EqualityRelation {
     }
 
     /**
-     * An intersection, {@code Record & S} of a conditional's arms, is a type javac invents; whether its values meet another's is
-     * not read from its bounds one by one, and it cannot be decided (ADR-068 M5, F3).
+     * A value of an intersection has every bound, so one bound no class shares with the other type decides it unrelated; a bound
+     * that may share one leaves it undecided ({@code Record & S} against {@code S}: {@code Record} and {@code S} share their
+     * records). {@code Object} says nothing here.
      */
     private Result decideBounds(IntersectionType intersection, TypeMirror other, boolean argument, boolean first) {
-        return new Result(Kind.UNRESOLVED, first ? intersection : other, first ? other : intersection, argument);
+        Result found = new Result(Kind.RELATED, intersection, other, argument);
+        for (var bound : intersection.getBounds()) {
+            if (isObject(bound)) continue;
+            found = worse(found, first ? decide(bound, other, argument) : decide(other, bound, argument));
+        }
+        return found;
     }
 
     private static Result worse(Result a, Result b) {
@@ -144,8 +150,8 @@ public final class EqualityRelation {
         if (types.isSubtype(erasedLeft, erasedRight)) return arguments(left, right, argument);
         if (types.isSubtype(erasedRight, erasedLeft)) return arguments(right, left, argument);
         // Neither is a subtype of the other. They are disjoint, so Java's answer is false, only if no class can be both: two
-        // classes, a final class and an interface it does not implement, or sealed types whose permitted classes cannot meet.
-        // Otherwise (Record against a sealed interface of records, two open interfaces) it cannot be decided.
+        // classes, a final class and an interface it does not implement, sealed types whose permitted classes cannot meet, or
+        // two API types. Otherwise (Record against a sealed interface of records, a program's open interface) it is undecided.
         boolean disjoint = !mayShareAValue((TypeElement) left.asElement(), (TypeElement) right.asElement(), new HashSet<>());
         return new Result(disjoint ? Kind.UNRELATED : Kind.UNRESOLVED, left, right, argument);
     }
@@ -168,7 +174,14 @@ public final class EqualityRelation {
                 return false;
             }
         }
-        return true;
+        // An open interface. JuLC's world is closed but for the program: no user type extends a class or implements an API
+        // interface with abstract methods, so two API types share no value; a program's open interface can be one of a record.
+        return isProgramType(a) || isProgramType(b);
+    }
+
+    private boolean isProgramType(TypeElement type) {
+        String name = elements.getPackageOf(type).getQualifiedName().toString();
+        return !(name.equals("java") || name.startsWith("java.") || name.startsWith("javax.") || name.startsWith("org.julclang."));
     }
 
     private static boolean isFinal(TypeElement type) {
