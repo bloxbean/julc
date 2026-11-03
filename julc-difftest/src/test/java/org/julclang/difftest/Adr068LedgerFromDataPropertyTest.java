@@ -38,7 +38,7 @@ class Adr068LedgerFromDataPropertyTest {
             "Delegatee", "GovernanceAction", "GovernanceActionId", "Interval", "IntervalBound", "IntervalBoundType", "OutputDatum",
             "PolicyId", "ProposalProcedure", "ProtocolVersion", "PubKeyHash", "Rational", "ScriptContext", "ScriptHash", "ScriptInfo",
             "ScriptPurpose", "StakingCredential", "TokenName", "TxCert", "TxId", "TxInInfo", "TxInfo", "TxOut", "TxOutRef",
-            "ValidatorHash", "Value", "Vote", "Voter");
+            "ValidatorHash", "Vote", "Voter");
 
     private static final LedgerTypeProvider LEDGER = new LedgerTypeProvider();
     private static final List<String> TYPES = NAMES.stream().filter(Adr068LedgerFromDataPropertyTest::decodable).toList();
@@ -128,8 +128,6 @@ class Adr068LedgerFromDataPropertyTest {
     @Property(tries = 200, seed = "20261104")
     void aValueReadBackIsTheJvms(@ForAll("types") int index, @ForAll("seeds") long seed) {
         String name = TYPES.get(index);
-        // The JVM's Value puts ADA first when it encodes, which a script does not: ADR-062's known divergence of Value.
-        if (name.equals("Value")) return;
         var data = new DataGenerator(LEDGER.namedDefinitions(), new Random(seed)).wellFormed(type(name), 0);
         var report = RUNNER.run(new DiffCase("read-back-" + name, readsBack(name), "Case", "m", List.of(data)));
         assertEquals(new Observation.Value(data, List.of()), report.jvm(), name + " on " + data);

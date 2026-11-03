@@ -69,12 +69,7 @@ class JavacLedgerFromDataTest {
                 new Input("Address", "a present Optional of two fields",
                         constr(0, credential, constr(0, constr(0, credential), integer(7)))),
                 new Input("Address", "an Optional of tag 2", constr(0, credential, constr(2))),
-                new Input("Value", "a map of maps", new PlutusData.MapData(List.of(new PlutusData.Pair(bytes(0),
-                        new PlutusData.MapData(List.of(new PlutusData.Pair(bytes(0), integer(5)))))))),
-                new Input("Value", "an amount that is bytes", new PlutusData.MapData(List.of(new PlutusData.Pair(bytes(0),
-                        new PlutusData.MapData(List.of(new PlutusData.Pair(bytes(0), bytes(1)))))))),
-                new Input("Value", "a policy of no map", new PlutusData.MapData(List.of(new PlutusData.Pair(bytes(0), integer(5))))),
-                new Input("Value", "a list", new PlutusData.ListData(List.of())));
+new Input("Address", "a list", new PlutusData.ListData(List.of())));
     }
 
     private static boolean jvmDecodes(Input input) throws ReflectiveOperationException {

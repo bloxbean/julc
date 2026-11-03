@@ -66,6 +66,7 @@ class JavacStopsTest {
             new Stop("a wrapper's component read as Data", "@Param static PubKeyHash K; static byte[] m() { return K.hash(); }", "accepted"),
             new Stop("a wrapper's component read as Data", "static byte[] m(TokenName t) { return t.name(); }", "accepted"),
             new Stop("a wrapper's component read as Data", "@NewType record H(byte[] v) { } static byte[] m(H h) { return h.v(); }", "JULC0101"),
+            new Stop("fromPlutusData on a ledger type whose Data is no constructor", "static boolean m(PlutusData d) { Value v = Value.fromPlutusData(d); return true; }", "accepted"),
             new Stop("an argument of lengthOfByteString that is Data", "static long m(byte[] a) { PlutusData.BytesData b = Builtins.bData(a); return Builtins.lengthOfByteString(b); }", "accepted"),
             new Stop("an argument of appendByteString that is Data", "static PlutusData m(byte[] a) { PlutusData.BytesData b = Builtins.bData(a); return Builtins.appendByteString(b, b); }", "accepted"),
             new Stop("an argument of equalsByteString that is Data", "static boolean m(byte[] a) { PlutusData.BytesData b = Builtins.bData(a); return Builtins.equalsByteString(a, b); }", "accepted"),

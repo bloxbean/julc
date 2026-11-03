@@ -10,7 +10,7 @@ program that calls a library still stops at `a library unit`.
 | Validator kinds, entry points, datum, redeemer and `ScriptContext` decoding, `@Param` (D14: `JULC0088`, read on the compiled class alone) | Ported with the assembly split (M3a) | Unchanged; the schema and debug metadata below read the same discovery | `JavacDiscovery`, `JavacCompilation`, `ValidatorAssembly` |
 | `compileContract` | Compiled, then `JULC0084` `a contract schema` | The reference's schema: purposes, interfaces ordered by tag, datum and redeemer by position, an `Optional` datum bare, `@Param`s, named definitions, and the manual-dispatch rejection after the bytes | `JavacContractSchema` |
 | `compileForDebug` | Compiled, then `JULC0084` `debug metadata` | Debug metadata: declarations scanned from javac's trees under the reference's ids, keyed by element; each associated with the binder `Terms` builds for it, at the reference's sites (a method's and a lambda's parameter, a local, a `@Param`) | `JavacDebugScan`, `Terms.declared`, `DebugMetadataCollector.forSources` |
-| A ledger type's `fromPlutusData` | `JULC0084` (`on a ledger type`, `on a ledger hash`) | The argument once, checked whole as the JVM's decoder reads it, then decoded as the type holds it: a hash's bytes, a map's pairs, a record's Data | `Calls.fromData`, `Terms.checkedDecode`, `StrictBoundaryGenerator.forLedgerDecoding` |
+| A ledger type's `fromPlutusData` | `JULC0084` (`on a ledger type`, `on a ledger hash`) | The argument once, checked whole as the JVM's decoder reads it, then decoded as the type holds it: a hash's bytes, a record's Data. `Value`, whose Data is a map and whose type here is a record of it, stays a stop: `fromPlutusData on a ledger type whose Data is no constructor` | `Calls.fromData`, `Terms.checkedDecode`, `StrictBoundaryGenerator.forLedgerDecoding` |
 | Constructor checks of API types | Open | Decided: nothing to lower (below) | `068-followups.md` |
 | An entry point's last parameter (F904) | Open | Not done: a maintainer's decision is owed (below) | `068-followups.md` |
 
@@ -50,7 +50,12 @@ moves the 25 rows of fixtures that write `validate(BigInteger, BigInteger)`. Not
 
 ## Rows moved, by class
 
-To be filled from I1 (see "Not run").
+Not measured: I1 did not run (below). The rows this slice should move are 27 of the M4 table: 15 `a contract schema` (one of
+them `reference-rejects-not-ported`), 4 `debug metadata`, 7 `fromPlutusData on a ledger type` and 1 `on a ledger hash`. The
+contract and debug rows are expected at `i1a-identical` or `DIFFERENT-provenance` (`JavacContractAndDebugTest` shows the
+bytes equal); the `fromPlutusData` rows at `DIFFERENT-bytes`, a Semantic fix, since the check is new bytes, with the two
+`diverge-068-ledger-*` cases as evidence, and any that reads `Value` stays `not-ported` under its new construct. The two new
+`.diffcase`s are new corpus cases, and need their own rows. No `g3b-accepted-differences.tsv` is written until I1 runs.
 
 ## Tests
 
@@ -62,10 +67,26 @@ To be filled from I1 (see "Not run").
 | `diverge-068-ledger-from-data-refused`, `diverge-068-ledger-hash-from-data` | julc-difftest | The two Semantic-fix `.diffcase`s, run on `JAVAC` by `Adr068SavedCasesOnJavacTest` |
 | `JavacCallsTest`, `JavacStopsTest`, `JavacTypesTest` | julc-compiler | The retired stops are gone; a hash from Data reads as its bytes; contract and debug compile |
 
+## Tests run
+
+`:julc-compiler:test` on the touched classes, at the last code commit: 409 tests, 0 failures, 0 skipped
+(`JavacContractAndDebugTest` 13, `JavacLedgerFromDataTest` 17, `DebugCompileResultTest` 6, `ContractSchemaTest` 13,
+`JavacTypesTest` 146, `JavacCallsTest` 64, `JavacStopsTest` 138, `JavacLoweringLintTest` 10, `GeneratedBinderNameLintTest` 1,
+`BinderNameIndependenceTest` 1).
+
 ## Mutants
 
-To be filled (see "Not run").
+Not run. The batch is written (`scratchpad/g3b/mutants.py`, 14 mutants and a control, each under a 5-minute limit, the batch
+under one lock): the three relaxations and the exact `Optional`, the check and the decode, the declarator's end and name,
+annotation assignments, a renamed binder, the `Optional` datum, the interfaces' order, and the `@Param`'s and a local's
+association.
 
 ## Not run
 
-To be filled at the report.
+- I1 (`adr068Lowering`), so no row is classified and `g3b-accepted-differences.tsv` is not written.
+- `Adr068LedgerFromDataPropertyTest` and `Adr068SavedCasesOnJavacTest` (julc-difftest): written, never compiled or run.
+- The mutants above.
+- The full `julc-compiler`, `julc-difftest` and other module suites, `adr068Baseline` (the frozen frontend's gate-off bytes;
+  `DebugMetadataCollector` and `StrictBoundaryGenerator` are shared and changed, though their strict and JavaParser paths
+  build what they did), `pairCaseTest`, `onChainHarnessTest`.
+- A corpus-wide comparison of schemas and debug metadata between the frontends (the I1 tool compares only the compile result).
