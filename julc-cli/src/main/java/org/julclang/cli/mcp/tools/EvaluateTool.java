@@ -1,5 +1,7 @@
 package org.julclang.cli.mcp.tools;
 
+import org.julclang.compiler.frontend.javac.SourceReader;
+
 import org.julclang.compiler.JavaSourceParser;
 import org.julclang.compiler.frontend.javac.JavacSyntax;
 import org.julclang.cli.mcp.lint.LintEngine;
@@ -249,11 +251,11 @@ public final class EvaluateTool {
     }
 
     /** The reader {@link #expectedMethodArity(String, String)} uses: the lint engine's ({@link LintEngine#DEFAULT_READER}). */
-    static final LintEngine.Reader ARITY_READER = LintEngine.DEFAULT_READER;
+    static final SourceReader ARITY_READER = LintEngine.DEFAULT_READER;
 
     /** {@link #expectedMethodArity(String, String)} with {@code reader}; javac's reading of a rejected source is -1. */
-    static int expectedMethodArity(String source, String methodName, LintEngine.Reader reader) {
-        if (reader == LintEngine.Reader.JAVAC) {
+    static int expectedMethodArity(String source, String methodName, SourceReader reader) {
+        if (reader == SourceReader.JAVAC) {
             try {
                 var syntax = JavacSyntax.read(source);
                 if (syntax.hasErrors()) return -1;

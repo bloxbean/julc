@@ -8,6 +8,7 @@ import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.body.RecordDeclaration;
+import org.julclang.compiler.frontend.javac.SourceReader;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -64,21 +65,16 @@ public final class JavaMetadataExtractor {
         return extract(source, DEFAULT_READER);
     }
 
-    /** How a source is read (ADR-068 M6): JavaParser's tree or javac's, for the same metadata. */
-    public enum Reader { JAVAPARSER, JAVAC }
 
-    /** The reader {@link #extract(String)} uses: JavaParser's until ADR-068 M5 makes javac the
-     * default. The {@code julc.tools.reader} system property ({@code JAVAPARSER} or {@code JAVAC}) chooses it for every
-     * tool, so that each module's tests run on either reading; it leaves at M6 with the JavaParser reading.
-     */
-    public static final Reader DEFAULT_READER = Reader.valueOf(System.getProperty("julc.tools.reader", "JAVAPARSER"));
+    /** The reader this tool uses (ADR-068 M6): {@link SourceReader#configured()}. */
+    public static final SourceReader DEFAULT_READER = SourceReader.configured();
 
     /**
      * {@link #extract(String)} with the source read by {@code reader}. javac's reading reports no subset diagnostics:
      * those are the JavaParser frontend's validator's, and on javac they need attribution ({@link JavacMetadataReading}).
      */
-    public static CheckResponse extract(String source, Reader reader) {
-        if (reader == Reader.JAVAC) return JavacMetadataReading.extract(source, VALIDATOR_ANNOTATIONS);
+    public static CheckResponse extract(String source, SourceReader reader) {
+        if (reader == SourceReader.JAVAC) return JavacMetadataReading.extract(source, VALIDATOR_ANNOTATIONS);
         CompilationUnit cu;
         var parseResult = JavaSourceParser.parse(source);
         if (!parseResult.isSuccessful() || parseResult.getResult().isEmpty()) {

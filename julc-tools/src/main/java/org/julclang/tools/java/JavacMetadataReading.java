@@ -1,6 +1,7 @@
 package org.julclang.tools.java;
 
 import com.sun.source.tree.AnnotationTree;
+import com.sun.source.tree.ArrayTypeTree;
 import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.CompilationUnitTree;
 import com.sun.source.tree.IdentifierTree;
@@ -10,7 +11,7 @@ import com.sun.source.tree.ModifiersTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.tree.VariableTree;
 import com.sun.source.util.TreePath;
-import com.sun.source.util.TreePathScanner;
+import org.julclang.compiler.frontend.javac.SourceOrderScanner;
 import org.julclang.compiler.JavaSourceIntrospector;
 import org.julclang.compiler.frontend.javac.JavacSyntax;
 import org.julclang.tools.model.CheckResponse;
@@ -114,7 +115,7 @@ final class JavacMetadataReading {
         if (isSpending && entrypointParams.size() >= 3) {
             String datumType = JavacSyntax.typeName(entrypointParams.get(0).getType());
             datumName = datumType;
-            datumFields = extractRecordFields(validatorClass, datumType);
+            datumFields = extractRecordFields(syntax, validatorClass, datumType);
             redeemerType = JavacSyntax.typeName(entrypointParams.get(1).getType());
         } else if (isSpending && entrypointParams.size() == 2) {
             redeemerType = JavacSyntax.typeName(entrypointParams.get(0).getType());
@@ -122,11 +123,11 @@ final class JavacMetadataReading {
             redeemerType = JavacSyntax.typeName(entrypointParams.get(0).getType());
         }
         if (redeemerType != null) {
-            var variants = extractVariants(validatorClass, redeemerType);
+            var variants = extractVariants(syntax, validatorClass, redeemerType);
             if (!variants.isEmpty()) {
                 redeemerVariants = variants;
             } else {
-                redeemerFields = extractRecordFields(validatorClass, redeemerType);
+                redeemerFields = extractRecordFields(syntax, validatorClass, redeemerType);
             }
         }
 
@@ -149,7 +150,7 @@ final class JavacMetadataReading {
     private static List<TreePath> all(TreePath root, java.util.function.Predicate<Tree> match) {
         var found = new ArrayList<TreePath>();
         if (match.test(root.getLeaf())) found.add(root);
-        new TreePathScanner<Void, Void>() {
+        new SourceOrderScanner<Void, Void>() {
             @Override
             public Void scan(Tree tree, Void unused) {
                 if (tree != null && match.test(tree)) found.add(new TreePath(getCurrentPath(), tree));
@@ -172,24 +173,9 @@ final class JavacMetadataReading {
                 List.copyOf(conflicting)));
     }
 
-    /**
-     * JavaParser's fully qualified name: the package and the enclosing types; a type declared in a method or an
-     * anonymous class has none, and then its simple name stands.
-     */
+    /** JavaParser's fully qualified name ({@link JavacSyntax#qualifiedName}), else the simple name. */
     private static String qualifiedName(TreePath path) {
-        var names = new ArrayList<String>();
-        for (TreePath p = path; p != null; p = p.getParentPath()) {
-            Tree leaf = p.getLeaf();
-            if (leaf instanceof ClassTree c) {
-                if (c.getSimpleName().isEmpty()) return ((ClassTree) path.getLeaf()).getSimpleName().toString();
-                names.addFirst(c.getSimpleName().toString());
-            } else if (leaf instanceof CompilationUnitTree unit) {
-                if (unit.getPackageName() != null) names.addFirst(unit.getPackageName().toString());
-            } else {
-                return ((ClassTree) path.getLeaf()).getSimpleName().toString();
-            }
-        }
-        return String.join(".", names);
+        return JavacSyntax.qualifiedName(path).orElse(((ClassTree) path.getLeaf()).getSimpleName().toString());
     }
 
     /** The annotations' simple names, as JuLC's introspector compares them. */
@@ -240,16 +226,16 @@ final class JavacMetadataReading {
         return null;
     }
 
-    private static List<FieldDto> extractRecordFields(TreePath cls, String typeName) {
+    private static List<FieldDto> extractRecordFields(JavacSyntax syntax, TreePath cls, String typeName) {
         for (TreePath path : records(cls)) {
             var record = (ClassTree) path.getLeaf();
-            if (record.getSimpleName().contentEquals(typeName)) return components(record);
+            if (record.getSimpleName().contentEquals(typeName)) return components(syntax, record);
         }
         return List.of();
     }
 
     /** A sealed interface's variants: an interface of the name, at any depth, the first with a member record. */
-    private static List<VariantDto> extractVariants(TreePath cls, String typeName) {
+    private static List<VariantDto> extractVariants(JavacSyntax syntax, TreePath cls, String typeName) {
         for (TreePath path : classesOrInterfaces(cls)) {
             var inner = (ClassTree) path.getLeaf();
             if (!inner.getSimpleName().contentEquals(typeName) || inner.getKind() != Tree.Kind.INTERFACE) continue;
@@ -257,7 +243,7 @@ final class JavacMetadataReading {
             int tag = 0;
             for (Tree member : inner.getMembers()) {
                 if (member instanceof ClassTree record && record.getKind() == Tree.Kind.RECORD) {
-                    variants.add(new VariantDto(record.getSimpleName().toString(), tag, components(record)));
+                    variants.add(new VariantDto(record.getSimpleName().toString(), tag, components(syntax, record)));
                     tag++;
                 }
             }
@@ -267,13 +253,16 @@ final class JavacMetadataReading {
     }
 
     /** A record's components: the instance fields javac's parser lists for them. */
-    private static List<FieldDto> components(ClassTree record) {
+    private static List<FieldDto> components(JavacSyntax syntax, ClassTree record) {
         var fields = new ArrayList<FieldDto>();
         for (Tree member : record.getMembers()) {
             if (member instanceof VariableTree component
                     && !component.getModifiers().getFlags().contains(Modifier.STATIC)) {
                 String name = component.getName().toString();
-                fields.add(new FieldDto(name, JavaMetadataExtractor.mapDisplayType(JavacSyntax.typeName(component.getType()), name)));
+                // JavaParser gives a variable-arity component its element type.
+                Tree type = component.getType() instanceof ArrayTypeTree array && syntax.isVarargs(component)
+                        ? array.getType() : component.getType();
+                fields.add(new FieldDto(name, JavaMetadataExtractor.mapDisplayType(JavacSyntax.typeName(type), name)));
             }
         }
         return fields;

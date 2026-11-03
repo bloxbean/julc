@@ -17,6 +17,7 @@ import org.julclang.cli.mcp.lint.rules.ReturnInLoopRule;
 import org.julclang.cli.mcp.lint.rules.SwitchFieldShadowRule;
 import org.julclang.cli.mcp.lint.rules.Tuple2SwitchRule;
 import org.julclang.cli.mcp.lint.rules.UninitializedVarRule;
+import org.julclang.compiler.frontend.javac.SourceReader;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -55,17 +56,12 @@ public final class LintEngine {
             new IncrementDecrementRule()
     );
 
-    /** How a source is read (ADR-068 M6): JavaParser's tree or javac's, with the same findings. */
-    public enum Reader { JAVAPARSER, JAVAC }
 
-    /** The reader {@link #LintEngine()} uses: JavaParser's until ADR-068 M5 makes javac the
-     * default. The {@code julc.tools.reader} system property ({@code JAVAPARSER} or {@code JAVAC}) chooses it for every
-     * tool, so that each module's tests run on either reading; it leaves at M6 with the JavaParser reading.
-     */
-    public static final Reader DEFAULT_READER = Reader.valueOf(System.getProperty("julc.tools.reader", "JAVAPARSER"));
+    /** The reader this tool uses (ADR-068 M6): {@link SourceReader#configured()}. */
+    public static final SourceReader DEFAULT_READER = SourceReader.configured();
 
     private final List<LintRule> rules;
-    private final Reader reader;
+    private final SourceReader reader;
 
     public LintEngine() {
         this(DEFAULT_RULES);
@@ -75,7 +71,7 @@ public final class LintEngine {
         this(rules, DEFAULT_READER);
     }
 
-    public LintEngine(List<LintRule> rules, Reader reader) {
+    public LintEngine(List<LintRule> rules, SourceReader reader) {
         this.rules = List.copyOf(rules);
         this.reader = reader;
     }
@@ -110,7 +106,13 @@ public final class LintEngine {
 
     /** javac's parser reads the source; a source it rejects has no findings, as an unreadable one has above. */
     private List<LintFinding> lintWithJavac(String source) {
-        var syntax = JavacSyntax.read(source);
+        JavacSyntax syntax;
+        try {
+            syntax = JavacSyntax.read(source);
+        } catch (IllegalStateException unsupportedJavac) {
+            // JULC0089: this host has no supported javac, which compiling reports; lint is best-effort.
+            return List.of();
+        }
         if (syntax.hasErrors()) {
             return List.of();
         }

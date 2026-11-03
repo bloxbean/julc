@@ -1,11 +1,14 @@
 package org.julclang.cli;
 
+import org.julclang.compiler.frontend.javac.SourceReader;
+
 import com.sun.source.tree.MethodTree;
 import org.julclang.cli.check.TestDiscovery;
 import org.julclang.cli.mcp.lint.LintEngine;
 import org.julclang.cli.mcp.lint.LintFinding;
 import org.julclang.cli.mcp.lint.LintTrees;
 import org.julclang.cli.mcp.tools.EvaluateToolAccess;
+import org.julclang.compiler.JavaSourceIntrospector;
 import org.julclang.compiler.JavaSourceParser;
 import org.julclang.compiler.frontend.javac.JavacSyntax;
 import org.junit.jupiter.api.Assumptions;
@@ -49,11 +52,20 @@ class Adr068ToolsCorpusTest {
             "javac's parser rejects the source, so the arity is unknown (-1) and the compiler reports the error",
             "lint:reader-rejects", READER_REJECTS,
             "arity:reader-rejects", READER_REJECTS,
+            "introspection:reader-rejects", READER_REJECTS,
+            "introspection:javac-rejects", "javac's parser rejects a source JavaParser's reading accepted (a lexical"
+                    + " error, such as an int literal out of range): the compiler rejects it too (D5)",
+            "introspection:javac-reads-later-java", "both reject, and javac's errors are only of language level (Java 22+"
+                    + " syntax JavaParser 3.26 cannot read): javac's tree is whole and shows no JuLC role, so the source"
+                    + " is skipped where JavaParser's reading failed",
+            "introspection:javac-fails-closed", "both reject; JavaParser's lenient reading found no role, javac's error is"
+                    + " lexical (an illegal escape), so the role cannot be read and the scan reports the error, as javac"
+                    + " compiling the project would",
             "discovery:reader-rejects", READER_REJECTS
                     + " (a literal with an unpaired surrogate: the test is found and its compilation reports JULC0093)");
 
-    private final LintEngine lintJavaParser = new LintEngine(LintEngine.DEFAULT_RULES, LintEngine.Reader.JAVAPARSER);
-    private final LintEngine lintJavac = new LintEngine(LintEngine.DEFAULT_RULES, LintEngine.Reader.JAVAC);
+    private final LintEngine lintJavaParser = new LintEngine(LintEngine.DEFAULT_RULES, SourceReader.JAVAPARSER);
+    private final LintEngine lintJavac = new LintEngine(LintEngine.DEFAULT_RULES, SourceReader.JAVAC);
 
     @Test
     void toolsReadTheCorpusAlikeOnBothParsers() throws IOException {
@@ -104,12 +116,25 @@ class Adr068ToolsCorpusTest {
             }
 
             // julc check's discovery
-            String found = discovery(file, text, TestDiscovery.Reader.JAVAPARSER);
-            String foundOnJavac = discovery(file, text, TestDiscovery.Reader.JAVAC);
+            String found = discovery(file, text, SourceReader.JAVAPARSER);
+            String foundOnJavac = discovery(file, text, SourceReader.JAVAC);
             if (found.equals(foundOnJavac)) {
                 count(counts, found.equals("[]") ? "discovery:same-none" : "discovery:same");
             } else {
                 record(counts, differences, file, "discovery" + other, found, foundOnJavac);
+            }
+
+            // The project scan's introspection (ProjectScanner, the gradle plugin, the testkit)
+            String inspected = introspection(text, SourceReader.JAVAPARSER);
+            String inspectedOnJavac = introspection(text, SourceReader.JAVAC);
+            if (inspected.equals(inspectedOnJavac)) {
+                count(counts, "introspection:same");
+            } else if (inspected.equals("ERROR noRole=false") && inspectedOnJavac.equals("ERROR noRole=true")) {
+                record(counts, differences, file, "introspection:javac-reads-later-java", inspected, inspectedOnJavac);
+            } else if (inspected.equals("ERROR noRole=true") && inspectedOnJavac.equals("ERROR noRole=false")) {
+                record(counts, differences, file, "introspection:javac-fails-closed", inspected, inspectedOnJavac);
+            } else {
+                record(counts, differences, file, "introspection" + other, inspected, inspectedOnJavac);
             }
 
             // MCP evaluate's arity, for the first methods javac finds and a missing one
@@ -120,8 +145,8 @@ class Adr068ToolsCorpusTest {
             }
             names.add("noSuchMethod");
             for (String name : names) {
-                int arity = EvaluateToolAccess.arity(text, name, LintEngine.Reader.JAVAPARSER);
-                int arityOnJavac = EvaluateToolAccess.arity(text, name, LintEngine.Reader.JAVAC);
+                int arity = EvaluateToolAccess.arity(text, name, SourceReader.JAVAPARSER);
+                int arityOnJavac = EvaluateToolAccess.arity(text, name, SourceReader.JAVAC);
                 if (arity == arityOnJavac) {
                     count(counts, "arity:same");
                 } else {
@@ -142,7 +167,16 @@ class Adr068ToolsCorpusTest {
         assertEquals(List.of(), unexplained, () -> String.join("\n", differences.stream().limit(40).toList()));
     }
 
-    private static String discovery(Path file, String text, TestDiscovery.Reader reader) {
+    /** The source's {@code SourceInfo}, or its parse failure and whether the source then declares no JuLC role. */
+    private static String introspection(String text, SourceReader reader) {
+        try {
+            return JavaSourceIntrospector.inspect(text, reader).toString();
+        } catch (JavaSourceIntrospector.SourceParseException e) {
+            return "ERROR noRole=" + JavaSourceIntrospector.declaresNoJulcRole(text, reader);
+        }
+    }
+
+    private static String discovery(Path file, String text, SourceReader reader) {
         try {
             return TestDiscovery.discover(file, text, reader).stream()
                     .map(t -> t.className() + "." + t.methodName())

@@ -1,5 +1,6 @@
 package org.julclang.compiler.frontend.javac;
 
+import com.sun.source.tree.AnnotatedTypeTree;
 import com.sun.source.tree.ArrayTypeTree;
 import com.sun.source.tree.CompilationUnitTree;
 import com.sun.source.tree.IdentifierTree;
@@ -119,9 +120,42 @@ public record JavacSyntax(String text, CompilationUnitTree unit, SourcePositions
                 case SUPER_WILDCARD -> "? super " + typeName(wildcard.getBound());
                 default -> "?";
             };
+            // JavaParser's asString leaves a type annotation out.
+            case AnnotatedTypeTree annotated -> typeName(annotated.getUnderlyingType());
             case null -> "";
             default -> type.toString();
         };
+    }
+
+    /**
+     * A named type's qualified name as JuLC's discovery has named it: the package and the enclosing named types, an
+     * anonymous class or anything else between them skipped; none for a type declared in a block (a local type), or one
+     * inside a local type.
+     */
+    public static java.util.Optional<String> qualifiedName(TreePath path) {
+        var type = (com.sun.source.tree.ClassTree) path.getLeaf();
+        TreePath parent = path.getParentPath();
+        if (parent.getLeaf() instanceof CompilationUnitTree unit) {
+            String pkg = unit.getPackageName() == null ? "" : unit.getPackageName().toString();
+            return java.util.Optional.of(pkg.isEmpty() ? type.getSimpleName().toString() : pkg + "." + type.getSimpleName());
+        }
+        if (!(parent.getLeaf() instanceof com.sun.source.tree.ClassTree)) {
+            if (parent.getLeaf() instanceof com.sun.source.tree.BlockTree
+                    || parent.getLeaf() instanceof com.sun.source.tree.CaseTree) {
+                return java.util.Optional.empty();
+            }
+        }
+        for (TreePath up = parent; up != null; up = up.getParentPath()) {
+            if (up.getLeaf() instanceof com.sun.source.tree.ClassTree outer && !outer.getSimpleName().isEmpty()) {
+                return qualifiedName(up).map(name -> name + "." + type.getSimpleName());
+            }
+        }
+        return java.util.Optional.empty();
+    }
+
+    /** Whether a variable's written type is variable-arity: javac reads {@code T... x} as an array type ending in {@code ...}. */
+    public boolean isVarargs(com.sun.source.tree.VariableTree variable) {
+        return variable.getType() != null && source(variable.getType()).endsWith("...");
     }
 
     /** The path from the unit to {@code tree}, or null when the unit does not hold it. */

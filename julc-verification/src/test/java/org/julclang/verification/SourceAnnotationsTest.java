@@ -1,5 +1,7 @@
 package org.julclang.verification;
 
+import org.julclang.compiler.frontend.javac.SourceReader;
+
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -34,14 +36,14 @@ class SourceAnnotationsTest {
 
     @Test
     void bothReadersReadTheSameUnit() {
-        var javaParser = SourceAnnotations.read(SOURCE, SourceAnnotations.Reader.JAVAPARSER);
-        var javac = SourceAnnotations.read(SOURCE, SourceAnnotations.Reader.JAVAC);
+        var javaParser = SourceAnnotations.read(SOURCE, SourceReader.JAVAPARSER);
+        var javac = SourceAnnotations.read(SOURCE, SourceReader.JAVAC);
         assertEquals(javaParser, javac);
     }
 
     @Test
     void theValuesAreJavaParsersReading() {
-        var unit = SourceAnnotations.read(SOURCE, SourceAnnotations.Reader.JAVAC);
+        var unit = SourceAnnotations.read(SOURCE, SourceReader.JAVAC);
         assertEquals("com.example", unit.packageName());
         assertEquals(3, unit.imports().size());
         var type = unit.types().getFirst();
@@ -65,8 +67,8 @@ class SourceAnnotationsTest {
     @Test
     void anUnreadableSourceThrowsOnBoth() {
         assertThrows(RuntimeException.class,
-                () -> SourceAnnotations.read("class {", SourceAnnotations.Reader.JAVAPARSER));
+                () -> SourceAnnotations.read("class {", SourceReader.JAVAPARSER));
         assertThrows(RuntimeException.class,
-                () -> SourceAnnotations.read("class {", SourceAnnotations.Reader.JAVAC));
+                () -> SourceAnnotations.read("class {", SourceReader.JAVAC));
     }
 }

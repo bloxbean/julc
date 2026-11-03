@@ -27,7 +27,8 @@ import com.sun.source.tree.UnionTypeTree;
 import com.sun.source.tree.VariableTree;
 import com.sun.source.tree.WildcardTree;
 import com.sun.source.util.TreePath;
-import com.sun.source.util.TreePathScanner;
+import org.julclang.compiler.frontend.javac.SourceOrderScanner;
+import org.julclang.compiler.frontend.javac.ExpressionRoles;
 import org.julclang.compiler.frontend.javac.JavacSyntax;
 
 import javax.lang.model.element.Modifier;
@@ -49,7 +50,7 @@ public final class LintTrees {
     public static <T extends Tree> List<TreePath> findAll(TreePath root, Class<T> type) {
         var found = new ArrayList<TreePath>();
         if (type.isInstance(root.getLeaf())) found.add(root);
-        new TreePathScanner<Void, Void>() {
+        new SourceOrderScanner<Void, Void>() {
             @Override
             public Void scan(Tree tree, Void unused) {
                 if (tree != null && type.isInstance(tree)) found.add(new TreePath(getCurrentPath(), tree));
@@ -78,7 +79,19 @@ public final class LintTrees {
     public static boolean isField(TreePath path) {
         return path.getLeaf() instanceof VariableTree variable
                 && path.getParentPath().getLeaf() instanceof ClassTree owner
-                && !(owner.getKind() == Tree.Kind.RECORD && !variable.getModifiers().getFlags().contains(Modifier.STATIC));
+                && !(owner.getKind() == Tree.Kind.RECORD && !variable.getModifiers().getFlags().contains(Modifier.STATIC))
+                && !isEnumConstant(owner, variable);
+    }
+
+    /**
+     * javac's parser holds an enum constant as a variable of the enum's type initialised by a {@code new} of it, which no
+     * field of an enum can be otherwise; JavaParser holds it apart from fields.
+     */
+    public static boolean isEnumConstant(ClassTree owner, VariableTree variable) {
+        return owner.getKind() == Tree.Kind.ENUM
+                && variable.getInitializer() instanceof com.sun.source.tree.NewClassTree creation
+                && creation.getIdentifier() instanceof IdentifierTree type
+                && type.getName().contentEquals(owner.getSimpleName());
     }
 
     /**
@@ -95,39 +108,64 @@ public final class LintTrees {
     }
 
     /**
-     * Where a declarator's name starts. javac gives a declaration's start, its modifiers' or type's, and keeps one type
-     * tree for every declarator of {@code int a, b;}, so the name is found after the type, or after the previous
-     * declarator and its comma.
+     * Where a declarator's name starts. javac gives a declaration's start, its modifiers' or type's, and keeps one element
+     * type tree for every declarator of {@code int a, b[];}, so the first name is found after the element type and any
+     * {@code []}, and each later one after the previous declarator and its comma. {@code var x;} has no type tree.
      */
     public static long declaratorNameStart(JavacSyntax syntax, TreePath path) {
-        var variable = (VariableTree) path.getLeaf();
-        Tree type = variable.getType();
-        TreePath previous = previousSibling(path);
-        // `int a, b[]` gives b an array type of a's very element type tree.
-        if (previous != null && type != null
-                && innermost(((VariableTree) previous.getLeaf()).getType()) == innermost(type)) {
-            // javac keeps no end for a declarator before the last one: step over its name, dimensions and initializer.
-            var before = (VariableTree) previous.getLeaf();
+        List<VariableTree> group = declarationGroup(path);
+        var first = group.getFirst();
+        long name = firstNameStart(syntax, first);
+        for (int i = 1; i < group.size(); i++) {
+            var before = group.get(i - 1);
             long after = before.getInitializer() != null ? syntax.end(before.getInitializer())
-                    : afterNameAndDimensions(syntax, declaratorNameStart(syntax, previous));
+                    : afterNameAndDimensions(syntax, name);
             long comma = syntax.nextToken(after);
             if (comma < 0 || syntax.text().charAt((int) comma) != ',') return -1;
-            return syntax.nextToken(comma + 1);
+            name = syntax.nextToken(comma + 1);
         }
-        if (type == null) return syntax.start(variable);
-        // In `int a[]` the array type javac builds ends after the name, which follows the element type.
-        Tree element = type;
-        while (element instanceof ArrayTypeTree array) element = array.getType();
-        if (element != type) {
-            long afterElement = syntax.nextToken(syntax.end(element));
-            if (afterElement >= 0 && syntax.text().charAt((int) afterElement) != '[') return afterElement;
-        }
-        return syntax.nextToken(syntax.end(type));
+        return name;
     }
 
-    private static Tree innermost(Tree type) {
-        while (type instanceof ArrayTypeTree array) type = array.getType();
-        return type;
+    private static long firstNameStart(JavacSyntax syntax, VariableTree variable) {
+        Tree type = variable.getType();
+        String text = syntax.text();
+        if (type == null) {
+            // `var x;` or `final var x;`: the name follows `var`.
+            long at = variable.getModifiers().getFlags().isEmpty() && variable.getModifiers().getAnnotations().isEmpty()
+                    ? syntax.start(variable) : syntax.end(variable.getModifiers());
+            at = syntax.nextToken(at);
+            if (at < 0 || !text.startsWith("var", (int) at)) return -1;
+            return syntax.nextToken(at + 3);
+        }
+        long at = syntax.nextToken(syntax.end(innermost(type)));
+        while (at >= 0 && text.charAt((int) at) == '[') {
+            long close = syntax.nextToken(at + 1);
+            if (close < 0 || text.charAt((int) close) != ']') return -1;
+            at = syntax.nextToken(close + 1);
+        }
+        return at;
+    }
+
+    /** The declarators of the declaration {@code path}'s variable is in, up to it: those sharing its element type tree. */
+    private static List<VariableTree> declarationGroup(TreePath path) {
+        var variable = (VariableTree) path.getLeaf();
+        List<? extends Tree> siblings = siblings(path);
+        int at = -1;
+        for (int i = 0; i < siblings.size(); i++) {
+            if (siblings.get(i) == variable) at = i;
+        }
+        var group = new ArrayList<VariableTree>();
+        group.add(variable);
+        Tree element = variable.getType() == null ? null : innermost(variable.getType());
+        for (int i = at - 1; i >= 0 && element != null; i--) {
+            if (!(siblings.get(i) instanceof VariableTree before) || before.getType() == null
+                    || innermost(before.getType()) != element) {
+                break;
+            }
+            group.addFirst(before);
+        }
+        return group;
     }
 
     /** The offset after an identifier at {@code name} (Unicode escapes included) and any {@code []} after it. */
@@ -156,9 +194,14 @@ public final class LintTrees {
         }
     }
 
-    private static TreePath previousSibling(TreePath path) {
-        Tree parent = path.getParentPath().getLeaf();
-        List<? extends Tree> siblings = switch (parent) {
+    /** An array type's element type, at any depth; the type itself otherwise. */
+    private static Tree innermost(Tree type) {
+        while (type instanceof ArrayTypeTree array) type = array.getType();
+        return type;
+    }
+
+    private static List<? extends Tree> siblings(TreePath path) {
+        return switch (path.getParentPath().getLeaf()) {
             case com.sun.source.tree.BlockTree block -> block.getStatements();
             case ClassTree type -> type.getMembers();
             case CaseTree c -> c.getStatements() == null ? List.of() : c.getStatements();
@@ -166,75 +209,11 @@ public final class LintTrees {
             case com.sun.source.tree.TryTree attempt -> attempt.getResources();
             default -> List.of();
         };
-        int at = -1;
-        for (int i = 0; i < siblings.size(); i++) {
-            if (siblings.get(i) == path.getLeaf()) at = i;
-        }
-        return at > 0 && siblings.get(at - 1) instanceof VariableTree v
-                ? new TreePath(path.getParentPath(), v) : null;
     }
 
-    /**
-     * Whether an identifier is what JavaParser calls a name expression: a simple name used as a value, or as the
-     * qualifier of a member access. Not a method's name, a type, {@code this} or {@code super}, an annotation's
-     * element, or a part of a type or class literal.
-     */
+    /** What JavaParser calls a name expression ({@link ExpressionRoles#isNameExpression}). */
     public static boolean isNameExpression(TreePath path) {
-        if (!(path.getLeaf() instanceof IdentifierTree identifier)) return false;
-        String name = identifier.getName().toString();
-        if (name.equals("this") || name.equals("super")) return false;
-        Tree parent = path.getParentPath().getLeaf();
-        if (parent instanceof MethodInvocationTree call && call.getMethodSelect() == identifier) return false;
-        if (parent instanceof AssignmentTree assignment && assignment.getVariable() == identifier
-                && path.getParentPath().getParentPath().getLeaf() instanceof AnnotationTree) {
-            return false;
-        }
-        // Up a qualified name to its outermost select: the name is a type's, a class literal's or this's if that is.
-        TreePath top = path;
-        while (top.getParentPath().getLeaf() instanceof MemberSelectTree select && select.getExpression() == top.getLeaf()) {
-            top = top.getParentPath();
-            String member = select.getIdentifier().toString();
-            if (member.equals("class") || member.equals("this") || member.equals("super")) return false;
-        }
-        if (top.getParentPath().getLeaf() instanceof MethodInvocationTree call && call.getMethodSelect() == top.getLeaf()
-                && top != path) {
-            return true;
-        }
-        return !isTypePosition(top);
-    }
-
-    private static boolean isTypePosition(TreePath path) {
-        Tree leaf = path.getLeaf();
-        Tree parent = path.getParentPath().getLeaf();
-        return switch (parent) {
-            case VariableTree v -> v.getType() == leaf;
-            case MethodTree m -> m.getReturnType() == leaf || m.getThrows().contains(leaf);
-            case NewClassTree n -> n.getIdentifier() == leaf || n.getTypeArguments().contains(leaf);
-            case TypeCastTree c -> c.getType() == leaf;
-            case InstanceOfTree i -> i.getType() == leaf;
-            case DeconstructionPatternTree d -> d.getDeconstructor() == leaf;
-            case ParameterizedTypeTree p -> true;
-            case ArrayTypeTree a -> true;
-            case WildcardTree w -> true;
-            case UnionTypeTree u -> true;
-            case IntersectionTypeTree i -> true;
-            case TypeParameterTree t -> true;
-            case AnnotatedTypeTree a -> true;
-            case AnnotationTree a -> a.getAnnotationType() == leaf;
-            case ClassTree c -> true;
-            case NewArrayTree n -> n.getType() == leaf;
-            case MemberReferenceTree r -> r.getQualifierExpression() == leaf && isTypeLike(leaf);
-            case MethodInvocationTree call -> call.getTypeArguments().contains(leaf);
-            case com.sun.source.tree.ImportTree i -> true;
-            case com.sun.source.tree.PackageTree p -> true;
-            default -> false;
-        };
-    }
-
-    /** A member reference's qualifier: JavaParser reads a capitalised simple name as a type. */
-    private static boolean isTypeLike(Tree tree) {
-        return tree instanceof IdentifierTree id && !id.getName().isEmpty()
-                && Character.isUpperCase(id.getName().charAt(0));
+        return ExpressionRoles.isNameExpression(path);
     }
 
     /** {@code a.b.c} for a simple or qualified name, else null. */

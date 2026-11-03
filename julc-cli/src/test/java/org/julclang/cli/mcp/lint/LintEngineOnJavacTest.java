@@ -1,5 +1,7 @@
 package org.julclang.cli.mcp.lint;
 
+import org.julclang.compiler.frontend.javac.SourceReader;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -13,8 +15,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class LintEngineOnJavacTest extends LintEngineTest {
 
-    private final LintEngine javaParser = new LintEngine(LintEngine.DEFAULT_RULES, LintEngine.Reader.JAVAPARSER);
-    private final LintEngine javac = new LintEngine(LintEngine.DEFAULT_RULES, LintEngine.Reader.JAVAC);
+    private final LintEngine javaParser = new LintEngine(LintEngine.DEFAULT_RULES, SourceReader.JAVAPARSER);
+    private final LintEngine javac = new LintEngine(LintEngine.DEFAULT_RULES, SourceReader.JAVAC);
 
     @Override
     List<LintFinding> lint(String source) {
@@ -92,5 +94,29 @@ class LintEngineOnJavacTest extends LintEngineTest {
     @Test
     void aSourceJavacRejectsHasNoFindings() {
         assertEquals(List.of(), javac.lint("class { not valid Java"));
+    }
+
+    @Test
+    void shapesAnIndependentReviewFound() {
+        // `var` without an initializer, a C-style array after an array type, and many declarators.
+        lint("class T { void m() { var x; final var y; int[] a[]; int b0, b1, b2, b3, b4, b5; } }");
+        // A method reference's qualifier is a type to JavaParser, whatever its case.
+        lint("""
+                class T {
+                    sealed interface I permits A {}
+                    record A(java.math.BigInteger time) implements I {}
+                    static boolean f(I i, java.math.BigInteger time, JulcList<java.math.BigInteger> xs) {
+                        return switch (i) { case A a -> xs.any(time::equals); };
+                    }
+                }
+                """);
+        // An enum constant is not a field.
+        lint("""
+                class T {
+                    static int RED;
+                    static void m() { enum Color { RED } RED = 1; }
+                }
+                """);
+        lint("enum E { A, B; @Param static PlutusData.BytesData p; }");
     }
 }

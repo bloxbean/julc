@@ -1,5 +1,7 @@
 package org.julclang.verification;
 
+import org.julclang.compiler.frontend.javac.SourceReader;
+
 import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.schema.ContractSchema;
 import org.julclang.verification.dsl.PropertyIrCodec;
@@ -31,7 +33,7 @@ public final class StatefulSpendingResolver {
     /** {@link #resolve(String, String, String, ContractSchema)} with the source read by {@code reader} (ADR-068 M6). */
     static Optional<StatefulSpendingProperty> resolve(
             String source, String fileName, String validatorTitle, ContractSchema schema,
-            SourceAnnotations.Reader reader) {
+            SourceReader reader) {
         SourceAnnotations.Unit unit = SourceAnnotations.read(source, reader);
         SourceAnnotations.Type type = exactType(unit, validatorTitle, fileName);
         List<Annotation> monotonic = annotations(type, unit, "Monotonic");

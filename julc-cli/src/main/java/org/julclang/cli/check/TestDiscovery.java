@@ -11,6 +11,7 @@ import org.julclang.compiler.JavaSourceIntrospector;
 import org.julclang.compiler.frontend.javac.JavacSyntax;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
+import org.julclang.compiler.frontend.javac.SourceReader;
 
 import javax.lang.model.element.Modifier;
 import javax.lang.model.type.TypeKind;
@@ -33,14 +34,9 @@ public final class TestDiscovery {
 
     public record TestMethod(String sourceFile, String className, String methodName, String source) {}
 
-    /** How a test source is read. */
-    public enum Reader { JAVAPARSER, JAVAC }
 
-    /** The reader {@link #discover(Path)} uses: JavaParser's until ADR-068 M5 makes javac the
-     * default. The {@code julc.tools.reader} system property ({@code JAVAPARSER} or {@code JAVAC}) chooses it for every
-     * tool, so that each module's tests run on either reading; it leaves at M6 with the JavaParser reading.
-     */
-    public static final Reader DEFAULT_READER = Reader.valueOf(System.getProperty("julc.tools.reader", "JAVAPARSER"));
+    /** The reader this tool uses (ADR-068 M6): {@link SourceReader#configured()}. */
+    public static final SourceReader DEFAULT_READER = SourceReader.configured();
 
     /**
      * Scan a directory for test methods.
@@ -51,7 +47,7 @@ public final class TestDiscovery {
     }
 
     /** {@link #discover(Path)}, reading each source with {@code reader}. */
-    public static List<TestMethod> discover(Path testDir, Reader reader) throws IOException {
+    public static List<TestMethod> discover(Path testDir, SourceReader reader) throws IOException {
         var results = new ArrayList<TestMethod>();
 
         if (!Files.isDirectory(testDir)) {
@@ -77,7 +73,7 @@ public final class TestDiscovery {
      * each one's own methods. Throws {@link IllegalArgumentException} when a source that names {@code @Test} cannot
      * be read.
      */
-    public static List<TestMethod> discover(Path path, String source, Reader reader) {
+    public static List<TestMethod> discover(Path path, String source, SourceReader reader) {
         if (!JavaSourceIntrospector.mightContainTestAnnotation(source)) return List.of();
         return switch (reader) {
             case JAVAPARSER -> discoverWithJavaParser(path, source);

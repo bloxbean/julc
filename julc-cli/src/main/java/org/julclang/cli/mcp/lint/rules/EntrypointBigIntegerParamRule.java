@@ -97,7 +97,7 @@ public final class EntrypointBigIntegerParamRule implements LintRule {
     /** The parameter's type as JavaParser gives it: a variable-arity parameter's element type. */
     private static Tree declaredType(JavacSyntax syntax, VariableTree param) {
         Tree type = param.getType();
-        if (type instanceof ArrayTypeTree array && syntax.source(param).contains("...")) return array.getType();
+        if (type instanceof ArrayTypeTree array && syntax.isVarargs(param)) return array.getType();
         return type;
     }
 }

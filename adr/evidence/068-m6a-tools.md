@@ -73,7 +73,7 @@ ends with the steps' own tests; the order is set by who calls whom.
    three modules' tests with `-Pjulc.tools.reader=JAVAC`). Before that, decide `JavaMetadataExtractor`'s subset
    diagnostics (open item 1).
 2. **Delete the tools' JavaParser halves.** `LintRule.check(CompilationUnit)` and each rule's JavaParser method (a public
-   interface change for any rule written outside JuLC: note it in the release notes), `LintEngine.Reader`,
+   interface change for any rule written outside JuLC: note it in the release notes), `SourceReader`,
    `TestDiscovery`'s and `EvaluateTool`'s JavaParser readings, `JavaMetadataExtractor`'s JavaParser path and its
    `SubsetValidator` call, `SourceAnnotations.readWithJavaParser`, the `julc.tools.reader` property and its line in the
    root `build.gradle`. Then the `javaparser-core` lines of `julc-cli`, `julc-tools`, `julc-verification` and

@@ -1,5 +1,7 @@
 package org.julclang.cli.check;
 
+import org.julclang.compiler.frontend.javac.SourceReader;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -22,14 +24,14 @@ class TestDiscoveryOnJavacTest extends TestDiscoveryTest {
     List<TestDiscovery.TestMethod> discover(Path dir) throws IOException {
         List<TestDiscovery.TestMethod> expected;
         try {
-            expected = TestDiscovery.discover(dir, TestDiscovery.Reader.JAVAPARSER);
+            expected = TestDiscovery.discover(dir, SourceReader.JAVAPARSER);
         } catch (IllegalArgumentException e) {
             var actual = assertThrows(IllegalArgumentException.class,
-                    () -> TestDiscovery.discover(dir, TestDiscovery.Reader.JAVAC));
+                    () -> TestDiscovery.discover(dir, SourceReader.JAVAC));
             assertEquals(prefix(e.getMessage()), prefix(actual.getMessage()));
             throw actual;
         }
-        var actual = TestDiscovery.discover(dir, TestDiscovery.Reader.JAVAC);
+        var actual = TestDiscovery.discover(dir, SourceReader.JAVAC);
         assertEquals(expected, actual);
         return actual;
     }
@@ -64,8 +66,8 @@ class TestDiscoveryOnJavacTest extends TestDiscoveryTest {
                 }
                 """);
         assertThrows(IllegalArgumentException.class,
-                () -> TestDiscovery.discover(tempDir, TestDiscovery.Reader.JAVAPARSER));
-        var found = TestDiscovery.discover(tempDir, TestDiscovery.Reader.JAVAC);
+                () -> TestDiscovery.discover(tempDir, SourceReader.JAVAPARSER));
+        var found = TestDiscovery.discover(tempDir, SourceReader.JAVAC);
         assertEquals(1, found.size());
         assertEquals("t", found.getFirst().methodName());
     }

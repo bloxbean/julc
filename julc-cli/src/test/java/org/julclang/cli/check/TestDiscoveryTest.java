@@ -1,5 +1,7 @@
 package org.julclang.cli.check;
 
+import org.julclang.compiler.frontend.javac.SourceReader;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -64,7 +66,7 @@ class TestDiscoveryTest {
                 }
                 """);
         var error = assertThrows(IllegalArgumentException.class,
-                () -> TestDiscovery.discover(tempDir, TestDiscovery.Reader.JAVAPARSER));
+                () -> TestDiscovery.discover(tempDir, SourceReader.JAVAPARSER));
         assertTrue(error.getMessage().contains("Could not parse @Test candidate"), error.getMessage());
     }
 

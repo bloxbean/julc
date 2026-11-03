@@ -19,6 +19,7 @@ import com.sun.source.tree.MemberSelectTree;
 import com.sun.source.tree.Tree;
 import org.julclang.compiler.JavaSourceParser;
 import org.julclang.compiler.frontend.javac.JavacSyntax;
+import org.julclang.compiler.frontend.javac.SourceReader;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -33,14 +34,9 @@ import java.util.List;
  */
 final class SourceAnnotations {
 
-    /** How a source is read. */
-    enum Reader { JAVAPARSER, JAVAC }
 
-    /** The reader {@link #read(String)} uses: JavaParser's until ADR-068 M5 makes javac the
-     * default. The {@code julc.tools.reader} system property ({@code JAVAPARSER} or {@code JAVAC}) chooses it for every
-     * tool, so that each module's tests run on either reading; it leaves at M6 with the JavaParser reading.
-     */
-    static final Reader DEFAULT_READER = Reader.valueOf(System.getProperty("julc.tools.reader", "JAVAPARSER"));
+    /** The reader this tool uses (ADR-068 M6): {@link SourceReader#configured()}. */
+    static final SourceReader DEFAULT_READER = SourceReader.configured();
 
     /** A source: its package name ({@code ""} for none), its imports and its top-level types, in source order. */
     record Unit(String packageName, List<Import> imports, List<Type> types) {
@@ -97,7 +93,7 @@ final class SourceAnnotations {
     }
 
     /** {@code source} read by {@code reader}; a source it cannot read throws, as the resolvers did. */
-    static Unit read(String source, Reader reader) {
+    static Unit read(String source, SourceReader reader) {
         return switch (reader) {
             case JAVAPARSER -> readWithJavaParser(source);
             case JAVAC -> readWithJavac(source);
@@ -186,7 +182,11 @@ final class SourceAnnotations {
             printed.add(singleValue.text());
         } else {
             for (ExpressionTree argument : arguments) {
-                var assignment = (AssignmentTree) argument;
+                if (!(argument instanceof AssignmentTree assignment)) {
+                    // `@A(1, 2)`: javac's parser takes it, JavaParser's does not; neither is Java.
+                    throw new IllegalArgumentException("Could not parse Java source: annotation " + name
+                            + " has an argument without a name");
+                }
                 var member = new Member(dotted(assignment.getVariable()), value(syntax, assignment.getExpression()));
                 members.add(member);
                 printed.add(member.name() + " = " + member.value().text());

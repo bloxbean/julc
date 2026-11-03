@@ -1,5 +1,7 @@
 package org.julclang.tools.java;
 
+import org.julclang.compiler.frontend.javac.SourceReader;
+
 import org.julclang.compiler.JavaSourceParser;
 import org.julclang.compiler.frontend.javac.JavacSyntax;
 import org.julclang.compiler.validate.SubsetValidator;
@@ -61,8 +63,8 @@ class Adr068MetadataCorpusTest {
                 continue;
             }
             count(counts, "files");
-            var expected = JavaMetadataExtractor.extract(text, JavaMetadataExtractor.Reader.JAVAPARSER);
-            var actual = JavaMetadataExtractor.extract(text, JavaMetadataExtractor.Reader.JAVAC);
+            var expected = JavaMetadataExtractor.extract(text, SourceReader.JAVAPARSER);
+            var actual = JavaMetadataExtractor.extract(text, SourceReader.JAVAC);
             if (expected.contractName() != null) count(counts, "validators");
             int subset = subsetDiagnostics(text);
             if (subset > 0) count(counts, "javaparser-subset-diagnostics-files");

@@ -1,5 +1,7 @@
 package org.julclang.verification;
 
+import org.julclang.compiler.frontend.javac.SourceReader;
+
 import org.julclang.compiler.JavaSourceParser;
 import org.julclang.compiler.frontend.javac.JavacSyntax;
 import org.junit.jupiter.api.Assumptions;
@@ -63,8 +65,8 @@ class Adr068AnnotationsCorpusTest {
                 continue;
             }
             count(counts, "files");
-            String expected = read(text, SourceAnnotations.Reader.JAVAPARSER);
-            String actual = read(text, SourceAnnotations.Reader.JAVAC);
+            String expected = read(text, SourceReader.JAVAPARSER);
+            String actual = read(text, SourceReader.JAVAC);
             String kind;
             if (expected.equals(actual)) {
                 kind = "annotations:same";
@@ -72,8 +74,8 @@ class Adr068AnnotationsCorpusTest {
                 kind = "annotations:javac-rejects";
             } else if (expected.equals("ERROR") && !JavaSourceParser.parse(text).isSuccessful()) {
                 kind = "annotations:reader-rejects";
-            } else if (withoutUnresolvedText(text, SourceAnnotations.Reader.JAVAPARSER)
-                    .equals(withoutUnresolvedText(text, SourceAnnotations.Reader.JAVAC))) {
+            } else if (withoutUnresolvedText(text, SourceReader.JAVAPARSER)
+                    .equals(withoutUnresolvedText(text, SourceReader.JAVAC))) {
                 kind = "annotations:text-of-unresolved";
             } else {
                 kind = "annotations:DIFFERENT";
@@ -92,7 +94,7 @@ class Adr068AnnotationsCorpusTest {
         assertEquals(List.of(), unexplained, () -> String.join("\n", differences.stream().limit(30).toList()));
     }
 
-    private static String read(String text, SourceAnnotations.Reader reader) {
+    private static String read(String text, SourceReader reader) {
         try {
             return SourceAnnotations.read(text, reader).toString();
         } catch (RuntimeException e) {
@@ -100,7 +102,7 @@ class Adr068AnnotationsCorpusTest {
         }
     }
 
-    private static String withoutUnresolvedText(String text, SourceAnnotations.Reader reader) {
+    private static String withoutUnresolvedText(String text, SourceReader reader) {
         try {
             var unit = SourceAnnotations.read(text, reader);
             var types = unit.types().stream().map(t -> new SourceAnnotations.Type(t.name(), t.annotations().stream()
