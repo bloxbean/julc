@@ -441,7 +441,7 @@ class Adr068StatementsHarnessTest {
     @Test
     void aWideningOperandStops() {
         assertStopsOnJavac("public record R(BigInteger v) { } public static BigInteger m(R r) { if ((Object) r instanceof S.A a) { return a.v(); } return BigInteger.ZERO; }",
-                "JULC0084", constr(0, integer(1)));
+                "JULC0126", constr(0, integer(1)));
     }
 
     // --- Where javac's types are right and the reference is not (D13, semantic fix) ---

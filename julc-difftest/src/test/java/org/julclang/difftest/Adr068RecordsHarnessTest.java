@@ -414,7 +414,7 @@ class Adr068RecordsHarnessTest {
         String qualified = BIG + "public class Case { @org.julclang.stdlib.annotation.NewType public record N(BigInteger value) { } public static BigInteger m(BigInteger a) { var n = new N(a); return n.value(); } }";
         assertJavacAgrees(qualified, integer(5));
         String own = BIG + "public class Case { @interface NewType { } @NewType public record N(BigInteger value) { } public static N m(BigInteger a) { return new N(a); } }";
-        JAVAC_RUNNER.run(new DiffCase("own", own, "Case", "m", List.of(integer(5)), TagTable.EMPTY, null)).results().values().forEach(result ->
-                assertTrue(result.uplc().toString().contains("JULC0084"), result.uplc()::toString));
+        // A user's annotation type of that name is a declaration like any other since M5, and its record is a plain record.
+        assertJavacAgrees(own, integer(5));
     }
 }

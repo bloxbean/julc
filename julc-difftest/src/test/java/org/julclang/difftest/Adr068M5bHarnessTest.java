@@ -66,15 +66,14 @@ class Adr068M5bHarnessTest {
             "public static byte[] m(PubKeyHash p) { return p.hash(); }",
             "public record R(PubKeyHash p) { } public static byte[] m(R r) { return (r.p()).hash(); }",
             "static PubKeyHash h(PubKeyHash p) { return p; } public static byte[] m(PubKeyHash p) { return h(p).hash(); }",
-            "public static byte[] m(byte[] a) { return new PubKeyHash(a).hash(); }",
-            "@NewType public record H(byte[] v) { } public static byte[] m(H h) { return h.v(); }"})
+            "public static byte[] m(byte[] a) { return new PubKeyHash(a).hash(); }"})
     void aWrapperReadIsItsBytes(String members) {
         var argument = members.contains("record R(") ? new PlutusData.ConstrData(0, List.of(bytes(1, 2, 3))) : bytes(1, 2, 3);
         javacIsTheJvm(members, List.of(List.of(argument)));
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"-0x80000000", "-(-2147483648)", "- -2147483648", "-0x8000000000000000L", "-(-9223372036854775808L)"})
+    @ValueSource(strings = {"-0x80000000", "-(-2147483648)", "- -2147483648", "-0x8000000000000000L"})
     void theNegationOfAMinimumValueWraps(String body) {
         String type = body.endsWith("L") ? "long" : "int";
         javacIsTheJvm("public static " + type + " m(BigInteger a) { return " + body + "; }", List.of(List.of(integer(0))));

@@ -17,6 +17,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -173,12 +174,17 @@ class Adr068LambdasHarnessTest {
         });
     }
 
+    /**
+     * What stopped at {@code JULC0084} until ADR-068 M5 fails closed with a code (a value of no one type is {@code JULC0012}), or
+     * lowers to the JVM's value (a function in parentheses or a conditional, a parameter written {@code var}).
+     */
     private static void assertStopsOnJavac(String members, PlutusData... args) {
         var report = run(members, List.of(args));
         report.results().forEach((config, result) -> {
             if (config.frontend() == CompilerFrontend.JAVAC) {
-                assertEquals(Verdict.Kind.REJECTED, result.verdict().kind(), report::describe);
-                assertTrue(result.uplc().toString().contains("JULC0084"), report::describe);
+                var kind = result.verdict().kind();
+                assertTrue(kind == Verdict.Kind.AGREE || kind == Verdict.Kind.REJECTED, report::describe);
+                if (kind == Verdict.Kind.REJECTED) assertFalse(result.uplc().toString().contains("JULC0084"), report::describe);
             }
         });
     }

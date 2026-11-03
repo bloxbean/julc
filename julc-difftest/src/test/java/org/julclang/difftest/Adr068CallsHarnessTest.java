@@ -125,7 +125,8 @@ class Adr068CallsHarnessTest {
     @ParameterizedTest
     @ValueSource(strings = {"-0x80000000", "-(-2147483648)", "-0x8000000000000000L"})
     void theNegationOfAMinimumValueStops(String body) {
-        assertStopsOnJavac("public static long m() { return " + body + "; }", "JULC0084");
+        // Java's negation wraps a type's minimum value to itself; the reference gives the positive one (M5).
+        assertFixedOnJavac("public static long m() { return " + body + "; }");
     }
 
     @ParameterizedTest

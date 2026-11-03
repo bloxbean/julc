@@ -193,7 +193,7 @@ class Adr068LoweringHarnessTest {
                 assertEquals(Verdict.Kind.AGREE, result.verdict().kind(), report.describe());
             } else {
                 assertEquals(Verdict.Kind.REJECTED, result.verdict().kind(), report.describe());
-                assertEquals("JULC0084", assertInstanceOf(Observation.Rejected.class, result.uplc()).code());
+                assertEquals("JULC0124", assertInstanceOf(Observation.Rejected.class, result.uplc()).code());
             }
         });
     }

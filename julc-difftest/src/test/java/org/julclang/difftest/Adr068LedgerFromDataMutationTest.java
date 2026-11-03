@@ -128,7 +128,7 @@ class Adr068LedgerFromDataMutationTest {
                 var stop = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(),
                         new CompilerOptions().setFrontend(CompilerFrontend.JAVAC))
                         .compileMethod(Adr068LedgerFromDataPropertyTest.accepts(name), "m"));
-                assertEquals("fromPlutusData on a ledger type that holds a map", assertInstanceOf(NotPorted.class, stop).construct());
+                assertEquals("JULC0128", stop.diagnostics().getFirst().code(), stop::getMessage);
                 counts.merge("stops", list.size(), Integer::sum);
                 continue;
             }

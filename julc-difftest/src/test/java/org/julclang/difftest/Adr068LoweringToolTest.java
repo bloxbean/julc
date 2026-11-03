@@ -106,7 +106,7 @@ class Adr068LoweringToolTest {
     /** I1b: a method is compared though the program stops at another. */
     @Test
     void aProgramPartlyCovered() {
-        assertRow("not-ported", 1, 2, "a cast to short", row("""
+        assertRow("DIFFERENT-javac-rejects", 1, 2, "(rejected)", row("""
                 class P {
                     static long helper(long a) { return a; }
                     static long m(long a) { return (short) a; }
@@ -135,7 +135,8 @@ class Adr068LoweringToolTest {
 
     @Test
     void aRejectionOfWhatTheReferenceRejectsIsNotAPass() {
-        assertRow("reference-rejects-not-ported", 0, 1, "a text block", row("class P { static String m() { return \"\"\"\n    a\"\"\"; } }"));
+        // No construct stops since M5, so the reference's rejection meets a coded one here (I2a): a difference D13 explains.
+        assertRow("DIFFERENT-rejection", 0, 1, "(rejected)", row("class P { static String m() { return \"\"\"\n    a\"\"\"; } }"));
     }
 
     /** A rule ported with the reference's code is the same rejection. */
@@ -565,7 +566,7 @@ class Adr068LoweringToolTest {
     void aReferenceThatMovedIsReportedOnARowJavacDoesNotReach() {
         var c = method("class P { static long m(long a) { return (short) a; } }");
         var frozen = committed(c);
-        assertEquals("not-ported", new Adr068Lowering(frozen).classify(c).row().kind());
+        assertEquals("DIFFERENT-javac-rejects", new Adr068Lowering(frozen).classify(c).row().kind());
         var changed = Map.of(c.key, tampered(frozen.get(c.key), 2));
         assertEquals("REFERENCE-DRIFT", new Adr068Lowering(changed).classify(c).row().kind());
     }
@@ -899,7 +900,7 @@ class Adr068LoweringToolTest {
 
     @Test
     void aVarargsLibraryMethodDoesNotLower() {
-        assertEquals("a call of a varargs method", construct("public static long f(long a, byte... rest) { return a; }",
+        assertEquals("(rejected)", construct("public static long f(long a, byte... rest) { return a; }",
                 "static long m() { return L.f(1); }"));
     }
 

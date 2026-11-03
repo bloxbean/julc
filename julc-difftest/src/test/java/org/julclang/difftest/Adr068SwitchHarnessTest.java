@@ -681,7 +681,7 @@ class Adr068SwitchHarnessTest {
     @Test
     void aConstantGuardThatReadsALocalThroughANewStops() {
         for (var s : List.of(a(1), d())) {
-            assertStopsOnJavac("public static X m(S s) { final boolean on = true; return " + underNew("on") + "; }", "JULC0084", s);
+            assertJavacIsTheJvm("public static X m(S s) { final boolean on = true; return " + underNew("on") + "; }", s);
             assertAgree("public static X m(S s, boolean c) { final boolean on = true; return " + underNew("on && c") + "; }", s, bool(false));
             assertAgree("public static X m(S s, boolean c) { final boolean on = true; return " + underNew("on && c") + "; }", s, bool(true));
         }
@@ -693,10 +693,10 @@ class Adr068SwitchHarnessTest {
         for (var s : List.of(a(1), d())) {
             assertWiderOnJavac("public static X m(S s, S t) { return " + underNew("t instanceof S.A") + "; }", s, a(2));
             assertWiderOnJavac("public static X m(S s, long n) { return " + underNew("n > 0") + "; }", s, integer(1));
-            assertStopsOnJavac("public static X m(S s) { final long z = 5; return " + underNew("z > 0") + "; }", "JULC0084", s);
+            assertJavacIsTheJvm("public static X m(S s) { final long z = 5; return " + underNew("z > 0") + "; }", s);
             assertWiderOnJavac("public static X m(S s) { final int z = 2147483647; return new X(switch (s) { case S.A a when (z + 1) < a.v().signum() -> BigInteger.ONE; default -> BigInteger.TWO; }); }", s);
-            assertStopsOnJavac("public static X m(S s) { final String u = \"a\"; return " + underNew("u == \"a\"") + "; }", "JULC0084", s);
-            assertStopsOnJavac("static final boolean OFF = false; public static X m(S s) { final boolean OFF = true; return " + underNew("OFF") + "; }", "JULC0084", s);
+            assertJavacIsTheJvm("public static X m(S s) { final String u = \"a\"; return " + underNew("u == \"a\"") + "; }", s);
+            assertJavacIsTheJvm("static final boolean OFF = false; public static X m(S s) { final boolean OFF = true; return " + underNew("OFF") + "; }", s);
         }
     }
 
