@@ -79,6 +79,7 @@ class JavacSubsetCodesTest {
             "JULC0113|class F { static long m(JulcList<BigInteger> xs) { long t = 0; for (var x : xs) { long b = 0; if (x.signum() > 0) { b = 1; } t = t + b; } return t; } }",
             "JULC0118|class F { static long m(long a) { return a << 2; } }",
             "JULC0118|class F { static long m(long a) { return a >>> 2; } }",
+            "JULC0118|class F { static long m(long a) { return a >> 2; } }",
             "JULC0118|class F { static long m(long a) { return a & 2; } }",
             "JULC0119|class F { static long m(long a) { return ~a; } }",
             "JULC0119|class F { static long m(long a) { return +a; } }"})
@@ -97,6 +98,12 @@ class JavacSubsetCodesTest {
             "class F { static long m(JulcList<BigInteger> xs) { long t = 0; for (var x : xs) { if (x.signum() > 0) { t = t + 1; break; } } return t; } }"})
     void theNearestShapesCompile(String body) {
         assertSameMethodAsReference(IMPORTS + body, "m");
+    }
+
+    /** An array initializer with no {@code new} has no rule of the reference's own: it stays a stop. */
+    @Test
+    void aBareArrayInitializerStaysAStop() {
+        LoweringFixture.assertMethodNotPorted(IMPORTS + "class F { static long m() { long[] a = {1, 2}; return 1; } }", "m", "NEW_ARRAY", 5);
     }
 
     // --- F946: every error of a scan, the first first ---

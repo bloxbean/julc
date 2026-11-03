@@ -220,7 +220,7 @@ class SubsetRulesTest {
             assertEquals("Entrypoint validate of V takes java.math.BigInteger as its last parameter; the last parameter is "
                     + "the script context, ScriptContext or PlutusData", diagnostic.message());
             assertEquals(9, diagnostic.line());
-            assertEquals(41, diagnostic.column());
+            assertEquals(29, diagnostic.column());
         }
     }
 
