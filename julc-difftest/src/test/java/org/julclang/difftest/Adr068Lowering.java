@@ -11,6 +11,7 @@ import org.julclang.compiler.frontend.javac.NotPorted;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.core.corpus.CorpusFiles;
+import org.julclang.core.debug.DebugMetadata;
 import org.julclang.core.flat.UplcFlatEncoder;
 
 import java.nio.file.Path;
@@ -246,13 +247,15 @@ final class Adr068Lowering {
      * a crash, is the frontend breaking, and that is no row to classify. {@link Javac#attempts} is the other way into the
      * frontend, and whatever it throws but a {@code CompilerException} goes through {@link #coverage} untouched. A
      * {@link JavaLibraryProvider} is the one other API: on both frontends it refuses a source it cannot export with an
-     * {@link IllegalArgumentException}.
+     * {@link IllegalArgumentException}. And {@code compileForDebug} refuses a source whose ranges its metadata cannot hold
+     * (lone carriage returns) with a {@link DebugMetadata.ValidationException}, on both frontends.
      */
     private Compilation onJavac(Adr068Corpus.Case c, CompilerOptions options) {
         var compilation = javac.compile(c, options);
         var thrown = compilation.thrown();
         boolean rejection = thrown == null || thrown instanceof CompilerException
-                || c.entry.equals("JavaLibraryProvider") && thrown instanceof IllegalArgumentException;
+                || c.entry.equals("JavaLibraryProvider") && thrown instanceof IllegalArgumentException
+                || c.entry.equals("compileForDebug") && thrown instanceof DebugMetadata.ValidationException;
         if (!rejection) throw new AssertionError(c.key + ": " + thrown, thrown);
         return compilation;
     }
