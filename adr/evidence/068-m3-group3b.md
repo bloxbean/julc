@@ -43,8 +43,10 @@ writes its path under the working directory, which depends on the host (I4, the 
 and not read is named as the reference names it, by its first class, and not scanned (D8). A lambda parameter decoded from
 Data, which neither frontend shows, keeps its spelling's type. A declarator is read as the reference reads it: its name past
 comments and string and character literals, under a C-style array's brackets, before a `,` or `;`; a type is spelled as the
-reference prints it, with no space in a type argument list; and a source of lone carriage returns is refused with the
-reference's `ValidationException`.
+reference prints it, with no space in a type argument list. The name search passes over an annotation whole, its argument
+list and element-value pairs included, over a text block's escaped quotes, and a declarator ends before a comment that
+precedes its `,`. A range that reaches past a line end of a lone CR is refused with the reference's `ValidationException`; a
+lone CR after every range is not. A name written with a Unicode escape is a follow-up row.
 
 **Who reads the `uri`.** The source debugger (`julc-tools` `SourceDebugService`, which the playground and `julc-wasm`'s source
 debug use, and `JavaLocalsService` with `DebugRuntimeIndex`) finds a point's source by its id and UTF-16 offsets. The `uri`
@@ -163,6 +165,12 @@ Each under a 5-minute limit, the batch under one lock, with a clean control befo
 | No decode after the check | Survives: every type that reaches the check is a record or a sum, whose decode is its Data |
 | A map not sought through a named type | Survives: no ledger type reaches a map only through a recursive reference |
 | The shared dispatcher under the datum's name | Survives: a datum's checker is bound around its own check, not around the entry point's body, so the names do not meet today. The name keeps it so |
+
+## After the confirmation
+
+Six mutants of the scan's last lines (an annotation not skipped, its arguments not skipped, a text block's escape ignored, a
+comment before a `,` kept, a lone CR refused everywhere, never refused) and a control: all six killed by
+`JavacContractAndDebugTest`. A `switch` over a ledger decode and a name with a Unicode escape are follow-up rows.
 
 ## Not run
 

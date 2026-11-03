@@ -319,6 +319,29 @@ class JavacContractAndDebugTest {
             }
             """;
 
+    private static final String EDGES = """
+            import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.MintingValidator;
+            import org.julclang.stdlib.annotation.Param;
+
+            @MintingValidator
+            class Edges {
+                @Param static BigInteger c /* , */ , d ,e;
+
+                @Entrypoint
+                static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                    @SuppressWarnings(value = "unused") var value = BigInteger.ONE;
+                    @SuppressWarnings(\"""
+                            y = 1 \\\""" y = 2
+                            \""") var y = value.add(c).add(d).add(e);
+                    return y.signum() > 0;
+                }
+            }
+            """;
+
     /**
      * Declarations the reference reads by its declarator: several in one field, an array's brackets after the name, a name
      * in an annotation's string or a comment, a type across a line break. Their ranges and spellings are the reference's.
@@ -326,14 +349,19 @@ class JavacContractAndDebugTest {
     @ParameterizedTest
     @EnumSource(OptimizationLevel.class)
     void declaratorsAreTheReferences(OptimizationLevel level) {
-        var reference = debug(DECLARATIONS, CompilerFrontend.JAVAPARSER, level);
-        var javac = debug(DECLARATIONS, CompilerFrontend.JAVAC, level);
-        assertArrayEquals(UplcFlatEncoder.encodeProgram(reference.compileResult().program()),
-                UplcFlatEncoder.encodeProgram(javac.compileResult().program()));
-        assertEquals(view(reference.debugMetadata()), view(javac.debugMetadata()));
+        for (var source : List.of(DECLARATIONS, EDGES)) {
+            var reference = debug(source, CompilerFrontend.JAVAPARSER, level);
+            var javac = debug(source, CompilerFrontend.JAVAC, level);
+            assertArrayEquals(UplcFlatEncoder.encodeProgram(reference.compileResult().program()),
+                    UplcFlatEncoder.encodeProgram(javac.compileResult().program()));
+            assertEquals(view(reference.debugMetadata()), view(javac.debugMetadata()));
+        }
     }
 
-    /** Line ends of a lone CR give a range the metadata refuses, on both frontends; CRLF does not. */
+    /**
+     * A range that reaches past a line end of a lone CR is refused, on both frontends; a lone CR after every range is not, and
+     * neither is CRLF.
+     */
     @Test
     void aSourceOfLoneCarriageReturnsIsRefusedAsByTheReference() {
         String crlf = MINTING.replace("\n", "\r\n");
@@ -344,6 +372,9 @@ class JavacContractAndDebugTest {
         var javac = assertThrows(RuntimeException.class, () -> debug(cr, CompilerFrontend.JAVAC, OptimizationLevel.DEFAULT));
         assertEquals(reference.getClass(), javac.getClass());
         assertEquals(reference.getMessage(), javac.getMessage());
+        String trailing = MINTING + "// end\r";
+        assertEquals(view(debug(trailing, CompilerFrontend.JAVAPARSER, OptimizationLevel.DEFAULT).debugMetadata()),
+                view(debug(trailing, CompilerFrontend.JAVAC, OptimizationLevel.DEFAULT).debugMetadata()));
     }
 
     /** A library given and not read is named by its first class, as the reference names it. */

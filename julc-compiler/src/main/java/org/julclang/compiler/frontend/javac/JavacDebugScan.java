@@ -47,6 +47,8 @@ final class JavacDebugScan {
     private final String sourceId;
     private final CompilationUnitTree unit;
     private final String text;
+    /** Where the first CR that ends a line alone is, or -1. */
+    private final int loneCarriageReturn;
 
     private JavacDebugScan(JavacFacts facts, DebugMetadataCollector.Declarations into, String sourceId,
                            CompilationUnitTree unit) {
@@ -55,6 +57,11 @@ final class JavacDebugScan {
         this.sourceId = sourceId;
         this.unit = unit;
         this.text = facts.source(unit);
+        int lone = -1;
+        for (int i = 0; i < text.length() && lone < 0; i++) {
+            if (text.charAt(i) == '\r' && (i + 1 == text.length() || text.charAt(i + 1) != '\n')) lone = i;
+        }
+        this.loneCarriageReturn = lone;
     }
 
     /**
@@ -84,11 +91,6 @@ final class JavacDebugScan {
     }
 
     private void scan() {
-        // The reference counts lines by LF alone, so a lone CR gives it ranges that end before they start, which the
-        // metadata's form refuses: this frontend refuses the same source the same way.
-        if (text.replace("\r\n", "\n").indexOf('\r') >= 0) {
-            throw new DebugMetadata.ValidationException("Invalid source range in " + sourceId);
-        }
         var declarations = declarations(unit);
         int parameterOrdinal = 0;
         var paramFields = declarations.stream()
@@ -305,6 +307,8 @@ final class JavacDebugScan {
                 if (text.substring(token, at).equals(name) && declares) return token;
             } else if (c == '"' || c == '\'') {
                 at = skipLiteral(at, end);
+            } else if (c == '@') {
+                at = skipAnnotation(at + 1, end);
             } else {
                 at++;
             }
@@ -312,11 +316,50 @@ final class JavacDebugScan {
         return facts.start(variable);
     }
 
+    /**
+     * Past an annotation whose name starts at {@code at}: its qualified name and, if it has one, its whole argument list,
+     * literals and nested annotations included, so no name of an element-value pair is taken for the declaration's.
+     */
+    private int skipAnnotation(int at, int end) {
+        at = skipBlank(at, end);
+        while (at < end && Character.isJavaIdentifierStart(text.charAt(at))) {
+            while (at < end && Character.isJavaIdentifierPart(text.charAt(at))) at++;
+            int next = skipBlank(at, end);
+            if (next >= end || text.charAt(next) != '.') {
+                at = next;
+                break;
+            }
+            at = skipBlank(next + 1, end);
+        }
+        return parameters(at, end);
+    }
+
+    /** Past the parenthesized argument list at {@code at}, if there is one. */
+    private int parameters(int at, int end) {
+        at = skipBlank(at, end);
+        if (at >= end || text.charAt(at) != '(') return at;
+        int depth = 0;
+        while (at < end) {
+            char c = text.charAt(at);
+            if (c == '"' || c == '\'') {
+                at = skipLiteral(at, end);
+                continue;
+            }
+            if (c == '(') depth++;
+            else if (c == ')' && --depth == 0) return at + 1;
+            at = skipBlank(at + 1, end);
+        }
+        return end;
+    }
+
     /** Past the string, text block or character literal at {@code at}. */
     private int skipLiteral(int at, int end) {
         if (text.startsWith("\"\"\"", at)) {
-            int close = text.indexOf("\"\"\"", at + 3);
-            return close < 0 ? end : close + 3;
+            for (int i = at + 3; i < end; i++) {
+                if (text.charAt(i) == '\\') i++;
+                else if (text.startsWith("\"\"\"", i)) return i + 3;
+            }
+            return end;
         }
         char quote = text.charAt(at);
         for (int i = at + 1; i < end; i++) {
@@ -334,7 +377,17 @@ final class JavacDebugScan {
         int end = (int) facts.end(variable);
         if (end <= 0 || text.charAt(end - 1) != ';' && text.charAt(end - 1) != ',') return end;
         end--;
-        while (end > 0 && Character.isWhitespace(text.charAt(end - 1))) end--;
+        while (end > 0) {
+            if (Character.isWhitespace(text.charAt(end - 1))) {
+                end--;
+            } else if (end >= 2 && text.startsWith("*/", end - 2)) {
+                int open = text.lastIndexOf("/*", end - 3);
+                if (open < 0) break;
+                end = open;
+            } else {
+                break;
+            }
+        }
         return end;
     }
 
@@ -362,6 +415,11 @@ final class JavacDebugScan {
     private DebugMetadata.SourceRange range(long start, long end) {
         int from = (int) start;
         int last = (int) Math.max(start, end - 1);
+        // The reference counts lines by LF alone, so a range that reaches past a lone CR has, for it, lines and columns that
+        // do not meet its offsets, which the metadata's form refuses: such a range is refused here too. One before it is not.
+        if (loneCarriageReturn >= 0 && loneCarriageReturn <= last) {
+            throw new DebugMetadata.ValidationException("Invalid source range in " + sourceId);
+        }
         var lines = unit.getLineMap();
         long beginLine = lines.getLineNumber(from);
         long endLine = lines.getLineNumber(last);
