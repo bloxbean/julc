@@ -29,11 +29,18 @@ follow-up row, on both frontends.
 ### Debug metadata
 
 The collector is split: its core takes declarations keyed by any identity (`Declarations`), and the JavaParser scan is
-unchanged, so the reference's metadata is too (`DebugCompileResultTest`). Four differences from the reference remain, none
-in a value: a string source's `uri` is its file name where the reference writes its path under the working directory (which
-makes the reference's depend on the host, I4); a library given and not read is named and not scanned (D8); a lambda parameter
-decoded from Data, which neither frontend shows, keeps its spelling's type; and a local I13 renames because it shadows a field
-is not shown, since an association matches the binder's name.
+unchanged, so the reference's metadata is too (`DebugCompileResultTest`, and `adr068Baseline` below). A binder I13 marks
+`name'k`, a local that shadows a field, is its declaration's (`PirDebugProvenance` matches the mark), so it is shown under its
+source name. Three differences from the reference remain, none in a value: a string source's `uri` is its file name, where
+the reference writes its path under the working directory, which depends on the host (I4, the coordinator's decision); a
+library given and not read is named and not scanned (D8); a lambda parameter decoded from Data, which neither frontend
+shows, keeps its spelling's type.
+
+**Who reads the `uri`.** The source debugger (`julc-tools` `SourceDebugService`, which the playground and `julc-wasm`'s source
+debug use, and `JavaLocalsService` with `DebugRuntimeIndex`) finds a point's source by its id and UTF-16 offsets. The `uri`
+is only validated as bounded text and hashed into the source manifest's digest. The Truffle debugger (`julc-vm-truffle`)
+reads the source map's file name, which both frontends give as `<Class>.java`, not debug metadata. So a bare file name
+resolves where a path did. `JavacDebugMetadataTest` (julc-tools) builds the debugger's runtime index over `JAVAC` metadata.
 
 ### Constructor checks of API types
 
@@ -70,7 +77,7 @@ failing where the JVM throws, and a review decision of D13's Cost change kind, f
 
 | Test | Module | What it holds |
 |---|---|---|
-| `JavacContractAndDebugTest` | julc-compiler | Bytes, schema and debug metadata equal to the reference's at all four levels, for a spending validator with an `Optional` datum, `@Param`s, helpers, a lambda and a `switch`; a minting validator with a loop; a purpose-indexed multi-validator; the manual-dispatch rejection's message and position; a renamed local not shown |
+| `JavacContractAndDebugTest` | julc-compiler | Bytes, schema and debug metadata equal to the reference's at all four levels, for a spending validator with an `Optional` datum, `@Param`s, helpers, a lambda and a `switch`; a minting validator with a loop; a purpose-indexed multi-validator; the manual-dispatch rejection's message and position; a local I13 marks shown under its source name |
 | `JavacLedgerFromDataTest` | julc-compiler | 20 inputs at each relaxation and its refusal, against the JVM's decoder called by reflection, at all four levels |
 | `Adr068LedgerFromDataPropertyTest` | julc-difftest | jqwik, fixed seeds: random well-formed and broken Data of every ledger type with a `fromPlutusData`, against the JVM on both frontends at all four levels. `JAVAC` agrees on every run; the reference's only disagreement is returning where the JVM throws, counted. A value read back (`toPlutusData`) is the JVM's |
 | `diverge-068-ledger-from-data-refused`, `diverge-068-ledger-hash-from-data` | julc-difftest | The two Semantic-fix `.diffcase`s, run on `JAVAC` by `Adr068SavedCasesOnJavacTest` |

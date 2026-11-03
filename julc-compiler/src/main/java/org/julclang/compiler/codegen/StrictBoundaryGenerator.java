@@ -172,11 +172,13 @@ public final class StrictBoundaryGenerator {
     }
 
     private PirType resolveNamed(PirType type) {
-        if (!(type instanceof PirType.NamedTypeRef ref)) return layouts.getOrDefault(type, type);
-        PirType resolved = namedDefinitions.get(ref.stableId());
-        if (resolved == null) {
-            throw new IllegalArgumentException(
-                    "Unknown named strict boundary type '" + ref.stableId() + "'");
+        PirType resolved = type;
+        if (type instanceof PirType.NamedTypeRef ref) {
+            resolved = namedDefinitions.get(ref.stableId());
+            if (resolved == null) {
+                throw new IllegalArgumentException(
+                        "Unknown named strict boundary type '" + ref.stableId() + "'");
+            }
         }
         return layouts.getOrDefault(resolved, resolved);
     }
@@ -221,7 +223,7 @@ public final class StrictBoundaryGenerator {
         var tag = builtin1(DefaultFun.FstPair, pair);
         var fields = builtin1(DefaultFun.SndPair, pair);
         var some = and(equalsInteger(tag, 0), checkExactFields(fields, List.of(elementType), 0));
-        var none = ledgerDecoding ? equalsInteger(tag, 1) : and(equalsInteger(tag, 1), checkFields(fields, List.of(), 0));
+        var none = and(equalsInteger(tag, 1), checkFields(fields, List.of(), 0));
         return new PirTerm.Let(pairName, builtin1(DefaultFun.UnConstrData, data),
                 or(some, none));
     }

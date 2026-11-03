@@ -6,8 +6,10 @@ import org.julclang.compiler.CompilerTestVm;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.OptimizationLevel;
 import org.julclang.core.PlutusData;
+import org.julclang.core.text.UplcPrinter;
 import org.julclang.stdlib.StdlibRegistry;
 import org.julclang.vm.EvalResult;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
@@ -16,6 +18,8 @@ import java.util.List;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * A ledger type's {@code fromPlutusData} on {@code frontend=JAVAC} accepts exactly what the JVM's decoder accepts, at the
@@ -104,6 +108,30 @@ class JavacLedgerFromDataTest {
                     }
                 }
                 """.formatted(type);
+    }
+
+    /** What the value holds once decoded: a hash's bytes, the JVM's {@code hash()}. */
+    @Test
+    void aHashFromDataIsItsBytes() {
+        var source = """
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.PubKeyHash;
+
+                class C {
+                    static byte[] m(PlutusData d) {
+                        return PubKeyHash.fromPlutusData(d).hash();
+                    }
+                }
+                """;
+        var hash = new byte[]{1, 2, 3};
+        for (var level : OptimizationLevel.values()) {
+            var program = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()
+                    .setFrontend(CompilerFrontend.JAVAC).setOptimizationLevel(level)).compileMethod(source, "m").program();
+            var result = CompilerTestVm.pv11("Java").evaluateWithArgs(program, List.of(new PlutusData.BytesData(hash)));
+            var success = assertInstanceOf(EvalResult.Success.class, result, result::toString);
+            String printed = UplcPrinter.print(success.resultTerm());
+            assertTrue(printed.contains("bytestring") && printed.contains("#010203"), () -> level + ": " + printed);
+        }
     }
 
     @ParameterizedTest
