@@ -20,7 +20,7 @@ import java.util.Set;
  * Extracts contract metadata from Java validator source code.
  * <p>
  * Parses annotations, entrypoint parameters, record types, and sealed interfaces
- * to produce the same metadata shape that the JRL check pipeline provides.
+ * to produce the contract metadata the playground's check returns.
  */
 public final class JavaMetadataExtractor {
 

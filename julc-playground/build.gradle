@@ -4,14 +4,13 @@ plugins {
     id 'org.graalvm.buildtools.native' version '0.10.6'
 }
 
-description = 'julc-playground - Online JRL editor and testing playground'
+description = 'julc-playground - Online JuLC editor and testing playground'
 
 application {
     mainClass = 'org.julclang.playground.JulcPlaygroundServer'
 }
 
 dependencies {
-    implementation project(':julc-jrl:julc-jrl-core')
     implementation project(':julc-tools')
     implementation project(':julc-compiler')
     implementation project(':julc-core')

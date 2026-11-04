@@ -210,7 +210,7 @@ class ToolsServiceTest {
 
         assertEquals(3, catalog.list(null).body().size());
         assertEquals(3, catalog.list("JAVA").body().size());
-        assertTrue(catalog.list("jrl").body().isEmpty());
+        assertTrue(catalog.list("kotlin").body().isEmpty());
         var found = catalog.get("SimpleSpending.java");
         assertEquals(200, found.status());
         assertTrue(((ExampleDto) found.body()).source().contains("@SpendingValidator"));

@@ -1,6 +1,6 @@
 # JuLC Playground
 
-Web-based editor for writing, compiling, and testing JRL (JuLC Rule Language) contracts.
+Web-based editor for writing, compiling, and testing JuLC (Java) contracts.
 
 ## Installation
 
@@ -54,11 +54,11 @@ Everything runs in the browser with the WebAssembly engine, or on the server eng
 
 ## Configuration (optional)
 
-| Environment Variable        | Default | Description              |
-|-----------------------------|---------|--------------------------|
-| JRL_PLAYGROUND_PORT         | 8085    | HTTP server port         |
-| JRL_MAX_COMPILE_THREADS     | 4       | Max concurrent compiles  |
-| JRL_COMPILE_TIMEOUT_SECONDS | 30      | Per-compile timeout      |
+| Environment Variable         | Default | Description              |
+|------------------------------|---------|--------------------------|
+| JULC_PLAYGROUND_PORT         | 8085    | HTTP server port         |
+| JULC_MAX_COMPILE_THREADS     | 4       | Max concurrent compiles  |
+| JULC_COMPILE_TIMEOUT_SECONDS | 30      | Per-compile timeout      |
 
 ## Documentation
 

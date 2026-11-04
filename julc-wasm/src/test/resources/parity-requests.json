@@ -212,7 +212,7 @@
   {
     "name": "examples-filter",
     "method": "GET",
-    "path": "/api/examples?language=jrl"
+    "path": "/api/examples?language=java"
   },
   {
     "name": "examples-get",

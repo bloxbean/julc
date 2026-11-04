@@ -30,9 +30,9 @@ public class JulcPlaygroundServer {
     private static final long MAX_REQUEST_SIZE = 256 * 1024; // 256KB (source + library + metadata)
 
     public static void main(String[] args) {
-        int port = intEnv("JULC_PLAYGROUND_PORT", intEnv("JRL_PLAYGROUND_PORT", DEFAULT_PORT));
-        int maxThreads = intEnv("JULC_MAX_COMPILE_THREADS", intEnv("JRL_MAX_COMPILE_THREADS", DEFAULT_MAX_THREADS));
-        long timeout = longEnv("JULC_COMPILE_TIMEOUT_SECONDS", longEnv("JRL_COMPILE_TIMEOUT_SECONDS", DEFAULT_TIMEOUT_SECONDS));
+        int port = intEnv("JULC_PLAYGROUND_PORT", DEFAULT_PORT);
+        int maxThreads = intEnv("JULC_MAX_COMPILE_THREADS", DEFAULT_MAX_THREADS);
+        long timeout = longEnv("JULC_COMPILE_TIMEOUT_SECONDS", DEFAULT_TIMEOUT_SECONDS);
 
         var app = createApp(port, maxThreads, timeout);
         printBanner(port);
