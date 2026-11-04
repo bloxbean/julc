@@ -189,9 +189,12 @@ public final class EqualityRules {
         }
         for (var result : results) {
             if (result.kind() != EqualityRelation.Kind.RELATED) {
+                String why = relation.onlyEmptiesEqual(result)
+                        ? ", which Java keeps distinct, though two empty containers of them are equal"
+                        : ", which cannot be decided";
                 throw CompilerTypeDiagnostics.equalityUnread(site.operation(),
-                        ArrayIdentityEquality.text(result.left()) + " against " + ArrayIdentityEquality.text(result.right())
-                                + ", which cannot be decided", facts.location(tree));
+                        ArrayIdentityEquality.text(result.left()) + " against " + ArrayIdentityEquality.text(result.right()) + why,
+                        facts.location(tree));
             }
         }
     }

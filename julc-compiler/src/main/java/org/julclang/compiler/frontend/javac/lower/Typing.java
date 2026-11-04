@@ -7,6 +7,7 @@ import com.sun.source.tree.MethodInvocationTree;
 import com.sun.source.tree.ParenthesizedTree;
 import com.sun.source.tree.SwitchExpressionTree;
 import com.sun.source.tree.Tree;
+import com.sun.source.tree.TypeCastTree;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerTypeDiagnostics;
 import org.julclang.compiler.error.DiagnosticCodes;
@@ -19,16 +20,19 @@ import org.julclang.compiler.pir.PirHelpers;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.pir.TermTypes;
+import org.julclang.core.DefaultFun;
 
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -52,6 +56,8 @@ final class Typing {
 
     private final JavacFacts facts;
     private final TermTypes termTypes = new TermTypes();
+    /** What each expression was lowered to, by identity: a choice reads its values' forms here. */
+    private final Map<Tree, PirTerm> lowered = new IdentityHashMap<>();
     /** Terms whose type no tree says: a diamond's, worked out here. */
     private final Set<PirTerm> kept = Collections.newSetFromMap(new IdentityHashMap<>());
 
@@ -70,6 +76,15 @@ final class Typing {
         try {
             return facts.registry().resolveNamed(facts.valueType(type, tree));
         } catch (CompilerException e) {
+            // byte, short and char have no representation (JULC0124): a narrowing of a literal folds, and is held where it widens.
+            if (type.getKind().isPrimitive()) {
+                var bare = tree;
+                while (bare instanceof ParenthesizedTree parenthesized) bare = parenthesized.getExpression();
+                if (bare instanceof TypeCastTree cast && Casts.narrowedLiteral(type.getKind(), cast.getExpression()) != null) {
+                    return new PirType.IntegerType();
+                }
+                throw facts.unsupportedPrimitive(type, tree);
+            }
             var read = isObject(type) ? unrepresented(tree) : null;
             if (read != null) return read;
             // The reference's code for a value of a type it cannot resolve (I2a).
@@ -204,6 +219,94 @@ final class Typing {
     private static boolean isDataShaped(PirType type) {
         return type instanceof PirType.DataType || type instanceof PirType.RecordType || type instanceof PirType.SumType
                 || type instanceof PirType.OptionalType || type instanceof PirType.NamedTypeRef;
+    }
+
+    /**
+     * ADR-068 M5a (review 2, F1 and F2): the values of one choice, the arms of a conditional or a {@code switch} or the returns
+     * of a lambda's block, are held one way on-chain, by their lowered terms' types. Java's type does not tell it: a
+     * {@code ListData} is a builtin's list from {@code unListData} and Data from {@code toPlutusData()}, and nothing encodes an
+     * arm by itself, so a reader of the other form fails where the JVM returns. {@code JULC0012} at the choice otherwise.
+     */
+    void requireOneRepresentation(Tree where, String what, List<PirType> values) {
+        String first = null;
+        for (var value : values) {
+            if (value == null) continue;
+            String held = representation(facts.registry().resolveNamed(value));
+            if (first == null) {
+                first = held;
+            } else if (!first.equals(held)) {
+                throw facts.rejection(DiagnosticCodes.TYPE_RESOLUTION_FAILED, where, "the type of " + what + " whose values are held as "
+                        + first + " and as " + held + " on-chain. Give them one representation");
+            }
+        }
+    }
+
+    /**
+     * What an arm {@code tree}, lowered to {@code term}, is held as: {@link #of(ExpressionTree, PirTerm)}, or the term's own
+     * type. Null where that is not known: a {@code PlutusData} that no Data-making builtin or record gives, such as a
+     * parameter or a method's result, can hold a builtin's list as well (r14), so it differs from neither.
+     */
+    PirType held(ExpressionTree tree, PirTerm term) {
+        PirType type;
+        try {
+            type = of(tree, term);
+        } catch (Unrepresented e) {
+            type = ofTerm(term);
+        }
+        if (type instanceof PirType.DataType && isView(facts.type(tree)) && !makesData(term)) return null;
+        return type;
+    }
+
+    private static final Set<DefaultFun> DATA_MAKERS = Set.of(DefaultFun.IData, DefaultFun.BData, DefaultFun.ConstrData,
+            DefaultFun.ListData, DefaultFun.MapData);
+
+    /** Whether {@code term} is a Data-making builtin's application, whose value is Data whatever its arguments. */
+    private static boolean makesData(PirTerm term) {
+        while (term instanceof PirTerm.App app) term = app.function();
+        return term instanceof PirTerm.Builtin builtin && DATA_MAKERS.contains(builtin.fun());
+    }
+
+    /** Whether {@code type} is {@code PlutusData} or one of its views, which say nothing of what a builtin left. */
+    private boolean isView(TypeMirror type) {
+        if (type.getKind() != TypeKind.DECLARED) return false;
+        String identity = facts.identity(facts.typeElement(type));
+        return identity.equals(JavacNames.PLUTUS_DATA) || identity.startsWith(JavacNames.PLUTUS_DATA + ".");
+    }
+
+    /** Keeps {@code term} as what {@code tree} lowered to, so a choice can read its values' forms; returns it. */
+    PirTerm lowered(ExpressionTree tree, PirTerm term) {
+        lowered.put(tree, term);
+        return term;
+    }
+
+    /** What the values {@code trees} were lowered to are held as; a tree not lowered (a throw's arm) is not a value. */
+    List<PirType> held(List<? extends ExpressionTree> trees) {
+        var types = new ArrayList<PirType>();
+        for (var tree : trees) {
+            var term = lowered.get(tree);
+            if (term != null) types.add(held(tree, term));
+        }
+        return types;
+    }
+
+    /** The expressions of {@code body}'s {@code return}s, not those of a lambda or a class inside it. */
+    static List<ExpressionTree> returns(Tree body) {
+        return JavacFacts.returnValues(body);
+    }
+
+    /** The on-chain form of a value of {@code type}. Records, sums, {@code Optional} and Data are all a Data value. */
+    static String representation(PirType type) {
+        return switch (type) {
+            case PirType.IntegerType ignored -> "an integer";
+            case PirType.ByteStringType ignored -> "a byte string";
+            case PirType.StringType ignored -> "a string";
+            case PirType.BoolType ignored -> "a boolean";
+            case PirType.UnitType ignored -> "unit";
+            case PirType.ListType ignored -> "a builtin list";
+            case PirType.MapType ignored -> "a builtin list of pairs";
+            case PirType.PairType ignored -> "a builtin pair";
+            default -> isDataShaped(type) ? "Data" : type.toString();
+        };
     }
 
     /** Keeps the source types of a lowered {@code JulcArray.of(...)}'s elements with its term (identity). */

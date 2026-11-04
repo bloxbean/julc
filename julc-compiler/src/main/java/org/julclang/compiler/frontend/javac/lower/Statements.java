@@ -98,6 +98,8 @@ final class Statements {
         var exit = new Frame.Exit(isVoid ? null : facts.pirType(returnType, tree.getReturnType()),
                 guardBoolean && returnType.getKind() == TypeKind.BOOLEAN);
         PirTerm result = block(tree.getBody(), Frame.body(scope, exit));
+        // A return is not converted to the declared type, so the returns are one choice, held one way (review 2, F2).
+        if (!isVoid) typing.requireOneRepresentation(tree, "the returns of " + tree.getName(), typing.held(Typing.returns(tree.getBody())));
 
         // Wrap body in lambda chain: \p1 -> \p2 -> ... -> body
         for (int i = binders.size() - 1; i >= 0; i--) {

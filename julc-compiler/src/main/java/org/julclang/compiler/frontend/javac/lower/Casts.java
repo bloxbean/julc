@@ -3,12 +3,15 @@ package org.julclang.compiler.frontend.javac.lower;
 import com.sun.source.tree.ConditionalExpressionTree;
 import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.IdentifierTree;
+import com.sun.source.tree.LiteralTree;
 import com.sun.source.tree.MemberSelectTree;
 import com.sun.source.tree.MethodInvocationTree;
 import com.sun.source.tree.ParenthesizedTree;
 import com.sun.source.tree.PrimitiveTypeTree;
 import com.sun.source.tree.SwitchExpressionTree;
+import com.sun.source.tree.Tree;
 import com.sun.source.tree.TypeCastTree;
+import com.sun.source.tree.UnaryTree;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.error.DiagnosticCodes;
 import org.julclang.compiler.frontend.javac.JavacFacts;
@@ -71,11 +74,31 @@ final class Casts {
 
     private PirTerm primitive(TypeCastTree tree, TypeMirror target, ExpressionTree operand, Frame frame) {
         var kind = target.getKind();
+        // A narrowing of a literal is its Java value, as the reference's for one in range ((char) 97 is 97): review 2, F3.
+        var folded = narrowedLiteral(kind, operand);
+        if (folded != null) return integer(BigInteger.valueOf(folded));
         // byte, short and char have no representation, as their types (JULC0124); floating point is the scan's.
         if (kind != TypeKind.INT && kind != TypeKind.LONG && kind != TypeKind.BOOLEAN) throw facts.unsupportedPrimitive(target, tree);
         var inner = lowering.expr(operand, frame);
         // Java has no narrowing from a boxed Long: (int) of one is javac's error.
         return kind == TypeKind.INT && facts.type(operand).getKind() == TypeKind.LONG ? narrowToInt(inner) : inner;
+    }
+
+    /** {@code (char)}, {@code (short)} or {@code (byte)} of an integer literal, perhaps negated: Java's value, else null. */
+    static Long narrowedLiteral(TypeKind kind, ExpressionTree operand) {
+        if (kind != TypeKind.CHAR && kind != TypeKind.SHORT && kind != TypeKind.BYTE) return null;
+        while (operand instanceof ParenthesizedTree parenthesized) operand = parenthesized.getExpression();
+        boolean negated = operand instanceof UnaryTree unary && unary.getKind() == Tree.Kind.UNARY_MINUS;
+        if (negated) operand = ((UnaryTree) operand).getExpression();
+        if (!(operand instanceof LiteralTree literal) || !(literal.getValue() instanceof Number number)) return null;
+        // javac holds -2147483648's literal as Integer.MIN_VALUE: negate in the literal's own width, as Java does.
+        long value = literal.getKind() == Tree.Kind.INT_LITERAL ? (negated ? -number.intValue() : number.intValue())
+                : (negated ? -number.longValue() : number.longValue());
+        return switch (kind) {
+            case CHAR -> (long) (char) value;
+            case SHORT -> (long) (short) value;
+            default -> (long) (byte) value;
+        };
     }
 
     /** {@code (int)} of a {@code long}: {@code ((x + 2^31) mod 2^32) - 2^31}, folded where the operand is a constant. */

@@ -26,7 +26,12 @@ import java.util.List;
  * type argument inferred over the arms), whose arms can have different representations on-chain: a term of it either decodes
  * one arm wrongly or compares representations Java keeps distinct. Arms of one type keep it. A boxed and a primitive type are one
  * type, and an expression javac types primitive (a numeric or boolean conditional) promotes its arms to that type, whose one
- * representation they share.
+ * representation they share. Arms of a sealed interface of records and its records share its representation, a constructor of
+ * Data; {@code PlutusData} is not such an interface, as its views are held in different forms.
+ * <p>
+ * One Java type does not make one representation ({@code ListData} from {@code unListData} is a builtin list, from
+ * {@code toPlutusData()} Data), so the lowering holds the arms' lowered terms to one representation as well
+ * ({@code Typing.requireOneRepresentation}).
  */
 public final class ArmTypes {
 
@@ -50,7 +55,6 @@ public final class ArmTypes {
         if (facts.type(tree).getKind().isPrimitive()) return;
         var sum = sumOf(facts, facts.type(tree));
         if (sum != null && arms.stream().allMatch(arm -> isOf(facts, armType(facts, arm), sum))) return;
-        if (isData(facts, facts.type(tree)) && arms.stream().allMatch(arm -> isData(facts, armType(facts, arm)))) return;
         TypeMirror first = null;
         for (var arm : arms) {
             var type = boxed(facts, armType(facts, arm));
@@ -75,6 +79,8 @@ public final class ArmTypes {
         for (var bound : bounds) {
             if (!(bound instanceof DeclaredType declared) || !(declared.asElement() instanceof TypeElement element)) continue;
             if (element.getKind() != ElementKind.INTERFACE || !element.getModifiers().contains(Modifier.SEALED)) continue;
+            // PlutusData's views are records, but each is held its own way: a builtin's list is no Data (review 2, F1).
+            if (facts.identity(element).equals(JavacNames.PLUTUS_DATA)) continue;
             // The scan runs before the registry holds the program's types: a sum is a sealed interface whose permitted are records.
             if (element.getPermittedSubclasses().isEmpty()
                     || !facts.permitted(element).stream().allMatch(permitted -> permitted.getKind() == ElementKind.RECORD)) {
@@ -112,16 +118,6 @@ public final class ArmTypes {
             else if (!facts.types().isSameType(one, type)) return facts.type(arm);
         }
         return one == null ? facts.type(arm) : one;
-    }
-
-    /**
-     * Whether a value of {@code type} is {@code PlutusData} or one of its views: its arms' representations are the ones the
-     * lowering already keeps apart for those types (a list a builtin leaves, a map; ADR-068 r14), whatever view each arm has.
-     */
-    private static boolean isData(JavacFacts facts, TypeMirror type) {
-        if (!(type instanceof DeclaredType declared) || !(declared.asElement() instanceof TypeElement element)) return false;
-        String identity = facts.identity(element);
-        return identity.equals(JavacNames.PLUTUS_DATA) || identity.startsWith(JavacNames.PLUTUS_DATA + ".");
     }
 
     private static TypeMirror boxed(JavacFacts facts, TypeMirror type) {

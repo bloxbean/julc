@@ -10,6 +10,7 @@ import org.julclang.compiler.error.DiagnosticCodes;
 import org.julclang.compiler.frontend.javac.ArrayIdentityEquality;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacNames;
+import org.julclang.compiler.frontend.javac.SwitchResults;
 import org.julclang.compiler.frontend.javac.subset.RecordDeclarations;
 import org.julclang.compiler.frontend.javac.subset.SwitchRules;
 import org.julclang.compiler.pir.PirHelpers;
@@ -86,6 +87,7 @@ final class Switches {
         }
         var model = rules.check(tree, sealed, sum);
         var result = model.guarded() ? guarded(selector, sum, sealed, model, frame) : unguarded(selector, sum, sealed, model, frame);
+        typing.requireOneRepresentation(tree, "a switch expression", typing.held(SwitchResults.of(tree)));
         typing.recordSwitch(result);
         return result;
     }

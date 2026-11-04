@@ -96,6 +96,10 @@ final class Lambdas {
         var data = frame.scope().bind(element, decodes ? new PirType.DataType() : seen);
         var scope = decodes ? data.rebind(element, Typing.holding(held, seen), seen) : data;
         var body = body(lambda, frame.lambda(scope));
+        // A block's returns are one choice: one representation, as a conditional's arms (review 2, F2).
+        if (lambda.getBody() instanceof BlockTree block) {
+            typing.requireOneRepresentation(lambda, "a lambda", typing.held(Typing.returns(block)));
+        }
         if (encodesResult) body = encoded(body, call, lambda);
         if (decodes) body = terms.decoded(element, data.lookup(element), scope.lookup(element), held, body);
         var function = terms.lam(data.lookup(element), body);

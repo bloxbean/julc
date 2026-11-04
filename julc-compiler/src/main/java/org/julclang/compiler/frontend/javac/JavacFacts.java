@@ -5,9 +5,11 @@ import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.CompilationUnitTree;
 import com.sun.source.tree.CompoundAssignmentTree;
 import com.sun.source.tree.ExpressionTree;
+import com.sun.source.tree.LambdaExpressionTree;
 import com.sun.source.tree.LineMap;
 import com.sun.source.tree.MethodTree;
 import com.sun.source.tree.ParameterizedTypeTree;
+import com.sun.source.tree.ReturnTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.tree.UnaryTree;
 import com.sun.source.tree.VariableTree;
@@ -733,5 +735,28 @@ public final class JavacFacts {
         var source = unit.getSourceFile();
         String name = source instanceof JavacSourceFile file ? file.displayName() : source.getName();
         return name.substring(name.lastIndexOf('/') + 1);
+    }
+
+    /** The expressions of {@code body}'s {@code return}s, not those of a lambda or a class inside it. */
+    public static List<ExpressionTree> returnValues(Tree body) {
+        var found = new ArrayList<ExpressionTree>();
+        new TreeScanner<Void, Void>() {
+            @Override
+            public Void visitReturn(ReturnTree tree, Void unused) {
+                if (tree.getExpression() != null) found.add(tree.getExpression());
+                return null;
+            }
+
+            @Override
+            public Void visitLambdaExpression(LambdaExpressionTree tree, Void unused) {
+                return null;
+            }
+
+            @Override
+            public Void visitClass(ClassTree tree, Void unused) {
+                return null;
+            }
+        }.scan(body, null);
+        return found;
     }
 }

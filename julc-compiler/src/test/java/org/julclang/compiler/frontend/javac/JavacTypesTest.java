@@ -836,10 +836,10 @@ class JavacTypesTest {
                 @SpendingValidator
                 class V {
                     @Entrypoint
-                    static boolean validate(PlutusData redeemer, ScriptContext ctx) { return (short) 1 == 0; }
+                    static boolean validate(PlutusData redeemer, ScriptContext ctx) { return (short) (1 + 1) == 0; }
                 }
                 """;
-        private static final String COVERED = VALIDATOR.replace("(short) 1 == 0", "true");
+        private static final String COVERED = VALIDATOR.replace("(short) (1 + 1) == 0", "true");
         private static final CompilerOptions JAVAC = new CompilerOptions().setFrontend(CompilerFrontend.JAVAC);
 
         @Test

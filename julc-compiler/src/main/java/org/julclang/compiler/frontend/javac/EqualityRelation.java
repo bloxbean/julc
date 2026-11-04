@@ -42,8 +42,9 @@ import java.util.Set;
  * {@code Object} is the exception: only javac's inference gives one (a declared {@code Optional<Object>} has no
  * representation), as in {@code x.equals(Optional.empty())}, where nothing was left to infer it from.
  * <p>
- * An empty {@code Optional} or collection equals an empty one of any argument. The rule stays on the types: such a
- * comparison is {@link Kind#UNRELATED} although Java can answer true there, and the program fails closed.
+ * An empty {@code Optional} or collection equals an empty one of any argument, so a container whose arguments are unrelated
+ * is {@link Kind#UNRESOLVED}, not unrelated: Java answers true for two empties. A record ({@code Tuple2}, {@code Tuple3}) is
+ * never empty, and its unrelated arguments keep it unrelated.
  */
 public final class EqualityRelation {
 
@@ -201,7 +202,17 @@ public final class EqualityRelation {
         for (int i = 0; i < given.size(); i++) {
             found = worse(found, decide(view.getTypeArguments().get(i), given.get(i), true));
         }
+        if (found.kind() == Kind.UNRELATED && wide.asElement().getKind() != ElementKind.RECORD) {
+            // Two empty containers are equal whatever their arguments.
+            return new Result(Kind.UNRESOLVED, found.left(), found.right(), true);
+        }
         return found;
+    }
+
+    /** Whether {@code result} is undecided only because two empty containers of its unrelated arguments are equal. */
+    public boolean onlyEmptiesEqual(Result result) {
+        return result.kind() == Kind.UNRESOLVED && result.inArgument()
+                && between(result.left(), result.right()).kind() == Kind.UNRELATED;
     }
 
     private boolean isObject(TypeMirror type) {

@@ -189,4 +189,33 @@ class JavacM5aTest {
         assertEquals("Cannot construct non-record type: Foo", diagnostic.message());
         assertEquals("Only record types can be constructed on-chain. Declare the type as a record.", diagnostic.suggestion());
     }
+
+    // --- The second review of M5a (F3, F6) ---
+
+    /** A text block is the reference's words: "Unsupported expression: TextBlockLiteralExpr". */
+    @Test
+    void aTextBlockIsTheReferencesWords() {
+        var diagnostic = rejected("static String m(BigInteger a) { return \"\"\"\n  hi\"\"\"; }");
+        assertEquals("JULC0125", diagnostic.code(), diagnostic::message);
+        assertEquals("Unsupported expression: TextBlockLiteralExpr", diagnostic.message());
+    }
+
+    /**
+     * A variant's equals of a choice of two variants in an {@code Object} argument: javac types it {@code Object}, and the
+     * arms keep their two types, so it stays the mixed-arm rule's, in words that name them.
+     */
+    @Test
+    void aChoiceOfTwoVariantsAsAnObjectArgumentNamesBoth() {
+        var diagnostic = rejected("sealed interface S permits A, B { } record A(BigInteger v) implements S { } record B(BigInteger v) implements S { }"
+                + " static boolean m(BigInteger a, boolean c) { return new A(a).equals(c ? new A(a) : new B(a)); }");
+        assertEquals("JULC0012", diagnostic.code(), diagnostic::message);
+        assertTrue(diagnostic.message().contains("arms have different types, C.A and C.B"), diagnostic.message());
+    }
+
+    /** A narrowing cast of a literal is its Java value; of anything else it is the type's JULC0124. */
+    @Test
+    void aNarrowingOfALiteralIsJavasValue() throws Exception {
+        assertEquals("JULC0124", rejected("static long m(long a) { long q = (char) (a + 1); return q; }").code());
+        compiler(CompilerFrontend.JAVAC).compileMethod(source("static long m(long a) { long q = (char) 97; return q; }"), "m", List.of());
+    }
 }

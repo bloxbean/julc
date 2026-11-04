@@ -30,6 +30,7 @@ import javax.lang.model.element.Modifier;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.type.TypeKind;
 import java.math.BigInteger;
+import java.util.Arrays;
 
 /**
  * Operators, D6's comparison rules among them (ADR-068).
@@ -246,6 +247,8 @@ final class Operators {
         var elseTerm = lowering.expr(tree.getFalseExpression(), frame);
         typing.requireNativeBoundary("Conditional else branch", typing.of(tree.getFalseExpression(), elseTerm),
                 typing.of(tree.getTrueExpression(), thenTerm), tree.getFalseExpression());
+        typing.requireOneRepresentation(tree, "a conditional", Arrays.asList(typing.held(tree.getTrueExpression(), thenTerm),
+                typing.held(tree.getFalseExpression(), elseTerm)));
         return new PirTerm.IfThenElse(condition, thenTerm, elseTerm);
     }
 

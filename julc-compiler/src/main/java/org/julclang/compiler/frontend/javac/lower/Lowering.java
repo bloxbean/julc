@@ -138,7 +138,7 @@ public final class Lowering {
     PirTerm expr(ExpressionTree tree, Frame frame) {
         try {
             var exact = frame.inGuard() ? switches.exact(tree) : null;
-            return exact != null ? exact : dispatch(tree, frame);
+            return typing.lowered(tree, exact != null ? exact : dispatch(tree, frame));
         } catch (CompilerException e) {
             throw located(e, tree);
         }

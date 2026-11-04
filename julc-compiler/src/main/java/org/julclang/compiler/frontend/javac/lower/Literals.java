@@ -64,7 +64,7 @@ final class Literals {
     /** A text block is not a string literal of the subset: the reference does not lower one. */
     private PirTerm string(LiteralTree tree) {
         // The reference does not lower a text block: "Unsupported expression: TextBlockLiteralExpr" (I2a).
-        if (facts.leadingSource(tree, 3).equals("\"\"\"")) throw facts.rejection(DiagnosticCodes.EXPRESSION_UNSUPPORTED, tree, "a text block");
+        if (facts.leadingSource(tree, 3).equals("\"\"\"")) throw facts.rejection(DiagnosticCodes.EXPRESSION_UNSUPPORTED, tree, "TextBlockLiteralExpr");
         return new PirTerm.Const(Constant.string((String) tree.getValue()));
     }
 

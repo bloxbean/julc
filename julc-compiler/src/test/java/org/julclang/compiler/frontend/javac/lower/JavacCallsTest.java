@@ -141,7 +141,21 @@ class JavacCallsTest {
     /** Only one array type is in the subset, so two array types meet only as type arguments. */
     @Test
     void twoArraysAreRelatedAtOneType() {
-        assertEquals("JULC0078", rejected("static boolean m(JulcList<byte[]> a, JulcList<long[]> b) { return java.util.Optional.of(a).equals(java.util.Optional.of(b)); }").code());
+        // byte[] and long[] are unrelated, but two empty lists of them are equal: Java can answer true (review 2, F3).
+        var diagnostic = rejected("static boolean m(JulcList<byte[]> a, JulcList<long[]> b) { return java.util.Optional.of(a).equals(java.util.Optional.of(b)); }");
+        assertEquals("JULC0087", diagnostic.code());
+        assertTrue(diagnostic.message().contains("though two empty containers of them are equal"), diagnostic.message());
+    }
+
+    /** Two empty {@code Optional}s are equal in Java whatever their arguments: not {@code JULC0078}'s constant false. */
+    @Test
+    void emptyContainersOfUnrelatedArgumentsCanBeEqual() {
+        var diagnostic = rejected("record A(BigInteger v) { } record P1(BigInteger v) { } "
+                + "static boolean m(BigInteger a) { java.util.Optional<A> x = java.util.Optional.empty(); java.util.Optional<P1> y = java.util.Optional.empty(); return x.equals(y); }");
+        assertEquals("JULC0087", diagnostic.code(), diagnostic::message);
+        assertEquals("JULC0078", rejected("record A(BigInteger v) { } record P1(BigInteger v) { } "
+                + "static boolean m(BigInteger a) { return new org.julclang.core.types.Tuple2<>(new A(a), a).equals(new org.julclang.core.types.Tuple2<>(new P1(a), a)); }").code(),
+                "a tuple is never empty");
     }
 
     /**

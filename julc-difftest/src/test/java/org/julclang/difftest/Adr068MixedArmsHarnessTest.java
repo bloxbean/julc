@@ -105,6 +105,72 @@ class Adr068MixedArmsHarnessTest {
         return p;
     }
 
+    /**
+     * The second review of M5a (F1, F2): values of one choice that are held two ways on-chain, whatever their Java type, a
+     * builtin's list or pair list against Data. A conditional's or a {@code switch}'s arms, and a lambda's or a method's returns.
+     */
+    static List<P> representations() {
+        var p = new ArrayList<P>();
+        String nil = "PlutusData l = Builtins.listData(Builtins.mkNilData()); ";
+        String xs = "JulcList<BigInteger> xs = JulcList.of(a); ";
+        p.add(new P("M15a PlutusData x = c ? iData : mkNilData", "public static boolean m(BigInteger a, boolean c) { PlutusData x = c ? Builtins.iData(a) : Builtins.mkNilData(); return Builtins.equalsData(x, Builtins.iData(a)); }", AC, TagTable.EMPTY));
+        p.add(new P("M15b the arms swapped", "public static boolean m(BigInteger a, boolean c) { PlutusData x = c ? Builtins.mkNilData() : Builtins.iData(a); return Builtins.equalsData(x, Builtins.iData(a)); }", AC, TagTable.EMPTY));
+        p.add(new P("M15d an argument", "public static boolean m(BigInteger a, boolean c) { return Builtins.equalsData(c ? Builtins.iData(a) : Builtins.mkNilData(), Builtins.iData(a)); }", AC, TagTable.EMPTY));
+        p.add(new P("M15f a pair list", "public static boolean m(BigInteger a, boolean c) { PlutusData x = c ? Builtins.iData(a) : Builtins.mkNilPairData(); return Builtins.equalsData(x, Builtins.iData(a)); }", AC, TagTable.EMPTY));
+        p.add(new P("M15g a list and a pair list", "public static boolean m(BigInteger a, boolean c) { PlutusData x = c ? Builtins.mkNilData() : Builtins.mkNilPairData(); return Builtins.equalsData(x, Builtins.listData(Builtins.mkNilData())); }", AC, TagTable.EMPTY));
+        p.add(new P("M15h a record's component", "record H(PlutusData d) { }\npublic static boolean m(BigInteger a, boolean c) { var h = new H(c ? Builtins.iData(a) : Builtins.mkNilData()); return h.equals(new H(Builtins.iData(a))); }", AC, TagTable.EMPTY));
+        p.add(new P("M15j a switch", S + "public static boolean m(BigInteger a, boolean c) { S s = c ? new A(a) : new B(a); PlutusData x = switch (s) { case A q -> Builtins.iData(q.v()); case B q -> Builtins.mkNilData(); }; return Builtins.equalsData(x, Builtins.iData(a)); }", AC, TAGS));
+        p.add(new P("M33 unListData and iData", "public static boolean m(BigInteger a, boolean c) { " + nil + "PlutusData x = c ? Builtins.unListData(l) : Builtins.iData(a); return Builtins.equalsData(x, Builtins.iData(a)); }", AC, TagTable.EMPTY));
+        p.add(new P("M46 nested", "public static boolean m(BigInteger a, boolean c, boolean d) { PlutusData x = c ? Builtins.iData(a) : (d ? Builtins.iData(a) : Builtins.mkNilData()); return Builtins.equalsData(x, Builtins.iData(a)); }", ACD, TagTable.EMPTY));
+        p.add(new P("M43 one Java type, ListData", "public static boolean m(BigInteger a, boolean c) { " + nil + "PlutusData.ListData x = c ? Builtins.unListData(l) : JulcList.of(a).toPlutusData(); return Builtins.equalsData(x, l); }", AC, TagTable.EMPTY));
+        p.add(new P("M43b the same with var", "public static boolean m(BigInteger a, boolean c) { " + nil + "var x = c ? Builtins.unListData(l) : JulcList.of(a).toPlutusData(); return Builtins.equalsData(x, l); }", AC, TagTable.EMPTY));
+        p.add(new P("M44 mkCons onto either", "public static boolean m(BigInteger a, boolean c) { var x = Builtins.mkCons(Builtins.iData(a), c ? Builtins.mkNilData() : JulcList.of(a).toPlutusData()); return Builtins.nullList(x); }", AC, TagTable.EMPTY));
+        p.add(new P("M45 in a lambda", "public static long m(BigInteger a, boolean c) { " + xs + "return xs.map(x -> c ? Builtins.mkNilData() : JulcList.of(x).toPlutusData()).size(); }", AC, TagTable.EMPTY));
+        p.add(new P("M50 in a lambda, unListData", "public static boolean m(BigInteger a, boolean c) { " + xs + nil + "return xs.map(x -> c ? Builtins.unListData(l) : JulcList.of(x).toPlutusData()).size() == 1; }", AC, TagTable.EMPTY));
+        p.add(new P("M10 a lambda's returns, BigInteger and Data", "public static long m(BigInteger a, boolean c) { " + xs + "return xs.map(x -> { if (c) return x; return Builtins.iData(x); }).size(); }", AC, TagTable.EMPTY));
+        p.add(new P("M47 the same through a var", "public static long m(BigInteger a, boolean c) { " + xs + "var ys = xs.map(x -> { if (c) return x; return Builtins.iData(x); }); return ys.size(); }", AC, TagTable.EMPTY));
+        p.add(new P("M10d a lambda's returns, two Data views", "public static long m(BigInteger a, boolean c) { " + xs + "return xs.map(x -> { if (c) return Builtins.iData(x); return Builtins.mkNilData(); }).size(); }", AC, TagTable.EMPTY));
+        p.add(new P("a method's returns, two Data views", "static PlutusData f(BigInteger a, boolean c) { if (c) return Builtins.iData(a); return Builtins.mkNilData(); }\n"
+                + "public static boolean m(BigInteger a, boolean c) { return Builtins.equalsData(f(a, c), Builtins.iData(a)); }", AC, TagTable.EMPTY));
+        return p;
+    }
+
+    @Test
+    void valuesOfOneChoiceHeldTwoWaysAreRejected() {
+        var probes = representations();
+        for (var probe : probes) {
+            for (var args : probe.inputs()) {
+                var report = BOTH.run(new DiffCase(probe.name(), HEADER + probe.members() + "\n}\n", "Case", "m", args, probe.tags(), null));
+                assertInstanceOf(Observation.Value.class, report.jvm(), () -> probe.name() + ": " + report.describe());
+                report.results().forEach((config, result) -> {
+                    if (config.frontend() != CompilerFrontend.JAVAC) return;
+                    var rejected = assertInstanceOf(Observation.Rejected.class, result.uplc(), () -> probe.name() + ": " + report.describe());
+                    assertEquals("JULC0012", rejected.code(), () -> probe.name() + ": " + report.describe());
+                });
+            }
+        }
+    }
+
+    /** Values of one choice held one way agree with the JVM on {@code JAVAC}: records and Data, two integers, a constant cast. */
+    @Test
+    void valuesOfOneChoiceHeldOneWayAgree() {
+        String xs = "JulcList<BigInteger> xs = JulcList.of(a); ";
+        for (var probe : List.of(
+                new P("M10c records", S + "record P1(BigInteger v) { }\npublic static long m(BigInteger a, boolean c) { " + xs + "return xs.map(x -> { if (c) return new P1(x); return new A(x); }).size(); }", AC, TAGS),
+                new P("M48 BigInteger and Long", "public static long m(BigInteger a, boolean c) { " + xs + "return xs.map(x -> { if (c) return x; return 5L; }).size(); }", AC, TagTable.EMPTY),
+                new P("M49 a record and Data", S + "public static long m(BigInteger a, boolean c) { " + xs + "return xs.map(x -> { if (c) return new A(x); return Builtins.iData(x); }).size(); }", AC, TAGS),
+                new P("M18 a sum in a record", S + "record H(S s) { }\npublic static boolean m(BigInteger a, boolean c) { return new H(c ? new A(a) : new B(a)).equals(new H(new B(a))); }", AC, TAGS),
+                new P("G02 (char) 97", "public static long m(BigInteger a, boolean c) { long q = (char) 97; return q; }", AC, TagTable.EMPTY),
+                new P("(char) -1 and (byte) 200", "public static long m(BigInteger a, boolean c) { long q = (char) -1; long r = (byte) 200; long s = (short) -32769; return q + r + s; }", AC, TagTable.EMPTY))) {
+            for (var args : probe.inputs()) {
+                var report = BOTH.run(new DiffCase(probe.name(), HEADER + probe.members() + "\n}\n", "Case", "m", args, probe.tags(), null));
+                report.results().forEach((config, result) -> {
+                    if (config.frontend() == CompilerFrontend.JAVAC) assertEquals(Verdict.Kind.AGREE, result.verdict().kind(), () -> probe.name() + ": " + report.describe());
+                });
+            }
+        }
+    }
+
     @Test
     void armsOfTwoTypesAreRejectedWhereverTheyStand() {
         var probes = mixed();
