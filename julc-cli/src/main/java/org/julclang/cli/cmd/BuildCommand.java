@@ -10,7 +10,6 @@ import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.OptimizationConfiguration;
 import org.julclang.compiler.OptimizationLevel;
 import org.julclang.core.text.UplcPrinter;
-import org.julclang.jrl.JrlCompiler;
 import org.julclang.stdlib.StdlibRegistry;
 import org.julclang.blueprint.BlueprintConfig;
 import org.julclang.blueprint.BlueprintFileWriter;
@@ -86,11 +85,11 @@ public class BuildCommand implements Callable<Integer> {
                     + " for " + compilerTarget.profileId()
                     + " (optimization: " + options.getOptimizationLevel().profileId() + ") ...");
 
-            // Scan sources (single walk for .java + .jrl)
+            // Scan sources (single walk)
             var scanResult = ProjectScanner.scan(ProjectLayout.srcDir(root));
             Path plutusDir = ProjectLayout.plutusDir(root);
             Files.createDirectories(plutusDir);
-            if (scanResult.validators().isEmpty() && scanResult.jrlFiles().isEmpty()) {
+            if (scanResult.validators().isEmpty()) {
                 cleanupGeneratedArtifacts(plutusDir, Set.of());
                 Files.deleteIfExists(plutusDir.resolve("plutus.json"));
                 System.err.println(AnsiColors.yellow("No validators found in src/"));
@@ -156,42 +155,6 @@ public class BuildCommand implements Callable<Integer> {
                     }
                     errorCount++;
                 }
-            }
-
-            // Compile JRL files
-            // JRL's generated Java compiles on the JavaParser frontend until its transpiler writes typed equality (M6)
-            var jrlCompiler = new JrlCompiler(stdlib, OptimizationConfiguration.apply(
-                    JrlCompiler.generatedJavaOptions().setTarget(compilerTarget).setVerbose(verbose),
-                    optimizationProfile, costProfile));
-            for (var entry : scanResult.jrlFiles().entrySet()) {
-                String name = entry.getKey();
-                String jrlSource = entry.getValue();
-
-                System.out.print("  Compiling " + name + ".jrl ... ");
-
-                var jrlResult = noBlueprint
-                        ? jrlCompiler.compile(jrlSource, name + ".jrl")
-                        : jrlCompiler.compileContract(jrlSource, name + ".jrl");
-
-                if (jrlResult.hasErrors()) {
-                    System.out.println(AnsiColors.red("FAILED"));
-                    for (var diag : jrlResult.jrlDiagnostics()) {
-                        if (diag.isError()) {
-                            System.err.println("  " + diag);
-                        }
-                    }
-                    errorCount++;
-                    continue;
-                }
-
-                var result = jrlResult.compileResult();
-                if (!noBlueprint) {
-                    compiledValidators.add(new BlueprintGenerator.CompiledValidator(
-                            name, result, jrlResult.contractSchema()));
-                }
-                compiledOutputs.add(new CompiledOutput(name, result));
-                printCompiledStatus(result);
-                compiledCount++;
             }
 
             String blueprintJson = null;

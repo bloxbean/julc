@@ -12,7 +12,7 @@ import java.util.Map;
 import java.util.stream.Stream;
 
 /**
- * Scans project source directories for validator (.java) and JRL (.jrl) files
+ * Scans project source directories for Java validator and library files
  * in a single directory walk.
  */
 public final class ProjectScanner {
@@ -21,21 +21,19 @@ public final class ProjectScanner {
 
     public record ScanResult(
             Map<String, String> validators,  // simpleName -> source (.java validators)
-            Map<String, String> libraries,   // FQCN -> source (.java libraries)
-            Map<String, String> jrlFiles     // simpleName -> source (.jrl files)
+            Map<String, String> libraries    // FQCN -> source (.java libraries)
     ) {}
 
     /**
-     * Scan a directory for .java and .jrl files in a single walk.
+     * Scan a directory for .java files in a single walk.
      * Java files are split into validators (with annotations) and libraries (without).
      */
     public static ScanResult scan(Path srcDir) throws IOException {
         var validators = new LinkedHashMap<String, String>();
         var libraries = new LinkedHashMap<String, String>();
-        var jrlFiles = new LinkedHashMap<String, String>();
 
         if (!Files.isDirectory(srcDir)) {
-            return new ScanResult(validators, libraries, jrlFiles);
+            return new ScanResult(validators, libraries);
         }
 
         try (Stream<Path> paths = Files.walk(srcDir)) {
@@ -64,10 +62,6 @@ public final class ProjectScanner {
                                 } else {
                                     libraries.put(libraryKey(simpleName, source), source);
                                 }
-                            } else if (fileName.endsWith(".jrl")) {
-                                String source = Files.readString(p);
-                                String simpleName = fileName.replace(".jrl", "");
-                                jrlFiles.put(simpleName, source);
                             }
                         } catch (IOException e) {
                             throw new RuntimeException("Failed to read " + p, e);
@@ -75,7 +69,7 @@ public final class ProjectScanner {
                     });
         }
 
-        return new ScanResult(validators, libraries, jrlFiles);
+        return new ScanResult(validators, libraries);
     }
 
     /**
