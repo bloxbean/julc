@@ -668,10 +668,12 @@ public class JulcCompiler {
         return sources.stream().map(text -> context.isJarSource(text) ? JavacFrontend.Unit.jar(text) : libraryUnit(text)).toList();
     }
 
-    /** Records a string entry point's inputs for the ADR-068 corpus (test-only; see {@link CorpusRecorder}). */
+    /**
+     * Records a string entry point's inputs for the ADR-068 corpus (test-only; see {@link CorpusRecorder}), on either
+     * frontend: a case is its inputs, which the I1 tool compiles on both, and the frontend is a marker beside it (M5).
+     */
     private void recordCorpus(String entry, String methodName, String source, List<String> librarySources,
                               CompilationContext context) {
-        if (context.frontend() == CompilerFrontend.JAVAC) return; // the corpus is the reference's inputs
         CorpusRecorder.ACTIVE.record(entry, methodName, new CorpusRecorder.Source(source, null),
                 librarySources.stream().map(text -> new CorpusRecorder.Source(text, null)).toList(),
                 stdlibLookup, CorpusRecorder.Options.of(context));

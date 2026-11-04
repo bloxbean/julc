@@ -23,6 +23,7 @@ import java.util.TreeSet;
  *   <li>{@code cases/<key>/case.txt}: the case ({@link CorpusRecorder#caseText}), named by the digest of this
  *       text;</li>
  *   <li>{@code cases/<key>/level-<LEVEL>}: an empty marker per optimization level the case was compiled at;</li>
+ *   <li>{@code cases/<key>/frontend-<FRONTEND>}: an empty marker per Java frontend it was compiled on (ADR-068 M5);</li>
  *   <li>{@code cases/<key>/origin-<digest>}: a test that compiled it, {@code Class#method}, as content;</li>
  *   <li>{@code cases/<key>/instantiate-<digest>}: a specialization request ({@link RequestText}) made of the
  *       provider of a {@code JavaLibraryProvider} case;</li>
@@ -57,6 +58,7 @@ public final class FileCorpusRecorder implements CorpusRecorder {
             Path dir = root.resolve("cases").resolve(key);
             CorpusFiles.writeOnce(dir.resolve("case.txt"), caseText);
             CorpusFiles.touch(dir.resolve("level-" + options.optimizationLevel().name()));
+            CorpusFiles.touch(dir.resolve("frontend-" + options.frontend().name()));
             writeOrigin(dir);
             return key;
         } catch (IOException e) {
