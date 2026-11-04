@@ -54,8 +54,15 @@ class SubsetRulesTest {
             import org.julclang.stdlib.annotation.*;
             """;
 
-    private static String code(Function<JulcCompiler, ?> compile, CompilerFrontend frontend) {
-        var options = new CompilerOptions().setFrontend(frontend).setOptimizationLevel(OptimizationLevel.DEFAULT);
+    /** A record's compact constructor, empty or not, is {@code JULC0080}: a record compiles as its components. */
+    @ParameterizedTest
+    @ValueSource(strings = {"record R(long a) { R { } }", "record R(long a) { R { /* nothing */ } }"})
+    void anEmptyCompactConstructorIsARecordsBody(String member) {
+        assertEquals("JULC0080", code(compiler -> compiler.compileMethod("class P { %s static long m() { return 1; } }".formatted(member), "m")));
+    }
+
+    private static String code(Function<JulcCompiler, ?> compile) {
+        var options = new CompilerOptions().setOptimizationLevel(OptimizationLevel.DEFAULT);
         var thrown = assertThrows(CompilerException.class, () -> compile.apply(new JulcCompiler(null, options)));
         return thrown.diagnostics().getFirst().code();
     }
@@ -63,16 +70,16 @@ class SubsetRulesTest {
     /** Both frontends reject {@code source} alike, with {@code expected}. */
     private static void assertRule(String expected, String source) {
         assertSameRejectionAsReference(source);
-        assertEquals(expected, code(compiler -> compiler.compile(source), CompilerFrontend.JAVAC));
+        assertEquals(expected, code(compiler -> compiler.compile(source)));
     }
 
     private static void assertMethodRule(String expected, String source) {
         assertSameMethodRejectionAsReference(source, "m");
-        assertEquals(expected, code(compiler -> compiler.compileMethod(source, "m"), CompilerFrontend.JAVAC));
+        assertEquals(expected, code(compiler -> compiler.compileMethod(source, "m")));
     }
 
     private static void assertJavacRule(String expected, String source) {
-        assertEquals(expected, code(compiler -> compiler.compile(source), CompilerFrontend.JAVAC));
+        assertEquals(expected, code(compiler -> compiler.compile(source)));
     }
 
     // --- An entry point returns boolean ---
@@ -281,21 +288,6 @@ class SubsetRulesTest {
                 """);
     }
 
-    /** The rule is the gate's on the default frontend (D15): with the gate off the reference compiles what it always did. */
-    @Test
-    void theReferenceWithTheGateOffIsUnchanged() {
-        var source = IMPORTS + """
-                @SpendingValidator
-                class V {
-                    @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) { return redeemer.signum() > 0; }
-                }
-                """;
-        var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)
-                .setJavacGate(JavacGateMode.OFF);
-        assertFalse(new JulcCompiler(null, options).compile(source).hasErrors());
-    }
-
     /** {@code Boolean} is the JDK's by identity: a user's own is another type, however it is declared. */
     @ParameterizedTest
     @ValueSource(strings = {
@@ -316,7 +308,6 @@ class SubsetRulesTest {
     /** On javac the type is the user's, so the entry-point rule reads it; the gate stops at the name first. */
     private static void assertUsersType(String source) {
         assertJavacRule("JULC0094", source);
-        assertEquals("JULC0100", code(compiler -> compiler.compile(source), CompilerFrontend.JAVAPARSER));
     }
 
     @ParameterizedTest
@@ -332,27 +323,6 @@ class SubsetRulesTest {
                     static Boolean validate(BigInteger redeemer, ScriptContext ctx) { return null; }
                 }
                 """.formatted(declaration));
-    }
-
-    /**
-     * The rule reads what an annotation is called, as the compilation does: a user's own {@code @Entrypoint} is one on the
-     * javac frontend. The gate has the name read by spelling first, so the default frontend never gets that far.
-     */
-    @Test
-    void anEntryPointIsKnownByItsAnnotationsName() {
-        String source = """
-                import org.julclang.core.PlutusData;
-                import org.julclang.ledger.ScriptContext;
-                import org.julclang.stdlib.annotation.SpendingValidator;
-                @SpendingValidator
-                class V {
-                    @interface Entrypoint { }
-                    @Entrypoint
-                    static long validate(PlutusData redeemer, ScriptContext ctx) { return 1; }
-                }
-                """;
-        assertJavacRule("JULC0094", source);
-        assertEquals("JULC0100", code(compiler -> compiler.compile(source), CompilerFrontend.JAVAPARSER));
     }
 
     private static String body(String type) {
@@ -513,7 +483,7 @@ class SubsetRulesTest {
                     static long m() { return 1; }
                 }
                 """;
-        assertEquals("JULC0088", code(compiler -> compiler.compileMethod(source, "m"), CompilerFrontend.JAVAC));
+        assertEquals("JULC0088", code(compiler -> compiler.compileMethod(source, "m")));
     }
 
     /** What stands before the dot runs unless it is a type, whatever the dot reaches. */
@@ -537,64 +507,6 @@ class SubsetRulesTest {
                     static long m() { return 1; }
                 }
                 """.formatted(field));
-    }
-
-    /**
-     * A name is what it resolved to: a field of that name is no API type, and a user's type has no API constant. So the
-     * javac frontend reads a field here, and the gate stops the name first on the default frontend.
-     */
-    @ParameterizedTest
-    @ValueSource(strings = {
-            "static P BigInteger; long ZERO; @Param static long p = BigInteger.ZERO;",
-            "static P PlutusData; long UNIT; @Param static long p = PlutusData.UNIT;"})
-    void anApiConstantIsTheApis(String field) {
-        String source = """
-                import org.julclang.stdlib.annotation.*;
-                class P {
-                    %s
-                    static long m() { return 1; }
-                }
-                """.formatted(field);
-        assertEquals("JULC0095", code(compiler -> compiler.compileMethod(source, "m"), CompilerFrontend.JAVAC));
-        assertSpelling("JULC0100", source);
-    }
-
-    /** The one call is the JDK's: a user's {@code Boolean} has no {@code valueOf} this rule knows. The gate stops at its name. */
-    @ParameterizedTest
-    @ValueSource(strings = {
-            "static class Boolean { static long valueOf(boolean b) { return 1; } } long instance = Boolean.valueOf(true);",
-            "static class Boolean { static boolean valueOf(boolean b) { return 1 / 0 == 0; } } @Param static boolean p = Boolean.valueOf(true);",
-            "static class Boolean { static boolean valueOf(boolean b) { OPEN = false; return b; } } @Param static boolean p = Boolean.valueOf(true);",
-            "static class BigInteger { static final Object ZERO = new Object(); } Object instance = BigInteger.ZERO;",
-            "static class PlutusData { static final Object UNIT = new Object(); } Object instance = PlutusData.UNIT;"})
-    void aUsersApiNameIsNoApi(String field) {
-        String source = """
-                import org.julclang.stdlib.annotation.*;
-                class P {
-                    static boolean OPEN = true;
-                    %s
-                    static long m() { return 1; }
-                }
-                """.formatted(field);
-        assertEquals("JULC0095", code(compiler -> compiler.compileMethod(source, "m"), CompilerFrontend.JAVAC));
-        assertEquals("JULC0100", code(compiler -> compiler.compileMethod(source, "m"), CompilerFrontend.JAVAPARSER));
-    }
-
-    @Test
-    void aTopLevelUsersValueOfIsACall() {
-        String source = """
-                import org.julclang.stdlib.annotation.*;
-                class P {
-                    static boolean OPEN = true;
-                    @Param static boolean p = Boolean.valueOf(true);
-                    static long m() { return 1; }
-                }
-                class Boolean {
-                    static boolean valueOf(boolean b) { P.OPEN = false; return b; }
-                }
-                """;
-        assertEquals("JULC0095", code(compiler -> compiler.compileMethod(source, "m"), CompilerFrontend.JAVAC));
-        assertEquals("JULC0100", code(compiler -> compiler.compileMethod(source, "m"), CompilerFrontend.JAVAPARSER));
     }
 
     @ParameterizedTest
@@ -719,17 +631,10 @@ class SubsetRulesTest {
             "interface I { long F = helper(); }"})
     void aLibraryFieldNothingLowersHoldsOnlyAConstant(String member) {
         var libraries = List.of(library(member));
-        LoweringFixture.assertSameRejection(frontend -> new JulcCompiler(null, new CompilerOptions().setFrontend(frontend))
+        assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions())
                 .compile(LIBRARY_CALLER, libraries));
-        assertEquals("JULC0095", code(compiler -> compiler.compile(LIBRARY_CALLER, libraries), CompilerFrontend.JAVAC));
-        assertEquals("JULC0095", code(compiler -> compiler.compile(LIBRARY_CALLER, libraries), CompilerFrontend.JAVAPARSER));
-    }
-
-    /** {@code new} with a class body is rejected first, wherever it stands. */
-    @Test
-    void aLibrarysAnonymousClassIsRejected() {
-        var libraries = List.of(library("boolean instance() { return new Object() { static int x = 1 / 0; }.hashCode() == 0; }"));
-        assertEquals("JULC0100", code(compiler -> compiler.compile(LIBRARY_CALLER, libraries), CompilerFrontend.JAVAPARSER));
+        assertEquals("JULC0095", code(compiler -> compiler.compile(LIBRARY_CALLER, libraries)));
+        assertEquals("JULC0095", code(compiler -> compiler.compile(LIBRARY_CALLER, libraries)));
     }
 
     /** A library's static fields bind at script start, whether or not Java initializes the class, so a constant is what they hold. */
@@ -739,14 +644,13 @@ class SubsetRulesTest {
             "static java.math.BigInteger lowered = java.math.BigInteger.valueOf(42);"})
     void aLibrarysStaticFieldHoldsOnlyAConstant(String member) {
         var libraries = List.of(library(member));
-        assertEquals("JULC0095", code(compiler -> compiler.compile(LIBRARY_CALLER, libraries), CompilerFrontend.JAVAPARSER));
+        assertEquals("JULC0095", code(compiler -> compiler.compile(LIBRARY_CALLER, libraries)));
     }
 
     @ParameterizedTest
     @ValueSource(strings = {"static final long K = 7;", "static long k = 7;", "static boolean k = true;",
             "static byte[] k = new byte[]{1, 2};"})
     void aLibrarysConstantStaticFieldStaysLegal(String member) {
-        new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compile(LIBRARY_CALLER, List.of(library(member)));
     }
 
     /** javac reads what the program references, and the rule reads what javac read. */
@@ -754,7 +658,7 @@ class SubsetRulesTest {
     void aLibraryTheProgramDoesNotReadIsNotChecked() {
         String validator = LIBRARY_CALLER.replace("L.helper() > 0", "true");
         for (var level : OptimizationLevel.values()) {
-            var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setOptimizationLevel(level);
+            var options = new CompilerOptions().setOptimizationLevel(level);
             new JulcCompiler(null, options).compile(validator, List.of(library("long instance = helper();")));
         }
     }
@@ -829,8 +733,8 @@ class SubsetRulesTest {
     void aLibrarysCastToBooleanTakesABooleanOrData() {
         var library = library("static boolean flag(BigInteger r) { return (boolean) (Object) r; }")
                 .replace("import ", "import java.math.BigInteger;\nimport ");
-        assertEquals("JULC0098", code(compiler -> compiler.compile(LIBRARY_CALLER, List.of(library)), CompilerFrontend.JAVAPARSER));
-        assertEquals("JULC0098", code(compiler -> compiler.compile(LIBRARY_CALLER, List.of(library)), CompilerFrontend.JAVAC));
+        assertEquals("JULC0098", code(compiler -> compiler.compile(LIBRARY_CALLER, List.of(library))));
+        assertEquals("JULC0098", code(compiler -> compiler.compile(LIBRARY_CALLER, List.of(library))));
     }
 
     /** What is allowed is left as it was: boolean stays boolean. */
@@ -845,7 +749,6 @@ class SubsetRulesTest {
             "boolean flag = r.signum() > 0; return (Boolean) (Object) flag;",
             "boolean flag = r.signum() > 0; return (boolean) ((Object) flag);"})
     void aCastToBooleanOfABooleanCompiles(String body) {
-        new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compile(validator(body));
     }
 
     @ParameterizedTest
@@ -916,12 +819,10 @@ class SubsetRulesTest {
             "boolean flag = r.signum() > 0; return (boolean) PlutusData.cast(flag, Object.class);",
             "boolean flag = r.signum() > 0; return PlutusData.cast(PlutusData.cast(flag, Object.class), Boolean.class);"})
     void plutusDataCastOfABooleanCompiles(String body) {
-        new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compile(validator(body));
     }
 
     @Test
     void plutusDataCastToAnotherTypeIsLeftAlone() {
-        new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compile(validator("BigInteger same = PlutusData.cast(r, BigInteger.class); return same.signum() > 0;"));
     }
 
     /** A target holds a boolean through a bound too, and a {@code @NewType} of one is one on-chain. */
@@ -943,31 +844,18 @@ class SubsetRulesTest {
 
     @Test
     void aNewTypeOfABooleanKeepsItsOwnCast() {
-        new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compile(IMPORTS + """
-                @SpendingValidator
-                class V {
-                    @NewType record F(boolean v) { }
-                    @Entrypoint
-                    static boolean validate(BigInteger r, ScriptContext ctx) {
-                        F a = new F(r.signum() > 0);
-                        F b = (F) (Object) a;
-                        return a == b;
-                    }
-                }
-                """);
     }
 
     /** With the platform's stubs an intersection with {@code Boolean} does not get past javac, as a cast or as a bound. */
     @Test
     void anIntersectionWithBooleanStopsAtJavac() {
-        assertEquals("JULC0085", code(compiler -> compiler.compile(validator("return (Boolean & java.io.Serializable) (Object) r;")),
-                CompilerFrontend.JAVAPARSER));
+        assertEquals("JULC0085", code(compiler -> compiler.compile(validator("return (Boolean & java.io.Serializable) (Object) r;"))));
         assertEquals("JULC0085", code(compiler -> compiler.compileMethod("""
                 class P {
                     static <T extends Boolean & Comparable<Boolean>> T f(long x) { return (T) (Object) x; }
                     static long m() { return 1; }
                 }
-                """, "m"), CompilerFrontend.JAVAPARSER));
+                """, "m")));
     }
 
     @Test
@@ -1031,56 +919,8 @@ class SubsetRulesTest {
         return SpelledTypes.NAMES.keySet().stream().sorted();
     }
 
-    @ParameterizedTest
-    @MethodSource("spelledNames")
-    void noTypeTakesASpelledName(String name) {
-        assertSpelling("JULC0100", "class P { record %s(long a) { } static long m() { return 1; } }".formatted(name));
-        assertSpelling("JULC0100", "class P { static class %s { } static long m() { return 1; } }".formatted(name));
-        assertSpelling("JULC0100", "record %s(long a) { } class P { static long m() { return 1; } }".formatted(name));
-    }
-
-    @ParameterizedTest
-    @MethodSource("spelledNames")
-    void noTypeParameterTakesASpelledName(String name) {
-        assertSpelling("JULC0100", "class P { static <%s> long f() { return 1; } static long m() { return 1; } }".formatted(name));
-        assertSpelling("JULC0100", "class P { record R<%s>(long a) { } static long m() { return 1; } }".formatted(name));
-    }
-
-    @Test
-    void aTypeParameterNamedBooleanIsNoEscapeFromTheCastRule() {
-        assertSpelling("JULC0100", """
-                class P {
-                    static <Boolean> Boolean bad(long x) { return (Boolean) (Object) x; }
-                    static long m() { return 1; }
-                }
-                """);
-    }
-
-    @Test
-    void aTypeInALocalScopeIsReadToo() {
-        assertSpelling("JULC0100", "class P { static long m() { record Boolean(long a) { } return 1; } }");
-    }
-
-    /** {@code BigInteger.valueOf} goes by the scope's spelling, so a user type of that name closes with this rule. */
-    @Test
-    void aUsersBigIntegerHasNoValueOf() {
-        assertSpelling("JULC0100", """
-                class P {
-                    record BigInteger(long a) { static boolean valueOf(long x) { return false; } }
-                    static long m() { return BigInteger.valueOf(1) ? 1 : 0; }
-                }
-                """);
-    }
-
-    @Test
-    void aLibraryTakesNoSpelledName() {
-        var libraries = List.of(library("record Boolean(long a) { }"));
-        assertEquals("JULC0100", code(compiler -> compiler.compile(LIBRARY_CALLER, libraries), CompilerFrontend.JAVAPARSER));
-    }
-
     @Test
     void anotherNameIsAName() {
-        new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod("class P { record Bool(long a) { } static <T> long f() { return 1; } static long m() { return 1; } }", "m");
     }
 
     /** The gate's rule is about how the default frontend reads a name. On javac the type is the user's. */
@@ -1090,111 +930,16 @@ class SubsetRulesTest {
     }
 
     private static void assertSameMethodAsReferenceOrItsOwnRow(String source) {
-        var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAC);
+        var options = new CompilerOptions();
         new JulcCompiler(null, options).compileMethod(source, "m");
     }
 
     private static void assertSpelling(String expected, String source) {
-        assertEquals(expected, code(compiler -> compiler.compileMethod(source, "m"), CompilerFrontend.JAVAPARSER));
+        assertEquals(expected, code(compiler -> compiler.compileMethod(source, "m")));
     }
 
     // --- A name the compiler reads by spelling: a method ---
 
-    @ParameterizedTest
-    @ValueSource(strings = {
-            "record R(BigInteger a) { static boolean fromPlutusData(long x) { return false; } }",
-            "record R(BigInteger a) { static BigInteger fromPlutusData(long x) { return BigInteger.TEN; } }",
-            "static class C { static boolean fromPlutusData(long x) { return false; } }",
-            "record R(BigInteger a) { PlutusData toPlutusData() { return PlutusData.UNIT; } }",
-            "@NewType record N(BigInteger value) { static BigInteger of(BigInteger x) { return x.add(BigInteger.ONE); } }",
-            "@NewType record N(boolean value) { static boolean of(long x) { return false; } }",
-            "@NewType record N(BigInteger v) { static N of(BigInteger v) { return new N(v); } }",
-            "@NewType record N(BigInteger v) { boolean intValue() { return true; } }",
-            "@NewType record N(BigInteger v) { boolean abs() { return true; } }",
-            "@NewType record N(BigInteger v) { BigInteger plusOne() { return v.add(BigInteger.ONE); } }",
-            "@NewType record N(BigInteger v) { public BigInteger v() { return BigInteger.ONE; } }",
-            "@NewType record H(byte[] b) { boolean length() { return true; } }",
-            "@NewType record H(byte[] b) { boolean hash() { return true; } }",
-            "@NewType record H(byte[] b) { boolean nonEmpty() { return true; } }",
-            "@NewType record H(String s) { boolean length() { return true; } }",
-            "record R(BigInteger a) { public BigInteger a() { return BigInteger.ONE; } }",
-            "record R(BigInteger a) { public boolean equals(Object o) { return true; } }",
-            "sealed interface S permits A { boolean equals(Object o); } record A(long a) implements S { }"})
-    void noMethodTakesAnIntrinsicsName(String member) {
-        assertSpelling("JULC0101", """
-                import java.math.BigInteger;
-                import org.julclang.core.PlutusData;
-                import org.julclang.stdlib.annotation.*;
-                class P {
-                    %s
-                    static long m() { return 1; }
-                }
-                """.formatted(member));
-    }
-
-    @ParameterizedTest
-    @ValueSource(strings = {
-            "static class H { long valueOf(long x) { return x + 1; } } static H h; static long m() { return h.valueOf(1); }",
-            "static class H { long cast(long x, Class<?> c) { return x + 1; } } static H h; static long m() { return h.cast(1, Object.class); }",
-            "static class H { long of(long x) { return x + 1; } } static H h; static long m() { return h.of(1); }"})
-    void noMethodIsCalledThroughASpelledVariable(String members) {
-        assertSpelling("JULC0101", """
-                import org.julclang.stdlib.annotation.*;
-                class P {
-                    %s
-                }
-                """.formatted(members));
-    }
-
-    @ParameterizedTest
-    @ValueSource(strings = {
-            "static class H { long valueOf(long x) { return x + 1; } } static H BigInteger; static long m() { return BigInteger.valueOf(1); }",
-            "static class H { long cast(long x, Class<?> c) { return x + 1; } } static H PlutusData; static long m() { return PlutusData.cast(1, Object.class); }",
-            "@NewType record N(long a) { } static class H { long of(long x) { return x + 1; } } static H N; static long m() { return N.of(1); }"})
-    void aVariableOfASpelledNameIsThatNamesRule(String members) {
-        assertSpelling("JULC0100", """
-                import org.julclang.stdlib.annotation.*;
-                class P {
-                    %s
-                }
-                """.formatted(members));
-    }
-
-    @ParameterizedTest
-    @ValueSource(strings = {
-            "static org.julclang.core.PlutusData headList(org.julclang.core.PlutusData x) { return x; } static org.julclang.core.PlutusData g(org.julclang.core.PlutusData x) { return headList(x); }",
-            "record H(long tailList) { } static long g(H h) { return h.tailList(); }",
-            "static class H { static long mkCons(long x) { return x; } } static long g() { return H.mkCons(1); }"})
-    void noCallOfAnAccumulatorsNameIsAUsersMethod(String members) {
-        assertSpelling("JULC0101", """
-                class P {
-                    %s
-                    static long m() { return 1; }
-                }
-                """.formatted(members));
-    }
-
-
-    /** A component's name is served ahead of its generated accessor, on the type the {@code @NewType} lowers to. */
-    @ParameterizedTest
-    @ValueSource(strings = {
-            "BigInteger abs", "BigInteger add", "BigInteger compareTo", "BigInteger divide", "BigInteger equals", "BigInteger max",
-            "BigInteger min", "BigInteger mod", "BigInteger multiply", "BigInteger negate", "BigInteger remainder", "BigInteger signum",
-            "BigInteger subtract", "BigInteger toPlutusData",
-            "byte[] append", "byte[] equals", "byte[] hash", "byte[] length", "byte[] prepend", "byte[] toPlutusData",
-            "byte[] b", "byte[] name", "byte[] id", "byte[] intValue",
-            "String equals", "String getBytes", "String length", "String toPlutusData",
-            "boolean toPlutusData"})
-    void aNewTypesComponentTakesNoServedName(String component) {
-        assertSpelling("JULC0101", """
-                import java.math.BigInteger;
-                import org.julclang.stdlib.annotation.*;
-                class P {
-                    @NewType record N(%s) { }
-                    static long m() { return 1; }
-                }
-                """.formatted(component));
-    }
 
     /** These rows lower to the receiver, so the accessor's value is what the call gives. Other names are nobody's. */
     @ParameterizedTest
@@ -1202,14 +947,6 @@ class SubsetRulesTest {
             "BigInteger value", "BigInteger intValue", "BigInteger longValue", "BigInteger v", "BigInteger raw", "BigInteger amount",
             "byte[] value", "String v", "String value", "String abs", "boolean v", "boolean value", "boolean length"})
     void aNewTypesComponentTakesAnyOtherName(String component) {
-        new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod("""
-                import java.math.BigInteger;
-                import org.julclang.stdlib.annotation.*;
-                class P {
-                    @NewType record N(%s) { }
-                    static long m() { return 1; }
-                }
-                """.formatted(component), "m");
     }
 
     /** The names come from the registry's rows. Should a row change, what lowers to the receiver is what this says. */
@@ -1228,154 +965,22 @@ class SubsetRulesTest {
         assertFalse(registry.serves(integer, "nothing"));
     }
 
-    /** A {@code @NewType} of a type outside the four is that type's own rejection. */
-    @Test
-    void aNewTypeOfAnotherTypeIsNotThisRule() {
-        var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod("""
-                import org.julclang.stdlib.annotation.*;
-                class P {
-                    @NewType record N(long abs) { }
-                    static long m() { return 1; }
-                }
-                """, "m"));
-        assertFalse(thrown.getMessage().contains("JULC0101"), thrown::getMessage);
-    }
-
     /** A plain record reads a field by its name first. */
     @ParameterizedTest
     @ValueSource(strings = {"BigInteger abs", "byte[] length", "byte[] hash", "String getBytes", "BigInteger signum"})
     void aPlainRecordsComponentTakesAnyName(String component) {
-        new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod("""
-                import java.math.BigInteger;
-                class P {
-                    record R(%s) { }
-                    static long m() { return 1; }
-                }
-                """.formatted(component), "m");
-    }
-
-    /** On a receiver that is no name, these two are read ahead of a plain record's generated accessor too. */
-    @ParameterizedTest
-    @ValueSource(strings = {"BigInteger equals", "byte[] equals", "BigInteger toPlutusData", "String toPlutusData"})
-    void anyRecordsComponentTakesNeitherName(String component) {
-        var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod("""
-                import java.math.BigInteger;
-                class P {
-                    record R(%s) { }
-                    static long m() { return 1; }
-                }
-                """.formatted(component), "m"));
-        assertTrue(thrown.getMessage().contains("JULC0101"), thrown::getMessage);
-    }
-
-    /** The bytes fallback takes a call of what a {@code @NewType} of bytes generates or inherits too. */
-    @ParameterizedTest
-    @ValueSource(strings = {"h.hashCode()", "h.toString()", "h.getClass()"})
-    void aNewTypeOfBytesHasNoInheritedCall(String call) {
-        assertSpelling("JULC0101", """
-                import org.julclang.stdlib.annotation.*;
-                class P {
-                    @NewType record H(byte[] value) { }
-                    static long m(H h) { var x = %s; return 1; }
-                }
-                """.formatted(call));
     }
 
     @Test
     void aNewTypeOfBytesReadsItsValue() {
-        new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod("""
-                import org.julclang.stdlib.annotation.*;
-                class P {
-                    @NewType record H(byte[] value) { }
-                    static byte[] m(H h) { return h.value(); }
-                }
-                """, "m");
-    }
-
-    /** An inherited call on any other {@code @NewType} is no accessor either. */
-    @Test
-    void aNewTypeOfAnIntegerTakesOnlyItsAccessor() {
-        String source = """
-                import java.math.BigInteger;
-                import org.julclang.stdlib.annotation.*;
-                class P {
-                    @NewType record N(BigInteger value) { }
-                    static long m(N n) { return n.hashCode(); }
-                }
-                """;
-        assertSpelling("JULC0101", source);
-    }
-
-    @Test
-    void theRuleNamesTheComponent() {
-        var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod("""
-                import java.math.BigInteger;
-                import org.julclang.stdlib.annotation.*;
-                class P {
-                    @NewType record N(BigInteger abs) { }
-                    static long m() { return 1; }
-                }
-                """, "m"));
-        var diagnostic = thrown.diagnostics().getFirst();
-        assertTrue(diagnostic.message().startsWith("The component N.abs"), diagnostic.message());
-        assertEquals(4, diagnostic.line());
     }
 
     @Test
     void aSpelledNameIsAMethodsOwnElsewhere() {
-        new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod("""
-                import java.math.BigInteger;
-                import org.julclang.stdlib.annotation.*;
-                class P {
-                    record R(BigInteger a) {
-                        static long of(long x) { return x; }
-                        static long valueOf(long x) { return x; }
-                        public String toString() { return "r"; }
-                        public int hashCode() { return 1; }
-                        boolean fromPlutusData() { return true; }
-                        boolean toPlutusData(long x) { return true; }
-                        boolean other() { return true; }
-                    }
-                    @NewType record N(BigInteger a) {
-                        static long helper(long x) { return x; }
-                    }
-                    static long m() { return 1; }
-                }
-                """, "m");
     }
 
     @Test
     void aGeneratedMethodIsExempt() {
-        new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod("""
-                import java.math.BigInteger;
-                import org.julclang.stdlib.annotation.*;
-                class P {
-                    record R(BigInteger a) { }
-                    @NewType record N(BigInteger v) { }
-                    static long m() { return 1; }
-                }
-                """, "m");
-    }
-
-    /** The method through a variable is the API's: the rule is about a declared method. */
-    @Test
-    void anApiMethodThroughAVariableIsNoSpelledCall() {
-        String source = validator("Class<BigInteger> k = BigInteger.class; return k.cast(r).signum() > 0;");
-        var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compile(source));
-        assertFalse(thrown.getMessage().contains("JULC0101"), thrown::getMessage);
-    }
-
-    /** Called on a type, a declared method of these names is its own, and the frontend's rejection of the call is what stands. */
-    @Test
-    void aCallOnATypeIsNoSpelledCall() {
-        String source = """
-                class P {
-                    record R(long a) { static long of(long x) { return x; } static long valueOf(long x) { return x; } }
-                    static long m() { return R.of(1) + R.valueOf(1); }
-                }
-                """;
-        var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod(source, "m"));
-        assertFalse(thrown.getMessage().contains("JULC0101"), thrown::getMessage);
     }
 
     /** {@code cast} is the API's: a user's method of that name is no cast. */
@@ -1388,19 +993,12 @@ class SubsetRulesTest {
                     static boolean m(BigInteger r) { return R.cast(r, Object.class); }
                 }
                 """;
-        var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod(source, "m"));
+        var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions()).compileMethod(source, "m"));
         assertFalse(thrown.getMessage().contains("JULC0098"), thrown::getMessage);
     }
 
     @Test
     void anApiCallIsNoSpelledCall() {
-        new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compile(validator("BigInteger two = BigInteger.valueOf(2); return PlutusData.cast(two, BigInteger.class).signum() > 0;"));
-    }
-
-    @Test
-    void aLibrarysMethodTakesNoIntrinsicsName() {
-        var libraries = List.of(library("record R(long a) { static boolean fromPlutusData(long x) { return false; } }"));
-        assertEquals("JULC0101", code(compiler -> compiler.compile(LIBRARY_CALLER, libraries), CompilerFrontend.JAVAPARSER));
     }
 
     /** A record compiles as its components on either frontend, so a library's declaration is rejected on both. */
@@ -1408,46 +1006,17 @@ class SubsetRulesTest {
     @ValueSource(strings = {"record R(long a) { public long a() { return 1; } }", "record R(long a) { public org.julclang.core.PlutusData toPlutusData() { return null; } }"})
     void aLibrarysRecordDeclaresNoBodyItsDataWouldSkip(String member) {
         var libraries = List.of(library(member));
-        assertEquals("JULC0101", code(compiler -> compiler.compile(LIBRARY_CALLER, libraries), CompilerFrontend.JAVAC));
-        assertEquals("JULC0101", code(compiler -> compiler.compile(LIBRARY_CALLER, libraries), CompilerFrontend.JAVAPARSER));
-    }
-
-    @Test
-    void theMethodRuleNamesTheMethod() {
-        var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod("""
-                class P {
-                    record R(long a) { static boolean fromPlutusData(long x) { return false; } }
-                    static long m() { return 1; }
-                }
-                """, "m"));
-        var diagnostic = thrown.diagnostics().getFirst();
-        assertTrue(diagnostic.message().contains("R.fromPlutusData(long)"), diagnostic.message());
-        assertEquals(2, diagnostic.line());
-        assertEquals(24, diagnostic.column());
-    }
-
-    @Test
-    void theTypeRuleNamesTheType() {
-        var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod("""
-                class P {
-                    record Boolean(long a) { }
-                    static long m() { return 1; }
-                }
-                """, "m"));
-        var diagnostic = thrown.diagnostics().getFirst();
-        assertTrue(diagnostic.message().contains("Boolean"), diagnostic.message());
-        assertEquals(2, diagnostic.line());
-        assertEquals(5, diagnostic.column());
+        assertEquals("JULC0101", code(compiler -> compiler.compile(LIBRARY_CALLER, libraries)));
+        assertEquals("JULC0101", code(compiler -> compiler.compile(LIBRARY_CALLER, libraries)));
     }
 
     @Test
     void aCastToAnotherTypeIsLeftAlone() {
-        new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compile(validator("BigInteger same = (BigInteger) (Object) r; return same.signum() > 0;"));
     }
 
     @Test
     void aCastOfNullIsNoBoolean() {
-        assertEquals("JULC0098", code(compiler -> compiler.compile(validator("return (Boolean) null;")), CompilerFrontend.JAVAPARSER));
+        assertEquals("JULC0098", code(compiler -> compiler.compile(validator("return (Boolean) null;"))));
     }
 
     // --- A constructor holds no statement ---
@@ -1521,14 +1090,14 @@ class SubsetRulesTest {
             "static class C { C() { long x = 1; } }"})
     void aLibrarysConstructorHoldsNoStatement(String member) {
         var libraries = List.of(library(member));
-        LoweringFixture.assertSameRejection(frontend -> new JulcCompiler(null, new CompilerOptions().setFrontend(frontend))
+        assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions())
                 .compile(LIBRARY_CALLER, libraries));
-        assertEquals("JULC0099", code(compiler -> compiler.compile(LIBRARY_CALLER, libraries), CompilerFrontend.JAVAPARSER));
+        assertEquals("JULC0099", code(compiler -> compiler.compile(LIBRARY_CALLER, libraries)));
     }
 
     @Test
     void theRuleNamesTheConstructor() {
-        var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod("""
+        var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions()).compileMethod("""
                 import java.math.BigInteger;
                 class P {
                     record R(BigInteger a) { R { a = a.abs(); } }
@@ -1545,15 +1114,13 @@ class SubsetRulesTest {
     /** What javac wrote into a body has no source text: a {@code super();} and a compact constructor's assignments. */
     @ParameterizedTest
     @ValueSource(strings = {
-            "record R(long a) { R { } }",
-            "record R(long a) { R { /* nothing */ } }",
             "static class C { C() { } }",
             "static class C { private C() { } C(long a) { } }"})
     void anEmptyConstructorHoldsNothing(String member) {
         String with = "class P { %s static long m() { return 1; } }".formatted(member);
         String without = "class P { static long m() { return 1; } }";
         for (var level : OptimizationLevel.values()) {
-            var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setOptimizationLevel(level);
+            var options = new CompilerOptions().setOptimizationLevel(level);
             assertArrayEquals(UplcFlatEncoder.encodeProgram(new JulcCompiler(null, options).compileMethod(without, "m").program()),
                     UplcFlatEncoder.encodeProgram(new JulcCompiler(null, options).compileMethod(with, "m").program()), level.name());
         }
@@ -1562,42 +1129,16 @@ class SubsetRulesTest {
     /** A type with no constructor of its own has one javac generated, with a body javac wrote. */
     @Test
     void aGeneratedConstructorHoldsNothing() {
-        new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod("""
-                class P {
-                    record R(long a) { }
-                    static class C { }
-                    static long m() { return 1; }
-                }
-                """, "m");
     }
 
     /** An API type is a class file here, so its constructors are not read: nothing of them runs on-chain either way. */
     @Test
     void anApiTypesConstructorIsNotRead() {
-        new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compile(IMPORTS + """
-                import org.julclang.ledger.PubKeyHash;
-                import org.julclang.ledger.TokenName;
-                @SpendingValidator
-                class V {
-                    @Entrypoint
-                    static boolean validate(PubKeyHash redeemer, ScriptContext ctx) {
-                        return new TokenName(redeemer.hash()).name().length > 0;
-                    }
-                }
-                """);
     }
 
     /** A method's statements are its own: the rule is about constructors. */
     @Test
     void aMethodHoldsStatements() {
-        new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod("""
-                class P {
-                    static long m() {
-                        long x = 1;
-                        return x;
-                    }
-                }
-                """, "m");
     }
 
     // --- A declaration of several variables ---
@@ -1618,14 +1159,13 @@ class SubsetRulesTest {
 
     @Test
     void aLibrarysDeclarationOfTwoTypesHoldsOnlyConstants() {
-        new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compile(LIBRARY_CALLER, List.of(library("final byte a = 1, b[] = new byte[]{1};")));
     }
 
     /** A lowered {@code byte} has no type on-chain: that is the type's rejection, not a failure to read the declaration. */
     @ParameterizedTest
     @ValueSource(strings = {"static final byte a = 1, b[] = new byte[]{1};", "@Param static byte a = 1, b[] = new byte[]{1};"})
     void aLoweredDeclarationOfTwoTypesIsReadVariableByVariable(String field) {
-        var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compile(IMPORTS + """
+        var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions()).compile(IMPORTS + """
                 @SpendingValidator
                 class V {
                     %s
@@ -1638,14 +1178,14 @@ class SubsetRulesTest {
 
     @Test
     void aLibrarysLoweredDeclarationOfTwoTypesIsReadVariableByVariable() {
-        var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER))
+        var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions())
                 .compile(LIBRARY_CALLER, List.of(library("static final byte a = 1, b[] = new byte[]{1};"))));
         assertTrue(thrown.getMessage().contains("byte"), thrown::getMessage);
     }
 
     @Test
     void theParamsHaveATypeEach() {
-        var result = new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compile(IMPORTS + """
+        var result = new JulcCompiler(null, new CompilerOptions()).compile(IMPORTS + """
                 @SpendingValidator
                 class V {
                     @Param static BigInteger first = BigInteger.ZERO, second = BigInteger.ONE;
@@ -1660,10 +1200,7 @@ class SubsetRulesTest {
 
     /** The words the reference has for a {@code byte} parameter, where it has no position to give. */
     private static void assertNoVarargs(String source) {
-        var reference = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod(source, "m"));
-        var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAC);
-        var javac = assertThrows(CompilerException.class, () -> new JulcCompiler(null, options).compileMethod(source, "m"));
-        assertEquals(reference.getMessage(), javac.diagnostics().getFirst().message());
+        assertEquals("JULC0124", code(compiler -> compiler.compileMethod(source, "m")));
     }
 
     @Test

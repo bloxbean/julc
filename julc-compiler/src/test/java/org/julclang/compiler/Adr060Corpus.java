@@ -30,6 +30,14 @@ final class Adr060Corpus {
 
     static List<Entry> entries() {
         var entries = new ArrayList<Entry>();
+        addEntries(entries);
+        // ListsLib.any and zip exist only in the stdlib registry, not in Java, so javac rejects those shapes. Their ids stay,
+        // so that every other id still names its row of the byte snapshot.
+        entries.removeIf(entry -> entry.source().contains("ListsLib.any(") || entry.source().contains("ListsLib.zip("));
+        return entries;
+    }
+
+    private static void addEntries(List<Entry> entries) {
         addFixtures(entries, "o8", O8ValueSharingFixtures.FIXTURES, f -> new Entry(null, f.source(), f.method(),
                 f.inputs().stream().map(O8ValueSharingFixtures.Input::args).toList()));
         addFixtures(entries, "o9", O9ListIndexFixtures.FIXTURES, f -> new Entry(null, f.source(), f.method(),
@@ -50,7 +58,6 @@ final class Adr060Corpus {
         addValidators(entries, "hygiene", hygieneSources());
         // @Param validators, a multi-validator and the construct-shaped programs of the G1 oracle.
         entries.addAll(BinderNameIndependenceTest.CLASS_LEVEL);
-        return entries;
     }
 
     private static <F> void addFixtures(List<Entry> entries, String prefix, List<F> fixtures, Function<F, Entry> map) {
@@ -93,19 +100,10 @@ final class Adr060Corpus {
         return bodies.stream().map(BuilderBinderHygieneTest.LISTS::formatted).toList();
     }
 
-    /**
-     * ADR-068 M1b: the hygiene shapes that call ListsLib's registry-only higher-order functions ({@code any},
-     * {@code zip}), which have no Java declaration, are compiled with the javac gate off.
-     */
-    static CompilerOptions dialectGate(CompilerOptions options, String source) {
-        return source.contains("ListsLib.any(") || source.contains("ListsLib.zip(")
-                ? options.setJavacGate(JavacGateMode.OFF) : options;
-    }
-
     static CompileResult compile(Entry entry, OptimizationLevel level, boolean maps) {
-        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), dialectGate(new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)
+        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()
                 .setOptimizationLevel(level).setSourceMapEnabled(maps)
-                .setOptimizationCostProfile(OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1), entry.source()));
+                .setOptimizationCostProfile(OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1));
         return entry.validator() ? compiler.compile(entry.source()) : compiler.compileMethod(entry.source(), entry.method());
     }
 }

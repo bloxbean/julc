@@ -322,11 +322,8 @@ class JavacCallsTest {
         var members = "static long h(JulcList<JulcG1> a) { return 1; }\n@SuppressWarnings(\"unchecked\") static long k(JulcList b) { return h(b); }\n"
                 + "static long m() { return 1; }";
         var failure = rejected(members);
-        var reference = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER))
-                .compileMethod(source(members), "m", List.of())).diagnostics().getFirst();
+        FrozenReference.assertSame("aNativeParameterKeepsItsType", failure.code() + " " + failure.message() + " @" + failure.line() + ":" + failure.column());
         assertTrue(failure.message().contains("h argument 1"), failure::toString);
-        assertEquals(reference.message(), failure.message());
-        assertEquals(reference.code(), failure.code());
     }
 
     @Test
@@ -342,10 +339,7 @@ class JavacCallsTest {
         var members = "static boolean m(BigInteger a) { return JulcMap.of(a, a).isEmpty(); }";
         var failure = rejected(members);
         assertEquals("JULC0062", failure.code());
-        var reference = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER))
-                .compileMethod(source(members), "m", List.of())).diagnostics().getFirst();
-        assertEquals(reference.code(), failure.code());
-        assertEquals(reference.message(), failure.message());
+        FrozenReference.assertSame("julcMapOfIsRejected", failure.code() + " " + failure.message() + " @" + failure.line() + ":" + failure.column());
     }
 
     /** The reference takes this for a ledger type's identity and ignores the method; it is the user's, and does not lower. */
@@ -362,9 +356,7 @@ class JavacCallsTest {
         var members = "static PlutusData m(PlutusData d) { return PlutusData.cast(d, d.getClass()); }";
         var failure = rejected(members);
         assertEquals("PlutusData.cast() second argument must be a literal ClassName.class expression", failure.message());
-        var reference = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER))
-                .compileMethod(source(members), "m", List.of())).diagnostics().getFirst();
-        assertEquals(reference.message(), failure.message());
+        FrozenReference.assertSame("aCastToAClassThatIsNoLiteralIsRejected", failure.code() + " " + failure.message() + " @" + failure.line() + ":" + failure.column());
     }
 
     @Test
@@ -428,12 +420,7 @@ class JavacCallsTest {
         var failure = rejected(members);
         assertEquals("JULC0057", failure.code());
         assertEquals("Static field 'K' calls method h; static field initializers cannot call methods of their class", failure.message());
-        var reference = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER))
-                .compileMethod(source(members), "m", List.of())).diagnostics().getFirst();
-        assertEquals(reference.code(), failure.code());
-        assertEquals(reference.message(), failure.message());
-        assertEquals(reference.line(), failure.line());
-        assertEquals(reference.column(), failure.column());
+        FrozenReference.assertSame("anInitializerThatCallsAMethodIsRejectedWhereTheReferenceRejectsIt", failure.code() + " " + failure.message() + " @" + failure.line() + ":" + failure.column());
     }
 
     @Test

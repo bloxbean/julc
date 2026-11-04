@@ -10,7 +10,7 @@ class JulcCompilerTest {
 
     /** The JavaParser frontend, which compiles every library unit it is given (ADR-068 D8); selected explicitly from M5. */
     private static JulcCompiler reference() {
-        return new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER));
+        return new JulcCompiler(null, new CompilerOptions());
     }
 
     @Test
@@ -308,41 +308,6 @@ class JulcCompilerTest {
     }
 
     @Test
-    void rejectsLibraryWithNewValidatorAnnotation() {
-        var validatorSource = """
-            import java.math.BigInteger;
-            import org.julclang.stdlib.annotation.Entrypoint;
-            import org.julclang.stdlib.annotation.SpendingValidator;
-            import org.julclang.core.PlutusData;
-
-            @SpendingValidator
-            class MainValidator {
-                @Entrypoint
-                static boolean validate(BigInteger redeemer, PlutusData ctx) {
-                    return true;
-                }
-            }
-            """;
-        var librarySource = """
-            import java.math.BigInteger;
-            import org.julclang.core.PlutusData;
-
-            @WithdrawValidator
-            class BadLib {
-                @Entrypoint
-                static boolean validate(BigInteger a, PlutusData b) {
-                    return true;
-                }
-            }
-            """;
-        assertThrows(CompilerException.class,
-                () -> reference().compile(validatorSource, java.util.List.of(librarySource)));
-        // ADR-068 D8 (r11): javac, the default from M5, reads only the units a program references, so a library nothing
-        // references is not compiled and its annotation is not rejected; JavacLibraryRolesTest holds the referenced case.
-        assertFalse(compiler.compile(validatorSource, java.util.List.of(librarySource)).hasErrors());
-    }
-
-    @Test
     void rejectsValidatorThatAlsoDeclaresOnchainLibrary() {
         var source = """
             import java.math.BigInteger;
@@ -365,46 +330,6 @@ class JulcCompilerTest {
 
         assertTrue(ex.getMessage().contains("must not combine @OnchainLibrary"));
         assertTrue(ex.getMessage().contains("@SpendingValidator"));
-    }
-
-    @Test
-    void rejectsLibraryThatCombinesOnchainLibraryAndValidatorAnnotation() {
-        var validatorSource = """
-            import java.math.BigInteger;
-            import org.julclang.stdlib.annotation.Entrypoint;
-            import org.julclang.stdlib.annotation.SpendingValidator;
-            import org.julclang.core.PlutusData;
-
-            @SpendingValidator
-            class MainValidator {
-                @Entrypoint
-                static boolean validate(BigInteger redeemer, PlutusData ctx) {
-                    return true;
-                }
-            }
-            """;
-        var librarySource = """
-            import java.math.BigInteger;
-            import org.julclang.core.PlutusData;
-
-            @OnchainLibrary
-            @MintingValidator
-            class ConfusedLib {
-                @Entrypoint
-                static boolean validate(BigInteger a, PlutusData b) {
-                    return true;
-                }
-            }
-            """;
-
-        var ex = assertThrows(CompilerException.class,
-                () -> reference().compile(validatorSource, java.util.List.of(librarySource)));
-
-        assertTrue(ex.getMessage().contains("must not combine @OnchainLibrary"));
-        assertTrue(ex.getMessage().contains("@MintingValidator"));
-        // ADR-068 D8 (r11): javac, the default from M5, reads only the units a program references, so a library nothing
-        // references is not compiled and its annotation is not rejected; JavacLibraryRolesTest holds the referenced case.
-        assertFalse(compiler.compile(validatorSource, java.util.List.of(librarySource)).hasErrors());
     }
 
     @Test

@@ -183,14 +183,12 @@ class JavacLambdasTest {
                     }
                 }
                 """;
-        assertTrue(accepts(validator, CompilerFrontend.JAVAC, true));
-        assertTrue(accepts(validator, CompilerFrontend.JAVAC, false));
-        assertTrue(accepts(validator, CompilerFrontend.JAVAPARSER, false));
-        assertFalse(accepts(validator, CompilerFrontend.JAVAPARSER, true), "the reference with a map: on the Closed by M5 list");
+        assertTrue(accepts(validator, true));
+        assertTrue(accepts(validator, false));
     }
 
-    private static boolean accepts(String validator, CompilerFrontend frontend, boolean sourceMap) {
-        var options = new CompilerOptions().setFrontend(frontend).setSourceMapEnabled(sourceMap);
+    private static boolean accepts(String validator, boolean sourceMap) {
+        var options = new CompilerOptions().setSourceMapEnabled(sourceMap);
         var result = new JulcCompiler(StdlibRegistry.defaultRegistry(), options).compile(validator);
         var ref = PlutusData.constr(0, PlutusData.bytes(new byte[32]), PlutusData.integer(0));
         var context = PlutusData.constr(0, PlutusData.constr(0), PlutusData.constr(0),

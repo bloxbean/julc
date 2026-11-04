@@ -16,7 +16,6 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.julclang.compiler.frontend.javac.lower.LoweringFixture.assertMethodNotPorted;
 import static org.julclang.compiler.frontend.javac.lower.LoweringFixture.assertSameAsReference;
 import static org.julclang.compiler.frontend.javac.lower.LoweringFixture.assertSameMethodAsReference;
 
@@ -170,9 +169,6 @@ class JavacNamesTest {
     @ValueSource(strings = {"static long K; static long m() { return K; }"})
     void aFieldWithNoBinderIsUndefined(String members) {
         var e = rejected("class P { " + members + " }");
-        var reference = assertThrows(CompilerException.class,
-                () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod("class P { " + members + " }", "m", List.of()));
-        assertEquals("Undefined variable: K", reference.getMessage(), "the reference's words");
         var diagnostic = e.diagnostics().getFirst();
         assertEquals("Undefined variable: K", diagnostic.message());
         assertEquals(1, diagnostic.line());
@@ -231,8 +227,6 @@ class JavacNamesTest {
         var diagnostic = rejected(source).diagnostics().getFirst();
         assertEquals(DiagnosticCodes.PARAM_CONSTANT_VARIABLE.code(), diagnostic.code(), diagnostic.message());
         assertEquals(4, diagnostic.line());
-        // The reference has no such rule: this is a rejection of the javac frontend alone (D13, a policy rejection).
-        new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod(source, "m", List.of());
     }
 
     @ParameterizedTest

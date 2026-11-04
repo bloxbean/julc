@@ -35,7 +35,7 @@ class ComparisonLoweringTest {
 
     private static String pir(String body) {
         return new JulcCompiler(StdlibRegistry.defaultRegistry(),
-                new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setOptimizationLevel(OptimizationLevel.NONE)).compileMethod(source(body), "m")
+                new CompilerOptions().setOptimizationLevel(OptimizationLevel.NONE)).compileMethod(source(body), "m")
                 .pirFormatted();
     }
 
@@ -105,58 +105,4 @@ class ComparisonLoweringTest {
         }
     }
 
-    /**
-     * JuLC's BigInteger operator dialect (rejected by javac, so outside the harness) evaluates left to right too
-     * (#295). D6 puts this rule in the JavaParser frontend, which the gate-off path still reaches until M5.
-     */
-    @Test
-    void dialectRelationalOperatorsTraceInSourceOrder() {
-        for (String op : List.of("<", "<=", ">", ">=")) {
-            for (var level : OptimizationLevel.values()) {
-                var program = new JulcCompiler(StdlibRegistry.defaultRegistry(),
-                        new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setOptimizationLevel(level).setJavacGate(JavacGateMode.OFF))
-                        .compileMethod(source("return t(\"X\", a) " + op + " t(\"Y\", b);"), "m").program();
-                var vm = CompilerTestVm.pv11("Java");
-                var result = vm.evaluateWithArgs(program, CompilerTarget.PLUTUS_V3_PV11.ledgerTarget(),
-                        List.of(PlutusData.integer(3), PlutusData.integer(1)),
-                        new ExBudget(1_000_000_000L, 5_000_000L), EvalOptions.DEFAULT);
-                var success = assertInstanceOf(EvalResult.Success.class, result, op + " " + level);
-                assertEquals(List.of("X", "Y"), success.traces(), op + " " + level);
-                assertEquals(new Term.Const(Constant.bool(op.startsWith(">"))), success.resultTerm(), op + " " + level);
-            }
-        }
-    }
-
-    /**
-     * Static-library dispatch runs before the rule and is unchanged: with the gate off, a local {@code BigInteger Shadow}
-     * next to an {@code @OnchainLibrary class Shadow} still calls {@code Shadow.compareTo}. The default gate rejects that
-     * shape: a variable does not take the name of a type offered to a compilation.
-     */
-    @Test
-    void staticLibraryDispatchIsUnchanged() {
-        String library = """
-                import java.math.BigInteger;
-                import org.julclang.stdlib.annotation.OnchainLibrary;
-                @OnchainLibrary
-                public class Shadow {
-                    public static BigInteger compareTo(BigInteger y) { return BigInteger.valueOf(-7); }
-                }
-                """;
-        String body = "BigInteger Shadow = a; return Shadow.compareTo(b) > 0;";
-        var rejected = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER))
-                .compileMethod(source(body), "m", List.of(library)));
-        assertEquals("JULC0100", rejected.diagnostics().getFirst().code());
-        var result = new JulcCompiler(StdlibRegistry.defaultRegistry(),
-                new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setOptimizationLevel(OptimizationLevel.NONE).setJavacGate(JavacGateMode.OFF))
-                .compileMethod(source(body), "m", List.of(library));
-        String pir = result.pirFormatted();
-        assertTrue(pir.contains("Shadow.compareTo"), pir);
-        assertTrue(pir.contains("[[(builtin lessThanInteger) (con integer 0)] [Shadow.compareTo b]]"), pir);
-        var vm = CompilerTestVm.pv11("Java");
-        var eval = vm.evaluateWithArgs(result.program(), CompilerTarget.PLUTUS_V3_PV11.ledgerTarget(),
-                List.of(PlutusData.integer(3), PlutusData.integer(1)), new ExBudget(1_000_000_000L, 5_000_000L),
-                EvalOptions.DEFAULT);
-        // The library returns -7, so the comparison is false although a > b.
-        assertEquals(new Term.Const(Constant.bool(false)), assertInstanceOf(EvalResult.Success.class, eval).resultTerm());
-    }
 }

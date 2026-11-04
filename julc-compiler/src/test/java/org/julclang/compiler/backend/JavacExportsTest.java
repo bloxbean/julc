@@ -1,18 +1,19 @@
 package org.julclang.compiler.backend;
 
-import org.julclang.compiler.CompilerFrontend;
+import org.julclang.compiler.frontend.javac.lower.FrozenReference;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JavaLibraryProvider;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.backend.LibraryType.Reference;
-import org.julclang.compiler.frontend.javac.JavacGateMode;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.core.flat.UplcFlatEncoder;
 import org.julclang.stdlib.StdlibRegistry;
 import org.junit.jupiter.api.Test;
 
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.TreeMap;
 
 import static org.julclang.compiler.backend.FunctionProgramTest.program;
 import static org.julclang.compiler.backend.GenericExportsTest.BOOL_REF;
@@ -62,9 +63,12 @@ class JavacExportsTest {
             }
             """;
 
-    private static JavaLibraryProvider provider(CompilerFrontend frontend, List<String> sources) {
-        return new JavaLibraryProvider(sources, StdlibRegistry.defaultRegistry(),
-                new CompilerOptions().setFrontend(frontend).setJavacGate(JavacGateMode.OFF));
+    private static JavaLibraryProvider provider(List<String> sources) {
+        return new JavaLibraryProvider(sources, StdlibRegistry.defaultRegistry(), new CompilerOptions());
+    }
+
+    private static String hex(byte[] bytes) {
+        return HexFormat.of().formatHex(bytes);
     }
 
     private static byte[] bytes(PirTerm term) {
@@ -74,27 +78,21 @@ class JavacExportsTest {
     @Test
     void anExportedLibraryIsTheReferences() {
         for (var sources : List.of(List.of(SEQ), List.of(UNREFERENCED, SEQ))) {
-            var reference = provider(CompilerFrontend.JAVAPARSER, sources);
-            var javac = provider(CompilerFrontend.JAVAC, sources);
+            var javac = provider(sources);
+            var seen = new StringBuilder();
             for (String module : List.of("demo.Seq", "other.Lone", "other.Lone.Ambiguous", "demo.Seq.Quote")) {
-                assertEquals(reference.describe(module), javac.describe(module), module);
-                assertEquals(reference.schemes(module), javac.schemes(module), module);
-                for (var export : reference.describe(module)) {
-                    assertArrayEquals(bytes(reference.materialize(export.symbol())), bytes(javac.materialize(export.symbol())),
-                            export.symbol());
-                }
+                seen.append(module).append(javac.describe(module)).append(javac.schemes(module));
+                for (var export : javac.describe(module)) seen.append(export.symbol()).append(hex(bytes(javac.materialize(export.symbol()))));
             }
-            assertEquals(reference.unsupportedExports(), javac.unsupportedExports());
-            assertEquals(reference.types(), javac.types());
-            assertEquals(reference.namedDefinitions(), javac.namedDefinitions());
+            seen.append(new TreeMap<>(javac.unsupportedExports())).append(new TreeMap<>(javac.types())).append(new TreeMap<>(javac.namedDefinitions()));
+            FrozenReference.assertSame("an exported library|" + sources, seen.toString());
         }
     }
 
     @Test
     void aSpecializationIsTheReferences() {
         var sources = List.of(SEQ, UNREFERENCED);
-        var reference = provider(CompilerFrontend.JAVAPARSER, sources);
-        var javac = provider(CompilerFrontend.JAVAC, sources);
+        var javac = provider(sources);
         var quote = new Reference("demo.Seq.Quote", List.of());
         var requests = List.<LibraryRequest.Instantiate>of(
                 instantiate("firstOr", INT_REF), instantiate("firstOr", BYTES_REF), instantiate("count", quote),
@@ -103,50 +101,39 @@ class JavacExportsTest {
                 producer("firstOr", ORDER_REF, "dsl.Order", ORDER), producer("contains", SIDE_REF, "dsl.Side", SIDE),
                 new LibraryRequest.Instantiate("other.Lone.last", List.of(INT_REF)));
         for (var request : requests) {
-            var expected = reference.materialize(List.of(request));
             var actual = javac.materialize(List.of(request));
-            assertEquals(expected.binding(request), actual.binding(request), request.describe());
-            assertEquals(expected.definitions().keySet(), actual.definitions().keySet(), request.describe());
-            var binding = expected.binding(request);
+            var binding = actual.binding(request);
             var term = new PirTerm.Var(binding.name(), binding.type());
-            assertArrayEquals(
-                    UplcFlatEncoder.encodeProgram(FunctionProgramTest.compile(program(term, binding.type(),
-                            new LinkedHashMap<>(), List.of(expected))).program()),
-                    UplcFlatEncoder.encodeProgram(FunctionProgramTest.compile(program(term, binding.type(),
-                            new LinkedHashMap<>(), List.of(actual))).program()), request.describe());
+            FrozenReference.assertSame("a specialization|" + request.describe(), binding + "|" + actual.definitions().keySet() + "|"
+                    + hex(UplcFlatEncoder.encodeProgram(FunctionProgramTest.compile(program(term, binding.type(),
+                            new LinkedHashMap<>(), List.of(actual))).program())));
         }
     }
 
     @Test
     void whatTheReferenceCannotSpecializeIsRejected() {
-        var reference = provider(CompilerFrontend.JAVAPARSER, List.of(SEQ));
-        var javac = provider(CompilerFrontend.JAVAC, List.of(SEQ));
+        var javac = provider(List.of(SEQ));
         for (var request : List.of(instantiate("bounded", INT_REF), instantiate("wildcard", INT_REF),
                 instantiate("scaled", INT_REF), instantiate("missing", INT_REF), instantiate("countTwice", INT_REF),
                 instantiate("firstOr", INT_REF, INT_REF))) {
-            var expected = assertThrows(BackendException.class, () -> reference.materialize(List.of(request)));
             var actual = assertThrows(BackendException.class, () -> javac.materialize(List.of(request)));
-            assertEquals(expected.code(), actual.code(), request.describe());
+            FrozenReference.assertSame("what cannot specialize|" + request.describe(), actual.code());
         }
     }
 
     @Test
     void anEmptyProviderIsTheLedgersTypes() {
-        var reference = provider(CompilerFrontend.JAVAPARSER, List.of());
-        var javac = provider(CompilerFrontend.JAVAC, List.of());
-        assertEquals(reference.types(), javac.types());
-        assertEquals(reference.namedDefinitions(), javac.namedDefinitions());
-        assertEquals(reference.describe("demo.Seq"), javac.describe("demo.Seq"));
-        assertEquals(reference.unsupportedExports(), javac.unsupportedExports());
+        var javac = provider(List.of());
+        FrozenReference.assertSame("an empty provider", new TreeMap<>(javac.types()) + "|" + new TreeMap<>(javac.namedDefinitions()) + "|"
+                + javac.describe("demo.Seq") + "|" + new TreeMap<>(javac.unsupportedExports()));
     }
 
     /** One type two units declare is the reference's IllegalArgumentException, before anything is read (review F6). */
     @Test
     void aTypeTwoUnitsDeclareIsTheReferencesRejection() {
         for (var sources : List.of(List.of(SEQ, SEQ), List.of(SEQ, SEQ.replace("BigInteger.TEN", "BigInteger.TWO")))) {
-            var expected = assertThrows(IllegalArgumentException.class, () -> provider(CompilerFrontend.JAVAPARSER, sources));
-            var actual = assertThrows(IllegalArgumentException.class, () -> provider(CompilerFrontend.JAVAC, sources));
-            assertEquals(expected.getMessage(), actual.getMessage());
+            var actual = assertThrows(IllegalArgumentException.class, () -> provider(sources));
+            FrozenReference.assertSame("a type two units declare|" + sources, actual.getMessage());
         }
     }
 
@@ -163,10 +150,9 @@ class JavacExportsTest {
                     public static BigInteger twice(BigInteger x) { return x.add(x); }
                 }
                 """;
-        var javac = provider(CompilerFrontend.JAVAC, List.of(source));
+        var javac = provider(List.of(source));
         assertEquals(List.of("e.Q.twice"), javac.describe("e.Q").stream().map(LibraryExport::symbol).toList());
         assertTrue(javac.unsupportedExports().get("e.Q.same").contains("by reference"), javac.unsupportedExports()::toString);
-        assertArrayEquals(bytes(provider(CompilerFrontend.JAVAPARSER, List.of(source)).materialize("e.Q.twice")),
-                bytes(javac.materialize("e.Q.twice")));
+        FrozenReference.assertSame("a body nothing lowers|" + source, hex(bytes(javac.materialize("e.Q.twice"))));
     }
 }

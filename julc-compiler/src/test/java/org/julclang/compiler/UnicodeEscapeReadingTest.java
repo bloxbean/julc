@@ -203,32 +203,6 @@ class UnicodeEscapeReadingTest {
     }
 
     /**
-     * The JavaParser frontend's readers (JavaSourceParser, UnicodeEscapes) reject each source, whatever javac does. From
-     * ADR-068 M5 that frontend is selected explicitly; {@link #onTheDefaultFrontendJavacDecides} holds javac's frontend.
-     */
-    @Test
-    void everyRejectedSourceIsRejectedWhateverJavacDoes() throws Exception {
-        var problems = new ArrayList<String>();
-        for (var row : REJECTED) {
-            boolean javacAccepts = javac(row[1]).isPresent();
-            if (javacAccepts != row[2].equals("javac accepts")) problems.add(row[0] + ": expected " + row[2]);
-            for (var level : OptimizationLevel.values()) {
-                try {
-                    new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()
-                            .setFrontend(CompilerFrontend.JAVAPARSER).setOptimizationLevel(level))
-                            .compileMethod(row[1], "m");
-                    problems.add(row[0] + " at " + level + ": JuLC compiles it");
-                } catch (CompilerException rejected) {
-                    if (!rejected.getMessage().contains(row[3])) {
-                        problems.add(row[0] + ": message lacks '" + row[3] + "': " + rejected.getMessage());
-                    }
-                }
-            }
-        }
-        assertTrue(problems.isEmpty(), String.join("\n", problems));
-    }
-
-    /**
      * ADR-068 M5: on javac's frontend, the default, javac decides. A source javac rejects is {@code JULC0085}; a source javac
      * accepts compiles, as the ADR's Compatibility section and r11 decide: the escape shapes JuLC's readers rejected
      * (scheduled for acceptance), and a lone surrogate in a comment, which cannot reach a script (accepted by decision).
@@ -284,20 +258,6 @@ class UnicodeEscapeReadingTest {
     }
 
     @Test
-    void nodePositionsReferToTheSourceAsWritten() {
-        // Source maps and diagnostics key on positions: after an escape, a column counts its six characters.
-        var unit = JavaSourceParser.parseCompilationUnit(
-                "class P { Object m(Object a) { return \\u0061.hashCode(); } }");
-        var call = unit.findFirst(MethodCallExpr.class).orElseThrow();
-        assertEquals("a", call.getScope().orElseThrow().toString());
-        assertEquals(46, call.getName().getBegin().orElseThrow().column, "hashCode as written, not 41 as translated");
-        // A range that ends on an escape ends on its last character.
-        var scope = call.getScope().orElseThrow().getRange().orElseThrow();
-        assertEquals(new Position(1, 39), scope.begin);
-        assertEquals(new Position(1, 44), scope.end, "the escape's last character, not its first");
-    }
-
-    @Test
     void parseProblemsReferToTheSourceAsWritten() {
         // Escaped line terminators: the problem is on line 4 as written, not line 6 as translated.
         assertEquals(problemAt("class P {\n  //\n  //\n  int x = ;\n}"),
@@ -320,26 +280,6 @@ class UnicodeEscapeReadingTest {
         // The end of the file just after an escaped line terminator: still line 1 as written, after the escape.
         String eof = lexicalError("class P { int x; } /* \\u000a");
         assertTrue(eof.contains("line 1, column 29"), eof);
-    }
-
-    @Test
-    void commentsAreAttributedAndPlacedAsWritten() {
-        // A line comment ended by an escape, then a Javadoc on the next line as written.
-        var unit = JavaSourceParser.parseCompilationUnit(
-                "class P {\n int a; // \\u000a int b;\n /** doc of c */\n int c;\n}");
-        var c = field(unit, "c");
-        var doc = c.getComment().orElseThrow(() -> new AssertionError("the Javadoc is attached to c"));
-        assertEquals(" doc of c ", doc.getContent());
-        assertEquals(new Position(3, 2), doc.getRange().orElseThrow().begin);
-        assertTrue(unit.findAll(FieldDeclaration.class).stream().anyMatch(f -> f.getVariable(0).getNameAsString().equals("b")),
-                "the escape ends the line comment, so b is a field");
-        // Escapes earlier on the line.
-        var same = JavaSourceParser.parseCompilationUnit(
-                "class P { int \\u0061\\u0062\\u0063 = 1; /** doc */ int r = 2; }");
-        var plain = JavaSourceParser.parseCompilationUnit("class P { int abc = 1; /** doc */ int r = 2; }");
-        assertEquals(" doc ", field(same, "r").getComment().orElseThrow().getContent());
-        var plainBegin = field(plain, "r").getComment().orElseThrow().getRange().orElseThrow().begin;
-        assertEquals(new Position(1, plainBegin.column + 15), field(same, "r").getComment().orElseThrow().getRange().orElseThrow().begin);
     }
 
     @Test
@@ -376,78 +316,6 @@ class UnicodeEscapeReadingTest {
         assertFalse(JavaSourceIntrospector.mightContainOnchainLibraryAnnotation("class V { }"));
     }
 
-    @Test
-    void annotationPreFiltersSkipOffChainSourcesJuLCCannotRead() throws Exception {
-        // Off-chain Java that javac compiles but JuLC's strict reading rejects: an unpaired surrogate in a regex,
-        // and an unnamed variable (Java 22) next to an escape. Neither names an annotation, so the build tasks must
-        // skip it rather than hand it to the strict parser.
-        for (var source : List.of("""
-                import java.util.regex.Pattern;
-                public class P {
-                    static final java.util.regex.Pattern HIGH = Pattern.compile("[\\uD800-\\uDBFF]");
-                }
-                """, """
-                import java.util.List;
-                public class P {
-                    static String e = "caf\\u00e9";
-                    static int count(List<String> l) { int n = 0; for (String _ : l) n++; return n; }
-                }
-                """)) {
-            assertTrue(javac(source).isPresent(), "javac compiles it: " + source);
-            assertFalse(JavaSourceParser.parse(source).isSuccessful(), "JuLC's strict reading rejects it: " + source);
-            assertFalse(JavaSourceIntrospector.mightContainOnchainLibraryAnnotation(source), source);
-            assertFalse(JavaSourceIntrospector.mightContainValidatorAnnotation(source), source);
-            assertFalse(JavaSourceIntrospector.mightContainTestAnnotation(source), source);
-        }
-        // Whitespace after the @ is Java, so it names the annotation too.
-        assertTrue(JavaSourceIntrospector.mightContainValidatorAnnotation("@ SpendingValidator class V { }"));
-        // A source that does name an annotation still reaches the strict parser, and fails closed there.
-        String candidate = "@\\u004fnchainLibrary public class Bad { static String s = \"\\uD800\"; }";
-        assertTrue(JavaSourceIntrospector.mightContainOnchainLibraryAnnotation(candidate));
-        assertThrows(JavaSourceIntrospector.SourceParseException.class, () -> JavaSourceIntrospector.inspect(candidate, SourceReader.JAVAPARSER));
-    }
-
-    /** JuLC's strict reader's own behaviour, so JavaParser's reading by name (javac's reads these sources: ADR-068 M6). */
-    @Test
-    void aCandidateThatOnlyMentionsAnAnnotationHasNoJulcRole() throws Exception {
-        // The pre-filter is a text test, so a Javadoc mention makes this off-chain source a candidate. JuLC's
-        // strict reading rejects it (the unpaired surrogate), but read as javac reads it, it declares no annotation.
-        String mentions = """
-                import java.util.regex.Pattern;
-                /** Helper for the @SpendingValidator and @OnchainLibrary code; see @Test. */
-                public class P {
-                    static final Pattern HIGH = Pattern.compile("[\\uD800-\\uDBFF]");
-                }
-                """;
-        assertTrue(javac(mentions).isPresent());
-        assertTrue(JavaSourceIntrospector.mightContainOnchainLibraryAnnotation(mentions));
-        assertThrows(JavaSourceIntrospector.SourceParseException.class, () -> JavaSourceIntrospector.inspect(mentions, SourceReader.JAVAPARSER));
-        assertTrue(JavaSourceIntrospector.declaresNoJulcRole(mentions, SourceReader.JAVAPARSER));
-        assertTrue(JavaSourceIntrospector.declaresNoTestMethod(mentions));
-
-        // The question stays open, and the candidate fails closed, when the source declares an annotation, or when
-        // javac could read it differently from the lenient reading: the parity shape (javac translates the escape
-        // for a line feed there and the JLS does not, so for javac the comment ends and Q is a library), escape
-        // digits javac takes but the JLS does not, and an unpaired high surrogate before a backslash.
-        var open = new ArrayList<String>();
-        for (var source : List.of(
-                "@OnchainLibrary public class P { static String s = \"\\uD800\"; }",
-                "public class P { void t() {} @Test public static boolean t2() { return \"\\uD800\".isEmpty(); } }",
-                "public class P { } // \\u005c\\\\u000a @OnchainLibrary class Q { }",
-                "public class P { } // \\u\u0661\u0662\u0663\u0664 @OnchainLibrary",
-                "public class P { static String s = \"\\uD800\\\\\"; } // @OnchainLibrary")) {
-            assertThrows(JavaSourceIntrospector.SourceParseException.class, () -> JavaSourceIntrospector.inspect(source, SourceReader.JAVAPARSER), source);
-            if (JavaSourceIntrospector.declaresNoJulcRole(source, SourceReader.JAVAPARSER) && JavaSourceIntrospector.declaresNoTestMethod(source)) {
-                open.add("decided as no role, but should stay open or declared: " + source);
-            }
-        }
-        assertEquals(List.of(), open);
-        assertFalse(JavaSourceIntrospector.declaresNoJulcRole(
-                "@OnchainLibrary public class P { static String s = \"\\uD800\"; }", SourceReader.JAVAPARSER));
-        assertFalse(JavaSourceIntrospector.declaresNoTestMethod(
-                "public class P { @Test public static boolean t() { return \"\\uD800\".isEmpty(); } }"));
-    }
-
     /** Ways main code could build a JavaParser parser outside {@code JavaSourceParser}. */
     private static final List<Pattern> PARSER_CONSTRUCTS = List.of(
             Pattern.compile("\\b(StaticJavaParser|JavaParserAdapter|JavaParserFacade)\\b"),
@@ -456,49 +324,6 @@ class UnicodeEscapeReadingTest {
 
     private static List<String> parserConstructs(String text) {
         return PARSER_CONSTRUCTS.stream().map(p -> p.matcher(text)).filter(Matcher::find).map(Matcher::group).toList();
-    }
-
-    @Test
-    void theParserLintSeesEveryShape() {
-        for (var shape : List.of("import com.github.javaparser.StaticJavaParser;", "Function<String, ?> f = StaticJavaParser::parse;",
-                "StaticJavaParser.parse(source)", "new JavaParser()", "new JavaParser(new ParserConfiguration())",
-                "new com.github.javaparser.JavaParser()", "com.github.javaparser.JavaParserAdapter.of(parser)",
-                "Supplier<JavaParser> s = JavaParser::new;", "var c = new ParserConfiguration ();")) {
-            assertFalse(parserConstructs(shape).isEmpty(), shape);
-        }
-        assertEquals(List.of(), parserConstructs("var unit = JavaSourceParser.parse(source); JavaParser parser;"));
-    }
-
-    @Test
-    void everyParserIsMadeByJavaSourceParser() throws IOException {
-        // A parser configured anywhere else would not translate Unicode escapes. Only real module trees count:
-        // hidden directories (nested worktrees, for example) and build output are skipped.
-        var root = Path.of("..").toAbsolutePath().normalize();
-        var files = new ArrayList<Path>();
-        Files.walkFileTree(root, new SimpleFileVisitor<>() {
-            @Override
-            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attributes) {
-                String name = dir.getFileName() == null ? "" : dir.getFileName().toString();
-                boolean skip = !dir.equals(root) && (name.startsWith(".") || name.equals("build") || name.equals("node_modules"));
-                return skip ? FileVisitResult.SKIP_SUBTREE : FileVisitResult.CONTINUE;
-            }
-
-            @Override
-            public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) {
-                String relative = root.relativize(file).toString().replace('\\', '/');
-                if (relative.endsWith(".java") && relative.contains("/src/main/java/")
-                        && !file.getFileName().toString().equals("JavaSourceParser.java")) {
-                    files.add(file);
-                }
-                return FileVisitResult.CONTINUE;
-            }
-        });
-        assertTrue(files.size() > 100, "found the module sources: " + files.size());
-        var offenders = new ArrayList<String>();
-        for (var file : files) {
-            for (var construct : parserConstructs(Files.readString(file))) offenders.add(root.relativize(file) + ": " + construct);
-        }
-        assertEquals(List.of(), offenders);
     }
 
     private static Position problemAt(String source) {

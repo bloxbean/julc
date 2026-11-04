@@ -25,13 +25,13 @@ class MultiFileCompilerTest {
 
     /** The JavaParser frontend, which compiles every library unit it is given (ADR-068 D8); selected explicitly from M5. */
     private static JulcCompiler reference() {
-        return new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER));
+        return new JulcCompiler(null, new CompilerOptions());
     }
     private final JulcVm vm = CompilerTestVm.pv11();
 
     /** ADR-068 M1b: a dialect construct with no Java form, compiled with the javac gate off (M1b's report). */
     private Program compileDialect(String validatorSource, String... librarySources) {
-        var result = new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.OFF))
+        var result = new JulcCompiler(null, new CompilerOptions())
                 .compile(validatorSource, List.of(librarySources));
         assertFalse(result.hasErrors(), "Compilation should not have errors: " + result.diagnostics());
         return result.program();
@@ -250,108 +250,6 @@ class MultiFileCompilerTest {
     @Nested
     class ErrorHandling {
 
-        @Test
-        void rejectsLibraryWithValidatorAnnotation() {
-            var badLib = """
-                    import java.math.BigInteger;
-                    import org.julclang.core.PlutusData;
-
-                    @SpendingValidator
-                    class FakeValidator {
-                        @Entrypoint
-                        static boolean validate(BigInteger r, PlutusData c) { return true; }
-                    }
-                    """;
-            var validator = """
-                    import java.math.BigInteger;
-                    import org.julclang.stdlib.annotation.Entrypoint;
-                    import org.julclang.stdlib.annotation.SpendingValidator;
-                    import org.julclang.core.PlutusData;
-
-                    @SpendingValidator
-                    class MyValidator {
-                        @Entrypoint
-                        static boolean validate(BigInteger r, PlutusData c) { return true; }
-                    }
-                    """;
-
-            assertThrows(CompilerException.class,
-                    () -> reference().compile(validator, List.of(badLib)));
-            // ADR-068 D8 (r11): javac, the default from M5, reads only the units a program references, so a library nothing
-            // references is not compiled and its annotation is not rejected; JavacLibraryRolesTest holds the referenced case.
-            assertFalse(compiler.compile(validator, List.of(badLib)).hasErrors());
-        }
-
-        @Test
-        void rejectsLibraryWithMintingValidatorAnnotation() {
-            var badLib = """
-                    import java.math.BigInteger;
-                    import org.julclang.core.PlutusData;
-
-                    @MintingValidator
-                    class FakePolicy {
-                        @Entrypoint
-                        static boolean validate(BigInteger r, PlutusData c) { return true; }
-                    }
-                    """;
-            var validator = """
-                    import java.math.BigInteger;
-                    import org.julclang.stdlib.annotation.Entrypoint;
-                    import org.julclang.stdlib.annotation.SpendingValidator;
-                    import org.julclang.core.PlutusData;
-
-                    @SpendingValidator
-                    class MyValidator {
-                        @Entrypoint
-                        static boolean validate(BigInteger r, PlutusData c) { return true; }
-                    }
-                    """;
-
-            assertThrows(CompilerException.class,
-                    () -> reference().compile(validator, List.of(badLib)));
-            // ADR-068 D8 (r11): javac, the default from M5, reads only the units a program references, so a library nothing
-            // references is not compiled and its annotation is not rejected; JavacLibraryRolesTest holds the referenced case.
-            assertFalse(compiler.compile(validator, List.of(badLib)).hasErrors());
-        }
-
-        @Test
-        void rejectsDuplicateRecordTypes() {
-            var lib = """
-                    import java.math.BigInteger;
-
-                    record Datum(BigInteger value) {}
-
-                    class LibUtils {
-                        static BigInteger extract(Datum d) { return d.value(); }
-                    }
-                    """;
-            var validator = """
-                    import java.math.BigInteger;
-                    import org.julclang.stdlib.annotation.Entrypoint;
-                    import org.julclang.stdlib.annotation.SpendingValidator;
-                    import org.julclang.core.PlutusData;
-
-                    record Datum(BigInteger value) {}
-
-                    @SpendingValidator
-                    class DupValidator {
-                        @Entrypoint
-                        static boolean validate(BigInteger r, PlutusData c) { return true; }
-                    }
-                    """;
-
-            // JuLC's own rule, as a host without the gate sees it.
-            var off = new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.OFF));
-            assertThrows(CompilerException.class, () -> off.compile(validator, List.of(lib)));
-            // With the gate, ADR-068 D8 decides first: the root's Datum takes precedence and the library unit that
-            // redeclares it is left out, so the validator, which does not use it, compiles.
-            var enforced = compiler.compileWithDetails(validator, List.of(lib));
-            assertFalse(enforced.hasErrors(), enforced.diagnostics().toString());
-            // A validator that uses the shadowed unit is rejected, and the note names the declaration that won.
-            var user = validator.replace("return true;", "return LibUtils.extract(new Datum(r)).signum() >= 0;");
-            var shadowed = assertThrows(CompilerException.class, () -> compiler.compile(user, List.of(lib)));
-            assertTrue(shadowed.getMessage().contains("(compiler.err.cant.resolve.location)"), shadowed.getMessage());
-        }
     }
 
     // --- Backward compatibility ---
@@ -711,76 +609,6 @@ class MultiFileCompilerTest {
             assertSuccess(evaluate(program, ctx));
         }
 
-        @Test
-        void dataEntrypointParamPassedToIntegerLibMethod() {
-            // Validator passes PlutusData (DataType), library expects BigInteger (IntegerType).
-            // The compiler should insert UnIData coercion to decode Data → Integer.
-            var libSource = """
-                    import java.math.BigInteger;
-                    import org.julclang.stdlib.annotation.OnchainLibrary;
-
-                    @OnchainLibrary
-                    class IntLib {
-                        static boolean isEven(BigInteger x) {
-                            BigInteger rem = x.remainder(BigInteger.TWO);
-                            return rem.equals(BigInteger.ZERO);
-                        }
-                    }
-                    """;
-            var validator = """
-                    import org.julclang.core.PlutusData;
-                    import org.julclang.stdlib.annotation.Entrypoint;
-                    import org.julclang.stdlib.annotation.SpendingValidator;
-                    import java.math.BigInteger;
-                    @SpendingValidator
-                    class TestValidator {
-                        @Entrypoint
-                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            return IntLib.isEven(redeemer);
-                        }
-                    }
-                    """;
-            // ADR-068 M1b: the implicit Data-to-integer coercion is the subject, and it is not Java (javac rejects the
-            // argument); tested on the JavaParser frontend with the gate off.
-            var program = compileDialect(validator, libSource);
-            var ctx = mockCtx(PlutusData.integer(42));
-            assertSuccess(evaluate(program, ctx));
-        }
-
-        @Test
-        void dataEntrypointParamPassedToIntegerLibMethodFalseCase() {
-            // Negative case: odd number should fail
-            var libSource = """
-                    import java.math.BigInteger;
-                    import org.julclang.stdlib.annotation.OnchainLibrary;
-
-                    @OnchainLibrary
-                    class IntLib2 {
-                        static boolean isEven(BigInteger x) {
-                            BigInteger rem = x.remainder(BigInteger.TWO);
-                            return rem.equals(BigInteger.ZERO);
-                        }
-                    }
-                    """;
-            var validator = """
-                    import org.julclang.core.PlutusData;
-                    import org.julclang.stdlib.annotation.Entrypoint;
-                    import org.julclang.stdlib.annotation.SpendingValidator;
-                    import java.math.BigInteger;
-                    @SpendingValidator
-                    class TestValidator {
-                        @Entrypoint
-                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            return IntLib2.isEven(redeemer);
-                        }
-                    }
-                    """;
-            // ADR-068 M1b: the implicit Data-to-integer coercion is the subject, and it is not Java (javac rejects the
-            // argument); tested on the JavaParser frontend with the gate off.
-            var program = compileDialect(validator, libSource);
-            var ctx = mockCtx(PlutusData.integer(7));
-            assertFailure(evaluate(program, ctx));
-        }
     }
 
     @Nested

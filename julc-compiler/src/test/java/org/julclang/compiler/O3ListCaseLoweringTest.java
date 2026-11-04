@@ -74,7 +74,7 @@ class O3ListCaseLoweringTest {
                 }
             }
         }
-        var defaults = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod(SOURCE, "sum");
+        var defaults = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()).compileMethod(SOURCE, "sum");
         assertArrayEquals(bytes(defaults), bytes(compile("sum", OptimizationLevel.PV11_SAFE, false)));
         assertTrue(countBuiltin(defaults.program().term(), DefaultFun.NullList) > 0);
         assertEquals(0, countBuiltin(defaults.program().term(), DefaultFun.HeadList));
@@ -132,36 +132,9 @@ class O3ListCaseLoweringTest {
                     }
                 }
                 """;
-        var result = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod(source, "first");
+        var result = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()).compileMethod(source, "first");
         assertFalse(result.optimizationReport().appliedRules().contains(UplcGenerator.PV11_CASE_LIST_RULE));
         assertTrue(countBuiltin(result.program().term(), DefaultFun.HeadList) > 0);
-    }
-
-    @Test
-    void mapAndWhileTraversalDoNotAcquireListCaseRule() {
-        var source = """
-                import java.math.BigInteger;
-                import org.julclang.core.types.JulcMap;
-                import org.julclang.core.types.JulcList;
-                class OtherTraversals {
-                    static BigInteger map(JulcMap<BigInteger, BigInteger> xs) {
-                        BigInteger acc = BigInteger.ZERO;
-                        for (var entry : xs) { acc = acc.add(entry.value()); }
-                        return acc;
-                    }
-                    static BigInteger walk(JulcList<BigInteger> xs) {
-                        BigInteger acc = BigInteger.ZERO;
-                        while (!xs.isEmpty()) { acc = acc.add(xs.head()); xs = xs.tail(); }
-                        return acc;
-                    }
-                }
-                """;
-        for (var method : List.of("map", "walk")) {
-            // ADR-068 M1b: a for-each over a JulcMap is not Java (U1); compiled with the javac gate off.
-            var result = new JulcCompiler(StdlibRegistry.defaultRegistry(),
-                    new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.OFF)).compileMethod(source, method);
-            assertFalse(result.optimizationReport().appliedRules().contains(UplcGenerator.PV11_CASE_LIST_RULE));
-        }
     }
 
     @Test
@@ -244,13 +217,13 @@ class O3ListCaseLoweringTest {
         assertTrue(PirFormatter.formatPretty(m).contains("list-match"));
         assertThrows(IllegalArgumentException.class, () -> new PirTerm.ListMatch(t, "h", "h", h, h));
         for (var level : List.of(OptimizationLevel.NONE, OptimizationLevel.BASELINE)) {
-            var context = CompilationContext.resolve(new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setOptimizationLevel(level));
+            var context = CompilationContext.resolve(new CompilerOptions().setOptimizationLevel(level));
             assertThrows(CompilerException.class, () -> new UplcGenerator(context, null).generate(m));
         }
     }
 
     private static CompileResult compile(String method, OptimizationLevel level, boolean maps) {
-        var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setOptimizationLevel(level).setSourceMapEnabled(maps);
+        var options = new CompilerOptions().setOptimizationLevel(level).setSourceMapEnabled(maps);
         return new JulcCompiler(StdlibRegistry.defaultRegistry(), options).compileMethod(SOURCE, method);
     }
 

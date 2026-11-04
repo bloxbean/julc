@@ -46,7 +46,7 @@ class CorpusRecorderTest {
         assumeTrue(System.getProperty(CorpusRecorder.PROPERTY) == null, "this JVM is recording a corpus");
         assertNull(CorpusRecorder.ACTIVE);
         assertNull(EvaluationRecorder.ACTIVE);
-        new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compile(CorpusRecorderProbe.VALIDATOR);
+        new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()).compile(CorpusRecorderProbe.VALIDATOR);
         assertNull(CorpusRecorder.ACTIVE);
     }
 
@@ -107,7 +107,7 @@ class CorpusRecorderTest {
         assertEquals(malformed, CorpusFiles.text(CorpusFiles.bytes(malformed)));
         assertEquals("plain é", CorpusFiles.text(CorpusFiles.bytes("plain é")));
         new FileCorpusRecorder(temp.toString()).record("compileMethod", "m", new CorpusRecorder.Source(malformed, null),
-                List.of(), null, CorpusRecorder.Options.of(new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)));
+                List.of(), null, CorpusRecorder.Options.of(new CompilerOptions()));
         Path stored = temp.resolve("sources").resolve(CorpusFiles.sha256(malformed) + ".java");
         assertEquals(malformed, CorpusFiles.text(Files.readAllBytes(stored)));
     }
@@ -156,8 +156,8 @@ class CorpusRecorderTest {
                     }
                 }
                 """;
-        var custom = CompilerTestVm.pv11().evaluate(new JulcCompiler(swapped, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod(source, "m").program());
-        var standard = CompilerTestVm.pv11().evaluate(new JulcCompiler(defaults, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod(source, "m").program());
+        var custom = CompilerTestVm.pv11().evaluate(new JulcCompiler(swapped, new CompilerOptions()).compileMethod(source, "m").program());
+        var standard = CompilerTestVm.pv11().evaluate(new JulcCompiler(defaults, new CompilerOptions()).compileMethod(source, "m").program());
         assertEquals(new Term.Const(Constant.bool(true)), result(custom));
         assertEquals(new Term.Const(Constant.bool(false)), result(standard));
     }

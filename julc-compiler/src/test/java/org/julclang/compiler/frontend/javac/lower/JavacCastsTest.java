@@ -100,25 +100,15 @@ class JavacCastsTest {
         }
     }
 
-    /** The reference erases the narrowing: it differs from Java out of range (D4's cap, "Closed by M5"). */
-    @Test
-    void theReferenceErasesTheNarrowing() {
-        var source = method("static long m(long x) { return (int) x; }");
-        var program = new JulcCompiler(STDLIB, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod(source, "m", List.of()).program();
-        var result = JulcVm.create().evaluateWithArgs(program, List.of(PlutusData.integer((1L << 32) + 5)));
-        assertNotEquals(new Term.Const(Constant.integer(BigInteger.valueOf(5))),
-                assertInstanceOf(EvalResult.Success.class, result).resultTerm());
-    }
-
     /** {@link #method} with the stdlib's byte strings: the two-argument entry finds the library on the class path. */
-    private static Program compiledWithLibrary(String members, CompilerFrontend frontend, OptimizationLevel level) {
+    private static Program compiledWithLibrary(String members, OptimizationLevel level) {
         var source = "import org.julclang.stdlib.lib.ByteStringLib;\n" + method(members);
-        return new JulcCompiler(STDLIB, new CompilerOptions().setOptimizationLevel(level).setFrontend(frontend))
+        return new JulcCompiler(STDLIB, new CompilerOptions().setOptimizationLevel(level))
                 .compileMethod(source, "m").program();
     }
 
-    private static byte[] bytesOf(String members, CompilerFrontend frontend, OptimizationLevel level) {
-        return UplcFlatEncoder.encodeProgram(compiledWithLibrary(members, frontend, level));
+    private static byte[] bytesOf(String members, OptimizationLevel level) {
+        return UplcFlatEncoder.encodeProgram(compiledWithLibrary(members, level));
     }
 
     /** ADR-068 r18: where the operand's value is shown to be in range, the script is what the reference's erasure gives. */
@@ -137,7 +127,7 @@ class JavacCastsTest {
     })
     void aCastInRangeHasNoWrapAtAnyLevel(String members) {
         for (var level : OptimizationLevel.values()) {
-            assertArrayEquals(bytesOf(members, CompilerFrontend.JAVAPARSER, level), bytesOf(members, CompilerFrontend.JAVAC, level), level + " " + members);
+            FrozenReference.assertSame("a cast in range|" + members + "|" + level, HexFormat.of().formatHex(bytesOf(members, level)));
         }
     }
 
@@ -162,8 +152,8 @@ class JavacCastsTest {
     })
     void aCastNotShownInRangeKeepsItsWrap(String members) {
         for (var level : OptimizationLevel.values()) {
-            assertNotEquals(HexFormat.of().formatHex(bytesOf(members, CompilerFrontend.JAVAPARSER, level)),
-                    HexFormat.of().formatHex(bytesOf(members, CompilerFrontend.JAVAC, level)), level + " " + members);
+            // At M6 these bytes differ from the reference's erasure, which Adr068NarrowingHarnessTest holds to the JVM.
+            FrozenReference.assertSame("a cast not in range|" + members + "|" + level, HexFormat.of().formatHex(bytesOf(members, level)));
         }
     }
 
@@ -177,15 +167,13 @@ class JavacCastsTest {
                 + "return y.add(BigInteger.valueOf(2147483648L)).mod(BigInteger.valueOf(4294967296L)).subtract(BigInteger.valueOf(2147483648L)); }";
         var inRange = template.formatted("16");
         var outOfRange = template.formatted("8589934592");
-        for (var frontend : CompilerFrontend.values()) {
-            for (var level : OptimizationLevel.values()) {
-                assertTrue(bytesOf(inRange, frontend, level).length < bytesOf(outOfRange, frontend, level).length, frontend + " " + level);
-                for (long x : new long[]{-1, 0, 15, 16, 2147483647L, 2147483648L, 4294967296L, -2147483649L, 8589934591L}) {
-                    var in = BigInteger.valueOf(x).mod(BigInteger.valueOf(16));
-                    var out = BigInteger.valueOf(x).mod(BigInteger.valueOf(8589934592L));
-                    assertEquals(wrapOf(in), evaluatedInteger(compiledWithLibrary(inRange, frontend, level), x), frontend + " " + level + " in " + x);
-                    assertEquals(wrapOf(out), evaluatedInteger(compiledWithLibrary(outOfRange, frontend, level), x), frontend + " " + level + " out " + x);
-                }
+        for (var level : OptimizationLevel.values()) {
+            assertTrue(bytesOf(inRange, level).length < bytesOf(outOfRange, level).length, level.toString());
+            for (long x : new long[]{-1, 0, 15, 16, 2147483647L, 2147483648L, 4294967296L, -2147483649L, 8589934591L}) {
+                var in = BigInteger.valueOf(x).mod(BigInteger.valueOf(16));
+                var out = BigInteger.valueOf(x).mod(BigInteger.valueOf(8589934592L));
+                assertEquals(wrapOf(in), evaluatedInteger(compiledWithLibrary(inRange, level), x), level + " in " + x);
+                assertEquals(wrapOf(out), evaluatedInteger(compiledWithLibrary(outOfRange, level), x), level + " out " + x);
             }
         }
     }
@@ -206,7 +194,7 @@ class JavacCastsTest {
         var program = "static long m(byte[] b, long i) { return (int) ByteStringLib.at(b, i); }";
         var data = new byte[]{0, 1, 127, (byte) 128, (byte) 255};
         for (var level : OptimizationLevel.values()) {
-            var compiled = compiledWithLibrary(program, CompilerFrontend.JAVAC, level);
+            var compiled = compiledWithLibrary(program, level);
             for (int i = 0; i < data.length; i++) {
                 long java = (int) (long) Byte.toUnsignedInt(data[i]);
                 var result = JulcVm.create().evaluateWithArgs(compiled, List.of(PlutusData.bytes(data), PlutusData.integer(i)));
@@ -231,7 +219,7 @@ class JavacCastsTest {
         var values = new long[]{0, 1, -1, 15, 16, -16, -17, 255, 256, 2147483647L, 2147483648L, -2147483648L, -2147483649L, 4294967295L, 4294967296L, -4294967297L};
         for (var row : rows) {
             for (var level : OptimizationLevel.values()) {
-                var compiled = compiledWithLibrary(row.members(), CompilerFrontend.JAVAC, level);
+                var compiled = compiledWithLibrary(row.members(), level);
                 for (long x : values) {
                     var result = JulcVm.create().evaluateWithArgs(compiled, List.of(PlutusData.integer(x)));
                     assertEquals(new Term.Const(Constant.integer(BigInteger.valueOf(row.java().applyAsLong(x)))),
@@ -306,13 +294,11 @@ class JavacCastsTest {
         var oneEmpty = new PlutusData.ListData(List.of(new PlutusData.MapData(List.of())));
         var none = new PlutusData.ListData(List.of());
         for (var level : OptimizationLevel.values()) {
-            for (var frontend : List.of(CompilerFrontend.JAVAPARSER, CompilerFrontend.JAVAC)) {
-                var program = new JulcCompiler(STDLIB, new CompilerOptions().setOptimizationLevel(level).setFrontend(frontend))
-                        .compileMethod(source, "m", List.of()).program();
-                assertEquals(new Term.Const(Constant.bool(true)), assertInstanceOf(EvalResult.Success.class,
-                        CompilerTestVm.pv11().evaluateWithArgs(program, List.of(x, oneEmpty)), level::toString).resultTerm());
-                assertInstanceOf(EvalResult.Failure.class, CompilerTestVm.pv11().evaluateWithArgs(program, List.of(x, none)), level::toString);
-            }
+            var program = new JulcCompiler(STDLIB, new CompilerOptions().setOptimizationLevel(level))
+                    .compileMethod(source, "m", List.of()).program();
+            assertEquals(new Term.Const(Constant.bool(true)), assertInstanceOf(EvalResult.Success.class,
+                    CompilerTestVm.pv11().evaluateWithArgs(program, List.of(x, oneEmpty)), level::toString).resultTerm());
+            assertInstanceOf(EvalResult.Failure.class, CompilerTestVm.pv11().evaluateWithArgs(program, List.of(x, none)), level::toString);
         }
         LoweringFixture.assertSameMethodAsReference(source, "m", STDLIB);
     }
@@ -332,11 +318,8 @@ class JavacCastsTest {
                 }
                 """;
         for (var level : OptimizationLevel.values()) {
-            var reference = new JulcCompiler(STDLIB, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setOptimizationLevel(level)).compileMethod(values, "m");
-            var javac = new JulcCompiler(STDLIB, new CompilerOptions().setOptimizationLevel(level)
-                    .setFrontend(CompilerFrontend.JAVAC)).compileMethod(values, "m");
-            assertArrayEquals(UplcFlatEncoder.encodeProgram(reference.program()), UplcFlatEncoder.encodeProgram(javac.program()),
-                    level::toString);
+            FrozenReference.assertSameBytes("a Value's own view|" + level,
+                    new JulcCompiler(STDLIB, new CompilerOptions().setOptimizationLevel(level)).compileMethod(values, "m").program());
         }
     }
 }

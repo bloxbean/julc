@@ -56,6 +56,9 @@ class Adr060ByteSnapshotTest {
         // ADR-068 F904: an entry point's last parameter is the script context, so this golden validator reads its second
         // integer as its datum, as a spending entry point of three parameters.
         EXPLAINED.put("golden-0-", "ADR-068 F904: the golden validator's second integer is its datum");
+        // ADR-068 M6: this table compares the javac frontend from here. Where a helper has several call sites it promotes a list
+        // read to an array at the fourth level on javac, where the reference did not (068-followups.md, O9ListIndexFixtures).
+        for (var id : List.of("o9-20-", "o9-21-")) EXPLAINED.put(id, "ADR-068 M5: the javac frontend promotes the read in the helper");
         // ADR-068 B3: this program's drop takes a local count, which takes the check a negative count fails.
         EXPLAINED.put("hygiene-17-", "ADR-068 B3: JulcList.drop fails on a negative count");
         // ADR-068 B4: each of these compiles a method with no parameters that may fail, which is a function of a unit now.

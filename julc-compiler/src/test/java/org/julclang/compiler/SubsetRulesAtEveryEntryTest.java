@@ -8,7 +8,6 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.julclang.compiler.error.CompilerDiagnostic;
 import org.julclang.compiler.frontend.javac.JavacGate;
-import org.julclang.compiler.frontend.javac.JavacGateMode;
 import org.julclang.stdlib.StdlibRegistry;
 
 import java.io.IOException;
@@ -246,7 +245,7 @@ class SubsetRulesAtEveryEntryTest {
     }
 
     private static JulcCompiler compiler() {
-        return new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setSourceMapEnabled(true));
+        return new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setSourceMapEnabled(true));
     }
 
     private static int files;
@@ -287,19 +286,6 @@ class SubsetRulesAtEveryEntryTest {
 
     private static Arguments entry(String name, Entry entry) {
         return Arguments.of(name, entry);
-    }
-
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("validatorEntries")
-    void aValidatorEntryMeetsEveryRule(String name, Entry entry) {
-        assertRejected("JULC0094", entry, RETURNS_A_NUMBER);
-        assertRejected("JULC0095", entry, HOLDS_A_DIVISION);
-        assertRejected("JULC0095", entry, RUNS_A_BLOCK);
-        assertRejected("JULC0098", entry, CASTS_A_NUMBER);
-        for (var constructor : CONSTRUCTORS) assertRejected("JULC0099", entry, constructor.validator());
-        for (var body : CAST_BODIES) assertRejected("JULC0098", entry, casting(body));
-        for (var member : SPELLED_TYPES) assertRejected("JULC0100", entry, declaring(member));
-        for (var member : SPELLED_METHODS) assertRejected("JULC0101", entry, declaring(member));
     }
 
     private static final String DATUM_OF_A_SUM_WITH_A_NEWTYPE_VARIANT = IMPORTS + """
@@ -352,8 +338,8 @@ class SubsetRulesAtEveryEntryTest {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("validatorEntries")
-    void aValidatorEntryCompilesAnEmptyConstructor(String name, Entry entry) {
-        assertDoesNotThrow(() -> entry.compile(compiler(), EMPTY.validator()));
+    void aValidatorEntryRejectsAnEmptyCompactConstructor(String name, Entry entry) {
+        assertRejected("JULC0080", entry, EMPTY.validator());
     }
 
     static Stream<Arguments> methodEntries() {
@@ -368,26 +354,12 @@ class SubsetRulesAtEveryEntryTest {
         assertRejected("JULC0095", entry, METHOD_HOLDS_A_DIVISION);
         assertRejected("JULC0098", entry, METHOD_CASTS_A_NUMBER);
         for (var constructor : CONSTRUCTORS) assertRejected("JULC0099", entry, constructor.method());
-        for (var member : SPELLED_TYPES) {
-            assertRejected("JULC0100", entry, """
-                    import java.math.BigInteger;
-                    import org.julclang.stdlib.annotation.*;
-                    class P { %s static long m() { return 1; } }
-                    """.formatted(member));
-        }
-        for (var member : SPELLED_METHODS) {
-            assertRejected("JULC0101", entry, """
-                    import java.math.BigInteger;
-                    import org.julclang.stdlib.annotation.*;
-                    class P { %s static long m() { return 1; } }
-                    """.formatted(member));
-        }
     }
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("methodEntries")
-    void aMethodEntryCompilesAnEmptyConstructor(String name, Entry entry) {
-        assertDoesNotThrow(() -> entry.compile(compiler(), EMPTY.method()));
+    void aMethodEntryRejectsAnEmptyCompactConstructor(String name, Entry entry) {
+        assertRejected("JULC0080", entry, EMPTY.method());
     }
 
     @Test
@@ -428,7 +400,7 @@ class SubsetRulesAtEveryEntryTest {
                     return compiler.compileWithSiblings(validator);
                 }),
                 entry("compileMethod", (compiler, library) -> compiler.compileMethod(METHOD_CALLS_THE_LIBRARY, "m", List.of(library))),
-                entry("JavaLibraryProvider", (compiler, library) -> new JavaLibraryProvider(List.of(library), null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER))));
+                entry("JavaLibraryProvider", (compiler, library) -> new JavaLibraryProvider(List.of(library), null, new CompilerOptions())));
     }
 
     @ParameterizedTest(name = "{0}")
@@ -437,56 +409,15 @@ class SubsetRulesAtEveryEntryTest {
         assertRejected("JULC0095", entry, LIBRARY);
         assertRejected("JULC0098", entry, CASTING_LIBRARY);
         for (var constructor : CONSTRUCTORS) assertRejected("JULC0099", entry, constructor.library());
-        for (var member : SPELLED_METHODS) assertRejected("JULC0101", entry, libraryOf(member));
-        assertRejected("JULC0100", entry, libraryOf("record Boolean(long a) { }"));
         assertRejected("JULC0098", entry, libraryOf("static boolean flag(BigInteger r) { return PlutusData.cast(r, Boolean.class); }"));
     }
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("libraryEntries")
-    void aLibraryAtEveryEntryCompilesAnEmptyConstructor(String name, Entry entry) {
-        assertDoesNotThrow(() -> entry.compile(compiler(), EMPTY.library()));
+    void aLibraryAtEveryEntryRejectsAnEmptyCompactConstructor(String name, Entry entry) {
+        assertRejected("JULC0080", entry, EMPTY.library());
     }
 
-    private static Executable compiling(JavacGateMode mode, String source) {
-        return () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(mode)).compile(source);
-    }
-
-    @Test
-    void theDefaultModeEnforces() {
-        assertEquals(JavacGateMode.ENFORCE, JavacGate.mode(new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)));
-    }
-
-    @Test
-    void enforceRejects() {
-        assertThrows(CompilerException.class, compiling(JavacGateMode.ENFORCE, HOLDS_A_DIVISION));
-    }
-
-    /** Both modes that do not reject leave the compilation to the frontend: the gate is what holds the rules. */
-    @Test
-    void reportAndOffLeaveTheRulesUnenforced() {
-        for (var mode : List.of(JavacGateMode.REPORT, JavacGateMode.OFF)) {
-            assertDoesNotThrow(compiling(mode, HOLDS_A_DIVISION));
-            assertDoesNotThrow(compiling(mode, RUNS_A_BLOCK));
-            assertDoesNotThrow(compiling(mode, CONSTRUCTORS.getFirst().validator()));
-        }
-    }
-
-    @Test
-    void reportWritesTheRuleDown() throws IOException {
-        Path reports = Files.createDirectories(dir.resolve("reports"));
-        String saved = System.getProperty(JavacGate.REPORT_PROPERTY);
-        System.setProperty(JavacGate.REPORT_PROPERTY, reports.toString());
-        try {
-            assertDoesNotThrow(compiling(JavacGateMode.REPORT, HOLDS_A_DIVISION));
-        } finally {
-            if (saved == null) System.clearProperty(JavacGate.REPORT_PROPERTY);
-            else System.setProperty(JavacGate.REPORT_PROPERTY, saved);
-        }
-        try (var written = Files.walk(reports)) {
-            assertEquals(true, written.filter(Files::isRegularFile).anyMatch(SubsetRulesAtEveryEntryTest::namesTheRule));
-        }
-    }
 
     private static boolean namesTheRule(Path report) {
         try {
@@ -498,16 +429,11 @@ class SubsetRulesAtEveryEntryTest {
 
     /** {@code off} holds nothing back on the default frontend, and the javac frontend has no gate to turn off. */
     @Test
-    void theJavacFrontendAppliesTheRulesInEveryMode() {
-        for (var mode : JavacGateMode.values()) {
-            var options = new CompilerOptions().setJavacGate(mode).setFrontend(CompilerFrontend.JAVAC);
-            var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, options).compile(HOLDS_A_DIVISION));
-            assertEquals("JULC0095", thrown.diagnostics().getFirst().code());
-            var options2 = new CompilerOptions().setJavacGate(mode).setFrontend(CompilerFrontend.JAVAC);
-            var constructor = assertThrows(CompilerException.class,
-                    () -> new JulcCompiler(null, options2).compile(CONSTRUCTORS.getFirst().validator()));
-            assertEquals("JULC0099", constructor.diagnostics().getFirst().code());
-        }
+    void theFrontendAppliesTheRules() {
+        var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler().compile(HOLDS_A_DIVISION));
+        assertEquals("JULC0095", thrown.diagnostics().getFirst().code());
+        var constructor = assertThrows(CompilerException.class, () -> new JulcCompiler().compile(CONSTRUCTORS.getFirst().validator()));
+        assertEquals("JULC0099", constructor.diagnostics().getFirst().code());
     }
 
     @Test

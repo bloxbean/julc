@@ -279,7 +279,6 @@ class JavacRecordsTest {
      */
     @Test
     void aVarargsComponentIsAnArray() {
-        LoweringFixture.assertReferenceAcceptsMethod(source("record R(BigInteger... a) { } static long m() { return 1; }"), "m");
         assertEquals("JULC0014", javac("record R(BigInteger... a) { } static long m() { return 1; }").diagnostics().getFirst().code());
         assertTrue(javac("record R(long a, byte... b) { } static long m() { return 1; }").getMessage().contains("Unsupported primitive type: byte"));
         assertTrue(javac("@NewType record V(byte... b) { } static long m() { return 1; }").getMessage().contains("field type 'byte' is not supported"));

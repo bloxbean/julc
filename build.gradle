@@ -117,6 +117,12 @@ subprojects {
         // default from M5.
         def toolsReader = providers.gradleProperty('julc.tools.reader')
         if (toolsReader.present) systemProperty 'julc.tools.reader', toolsReader.get()
+        // ADR-068 M6: `-Pjulc.frozenReference.record=<file>` writes the lowering tests' frozen answers (FrozenReference).
+        def frozenReference = providers.gradleProperty('julc.frozenReference.record')
+        if (frozenReference.present) {
+            systemProperty 'julc.frozenReference.record', rootProject.file(frozenReference.get()).absolutePath
+            outputs.upToDateWhen { false }
+        }
         def corpusRecord = providers.gradleProperty('julc.corpus.record')
         if (corpusRecord.present && project.name in ['julc-compiler', 'julc-stdlib', 'julc-testkit', 'julc-difftest', 'julc-examples']) {
             systemProperty 'julc.corpus.record', rootProject.file(corpusRecord.get()).absolutePath

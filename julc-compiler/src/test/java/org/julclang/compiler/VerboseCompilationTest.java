@@ -35,24 +35,6 @@ class VerboseCompilationTest {
         assertTrue(logs.isEmpty(), "Non-verbose mode should produce no log output");
     }
 
-    @Test
-    void testVerboseLogsAllStages() {
-        var logs = new ArrayList<String>();
-        var opts = new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setVerbose(true).setLogger(logs::add);
-        var compiler = new JulcCompiler(null, opts);
-        compiler.compile(SIMPLE_VALIDATOR);
-
-        assertFalse(logs.isEmpty(), "Verbose mode should produce log output");
-
-        var joined = String.join("\n", logs);
-        assertTrue(joined.contains("Parsing"), "Should log parsing stage");
-        assertTrue(joined.contains("Subset validation passed"), "Should log subset validation");
-        assertTrue(joined.contains("Validator"), "Should log validator discovery");
-        assertTrue(joined.contains("PIR generation complete"), "Should log PIR generation");
-        assertTrue(joined.contains("UPLC optimization complete"), "Should log UPLC optimization");
-        assertTrue(joined.contains("Compilation complete"), "Should log completion with size");
-    }
-
     /**
      * ADR-068 M5: the stages above are the JavaParser frontend's log, selected explicitly there. The javac frontend, the
      * default, logs the target, the version, the optimization level and the result's size.
@@ -81,69 +63,4 @@ class VerboseCompilationTest {
                 "All log messages should have [julc] prefix");
     }
 
-    @Test
-    void testVerboseWithLibraries() {
-        var logs = new ArrayList<String>();
-        var opts = new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setVerbose(true).setLogger(logs::add);
-        var compiler = new JulcCompiler(null, opts);
-
-        var libSource = """
-                import org.julclang.stdlib.annotation.OnchainLibrary;
-                @OnchainLibrary
-                class MathHelper {
-                    static boolean isPositive(long x) {
-                        return x > 0;
-                    }
-                }
-                """;
-        var validatorSource = """
-                import org.julclang.core.PlutusData;
-                import org.julclang.ledger.ScriptContext;
-                import org.julclang.stdlib.annotation.Entrypoint;
-                import org.julclang.stdlib.annotation.SpendingValidator;
-                @SpendingValidator
-                class LibValidator {
-                    @Entrypoint
-                    static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                        return MathHelper.isPositive(42);
-                    }
-                }
-                """;
-        compiler.compile(validatorSource, List.of(libSource));
-
-        var joined = String.join("\n", logs);
-        assertTrue(joined.contains("Compiling 1 library source"), "Should log library compilation");
-        assertTrue(joined.contains("Compiled 1 library method"), "Should log compiled library methods");
-    }
-
-    @Test
-    void testVerboseWithParams() {
-        var logs = new ArrayList<String>();
-        var opts = new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setVerbose(true).setLogger(logs::add);
-        var compiler = new JulcCompiler(null, opts);
-
-        var source = """
-                import java.math.BigInteger;
-                import org.julclang.core.PlutusData;
-                import org.julclang.ledger.ScriptContext;
-                import org.julclang.stdlib.annotation.Entrypoint;
-                import org.julclang.stdlib.annotation.Param;
-                import org.julclang.stdlib.annotation.SpendingValidator;
-
-                @SpendingValidator
-                class ParamValidator {
-                    @Param static BigInteger threshold;
-
-                    @Entrypoint
-                    static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                        return threshold.compareTo(BigInteger.ZERO) > 0;
-                    }
-                }
-                """;
-        compiler.compile(source);
-
-        var joined = String.join("\n", logs);
-        assertTrue(joined.contains("@Param"), "Should log @Param detection");
-        assertTrue(joined.contains("threshold"), "Should log param field name");
-    }
 }

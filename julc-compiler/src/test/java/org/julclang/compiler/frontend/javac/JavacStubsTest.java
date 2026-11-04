@@ -29,7 +29,7 @@ class JavacStubsTest {
     static final Map<String, byte[]> STUBS = JavacPlatform.read(JavacPlatform.resource(JavacPlatform.STUBS_RESOURCE));
     static final Map<String, byte[]> PLATFORM =
             JavacPlatform.read(JavacPlatform.resource(JavacPlatform.PLATFORM_RESOURCE));
-    static final Map<String, LibraryType> LEDGER = new LedgerTypeProvider(new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).types();
+    static final Map<String, LibraryType> LEDGER = new LedgerTypeProvider(new CompilerOptions()).types();
 
     static ClassModel stub(String internalName) {
         byte[] bytes = STUBS.get(internalName + ".class");
@@ -75,7 +75,7 @@ class JavacStubsTest {
 
     private static void check(Elements elements) {
         assertEquals(34, LEDGER.size());
-        assertEquals(79, new LedgerTypeProvider(new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).namedDefinitions().size());
+        assertEquals(79, new LedgerTypeProvider(new CompilerOptions()).namedDefinitions().size());
         LEDGER.forEach((name, type) -> {
             TypeElement element = elements.getTypeElement(name);
             assertNotNull(element, name);

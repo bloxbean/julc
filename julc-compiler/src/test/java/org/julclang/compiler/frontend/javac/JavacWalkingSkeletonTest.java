@@ -5,6 +5,7 @@ import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.OptimizationLevel;
+import org.julclang.compiler.frontend.javac.lower.FrozenReference;
 import org.julclang.compiler.frontend.javac.lower.LoweringFixture;
 import org.julclang.core.flat.UplcFlatEncoder;
 import org.junit.jupiter.api.Test;
@@ -39,16 +40,13 @@ class JavacWalkingSkeletonTest {
     @Test
     void returnTrueCompilesToTheReferencesBytesAtEveryLevel() {
         for (var level : OptimizationLevel.values()) {
-            var reference = compile(RETURN_TRUE, level, CompilerFrontend.JAVAPARSER);
-            var javac = compile(RETURN_TRUE, level, CompilerFrontend.JAVAC);
-            assertArrayEquals(UplcFlatEncoder.encodeProgram(reference.program()),
-                    UplcFlatEncoder.encodeProgram(javac.program()), level.toString());
+            FrozenReference.assertSameBytes("return true|" + level, compile(RETURN_TRUE, level).program());
         }
     }
 
     @Test
     void theJavacFrontendRecordsWhatJavacSaw() {
-        var provenance = compile(RETURN_TRUE, OptimizationLevel.DEFAULT, CompilerFrontend.JAVAC).javacProvenance();
+        var provenance = compile(RETURN_TRUE, OptimizationLevel.DEFAULT).javacProvenance();
         assertEquals(JavacProvenance.Outcome.ACCEPTED, provenance.outcome());
         assertEquals(JavacFrontend.javacVersion(), provenance.javacVersion());
         assertTrue(provenance.platformDigest() != null && provenance.stubsDigest() != null);
@@ -166,8 +164,8 @@ class JavacWalkingSkeletonTest {
                 """);
     }
 
-    private static CompileResult compile(String source, OptimizationLevel level, CompilerFrontend frontend) {
-        return new JulcCompiler(null, new CompilerOptions().setOptimizationLevel(level).setFrontend(frontend))
+    private static CompileResult compile(String source, OptimizationLevel level) {
+        return new JulcCompiler(null, new CompilerOptions().setOptimizationLevel(level))
                 .compile(source, List.of());
     }
 }

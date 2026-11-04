@@ -34,7 +34,7 @@ class SwitchDiagnosticsTest {
     /** JuLC rejects the program with {@code code} and a message containing {@code fragment}. */
     private static CompilerDiagnostic rejected(String source, String code, String fragment) {
         var error = assertThrows(CompilerException.class,
-                () -> new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod(source, "m"), source);
+                () -> new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()).compileMethod(source, "m"), source);
         var diagnostic = error.diagnostics().stream().filter(d -> d.level() == CompilerDiagnostic.Level.ERROR)
                 .findFirst().orElseThrow();
         assertEquals(code, diagnostic.code(), diagnostic.message());
@@ -42,17 +42,8 @@ class SwitchDiagnosticsTest {
         return diagnostic;
     }
 
-    /** With the gate off, for what its rules reject first: the frontend's own rejection is what is pinned. */
-    private static void rejectedWithTheGateOff(String source, String code, String fragment) {
-        var error = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(),
-                new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.OFF)).compileMethod(source, "m"), source);
-        var diagnostic = error.diagnostics().getFirst();
-        assertEquals(code, diagnostic.code(), diagnostic.message());
-        assertTrue(diagnostic.message().contains(fragment), diagnostic.message());
-    }
-
     private static void accepted(String source) {
-        var result = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod(source, "m");
+        var result = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()).compileMethod(source, "m");
         assertFalse(result.hasErrors(), () -> result.diagnostics().toString());
     }
 
@@ -652,7 +643,7 @@ class SwitchDiagnosticsTest {
                         S s = new A(a);
                         return switch (s) { case A x when Probe.ON -> BigInteger.ONE; case A x -> BigInteger.TWO; case B y -> BigInteger.ZERO; };
                     }
-                """), "JULC0100", "the variable Probe");
+                """), "JULC0072", "Probe.ON");
         // F56: a qualified pattern type naming another declaration (qualifiedPatternTypeOfAnotherDeclaration).
         rejected(probe(S + """
                     static final class Other {
@@ -739,9 +730,7 @@ class SwitchDiagnosticsTest {
                         return switch (s) { case A x when Probe.ON -> BigInteger.ONE; case A x -> BigInteger.TWO; case B y -> BigInteger.ZERO; };
                     }
                 """);
-        rejectedWithTheGateOff(qualifierIsALocal, "JULC0072", "Probe.ON");
-        // The gate rejects the shape first: a variable does not take the name of a type offered to a compilation.
-        rejected(qualifierIsALocal, "JULC0100", "the variable Probe");
+        rejected(qualifierIsALocal, "JULC0072", "Probe.ON");
         // With the class as the qualifier, Probe.ON is the constant true: the label is unguarded and covers A.
         accepted(probe(S + """
                     static final boolean ON = true;
@@ -852,9 +841,7 @@ class SwitchDiagnosticsTest {
                         return switch (s) { case A x when (Object) x instanceof C -> BigInteger.ONE; default -> BigInteger.TWO; };
                     }
                 """);
-        rejectedWithTheGateOff(throughAWideningCast, "JULC0072", "#288");
-        // The gate reads the operand's static type first, in every position.
-        rejected(throughAWideningCast, "JULC0100", "java.lang.Object");
+        rejected(throughAWideningCast, "JULC0072", "#288");
         rejected(probe(S + t + """
                     static BigInteger m(BigInteger a) {
                         S s = new A(a);
@@ -1130,7 +1117,7 @@ class SwitchDiagnosticsTest {
 
     @Test
     void guardCannotAssign() {
-        var error = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER))
+        var error = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions())
                 .compileMethod(probe(S + """
                     static BigInteger m(BigInteger a) {
                         BigInteger t = BigInteger.ZERO;

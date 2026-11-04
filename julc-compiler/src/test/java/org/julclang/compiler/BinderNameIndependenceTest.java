@@ -1,19 +1,17 @@
 package org.julclang.compiler;
 
-import com.github.javaparser.JavaParser;
-import com.github.javaparser.ParserConfiguration;
-import com.github.javaparser.ast.CompilationUnit;
-import com.github.javaparser.ast.Node;
-import com.github.javaparser.ast.body.FieldDeclaration;
-import com.github.javaparser.ast.body.MethodDeclaration;
-import com.github.javaparser.ast.body.Parameter;
-import com.github.javaparser.ast.body.RecordDeclaration;
-import com.github.javaparser.ast.body.TypeDeclaration;
-import com.github.javaparser.ast.body.VariableDeclarator;
-import com.github.javaparser.ast.expr.MethodCallExpr;
-import com.github.javaparser.ast.expr.NameExpr;
-import com.github.javaparser.ast.expr.SimpleName;
-import com.github.javaparser.ast.expr.TypePatternExpr;
+import com.sun.source.tree.ClassTree;
+import com.sun.source.tree.IdentifierTree;
+import com.sun.source.tree.MethodInvocationTree;
+import com.sun.source.tree.MethodTree;
+import com.sun.source.tree.Tree;
+import com.sun.source.tree.VariableTree;
+import com.sun.source.util.TreePath;
+import com.sun.source.util.TreePathScanner;
+import com.sun.source.util.TreeScanner;
+import org.julclang.compiler.frontend.javac.ExpressionRoles;
+import org.julclang.compiler.frontend.javac.JavacSyntax;
+import javax.lang.model.element.Modifier;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.core.PlutusData;
 import org.julclang.core.flat.UplcFlatEncoder;
@@ -32,6 +30,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -70,8 +69,6 @@ class BinderNameIndependenceTest {
     private static final List<OptimizationLevel> LEVELS = List.of(OptimizationLevel.NONE, OptimizationLevel.BASELINE,
             OptimizationLevel.PV11_SAFE, OptimizationLevel.PV11_COSTED);
     private static final Pattern IDENTIFIER = Pattern.compile("[A-Za-z_$][A-Za-z0-9_$]*");
-    private static final JavaParser PARSER = new JavaParser(new ParserConfiguration()
-            .setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21));
 
     /** Validators whose class-level names (helpers, static fields, @Param) are renamed too. */
     static final List<Adr060Corpus.Entry> CLASS_LEVEL = List.of(
@@ -260,15 +257,16 @@ class BinderNameIndependenceTest {
         int renames = 0;
         int rotation = 0;
         for (var entry : Adr060Corpus.entries()) {
-            var cu = PARSER.parse(entry.source()).getResult().orElseThrow();
+            var syntax = JavacSyntax.read(entry.source());
+            assertFalse(syntax.hasErrors(), entry::id);
             var classLevel = CLASS_LEVEL.contains(entry);
-            for (var candidate : candidates(cu, classLevel)) {
+            for (var candidate : candidates(syntax, classLevel)) {
                 // Class-level programs rename every name to every target; the corpus rotates.
                 var targets = classLevel ? TARGETS : List.of(TARGETS.get(rotation++ % TARGETS.size()));
                 for (var target : targets) {
                     if (appearsIn(entry.source(), target)) continue;
                     var rename = new Rename(entry.id(), candidate.kind(), candidate.name(), target);
-                    var renamed = apply(entry, cu, candidate, target);
+                    var renamed = apply(entry, syntax, candidate, target);
                     renames++;
                     // Class-level programs rename every name to every target, so they compare at one
                     // level without and one with the name-counting passes.
@@ -332,11 +330,9 @@ class BinderNameIndependenceTest {
     }
 
     private static CompileResult compile(Adr060Corpus.Entry entry, OptimizationLevel level, boolean maps) {
-        // The renames are made on JavaParser's tree, so the programs compile on the JavaParser frontend, selected explicitly
-        // from ADR-068 M5; M6 ports this guard to javac's trees (068-m6a-tools.md, step 6).
-        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), Adr060Corpus.dialectGate(new CompilerOptions()
-                .setFrontend(CompilerFrontend.JAVAPARSER).setOptimizationLevel(level).setSourceMapEnabled(maps)
-                .setOptimizationCostProfile(OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1), entry.source()));
+        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()
+                .setOptimizationLevel(level).setSourceMapEnabled(maps)
+                .setOptimizationCostProfile(OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1));
         try {
             var result = entry.validator() ? compiler.compileWithDetails(entry.source())
                     : compiler.compileMethod(entry.source(), entry.method());
@@ -391,7 +387,7 @@ class BinderNameIndependenceTest {
 
     // --- renaming ---
 
-    private record Candidate(String kind, String name, MethodDeclaration method) {}
+    private record Candidate(String kind, String name, MethodTree method) {}
 
     /**
      * Renameable names: method-scoped names (a Java local cannot shadow another, so renaming every
@@ -399,22 +395,39 @@ class BinderNameIndependenceTest {
      * static methods, static fields and @Param fields. Names that are also a type, record
      * component, field or method elsewhere in the file are skipped as ambiguous.
      */
-    private static List<Candidate> candidates(CompilationUnit cu, boolean classLevel) {
+    private static List<Candidate> candidates(JavacSyntax syntax, boolean classLevel) {
         var reserved = new HashSet<String>();
-        cu.findAll(TypeDeclaration.class).forEach(t -> reserved.add(t.getNameAsString()));
-        cu.findAll(RecordDeclaration.class).forEach(r -> r.getParameters().forEach(p -> reserved.add(p.getNameAsString())));
         var fields = new LinkedHashSet<String>();
-        cu.findAll(FieldDeclaration.class).forEach(f -> f.getVariables().forEach(v -> fields.add(v.getNameAsString())));
         var methods = new LinkedHashSet<String>();
-        cu.findAll(MethodDeclaration.class).forEach(m -> methods.add(m.getNameAsString()));
+        var declaring = new ArrayList<MethodTree>();
+        new TreeScanner<Void, Void>() {
+            @Override
+            public Void visitClass(ClassTree type, Void unused) {
+                reserved.add(type.getSimpleName().toString());
+                boolean record = type.getKind() == Tree.Kind.RECORD;
+                for (var member : type.getMembers()) {
+                    if (member instanceof VariableTree field) {
+                        boolean component = record && !field.getModifiers().getFlags().contains(Modifier.STATIC);
+                        (component ? reserved : fields).add(field.getName().toString());
+                    }
+                    if (member instanceof MethodTree method && !method.getName().contentEquals("<init>")) {
+                        methods.add(method.getName().toString());
+                        if (!record) declaring.add(method);
+                    }
+                }
+                return super.visitClass(type, unused);
+            }
+        }.scan(syntax.unit(), null);
         var result = new ArrayList<Candidate>();
-        for (var method : cu.findAll(MethodDeclaration.class)) {
-            if (method.findAncestor(RecordDeclaration.class).isPresent()) continue;
+        for (var method : declaring) {
             var names = new LinkedHashSet<String>();
-            method.getParameters().forEach(p -> names.add(p.getNameAsString()));
-            method.findAll(VariableDeclarator.class).forEach(v -> names.add(v.getNameAsString()));
-            method.findAll(Parameter.class).forEach(p -> names.add(p.getNameAsString()));
-            method.findAll(TypePatternExpr.class).forEach(p -> names.add(p.getNameAsString()));
+            new TreeScanner<Void, Void>() {
+                @Override
+                public Void visitVariable(VariableTree variable, Void unused) {
+                    names.add(variable.getName().toString());
+                    return super.visitVariable(variable, unused);
+                }
+            }.scan(method, null);
             for (var name : names)
                 if (!reserved.contains(name) && !fields.contains(name) && !methods.contains(name))
                     result.add(new Candidate("local", name, method));
@@ -430,30 +443,57 @@ class BinderNameIndependenceTest {
         return result;
     }
 
-    private static Adr060Corpus.Entry apply(Adr060Corpus.Entry entry, CompilationUnit cu, Candidate candidate, String to) {
-        var spans = new ArrayList<SimpleName>();
-        Node root = candidate.method() != null ? candidate.method() : cu;
-        for (var name : root.findAll(SimpleName.class)) {
-            if (!name.getIdentifier().equals(candidate.name())) continue;
-            var parent = name.getParentNode().orElse(null);
-            boolean variable = parent instanceof NameExpr || parent instanceof Parameter
-                    || parent instanceof VariableDeclarator || parent instanceof TypePatternExpr;
-            boolean method = parent instanceof MethodDeclaration
-                    || parent instanceof MethodCallExpr call && call.getScope().isEmpty();
-            if (candidate.kind().equals("method") ? method : variable) spans.add(name);
-        }
-        spans.sort(Comparator.comparing((SimpleName n) -> n.getBegin().orElseThrow()).reversed());
-        var lines = new ArrayList<>(entry.source().lines().toList());
-        for (var span : spans) {
-            var begin = span.getBegin().orElseThrow();
-            var line = lines.get(begin.line - 1);
-            int column = begin.column - 1;
-            assertEquals(candidate.name(), line.substring(column, column + candidate.name().length()), span.toString());
-            lines.set(begin.line - 1, line.substring(0, column) + to + line.substring(column + candidate.name().length()));
+    /** Where {@code name} is written, on or after {@code from}, as a whole word. */
+    private static int wordAt(String text, String name, long from) {
+        var matcher = Pattern.compile("(?<![A-Za-z0-9_$])" + Pattern.quote(name) + "(?![A-Za-z0-9_$])").matcher(text);
+        assertTrue(matcher.find((int) from), name);
+        return matcher.start();
+    }
+
+    /** The name of {@code candidate}, each place it is a variable or, for a method, the method: never a type or a member. */
+    private static Adr060Corpus.Entry apply(Adr060Corpus.Entry entry, JavacSyntax syntax, Candidate candidate, String to) {
+        var spans = new TreeSet<Integer>(Comparator.reverseOrder());
+        var positions = syntax.positions();
+        var unit = syntax.unit();
+        String name = candidate.name();
+        boolean renamesMethod = candidate.kind().equals("method");
+        new TreePathScanner<Void, Void>() {
+            @Override
+            public Void visitVariable(VariableTree variable, Void unused) {
+                if (!renamesMethod && variable.getName().contentEquals(name)) {
+                    long type = variable.getType() == null ? -1 : positions.getEndPosition(unit, variable.getType());
+                    spans.add(wordAt(syntax.text(), name, type >= 0 ? type : positions.getStartPosition(unit, variable)));
+                }
+                return super.visitVariable(variable, unused);
+            }
+
+            @Override
+            public Void visitMethod(MethodTree method, Void unused) {
+                if (renamesMethod && method.getName().contentEquals(name)) {
+                    spans.add(wordAt(syntax.text(), name, positions.getEndPosition(unit, method.getReturnType())));
+                }
+                return super.visitMethod(method, unused);
+            }
+
+            @Override
+            public Void visitIdentifier(IdentifierTree identifier, Void unused) {
+                if (identifier.getName().contentEquals(name)) {
+                    var parent = getCurrentPath().getParentPath().getLeaf();
+                    boolean call = parent instanceof MethodInvocationTree invocation && invocation.getMethodSelect() == identifier;
+                    boolean value = !call && ExpressionRoles.isNameExpression(getCurrentPath());
+                    if (renamesMethod ? call : value) spans.add((int) positions.getStartPosition(unit, identifier));
+                }
+                return super.visitIdentifier(identifier, unused);
+            }
+        }.scan(candidate.method() != null ? new TreePath(new TreePath(unit), candidate.method()) : new TreePath(unit), null);
+        var text = new StringBuilder(syntax.text());
+        for (int at : spans) {
+            assertEquals(name, text.substring(at, at + name.length()), entry.id());
+            text.replace(at, at + name.length(), to);
         }
         String method = entry.method();
-        if (candidate.kind().equals("method") && candidate.name().equals(method)) method = to;
-        return new Adr060Corpus.Entry(entry.id(), String.join("\n", lines) + "\n", method, entry.inputs());
+        if (renamesMethod && name.equals(method)) method = to;
+        return new Adr060Corpus.Entry(entry.id(), text.toString(), method, entry.inputs());
     }
 
     private static boolean appearsIn(String source, String name) {

@@ -1,7 +1,7 @@
 package org.julclang.compiler.frontend.javac;
 
+import org.julclang.compiler.frontend.javac.lower.FrozenReference;
 import org.julclang.compiler.CompilerException;
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.schema.ContractCompileResult;
 import org.julclang.compiler.DebugCompileResult;
@@ -142,17 +142,17 @@ class JavacContractAndDebugTest {
             }
             """;
 
-    private static CompilerOptions options(CompilerFrontend frontend, OptimizationLevel level, boolean sourceMap) {
-        return new CompilerOptions().setFrontend(frontend).setOptimizationLevel(level).setSourceMapEnabled(sourceMap);
+    private static CompilerOptions options(OptimizationLevel level, boolean sourceMap) {
+        return new CompilerOptions().setOptimizationLevel(level).setSourceMapEnabled(sourceMap);
     }
 
-    private static ContractCompileResult contract(String source, CompilerFrontend frontend, OptimizationLevel level) {
-        return new JulcCompiler(StdlibRegistry.defaultRegistry(), options(frontend, level, false))
+    private static ContractCompileResult contract(String source, OptimizationLevel level) {
+        return new JulcCompiler(StdlibRegistry.defaultRegistry(), options(level, false))
                 .compileContract(source, List.of());
     }
 
-    private static DebugCompileResult debug(String source, CompilerFrontend frontend, OptimizationLevel level) {
-        return new JulcCompiler(StdlibRegistry.defaultRegistry(), options(frontend, level, true))
+    private static DebugCompileResult debug(String source, OptimizationLevel level) {
+        return new JulcCompiler(StdlibRegistry.defaultRegistry(), options(level, true))
                 .compileForDebug(source, List.of());
     }
 
@@ -162,18 +162,16 @@ class JavacContractAndDebugTest {
     @EnumSource(OptimizationLevel.class)
     void aContractHasTheReferencesBytesAndSchema(OptimizationLevel level) {
         for (var source : List.of(SPENDING, MINTING, MULTI)) {
-            var reference = contract(source, CompilerFrontend.JAVAPARSER, level);
-            var javac = contract(source, CompilerFrontend.JAVAC, level);
-            assertArrayEquals(UplcFlatEncoder.encodeProgram(reference.compileResult().program()),
-                    UplcFlatEncoder.encodeProgram(javac.compileResult().program()));
-            assertEquals(view(reference.contractSchema()), view(javac.contractSchema()));
-            assertEquals(reference.contractSchema().namedDefinitions(), javac.contractSchema().namedDefinitions());
+            var javac = contract(source, level);
+            FrozenReference.assertSameBytes("a contract's bytes|" + source + "|" + level, javac.compileResult().program());
+            FrozenReference.assertSame("a contract's schema|" + source + "|" + level,
+                    view(javac.contractSchema()) + "|" + javac.contractSchema().namedDefinitions());
         }
     }
 
     @Test
     void theSchemaReadsTheOptionalDatumBareAndOrdersInterfacesByTag() {
-        var schema = contract(MULTI, CompilerFrontend.JAVAC, OptimizationLevel.DEFAULT).contractSchema();
+        var schema = contract(MULTI, OptimizationLevel.DEFAULT).contractSchema();
         assertEquals(List.of(ContractSchema.Purpose.MINT, ContractSchema.Purpose.SPEND),
                 schema.interfaces().stream().map(ContractSchema.ValidatorInterface::purpose).toList());
         var spend = schema.interfaces().get(1);
@@ -185,15 +183,12 @@ class JavacContractAndDebugTest {
 
     @Test
     void manualDispatchHasNoSchemaOnEitherFrontend() {
-        var reference = assertThrows(CompilerException.class, () -> contract(MANUAL, CompilerFrontend.JAVAPARSER,
+        var javac = assertThrows(CompilerException.class, () -> contract(MANUAL,
                 OptimizationLevel.DEFAULT));
-        var javac = assertThrows(CompilerException.class, () -> contract(MANUAL, CompilerFrontend.JAVAC,
-                OptimizationLevel.DEFAULT));
-        assertEquals(reference.diagnostics().getFirst().message(), javac.diagnostics().getFirst().message());
-        assertEquals(reference.diagnostics().getFirst().line(), javac.diagnostics().getFirst().line());
-        assertEquals(reference.diagnostics().getFirst().column(), javac.diagnostics().getFirst().column());
+        var first = javac.diagnostics().getFirst();
+        FrozenReference.assertSame("a manual contract's rejection", first.message() + " @" + first.line() + ":" + first.column());
         // Without a schema the program compiles, on both frontends.
-        new JulcCompiler(StdlibRegistry.defaultRegistry(), options(CompilerFrontend.JAVAC, OptimizationLevel.DEFAULT, false))
+        new JulcCompiler(StdlibRegistry.defaultRegistry(), options(OptimizationLevel.DEFAULT, false))
                 .compile(MANUAL, List.of());
     }
 
@@ -223,25 +218,22 @@ class JavacContractAndDebugTest {
     @EnumSource(OptimizationLevel.class)
     void debugMetadataIsTheReferences(OptimizationLevel level) {
         for (var source : List.of(SPENDING, MINTING, MULTI)) {
-            var reference = debug(source, CompilerFrontend.JAVAPARSER, level);
-            var javac = debug(source, CompilerFrontend.JAVAC, level);
-            assertArrayEquals(UplcFlatEncoder.encodeProgram(reference.compileResult().program()),
-                    UplcFlatEncoder.encodeProgram(javac.compileResult().program()));
-            javac.debugMetadata().validateArtifact(javac.compileResult().program());
-            assertEquals(view(reference.debugMetadata()), view(javac.debugMetadata()));
+            var javac = debug(source, level);
+            FrozenReference.assertSameBytes("a debug program|" + source + "|" + level, javac.compileResult().program());
+            FrozenReference.assertSame("debug metadata|" + source + "|" + level, view(javac.debugMetadata()));
         }
     }
 
     @Test
     void aMaterializedLocalIsAssociatedWithItsBinderAndAMutatingMethodsAreNot() {
-        var spending = debug(SPENDING, CompilerFrontend.JAVAC, OptimizationLevel.NONE).debugMetadata();
+        var spending = debug(SPENDING, OptimizationLevel.NONE).debugMetadata();
         var materialized = spending.loweredBindings().stream().map(DebugMetadata.LoweredBinding::sourceBindingId)
                 .filter(id -> id != null).collect(Collectors.toSet());
         var names = spending.bindings().stream().filter(binding -> materialized.contains(binding.id()))
                 .map(DebugMetadata.Binding::name).collect(Collectors.toSet());
         assertTrue(names.containsAll(List.of("x", "limit", "admin")), names::toString);
 
-        var minting = debug(MINTING, CompilerFrontend.JAVAC, OptimizationLevel.NONE).debugMetadata();
+        var minting = debug(MINTING, OptimizationLevel.NONE).debugMetadata();
         assertTrue(minting.loweredBindings().stream().allMatch(binding -> binding.sourceBindingId() == null
                         || minting.bindings().stream().noneMatch(source -> source.id().equals(binding.sourceBindingId())
                         && source.name().equals("total"))),
@@ -250,12 +242,9 @@ class JavacContractAndDebugTest {
 
     @Test
     void theDebugMetadataNamesTheReferencesIds() {
-        var reference = debug(SPENDING, CompilerFrontend.JAVAPARSER, OptimizationLevel.DEFAULT).debugMetadata();
-        var javac = debug(SPENDING, CompilerFrontend.JAVAC, OptimizationLevel.DEFAULT).debugMetadata();
-        assertEquals(reference.bindings().stream().map(DebugMetadata.Binding::id).toList(),
-                javac.bindings().stream().map(DebugMetadata.Binding::id).toList());
-        assertEquals(reference.scopes().stream().map(DebugMetadata.Scope::id).toList(),
-                javac.scopes().stream().map(DebugMetadata.Scope::id).toList());
+        var javac = debug(SPENDING, OptimizationLevel.DEFAULT).debugMetadata();
+        FrozenReference.assertSame("debug ids", javac.bindings().stream().map(DebugMetadata.Binding::id).toList() + "|"
+                + javac.scopes().stream().map(DebugMetadata.Scope::id).toList());
         assertNotEquals(0, javac.bindings().size());
     }
 
@@ -281,7 +270,7 @@ class JavacContractAndDebugTest {
                     }
                 }
                 """;
-        var metadata = debug(source, CompilerFrontend.JAVAC, OptimizationLevel.NONE).debugMetadata();
+        var metadata = debug(source, OptimizationLevel.NONE).debugMetadata();
         var shown = metadata.loweredBindings().stream().map(DebugMetadata.LoweredBinding::sourceBindingId)
                 .filter(id -> id != null).collect(Collectors.toSet());
         var local = metadata.bindings().stream().filter(binding -> binding.name().equals("K")
@@ -350,11 +339,9 @@ class JavacContractAndDebugTest {
     @EnumSource(OptimizationLevel.class)
     void declaratorsAreTheReferences(OptimizationLevel level) {
         for (var source : List.of(DECLARATIONS, EDGES)) {
-            var reference = debug(source, CompilerFrontend.JAVAPARSER, level);
-            var javac = debug(source, CompilerFrontend.JAVAC, level);
-            assertArrayEquals(UplcFlatEncoder.encodeProgram(reference.compileResult().program()),
-                    UplcFlatEncoder.encodeProgram(javac.compileResult().program()));
-            assertEquals(view(reference.debugMetadata()), view(javac.debugMetadata()));
+            var javac = debug(source, level);
+            FrozenReference.assertSameBytes("a debug program|" + source + "|" + level, javac.compileResult().program());
+            FrozenReference.assertSame("debug metadata|" + source + "|" + level, view(javac.debugMetadata()));
         }
     }
 
@@ -365,20 +352,15 @@ class JavacContractAndDebugTest {
     @Test
     void aSourceOfLoneCarriageReturnsIsRefusedAsByTheReference() {
         String crlf = MINTING.replace("\n", "\r\n");
-        assertEquals(view(debug(crlf, CompilerFrontend.JAVAPARSER, OptimizationLevel.DEFAULT).debugMetadata()),
-                view(debug(crlf, CompilerFrontend.JAVAC, OptimizationLevel.DEFAULT).debugMetadata()));
+        FrozenReference.assertSame("line endings|crlf", view(debug(crlf, OptimizationLevel.DEFAULT).debugMetadata()));
         String cr = MINTING.replace("\n", "\r");
-        var reference = assertThrows(RuntimeException.class, () -> debug(cr, CompilerFrontend.JAVAPARSER, OptimizationLevel.DEFAULT));
-        var javac = assertThrows(RuntimeException.class, () -> debug(cr, CompilerFrontend.JAVAC, OptimizationLevel.DEFAULT));
-        assertEquals(reference.getClass(), javac.getClass());
-        assertEquals(reference.getMessage(), javac.getMessage());
+        var javac = assertThrows(RuntimeException.class, () -> debug(cr, OptimizationLevel.DEFAULT));
+        FrozenReference.assertSame("a lone CR", javac.getClass() + "|" + javac.getMessage());
         // A lone CR inside the source, which the reference compiles (review F6): the same metadata, offsets as it counts them.
         String inside = MINTING.replaceFirst("\n", "\n// c\r");
-        assertEquals(view(debug(inside, CompilerFrontend.JAVAPARSER, OptimizationLevel.DEFAULT).debugMetadata()),
-                view(debug(inside, CompilerFrontend.JAVAC, OptimizationLevel.DEFAULT).debugMetadata()));
+        FrozenReference.assertSame("line endings|inside", view(debug(inside, OptimizationLevel.DEFAULT).debugMetadata()));
         String trailing = MINTING + "// end\r";
-        assertEquals(view(debug(trailing, CompilerFrontend.JAVAPARSER, OptimizationLevel.DEFAULT).debugMetadata()),
-                view(debug(trailing, CompilerFrontend.JAVAC, OptimizationLevel.DEFAULT).debugMetadata()));
+        FrozenReference.assertSame("line endings|trailing", view(debug(trailing, OptimizationLevel.DEFAULT).debugMetadata()));
     }
 
     private static final String LIBRARY = """
@@ -415,13 +397,10 @@ class JavacContractAndDebugTest {
     @ParameterizedTest
     @EnumSource(OptimizationLevel.class)
     void aLibraryTheProgramReadsIsTheReferences(OptimizationLevel level) {
-        var reference = new JulcCompiler(StdlibRegistry.defaultRegistry(), options(CompilerFrontend.JAVAPARSER, level, true))
+        var javac = new JulcCompiler(StdlibRegistry.defaultRegistry(), options(level, true))
                 .compileForDebug(USES_LIBRARY, List.of(LIBRARY));
-        var javac = new JulcCompiler(StdlibRegistry.defaultRegistry(), options(CompilerFrontend.JAVAC, level, true))
-                .compileForDebug(USES_LIBRARY, List.of(LIBRARY));
-        assertArrayEquals(UplcFlatEncoder.encodeProgram(reference.compileResult().program()),
-                UplcFlatEncoder.encodeProgram(javac.compileResult().program()));
-        assertEquals(view(reference.debugMetadata()), view(javac.debugMetadata()));
+        FrozenReference.assertSameBytes("a library's debug program|" + level, javac.compileResult().program());
+        FrozenReference.assertSame("a library's debug metadata|" + level, view(javac.debugMetadata()));
         assertTrue(javac.debugMetadata().bindings().stream().anyMatch(binding -> binding.id().startsWith("binding:library-0:")));
     }
 
@@ -435,9 +414,8 @@ class JavacContractAndDebugTest {
                 class Empty {
                 }
                 """;
-        var reference = assertThrows(CompilerException.class, () -> debug(source, CompilerFrontend.JAVAPARSER, OptimizationLevel.DEFAULT));
-        var javac = assertThrows(CompilerException.class, () -> debug(source, CompilerFrontend.JAVAC, OptimizationLevel.DEFAULT));
-        assertEquals(reference.getMessage(), javac.getMessage());
+        var javac = assertThrows(CompilerException.class, () -> debug(source, OptimizationLevel.DEFAULT));
+        FrozenReference.assertSame("a debug rejection", javac.getMessage());
         assertTrue(javac.getMessage().contains("no method scopes"), javac::getMessage);
     }
 
@@ -453,7 +431,7 @@ class JavacContractAndDebugTest {
                     static BigInteger inc(BigInteger v) { return v.add(BigInteger.ONE); }
                 }
                 """;
-        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), options(CompilerFrontend.JAVAC, OptimizationLevel.DEFAULT, true));
+        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), options(OptimizationLevel.DEFAULT, true));
         var sources = compiler.compileForDebug(MINTING, List.of(library)).debugMetadata().sources();
         assertEquals(List.of("Mint.java", "Lib.java"), sources.stream().map(source -> Path.of(source.uri()).getFileName().toString()).toList());
     }

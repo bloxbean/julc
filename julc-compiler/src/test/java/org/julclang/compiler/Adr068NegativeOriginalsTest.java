@@ -1,7 +1,6 @@
 package org.julclang.compiler;
 
 import org.julclang.compiler.backend.BackendException;
-import org.julclang.compiler.frontend.javac.JavacGateMode;
 import org.julclang.compiler.pir.StdlibLookup;
 import org.julclang.stdlib.StdlibRegistry;
 import org.julclang.vm.OptimizationCostProfiles;
@@ -56,37 +55,16 @@ class Adr068NegativeOriginalsTest {
         var libraries = new ArrayList<String>();
         for (String library : row.libraries()) libraries.add(text(dir, library));
 
-        assertEquals(row.b0(), reference(rejection(row, source, libraries, JavacGateMode.OFF)), row.origin());
-
-        var enforced = rejection(row, source, libraries, null);
-        if (row.javac().equals("accepted")) {
-            assertEquals(row.b0(), reference(enforced), row.origin());
-        } else {
-            var compilerException = (CompilerException) enforced;
-            var keys = compilerException.diagnostics().stream().map(d -> String.valueOf(d.message())).toList();
-            for (String key : row.javac().split(",")) {
-                if (key.equals("JULC0085")) continue;
-                assertTrue(keys.stream().anyMatch(message -> message.contains("(" + key + ")")),
-                        row.origin() + ": " + key + " in " + keys);
-            }
-        }
+        // ADR-068 M6: a negative fixture stays a rejection on the only frontend. Its code is in lowering-javac.tsv, which holds it.
+        assertTrue(rejection(row, source, libraries) != null, row.origin());
     }
 
     private static String text(Path dir, String digest) throws IOException {
         return Files.readString(dir.resolve("sources").resolve(digest + ".java"));
     }
 
-    /** The B0 ledger's cell for a rejection: the first diagnostic's code, or {@code uncoded/<exception>}. */
-    private static String reference(RuntimeException e) {
-        if (e instanceof CompilerException c && !c.diagnostics().isEmpty() && c.diagnostics().getFirst().code() != null) {
-            return c.diagnostics().getFirst().code();
-        }
-        if (e instanceof BackendException b && b.code() != null) return b.code();
-        return "uncoded/" + e.getClass().getSimpleName();
-    }
-
-    private static RuntimeException rejection(Row row, String source, List<String> libraries, JavacGateMode mode) {
-        var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setSourceMapEnabled(row.sourceMap()).setJavacGate(mode).setLogger(message -> { });
+    private static RuntimeException rejection(Row row, String source, List<String> libraries) {
+        var options = new CompilerOptions().setSourceMapEnabled(row.sourceMap()).setLogger(message -> { });
         if (!row.costProfile().equals("-")) {
             options.setOptimizationCostProfile(OptimizationCostProfiles.forId(row.costProfile()));
         }
@@ -110,6 +88,6 @@ class Adr068NegativeOriginalsTest {
         } catch (RuntimeException e) {
             return e;
         }
-        return fail(row.origin() + " compiled with mode " + mode);
+        return fail(row.origin() + " compiled");
     }
 }

@@ -20,6 +20,7 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.math.BigInteger;
+import java.util.HexFormat;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
@@ -51,12 +52,12 @@ class JavacM5aTest {
         return IMPORTS + "class C {\n" + members + "\n}\n";
     }
 
-    private static JulcCompiler compiler(CompilerFrontend frontend) {
-        return new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(frontend));
+    private static JulcCompiler compiler() {
+        return new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions());
     }
 
     private static CompilerException javac(String members) {
-        return assertThrows(CompilerException.class, () -> compiler(CompilerFrontend.JAVAC).compileMethod(source(members), "m", List.of()));
+        return assertThrows(CompilerException.class, () -> compiler().compileMethod(source(members), "m", List.of()));
     }
 
     private static CompilerDiagnostic rejected(String members) {
@@ -74,11 +75,11 @@ class JavacM5aTest {
             "static BigInteger m(BigInteger a) { Tuple2 t = new Tuple2(Builtins.iData(a), Builtins.iData(BigInteger.TWO)); return Builtins.unIData(t.second()); }",
             "static BigInteger m(BigInteger a) { Tuple3 t = new Tuple3(Builtins.iData(a), Builtins.iData(a), Builtins.iData(BigInteger.TEN)); return Builtins.unIData(t.first()).add(Builtins.unIData(t.third())); }"})
     void aComponentOfARawTupleIsData(String members) {
-        assertArrayEquals(bytes(CompilerFrontend.JAVAPARSER, members), bytes(CompilerFrontend.JAVAC, members));
+        FrozenReference.assertSame("a shape M5a kept|" + members, HexFormat.of().formatHex(bytes(members)));
     }
 
-    private static byte[] bytes(CompilerFrontend frontend, String members) {
-        return UplcFlatEncoder.encodeProgram(compiler(frontend).compileMethod(source(members), "m", List.of()).program());
+    private static byte[] bytes(String members) {
+        return UplcFlatEncoder.encodeProgram(compiler().compileMethod(source(members), "m", List.of()).program());
     }
 
     // --- Arms of a conditional or a switch javac types Object, Record or an intersection ---
@@ -99,7 +100,7 @@ class JavacM5aTest {
             "sealed interface S { record A(BigInteger v) implements S { } record B() implements S { } } static long m(boolean c, BigInteger a) { S s = c ? new S.A(a) : new S.B(); return switch (s) { case S.A p -> 1; case S.B q -> 2; }; }",
             "sealed interface S { record A(BigInteger v) implements S { } record B() implements S { } } static S m(S s) { return switch (s) { case S.A p -> new S.B(); case S.B q -> s; }; }"})
     void armsOfOneRepresentationLower(String members) {
-        compiler(CompilerFrontend.JAVAC).compileMethod(source(members), "m", List.of());
+        compiler().compileMethod(source(members), "m", List.of());
     }
 
     /**
@@ -134,7 +135,7 @@ class JavacM5aTest {
     @Test
     void aTypedComparisonReplacesIt() {
         assertEquals("JULC0078", rejected("static boolean m(org.julclang.ledger.TxId a, byte[] b) { return a.equals(b); }").code());
-        compiler(CompilerFrontend.JAVAC).compileMethod(source(
+        compiler().compileMethod(source(
                 "static boolean m(org.julclang.ledger.TxId a, byte[] b) { return a.equals(new org.julclang.ledger.TxId(b)); }"), "m", List.of());
     }
 
@@ -226,7 +227,7 @@ class JavacM5aTest {
     @Test
     void aNarrowingOfALiteralIsJavasValue() throws Exception {
         assertEquals("JULC0124", rejected("static long m(long a) { long q = (char) (a + 1); return q; }").code());
-        compiler(CompilerFrontend.JAVAC).compileMethod(source("static long m(long a) { long q = (char) 97; return q; }"), "m", List.of());
+        compiler().compileMethod(source("static long m(long a) { long q = (char) 97; return q; }"), "m", List.of());
     }
 
     /**
@@ -298,6 +299,6 @@ class JavacM5aTest {
             "static long m(JulcList<BigInteger> xs, int k) { int x = 5; for (var y : xs) { x += k; } return x; }",
     })
     void anUpdateThatDoesNotNarrowCompiles(String members) {
-        assertNotNull(compiler(CompilerFrontend.JAVAC).compileMethod(source(members), "m").program());
+        assertNotNull(compiler().compileMethod(source(members), "m").program());
     }
 }

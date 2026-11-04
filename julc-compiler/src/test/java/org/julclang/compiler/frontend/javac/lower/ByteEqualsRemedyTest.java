@@ -58,11 +58,9 @@ class ByteEqualsRemedyTest {
     @ParameterizedTest
     @ValueSource(strings = {"m", "inLoop"})
     void theBuiltinKeepsTheJavaParserFrontendsScript(String method) {
-        var reference = new JulcCompiler(StdlibRegistry.defaultRegistry(),
-                new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod(OLD, method);
         var javac = new JulcCompiler(StdlibRegistry.defaultRegistry()).compileMethod(BUILTIN, method);
         assertFalse(javac.hasErrors(), javac.diagnostics()::toString);
-        assertArrayEquals(UplcFlatEncoder.encodeProgram(reference.program()), UplcFlatEncoder.encodeProgram(javac.program()));
+        FrozenReference.assertSameBytes("a.equals(b) on bytes on the JavaParser frontend|" + method, javac.program());
     }
 
     @ParameterizedTest

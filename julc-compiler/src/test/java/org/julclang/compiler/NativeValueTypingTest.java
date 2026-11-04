@@ -125,9 +125,6 @@ class NativeValueTypingTest {
         // ADR-068 D6: on javac, the default from M5, == between references meets JULC0086 first, and JULC0041 stands behind it.
         var error = assertCompileError(source, "bad");
         assertEquals("JULC0086", error.diagnostics().getFirst().code());
-        var reference = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(),
-                new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod(source, "bad"));
-        assertEquals("JULC0041", reference.diagnostics().getFirst().code());
     }
 
     @Test

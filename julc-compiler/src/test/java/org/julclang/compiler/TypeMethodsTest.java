@@ -25,7 +25,7 @@ class TypeMethodsTest {
      * is selected explicitly; it is removed at M6.
      */
     private static JulcCompiler javaParser() {
-        return new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER));
+        return new JulcCompiler(null, new CompilerOptions());
     }
 
     /** On javac, the default from ADR-068 M5, {@code ==} between references is reference equality: {@code JULC0086} (D6). */
@@ -44,7 +44,7 @@ class TypeMethodsTest {
     }
 
     static JulcCompiler dialectCompiler(StdlibLookup stdlib) {
-        return new JulcCompiler(stdlib, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.OFF));
+        return new JulcCompiler(stdlib, new CompilerOptions());
     }
 
     static JulcVm vm;
@@ -116,9 +116,6 @@ class TypeMethodsTest {
                     }
                     """;
             assertReferenceEqualityRejected(source);
-            var program = javaParser().compile(source).program();
-            var result = vm.evaluateWithArgs(program, List.of(simpleCtx()));
-            assertTrue(result.isSuccess(), "String == should use EqualsString. Got: " + result);
         }
 
         @Test
@@ -139,9 +136,6 @@ class TypeMethodsTest {
                     }
                     """;
             assertReferenceEqualityRejected(source);
-            var program = javaParser().compile(source).program();
-            var result = vm.evaluateWithArgs(program, List.of(simpleCtx()));
-            assertTrue(result.isSuccess(), "String != should work. Got: " + result);
         }
 
         @Test
@@ -213,18 +207,6 @@ class TypeMethodsTest {
                     }
                     """;
             assertReferenceEqualityRejected(source);
-            var compiler = javaParser();
-            var program = compiler.compile(source).program();
-
-            var pkh = new byte[]{1, 2, 3};
-            var datum = PlutusData.constr(0, PlutusData.bytes(pkh), PlutusData.bytes(pkh));
-            var optDatum = PlutusData.constr(0, datum);
-            var txOutRef = PlutusData.constr(0, PlutusData.bytes(new byte[32]), PlutusData.integer(0));
-            var scriptInfo = PlutusData.constr(1, txOutRef, optDatum);
-            var ctx = buildScriptContext(buildTxInfo(new PlutusData[0], alwaysInterval()),
-                    PlutusData.integer(0), scriptInfo);
-            var result = vm.evaluateWithArgs(program, List.of(ctx));
-            assertTrue(result.isSuccess(), "byte[] == should use EqualsByteString. Got: " + result);
         }
 
         @Test
@@ -245,56 +227,12 @@ class TypeMethodsTest {
                     }
                     """;
             assertReferenceEqualityRejected(source);
-            var compiler = javaParser();
-            var program = compiler.compile(source).program();
-
-            var datum = PlutusData.constr(0, PlutusData.bytes(new byte[]{1}), PlutusData.bytes(new byte[]{2}));
-            var optDatum = PlutusData.constr(0, datum);
-            var txOutRef = PlutusData.constr(0, PlutusData.bytes(new byte[32]), PlutusData.integer(0));
-            var scriptInfo = PlutusData.constr(1, txOutRef, optDatum);
-            var ctx = buildScriptContext(buildTxInfo(new PlutusData[0], alwaysInterval()),
-                    PlutusData.integer(0), scriptInfo);
-            var result = vm.evaluateWithArgs(program, List.of(ctx));
-            assertTrue(result.isSuccess(), "byte[] != should work. Got: " + result);
         }
+
     }
 
     @Nested
     class ByteStringAppend {
-        @Test
-        void byteStringPlusOperator() {
-            var source = """
-                    import java.math.BigInteger;
-                    import org.julclang.core.PlutusData;
-                    import org.julclang.ledger.ScriptContext;
-                    import org.julclang.stdlib.annotation.Entrypoint;
-                    import org.julclang.stdlib.annotation.SpendingValidator;
-
-                    @SpendingValidator
-                    class TestValidator {
-                        record MyDatum(byte[] a, byte[] b) {}
-
-                        @Entrypoint
-                        static boolean validate(MyDatum datum, PlutusData redeemer, ScriptContext ctx) {
-                            byte[] combined = datum.a() + datum.b();
-                            return combined.length() == 4;
-                        }
-                    }
-                    """;
-            var compiler = dialectCompiler();
-            var program = compiler.compile(source).program();
-
-            var datum = PlutusData.constr(0,
-                    PlutusData.bytes(new byte[]{1, 2}),
-                    PlutusData.bytes(new byte[]{3, 4}));
-            var optDatum = PlutusData.constr(0, datum);
-            var txOutRef = PlutusData.constr(0, PlutusData.bytes(new byte[32]), PlutusData.integer(0));
-            var scriptInfo = PlutusData.constr(1, txOutRef, optDatum);
-            var ctx = buildScriptContext(buildTxInfo(new PlutusData[0], alwaysInterval()),
-                    PlutusData.integer(0), scriptInfo);
-            var result = vm.evaluateWithArgs(program, List.of(ctx));
-            assertTrue(result.isSuccess(), "byte[] + should use AppendByteString. Got: " + result);
-        }
     }
 
     @Nested
@@ -346,38 +284,6 @@ class TypeMethodsTest {
 
     @Nested
     class ByteStringLength {
-        @Test
-        void byteArrayLengthMethod() {
-            var source = """
-                    import java.math.BigInteger;
-                    import org.julclang.core.PlutusData;
-                    import org.julclang.ledger.ScriptContext;
-                    import org.julclang.stdlib.annotation.Entrypoint;
-                    import org.julclang.stdlib.annotation.SpendingValidator;
-
-                    @SpendingValidator
-                    class TestValidator {
-                        record MyDatum(byte[] data) {}
-
-                        @Entrypoint
-                        static boolean validate(MyDatum datum, PlutusData redeemer, ScriptContext ctx) {
-                            return datum.data().length() == 5;
-                        }
-                    }
-                    """;
-            var compiler = dialectCompiler();
-            var program = compiler.compile(source).program();
-
-            var datum = PlutusData.constr(0, PlutusData.bytes(new byte[]{1, 2, 3, 4, 5}));
-            var optDatum = PlutusData.constr(0, datum);
-            var txOutRef = PlutusData.constr(0, PlutusData.bytes(new byte[32]), PlutusData.integer(0));
-            var scriptInfo = PlutusData.constr(1, txOutRef, optDatum);
-            var ctx = buildScriptContext(buildTxInfo(new PlutusData[0], alwaysInterval()),
-                    PlutusData.integer(0), scriptInfo);
-            var result = vm.evaluateWithArgs(program, List.of(ctx));
-            assertTrue(result.isSuccess(), "byte[].length() should return 5. Got: " + result);
-        }
-
         @Test
         void byteArrayLengthField() {
             var source = """
@@ -851,9 +757,6 @@ class TypeMethodsTest {
                     }
                     """;
             assertReferenceEqualityRejected(source);
-            var program = javaParser().compile(source).program();
-            var result = vm.evaluateWithArgs(program, List.of(simpleCtx()));
-            assertTrue(result.isSuccess(), "Data == Data should use EqualsData. Got: " + result);
         }
 
         @Test
@@ -1760,113 +1663,6 @@ class TypeMethodsTest {
 
     @Nested
     class PlutusDataValueAccessor {
-        @Test
-        void bytesDataValueOnVar() {
-            var source = """
-                    import org.julclang.stdlib.Builtins;
-                    import org.julclang.core.PlutusData;
-                    import org.julclang.ledger.ScriptContext;
-                    import org.julclang.stdlib.annotation.Entrypoint;
-                    import org.julclang.stdlib.annotation.SpendingValidator;
-
-                    @SpendingValidator
-                    class TestValidator {
-                        record MyDatum(PlutusData cred) {}
-
-                        @Entrypoint
-                        static boolean validate(MyDatum datum, PlutusData redeemer, ScriptContext ctx) {
-                            var pkh = Builtins.unBData(Builtins.headList(Builtins.constrFields(datum.cred())));
-                            byte[] raw = pkh.value();
-                            return raw.length() == 3;
-                        }
-                    }
-                    """;
-            var compiler = dialectCompiler(STDLIB);
-            var program = compiler.compile(source).program();
-
-            // cred = Constr(0, [BData(bytes)])
-            var cred = PlutusData.constr(0, PlutusData.bytes(new byte[]{1, 2, 3}));
-            var datum = PlutusData.constr(0, cred);
-            var optDatum = PlutusData.constr(0, datum);
-            var txOutRef = PlutusData.constr(0, PlutusData.bytes(new byte[32]), PlutusData.integer(0));
-            var scriptInfo = PlutusData.constr(1, txOutRef, optDatum);
-            var ctx = buildScriptContext(buildTxInfo(new PlutusData[0], alwaysInterval()),
-                    PlutusData.integer(0), scriptInfo);
-            var result = vm.evaluateWithArgs(program, List.of(ctx));
-            assertTrue(result.isSuccess(), "unBData(...).value() should be identity (ByteString). Got: " + result);
-        }
-
-        @Test
-        void intDataValueOnVar() {
-            var source = """
-                    import java.math.BigInteger;
-                    import org.julclang.stdlib.Builtins;
-                    import org.julclang.core.PlutusData;
-                    import org.julclang.ledger.ScriptContext;
-                    import org.julclang.stdlib.annotation.Entrypoint;
-                    import org.julclang.stdlib.annotation.SpendingValidator;
-
-                    @SpendingValidator
-                    class TestValidator {
-                        record MyDatum(PlutusData wrapped) {}
-
-                        @Entrypoint
-                        static boolean validate(MyDatum datum, PlutusData redeemer, ScriptContext ctx) {
-                            var n = Builtins.unIData(Builtins.headList(Builtins.constrFields(datum.wrapped())));
-                            BigInteger val = n.value();
-                            return val.equals(BigInteger.valueOf(42));
-                        }
-                    }
-                    """;
-            var compiler = dialectCompiler(STDLIB);
-            var program = compiler.compile(source).program();
-
-            // wrapped = Constr(0, [IData(42)])
-            var wrapped = PlutusData.constr(0, PlutusData.integer(42));
-            var datum = PlutusData.constr(0, wrapped);
-            var optDatum = PlutusData.constr(0, datum);
-            var txOutRef = PlutusData.constr(0, PlutusData.bytes(new byte[32]), PlutusData.integer(0));
-            var scriptInfo = PlutusData.constr(1, txOutRef, optDatum);
-            var ctx = buildScriptContext(buildTxInfo(new PlutusData[0], alwaysInterval()),
-                    PlutusData.integer(0), scriptInfo);
-            var result = vm.evaluateWithArgs(program, List.of(ctx));
-            assertTrue(result.isSuccess(), "unIData(...).value() should be identity (Integer). Got: " + result);
-        }
-
-        @Test
-        void bytesDataValueChainedWithEquals() {
-            var source = """
-                    import org.julclang.stdlib.Builtins;
-                    import org.julclang.core.PlutusData;
-                    import org.julclang.ledger.ScriptContext;
-                    import org.julclang.stdlib.annotation.Entrypoint;
-                    import org.julclang.stdlib.annotation.SpendingValidator;
-
-                    @SpendingValidator
-                    class TestValidator {
-                        record MyDatum(PlutusData cred1, PlutusData cred2) {}
-
-                        @Entrypoint
-                        static boolean validate(MyDatum datum, PlutusData redeemer, ScriptContext ctx) {
-                            var a = Builtins.unBData(Builtins.headList(Builtins.constrFields(datum.cred1())));
-                            var b = Builtins.unBData(Builtins.headList(Builtins.constrFields(datum.cred2())));
-                            return a.value() == b.value();
-                        }
-                    }
-                    """;
-            var compiler = dialectCompiler(STDLIB);
-            var program = compiler.compile(source).program();
-
-            var cred = PlutusData.constr(0, PlutusData.bytes(new byte[]{1, 2, 3}));
-            var datum = PlutusData.constr(0, cred, cred);
-            var optDatum = PlutusData.constr(0, datum);
-            var txOutRef = PlutusData.constr(0, PlutusData.bytes(new byte[32]), PlutusData.integer(0));
-            var scriptInfo = PlutusData.constr(1, txOutRef, optDatum);
-            var ctx = buildScriptContext(buildTxInfo(new PlutusData[0], alwaysInterval()),
-                    PlutusData.integer(0), scriptInfo);
-            var result = vm.evaluateWithArgs(program, List.of(ctx));
-            assertTrue(result.isSuccess(), "unBData().value() == unBData().value() should compare ByteStrings. Got: " + result);
-        }
     }
 
     @Nested
@@ -1879,132 +1675,5 @@ class TypeMethodsTest {
                     PlutusData.integer(0), scriptInfo);
         }
 
-        @Test
-        void sealedInterfaceHashDotHash() {
-            var source = """
-                    import java.math.BigInteger;
-                    import org.julclang.core.PlutusData;
-                    import org.julclang.ledger.ScriptContext;
-                    import org.julclang.stdlib.annotation.Entrypoint;
-                    import org.julclang.stdlib.annotation.SpendingValidator;
-
-                    @SpendingValidator
-                    class TestValidator {
-                        sealed interface Cred permits ScriptCred, PubKeyCred {}
-                        record ScriptCred(byte[] hash) implements Cred {}
-                        record PubKeyCred(byte[] hash) implements Cred {}
-
-                        record MyDatum(Cred cred, byte[] expected) {}
-
-                        @Entrypoint
-                        static boolean validate(MyDatum datum, PlutusData redeemer, ScriptContext ctx) {
-                            byte[] expected = datum.expected();
-                            return switch (datum.cred()) {
-                                case ScriptCred sc -> sc.hash().hash() == expected;
-                                case PubKeyCred pk -> false;
-                            };
-                        }
-                    }
-                    """;
-            var compiler = dialectCompiler();
-            var program = compiler.compile(source).program();
-
-            // ScriptCred = Constr(0, [BData(hash)])
-            var cred = PlutusData.constr(0, PlutusData.bytes(new byte[]{1, 2, 3}));
-            // MyDatum = Constr(0, [cred, BData(expected)])
-            var datum = PlutusData.constr(0, cred, PlutusData.bytes(new byte[]{1, 2, 3}));
-            var ctx = spendingCtx(datum);
-            var result = vm.evaluateWithArgs(program, List.of(ctx));
-            assertTrue(result.isSuccess(), "sc.hash().hash() should work without double UnBData. Got: " + result);
-        }
-
-        @Test
-        void helperMethodWithHashDotHash() {
-            var source = """
-                    import java.math.BigInteger;
-                    import org.julclang.core.types.JulcList;
-                    import org.julclang.core.PlutusData;
-                    import org.julclang.ledger.ScriptContext;
-                    import org.julclang.stdlib.annotation.Entrypoint;
-                    import org.julclang.stdlib.annotation.SpendingValidator;
-
-                    @SpendingValidator
-                    class TestValidator {
-                        sealed interface Cred permits ScriptCred, PubKeyCred {}
-                        record ScriptCred(byte[] hash) implements Cred {}
-                        record PubKeyCred(byte[] hash) implements Cred {}
-
-                        static boolean isMatch(Cred cred, byte[] expected) {
-                            return switch (cred) {
-                                case ScriptCred sc -> sc.hash().hash() == expected;
-                                case PubKeyCred pk -> false;
-                            };
-                        }
-
-                        record MyDatum(Cred cred, byte[] expected) {}
-
-                        @Entrypoint
-                        static boolean validate(MyDatum datum, PlutusData redeemer, ScriptContext ctx) {
-                            return isMatch(datum.cred(), datum.expected());
-                        }
-                    }
-                    """;
-            var compiler = dialectCompiler();
-            var program = compiler.compile(source).program();
-
-            var cred = PlutusData.constr(0, PlutusData.bytes(new byte[]{1, 2, 3}));
-            var datum = PlutusData.constr(0, cred, PlutusData.bytes(new byte[]{1, 2, 3}));
-            var ctx = spendingCtx(datum);
-            var result = vm.evaluateWithArgs(program, List.of(ctx));
-            assertTrue(result.isSuccess(), "Helper method with sc.hash().hash() should work. Got: " + result);
-        }
-
-        @Test
-        void helperMethodInHofLambda() {
-            var source = """
-                    import java.math.BigInteger;
-                    import org.julclang.core.types.JulcList;
-                    import org.julclang.core.PlutusData;
-                    import org.julclang.ledger.ScriptContext;
-                    import org.julclang.stdlib.annotation.Entrypoint;
-                    import org.julclang.stdlib.annotation.SpendingValidator;
-
-                    @SpendingValidator
-                    class TestValidator {
-                        sealed interface Cred permits ScriptCred, PubKeyCred {}
-                        record ScriptCred(byte[] hash) implements Cred {}
-                        record PubKeyCred(byte[] hash) implements Cred {}
-
-                        static boolean isMatch(Cred cred, byte[] expected) {
-                            return switch (cred) {
-                                case ScriptCred sc -> sc.hash().hash() == expected;
-                                case PubKeyCred pk -> false;
-                            };
-                        }
-
-                        record Item(Cred cred) {}
-                        record MyDatum(JulcList<Item> items, byte[] expected) {}
-
-                        @Entrypoint
-                        static boolean validate(MyDatum datum, PlutusData redeemer, ScriptContext ctx) {
-                            byte[] expected = datum.expected();
-                            return datum.items().any(item -> isMatch(item.cred(), expected));
-                        }
-                    }
-                    """;
-            var compiler = dialectCompiler();
-            var program = compiler.compile(source).program();
-
-            // Item = Constr(0, [cred])  where cred = Constr(0, [BData(hash)])
-            var cred = PlutusData.constr(0, PlutusData.bytes(new byte[]{1, 2, 3}));
-            var item = PlutusData.constr(0, cred);
-            // MyDatum = Constr(0, [list_of_items, BData(expected)])
-            var datum = PlutusData.constr(0,
-                    PlutusData.list(item),
-                    PlutusData.bytes(new byte[]{1, 2, 3}));
-            var ctx = spendingCtx(datum);
-            var result = vm.evaluateWithArgs(program, List.of(ctx));
-            assertTrue(result.isSuccess(), "Helper in HOF lambda with sc.hash().hash() should work. Got: " + result);
-        }
     }
 }

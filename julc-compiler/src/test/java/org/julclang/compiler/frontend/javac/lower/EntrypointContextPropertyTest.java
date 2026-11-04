@@ -75,9 +75,9 @@ class EntrypointContextPropertyTest {
         return Combinators.combine(purposes, Arbitraries.integers().between(1, 4), lasts).as(Shape::new);
     }
 
-    private static String outcome(Shape shape, CompilerFrontend frontend) {
+    private static String outcome(Shape shape) {
         try {
-            new JulcCompiler(null, new CompilerOptions().setFrontend(frontend)).compile(shape.source());
+            new JulcCompiler(null, new CompilerOptions()).compile(shape.source());
             return "accepted";
         } catch (CompilerException e) {
             return e.diagnostics().isEmpty() ? "uncoded" : e.diagnostics().getFirst().code();
@@ -85,8 +85,7 @@ class EntrypointContextPropertyTest {
     }
 
     @Property(tries = 120, seed = "904")
-    void theContextIsTheLastParameterOnBothFrontends(@ForAll("shapes") Shape shape) {
-        assertEquals(shape.expected(), outcome(shape, CompilerFrontend.JAVAC), shape.source());
-        assertEquals(shape.expected(), outcome(shape, CompilerFrontend.JAVAPARSER), shape.source());
+    void theContextIsTheLastParameter(@ForAll("shapes") Shape shape) {
+        assertEquals(shape.expected(), outcome(shape), shape.source());
     }
 }

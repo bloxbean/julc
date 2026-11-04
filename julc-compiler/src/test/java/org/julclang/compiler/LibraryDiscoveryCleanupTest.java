@@ -190,46 +190,13 @@ class LibraryDiscoveryCleanupTest {
         }
     }
 
-    @Test
-    void importNamesComeFromCustomRegistrationsAndSurviveComposition() {
-        var registry = new StdlibRegistry();
-        registry.register("example.registry.RegistryOnly", "accept", args -> new PirTerm.Const(Constant.bool(true)));
-        registry.register("AliasOnly", "accept", args -> new PirTerm.Const(Constant.bool(true)));
-        assertEquals(Set.of("example.registry.RegistryOnly"), registry.registeredClassNames());
-        var composite = new CompositeStdlibLookup(registry, StdlibRegistry.defaultRegistry());
-        assertTrue(composite.registeredClassNames().containsAll(Set.of(
-                "example.registry.RegistryOnly", "org.julclang.stdlib.Builtins")));
-        for (StdlibLookup lookup : List.of(registry, composite)) {
-            // ADR-068 M1b: a name only a custom registry defines has no Java declaration javac could see.
-            var compiler = new JulcCompiler(lookup, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.OFF));
-            String imports = "import example.registry.RegistryOnly;\n";
-            var method = compiler.compileMethod(imports
-                    + "class Sample { static boolean run() { return RegistryOnly.accept(); } }", "run", List.of());
-            assertCompiled(method);
-            var evaluated = JulcVm.create("Java").evaluate(method.program(), method.target().ledgerTarget(), null, EvalOptions.DEFAULT);
-            assertEquals(Term.const_(Constant.bool(true)), assertInstanceOf(EvalResult.Success.class, evaluated).resultTerm());
-            assertCompiled(compiler.compile(imports + """
-                    import org.julclang.core.PlutusData;
-                    import org.julclang.ledger.ScriptContext;
-                    import org.julclang.stdlib.annotation.Entrypoint;
-                    import org.julclang.stdlib.annotation.SpendingValidator;
-                    @SpendingValidator class Sample {
-                        @Entrypoint static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            return RegistryOnly.accept();
-                        }
-                    }
-                    """, List.of()));
-        }
-    }
-
     @ParameterizedTest
     @ValueSource(strings = {"method-floor", "validator-floor", "method-trace", "validator-trace",
-            "method-any", "validator-any"})
+            })
     void registryOnlyMethodsWorkWithExplicitEmptyLibraryLists(String scenario) {
         String body = switch (scenario.substring(scenario.indexOf('-') + 1)) {
             case "floor" -> "return MathLib.floorDiv(Builtins.unIData(redeemer), BigInteger.valueOf(3)).equals(BigInteger.valueOf(-3));";
             case "trace" -> "ContextsLib.trace(\"registry\"); return true;";
-            case "any" -> "return ListsLib.any(Builtins.unListData(redeemer), x -> Builtins.unIData(x) > 0);";
             default -> throw new IllegalArgumentException(scenario);
         };
         String imports = """
@@ -248,16 +215,8 @@ class LibraryDiscoveryCleanupTest {
                 ? "class Sample { static boolean run(PlutusData redeemer) { " + body + " } }"
                 : "@SpendingValidator class Sample { @Entrypoint static boolean validate(PlutusData redeemer, ScriptContext ctx) { "
                         + body + " } }");
-        // ADR-068 M1b: ListsLib.any exists only in the stdlib registry, not in Java, so javac rejects it.
-        boolean registryOnly = scenario.endsWith("any");
-        if (registryOnly) DialectGate.off();
-        CompileResult compiled;
-        try {
-            compiled = methodPath ? compiler().compileMethod(source, "run", List.of())
-                    : compiler().compile(source, List.of());
-        } finally {
-            if (registryOnly) DialectGate.restore();
-        }
+        CompileResult compiled = methodPath ? compiler().compileMethod(source, "run", List.of())
+                : compiler().compile(source, List.of());
         assertCompiled(compiled);
         if (methodPath) {
             var input = scenario.endsWith("any")
@@ -280,7 +239,7 @@ class LibraryDiscoveryCleanupTest {
         }
     }
 
-    private static JulcCompiler compiler() { return new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)); }
+    private static JulcCompiler compiler() { return new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()); }
 
     private static void assertCompiled(CompileResult result) {
         assertFalse(result.hasErrors(), result.diagnostics().toString());

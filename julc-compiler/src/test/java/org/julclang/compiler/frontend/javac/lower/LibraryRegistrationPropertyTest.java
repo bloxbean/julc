@@ -10,6 +10,7 @@ import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.OptimizationLevel;
+import org.julclang.core.Program;
 import org.julclang.compiler.frontend.javac.JavacGateMode;
 import org.julclang.core.Constant;
 import org.julclang.core.PlutusData;
@@ -104,7 +105,7 @@ class LibraryRegistrationPropertyTest {
         return result;
     }
 
-    @Property(tries = 25)
+    @Property(tries = 25, seed = "2026110501")
     void everyPoolOrderIsTheReferences(@ForAll("graphs") List<Body> bodies) {
         for (int units = 2; units <= 3; units++) {
             int count = units;
@@ -119,27 +120,17 @@ class LibraryRegistrationPropertyTest {
     }
 
     private static void compare(String source, List<String> pool, List<Body> bodies, int units) {
-        byte[] expected = null;
-        String rejected = null;
         for (var level : List.of(OptimizationLevel.NONE, OptimizationLevel.PV11_SAFE)) {
+            var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setOptimizationLevel(level));
+            String what = "registration|" + source + "|" + pool + "|" + level;
+            Program program;
             try {
-                var program = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.OFF)
-                        .setOptimizationLevel(level)).compileMethod(source, "f", pool).program();
-                expected = UplcFlatEncoder.encodeProgram(program);
+                program = compiler.compileMethod(source, "f", pool).program();
             } catch (CompilerException e) {
-                rejected = e.getMessage();
-            }
-            var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setOptimizationLevel(level)
-                    .setFrontend(CompilerFrontend.JAVAC));
-            if (rejected != null) {
-                String message = rejected;
-                var failure = assertThrows(CompilerException.class,
-                        () -> compiler.compileMethod(source, "f", pool), () -> "the reference rejects: " + message);
-                assertEquals(rejected, failure.getMessage(), pool::toString);
+                FrozenReference.assertSame(what, e.getMessage());
                 return;
             }
-            var program = compiler.compileMethod(source, "f", pool).program();
-            assertArrayEquals(expected, UplcFlatEncoder.encodeProgram(program), () -> level + " " + pool);
+            FrozenReference.assertSameBytes(what, program);
             long x = 5;
             long java = x;
             for (int u = 0; u < units; u++) java += value(u * METHODS, x, bodies);

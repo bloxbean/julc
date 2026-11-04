@@ -1,6 +1,5 @@
 package org.julclang.compiler.frontend.javac;
 
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JavaLibraryProvider;
@@ -35,10 +34,9 @@ import java.util.stream.Stream;
 import static org.junit.jupiter.api.Assertions.*;
 
 /** Regressions for the M1a review findings F500-F505 (Codex) and F402-F403 (Claude reviewer). */
-class JavacGateReviewTest {
+class JavacFrontendPoolTest {
 
-    static final CompilerOptions ENFORCE = new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.ENFORCE);
-    static final CompilerOptions REPORT = new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.REPORT);
+    static final CompilerOptions ENFORCE = new CompilerOptions();
 
     static JavacResult analyze(String root, String... pool) {
         return JavacFrontend.shared().analyze(List.of(JavacFrontend.Unit.of(root)),
@@ -70,50 +68,12 @@ class JavacGateReviewTest {
     static final String B = "package p; import java.math.BigInteger; import org.julclang.stdlib.annotation.OnchainLibrary;"
             + " @OnchainLibrary public class B { public static BigInteger f(BigInteger x) { return x + x; } }";
 
-    @Test
-    void cacheKeyDistinguishesUnitBoundariesAndPaths() {
-        String joined = A + "\0-\0" + B;
-        assertNotEquals(JavacGate.key(List.of(JavacFrontend.Unit.of(A), JavacFrontend.Unit.of(B)), List.of()),
-                JavacGate.key(List.of(JavacFrontend.Unit.of(joined)), List.of()));
-        assertNotEquals(JavacGate.key(List.of(JavacFrontend.Unit.of(A)), List.of(JavacFrontend.Unit.of(B))),
-                JavacGate.key(List.of(JavacFrontend.Unit.of(A), JavacFrontend.Unit.of(B)), List.of()));
-        assertNotEquals(JavacGate.key(List.of(new JavacFrontend.Unit(A, Path.of("-"))), List.of()),
-                JavacGate.key(List.of(JavacFrontend.Unit.of(A)), List.of()));
-    }
-
-    @Test
-    void aCollidingPrimedResultCannotAcceptAProviderInEnforceMode() {
-        // The joined text is one valid unit: A's trailing comment swallows B's only line.
-        var primed = JavacGate.check("JavaLibraryProvider", List.of(JavacFrontend.Unit.of(A + "\0-\0" + B)), List.of(),
-                REPORT);
-        assertTrue(primed.isAccepted(), primed::toString);
-        var e = assertThrows(CompilerException.class,
-                () -> new JavaLibraryProvider(List.of(A, B), StdlibRegistry.defaultRegistry(), ENFORCE));
-        assertEquals("JULC0085", e.diagnostics().getFirst().code(), e.diagnostics().toString());
-        assertEquals("B.java", e.diagnostics().getFirst().fileName());
-    }
-
     // --- F501: reporting is best-effort ---
 
     static final String DIALECT_METHOD = """
             import java.math.BigInteger;
             class M { static BigInteger twice(BigInteger x) { return x + x; } }
             """;
-
-    @Test
-    void anUnwritableOrInvalidReportPathNeverFailsACompilation(@TempDir Path dir) throws Exception {
-        Path file = Files.writeString(dir.resolve("a-file"), "not a directory");
-        for (String where : List.of("/dev/null", file.toString(), file.resolve("below").toString(), "bad\0path")) {
-            var result = withProperty(JavacGate.REPORT_PROPERTY, where, () ->
-                    new JulcCompiler(StdlibRegistry.defaultRegistry(), REPORT).compileMethod(DIALECT_METHOD, "twice"));
-            assertFalse(result.hasErrors(), where);
-            withProperty(JavacGate.REPORT_PROPERTY, where, () -> {
-                JavacGateReport.recordFailure("compile", List.of(JavacFrontend.Unit.of(DIALECT_METHOD)), List.of(),
-                        new IllegalStateException("probe"));
-                return null;
-            });
-        }
-    }
 
     // --- F502: every top-level declaration of a pool unit, with root precedence over all of them ---
 
@@ -269,75 +229,7 @@ class JavacGateReviewTest {
         }
     }
 
-    static CompilerOptions tagged(JavacGateMode mode) {
-        return new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(mode).setJarLibrarySources(List.of(JAR_SHARED));
-    }
-
-    @Test
-    void theGateDecidesOnTheMergedPoolWhileReportModeCompilesB0sPool() {
-        // The gate: the JAR Shared is shadowed by the project's Shared, so javac reads Current only.
-        var gate = JavacGate.check("compileMethod", List.of(JavacFrontend.Unit.of(USES_BOTH)),
-                List.of(JavacFrontend.Unit.jar(JAR_SHARED), JavacFrontend.Unit.of(CURRENT)), REPORT);
-        var direct = JavacFrontend.shared().analyze(List.of(JavacFrontend.Unit.of(USES_BOTH)),
-                List.of(JavacFrontend.Unit.of(CURRENT)));
-        assertEquals(direct.diagnostics(), javacs(gate));
-        assertEquals(1, notes(gate).size(), gate.toString());
-        assertTrue(notes(gate).getFirst().startsWith("Shared.java was not read: it declares com.example.Shared, also"
-                + " declared by Current.java"), notes(gate).toString());
-        assertEquals(List.of(CURRENT), gate.effective(HOST_POOL, text -> text));
-        // Untagged, the two are of equal standing.
-        var untagged = analyze(USES_BOTH, JAR_SHARED, CURRENT);
-        assertTrue(untagged.diagnostics().getFirst().message().contains("equal standing"), untagged.toString());
-        // JuLC: report mode compiles B0's pool, exactly as with the gate off.
-        assertEquals(outcome(tagged(JavacGateMode.OFF)), outcome(tagged(JavacGateMode.REPORT)));
-    }
-
-    @Test
-    void enforceModeCompilesTheMergedPoolInBothFrontends() {
-        var e = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(),
-                tagged(JavacGateMode.ENFORCE)).compileMethod(USES_BOTH, "f", HOST_POOL));
-        assertTrue(e.diagnostics().getFirst().message().endsWith("(compiler.err.cant.resolve.location.args)"),
-                e.diagnostics().toString());
-    }
-
-    @Test
-    void anExplicitReportOptionWinsOverAGlobalEnforceProperty() {
-        String b0 = outcome(tagged(JavacGateMode.OFF));
-        assertEquals(b0, withProperty(JavacGate.MODE_PROPERTY, "enforce", () -> outcome(tagged(JavacGateMode.REPORT))));
-    }
-
     // --- F540: provenance belongs to the compilation, not to the process ---
-
-    @Test
-    void anUnrelatedCompilationsTagsNeverChangeAResult() throws Exception {
-        String one = "package leak;\npublic class One {} class Dup {}\n";
-        String two = "package leak;\npublic class Two {} class Dup {}\n";
-        String root = "package leak;\nclass Main {}\n";
-        var before = analyze(root, one, two);
-        assertTrue(before.diagnostics().getFirst().message().contains("equal standing"), before.toString());
-        // Another compilation marks the same text as a JAR source.
-        var other = JavacGate.check("compile", List.of(JavacFrontend.Unit.of(root)),
-                List.of(JavacFrontend.Unit.jar(one), JavacFrontend.Unit.of(two)), REPORT);
-        assertFalse(other.diagnostics().stream().anyMatch(d -> d.message().contains("equal standing")), other.toString());
-        assertEquals(before.diagnostics(), analyze(root, one, two).diagnostics());
-        assertNotEquals(JavacGate.key(List.of(JavacFrontend.Unit.of(root)), List.of(JavacFrontend.Unit.jar(one))),
-                JavacGate.key(List.of(JavacFrontend.Unit.of(root)), List.of(JavacFrontend.Unit.of(one))));
-        // A unit never shadows itself, however analyses interleave.
-        String single = "package solo;\npublic class Only { static int one() { return 1; } } class Also {}\n";
-        String user = "package solo;\nclass Main { int f() { return Only.one(); } }\n";
-        var pool = Executors.newFixedThreadPool(8);
-        try {
-            var futures = new ArrayList<Future<JavacResult>>();
-            for (int i = 0; i < 64; i++) {
-                var origin = i % 2 == 0 ? JavacFrontend.Origin.JAR : JavacFrontend.Origin.PROJECT;
-                futures.add(pool.submit(() -> JavacFrontend.shared().analyze(List.of(JavacFrontend.Unit.of(user)),
-                        List.of(new JavacFrontend.Unit(single, null, origin)))));
-            }
-            for (var f : futures) assertTrue(f.get().isAccepted(), f.get().toString());
-        } finally {
-            pool.shutdown();
-        }
-    }
 
     // --- F521 (D8): pool units of equal standing declaring one name are an error, referenced or not ---
 
@@ -403,7 +295,7 @@ class JavacGateReviewTest {
                 class M { static int f(Second s) { return s.x(); } }
                 """;
         var off = new JulcCompiler(StdlibRegistry.defaultRegistry(),
-                new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.OFF)).compileMethod(root, "f", List.of(SECONDARIES));
+                new CompilerOptions()).compileMethod(root, "f", List.of(SECONDARIES));
         assertFalse(off.hasErrors(), off.diagnostics().toString());
         var enforced = new JulcCompiler(StdlibRegistry.defaultRegistry(), ENFORCE)
                 .compileMethod(root, "f", List.of(SECONDARIES));
@@ -458,26 +350,6 @@ class JavacGateReviewTest {
 
     // --- F402: the metadata-only task is built once per process ---
 
-    @Test
-    void metadataTaskIsCachedPerProcessAndLocksItself() throws Exception {
-        var first = JavacGate.metadata(REPORT);
-        assertNotNull(first);
-        assertSame(first, JavacGate.metadata(ENFORCE));
-        assertSame(first, JavacGate.metadata(REPORT));
-        // F406: concurrent queries need no caller lock.
-        var pool = Executors.newFixedThreadPool(8);
-        try {
-            var futures = new ArrayList<Future<Integer>>();
-            for (int i = 0; i < 64; i++) {
-                futures.add(pool.submit(() -> first.read((elements, types) ->
-                        elements.getTypeElement("org.julclang.ledger.TxInfo").getRecordComponents().size())));
-            }
-            for (var f : futures) assertEquals(16, f.get());
-        } finally {
-            pool.shutdown();
-        }
-    }
-
     // --- F403: a broken JuLC build is not JULC0089, and a missing manifest is loud ---
 
     @Test
@@ -496,7 +368,7 @@ class JavacGateReviewTest {
             @Override
             public URL getResource(String name) {
                 return name.equals(JavacFrontend.BundledSources.STDLIB_MARKER)
-                        ? JavacGateReviewTest.class.getResource("JavacGateReviewTest.class") : null;
+                        ? JavacFrontendPoolTest.class.getResource("JavacFrontendPoolTest.class") : null;
             }
 
             @Override
@@ -524,28 +396,6 @@ class JavacGateReviewTest {
     }
 
     // --- F512: identities are injective on strings, unpaired surrogates included ---
-
-    @Test
-    void aSurrogateTextAndItsStoredFormNeverShareAKey() {
-        String s = "class Probe500 { static int f() { return 1; } }//" + (char) 0xD880;
-        String t = new String(CorpusFiles.bytes(s), StandardCharsets.UTF_8);
-        assertNotEquals(s, t);
-        assertNotEquals(JavacGate.key(List.of(JavacFrontend.Unit.of(s)), List.of()),
-                JavacGate.key(List.of(JavacFrontend.Unit.of(t)), List.of()));
-        assertNotEquals(JavacPlatform.identity(s), JavacPlatform.identity(t));
-        assertFalse(Arrays.equals(CorpusFiles.bytes(s),
-                CorpusFiles.bytes(t)));
-        assertEquals(t, CorpusFiles.text(CorpusFiles.bytes(t)));
-        // Priming with s cannot decide t's outcome.
-        var direct = analyze(t);
-        assertTrue(JavacGate.check("probe", List.of(JavacFrontend.Unit.of(s)), List.of(), REPORT).isAccepted());
-        if (direct.isAccepted()) {
-            assertTrue(JavacGate.check("probe", List.of(JavacFrontend.Unit.of(t)), List.of(), ENFORCE).isAccepted());
-        } else {
-            assertThrows(CompilerException.class,
-                    () -> JavacGate.check("probe", List.of(JavacFrontend.Unit.of(t)), List.of(), ENFORCE));
-        }
-    }
 
     // --- F513: a wildcard import does not make every unresolved class a JDK type ---
 
@@ -577,7 +427,7 @@ class JavacGateReviewTest {
         // Tagging the JAR copy's own text never tags the project's equal text: they are different sources.
         for (var tags : List.of(LibrarySourceResolver.jarSourceTexts(pool, jar), List.of(one))) {
             var e = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(),
-                    new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.ENFORCE).setJarLibrarySources(tags))
+                    new CompilerOptions().setJarLibrarySources(tags))
                     .compileMethod(root, "g", List.of(projectOne, two)));
             assertTrue(e.diagnostics().getFirst().message().contains("two library sources of equal standing"),
                     e.diagnostics().toString());

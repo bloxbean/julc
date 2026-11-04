@@ -16,7 +16,7 @@ class CrossMethodTypeInferenceTest {
      * is selected explicitly; it is removed at M6.
      */
     private static JulcCompiler javaParser() {
-        return new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER));
+        return new JulcCompiler(null, new CompilerOptions());
     }
 
     /** On javac, the default from ADR-068 M5, {@code ==} between references is reference equality: {@code JULC0086} (D6). */
@@ -84,12 +84,6 @@ class CrossMethodTypeInferenceTest {
         assertReferenceEqualityRejected(source);
         // javac compiles the Java form, a.equals(b), to the same builtin.
         assertTrue(new JulcCompiler().compileWithDetails(source.replace("a == b", "a.equals(b)")).pirFormatted().contains("equalsInteger"));
-        var result = javaParser().compileWithDetails(source);
-        assertNotNull(result.program());
-        assertFalse(result.hasErrors());
-        var pir = result.pirFormatted();
-        assertTrue(pir.contains("equalsInteger"),
-                "Helper with BigInteger params should use equalsInteger, PIR: " + pir);
     }
 
     /**
@@ -116,12 +110,6 @@ class CrossMethodTypeInferenceTest {
                 }
                 """;
         assertReferenceEqualityRejected(source);
-        var result = javaParser().compileWithDetails(source);
-        assertNotNull(result.program());
-        assertFalse(result.hasErrors());
-        var pir = result.pirFormatted();
-        assertTrue(pir.contains("equalsByteString"),
-                "Helper with byte[] params should use equalsByteString, PIR: " + pir);
     }
 
     /**
@@ -279,9 +267,6 @@ class CrossMethodTypeInferenceTest {
         assertReferenceEqualityRejected(source);
         // javac compiles the Java form, datum.equals(redeemer), to the same builtin.
         assertTrue(new JulcCompiler().compileWithDetails(source.replace("datum == redeemer", "datum.equals(redeemer)")).pirFormatted().contains("equalsInteger"));
-        var result = javaParser().compileWithDetails(source);
-        assertNotNull(result.program());
-        assertFalse(result.hasErrors());
     }
 
     /**
@@ -309,11 +294,6 @@ class CrossMethodTypeInferenceTest {
         assertReferenceEqualityRejected(source);
         // javac compiles the Java form, a.equals(b), to the same builtin.
         assertTrue(new JulcCompiler().compileWithDetails(source.replace("a == b", "a.equals(b)")).pirFormatted().contains("equalsString"));
-        var result = javaParser().compileWithDetails(source);
-        assertNotNull(result.program());
-        assertFalse(result.hasErrors());
-        var pir = result.pirFormatted();
-        assertTrue(pir.contains("equalsString"),
-                "Helper with String params should use equalsString, PIR: " + pir);
     }
+
 }

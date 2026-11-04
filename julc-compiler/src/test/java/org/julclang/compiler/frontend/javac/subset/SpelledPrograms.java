@@ -1,36 +1,16 @@
 package org.julclang.compiler.frontend.javac.subset;
 
-import org.julclang.compiler.CompilerFrontend;
-import org.julclang.compiler.CompilerOptions;
-import org.julclang.compiler.CompileResult;
-import org.julclang.compiler.CompilerException;
-import org.julclang.compiler.CompilerTestVm;
-import org.julclang.compiler.CompilerTarget;
-import org.julclang.compiler.JulcCompiler;
-import org.julclang.core.Constant;
-import org.julclang.core.Term;
-import org.julclang.stdlib.StdlibRegistry;
-import org.julclang.vm.EvalOptions;
-import org.julclang.vm.EvalResult;
-import org.julclang.vm.ExBudget;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.MethodSource;
 
 import java.math.BigInteger;
 import java.util.List;
 import java.util.stream.Stream;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
- * Whole programs the JavaParser frontend reads by a name, or past a declaration, each through the default gate. A program
- * that is rejected pins the rule that stops it, and one that compiles pins its value, which is Java's: the JVM agrees by
- * reading these sources. The other tests of this package read the gate; these read the compiler's answer.
+ * Programs whose names the JavaParser frontend read by spelling until ADR-068 M6, with what it answered: the data
+ * {@code SpelledProgramsOnJavacTest} holds the javac frontend to, which binds each by what javac resolved.
  */
-class SpelledReadingsTest {
+final class SpelledPrograms {
 
     /** What a compilation gives: the first diagnostic's code, or a value. */
     sealed interface Outcome permits Rejected, Evaluates {
@@ -63,31 +43,6 @@ class SpelledReadingsTest {
 
     private static Program program(String label, Outcome outcome, String root, String... pool) {
         return new Program(label, outcome, root, List.of(pool));
-    }
-
-    private static CompileResult compile(Program program) {
-        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER));
-        return program.root().contains("@Entrypoint") ? compiler.compile(program.root(), program.pool())
-                : compiler.compileMethod(program.root(), "m", program.pool());
-    }
-
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("programs")
-    void theCompilersAnswer(Program program) {
-        switch (program.outcome()) {
-            case Rejected(var code) -> {
-                var thrown = assertThrows(CompilerException.class, () -> compile(program), program.label());
-                assertEquals(code, thrown.diagnostics().getFirst().code(), thrown.getMessage());
-            }
-            case Evaluates(var value) -> {
-                var result = compile(program);
-                assertFalse(result.hasErrors(), program.label());
-                var evaluation = CompilerTestVm.pv11("Java").evaluateWithArgs(result.program(), CompilerTarget.PLUTUS_V3_PV11.ledgerTarget(),
-                        List.of(), new ExBudget(1_000_000_000L, 5_000_000L), EvalOptions.DEFAULT);
-                assertEquals(new Term.Const(Constant.integer(BigInteger.valueOf(value))),
-                        assertInstanceOf(EvalResult.Success.class, evaluation, program.label()).resultTerm(), program.label());
-            }
-        }
     }
 
     static Stream<Program> programs() {

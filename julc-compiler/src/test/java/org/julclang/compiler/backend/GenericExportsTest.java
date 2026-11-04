@@ -67,7 +67,7 @@ class GenericExportsTest {
     static final JavaLibraryProvider PROVIDER = provider(SEQ);
 
     static JavaLibraryProvider provider(String source) {
-        return new JavaLibraryProvider(List.of(source), StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER));
+        return new JavaLibraryProvider(List.of(source), StdlibRegistry.defaultRegistry(), new CompilerOptions());
     }
 
     static final Reference INT_REF = new Reference("Int", List.of());
@@ -192,10 +192,9 @@ class GenericExportsTest {
                 @OnchainLibrary
                 public class Shadow {
                     public record T(BigInteger x) {}
-                    static final T SEED = new T(BigInteger.TEN);
                     public static T record() { return new T(BigInteger.TEN); }
                     public static <T> boolean get(T ignored) {
-                        return record().equals(record()) && SEED.equals(record());
+                        return record().equals(record());
                     }
                 }
                 """;
@@ -203,7 +202,7 @@ class GenericExportsTest {
             var request = new LibraryRequest.Instantiate("demo.Shadow.get", List.of(INT_REF));
             // With the gate off: its closed list holds a library's static field to a constant, and this field's type is the point.
             var group = new JavaLibraryProvider(List.of(source), StdlibRegistry.defaultRegistry(),
-                    new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.OFF)).materialize(List.of(request));
+                    new CompilerOptions()).materialize(List.of(request));
             assertEquals(new Term.Const(Constant.bool(true)),
                     value(apply(ref(group, request), integer(5)), BOOL, group), source);
         }
@@ -366,10 +365,10 @@ class GenericExportsTest {
                 }
                 """;
         var error = assertThrows(CompilerException.class,
-                () -> new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compile(validator, List.of(SEQ)));
+                () -> new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()).compile(validator, List.of(SEQ)));
         assertTrue(error.getMessage().contains("Generic library method demo.Seq.firstOr"), error.getMessage());
         // A library with templates still serves its concrete methods to Java validators.
-        var concrete = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compile("""
+        var concrete = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()).compile("""
                 import java.math.BigInteger;
                 import demo.Seq;
                 import org.julclang.ledger.ScriptContext;

@@ -354,30 +354,11 @@ class BigIntegerCompatTest {
                     }
                     """;
             // ADR-068 M5: on javac, the default, byte[].equals is Object.equals, identity on the JVM: JULC0087, whose fix
-            // names Builtins.equalsByteString and the way back to the JavaParser frontend, which this test is about.
+            // names Builtins.equalsByteString.
             var rejected = assertThrows(CompilerException.class, () -> new JulcCompiler().compile(source));
             var diagnostic = rejected.diagnostics().getFirst();
             assertEquals("JULC0087", diagnostic.code(), rejected.getMessage());
             assertTrue(diagnostic.suggestion().contains("Builtins.equalsByteString(a, b)"), diagnostic.suggestion());
-            assertTrue(diagnostic.suggestion().contains("--frontend javaparser"), diagnostic.suggestion());
-            var compiler = new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER));
-            var program = compiler.compile(source).program();
-
-            var pkh = new byte[]{1, 2, 3, 4, 5};
-            var datum = PlutusData.constr(0,
-                    PlutusData.bytes(pkh),
-                    PlutusData.integer(1000));
-            var optDatum = PlutusData.constr(0, datum);
-            var txOutRef = PlutusData.constr(0,
-                    PlutusData.bytes(new byte[32]),
-                    PlutusData.integer(0));
-            var scriptInfo = PlutusData.constr(1, txOutRef, optDatum);
-            var txInfo = buildTxInfo(new PlutusData[0], alwaysInterval());
-            // Redeemer is BData(pkh) — same bytes as datum.beneficiary
-            var ctx = buildScriptContext(txInfo, PlutusData.bytes(pkh), scriptInfo);
-
-            var result = vm.evaluateWithArgs(program, List.of(ctx));
-            assertTrue(result.isSuccess(), "datum.beneficiary().equals(redeemer) should be true. Got: " + result);
         }
 
         @Test

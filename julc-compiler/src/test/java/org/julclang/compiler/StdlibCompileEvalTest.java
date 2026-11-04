@@ -216,7 +216,7 @@ class StdlibCompileEvalTest {
      * the javac gate off until the API changes; ADR-068 M1b's report lists each use.
      */
     static Program compileDialectValidator(String source) {
-        var compiler = new JulcCompiler(STDLIB, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.OFF));
+        var compiler = new JulcCompiler(STDLIB, new CompilerOptions());
         var result = compiler.compile(source);
         assertFalse(result.hasErrors(), "Compilation failed: " + result);
         assertNotNull(result.program(), "Program should not be null");
@@ -224,7 +224,7 @@ class StdlibCompileEvalTest {
     }
 
     static Program compileValidator(String source) {
-        var compiler = new JulcCompiler(STDLIB, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER));
+        var compiler = new JulcCompiler(STDLIB, new CompilerOptions());
         var result = compiler.compile(source);
         assertFalse(result.hasErrors(), "Compilation failed: " + result);
         assertNotNull(result.program(), "Program should not be null");
@@ -232,7 +232,7 @@ class StdlibCompileEvalTest {
     }
 
     static Program compileValidatorWithLibs(String validator, String... libs) {
-        var compiler = new JulcCompiler(STDLIB, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER));
+        var compiler = new JulcCompiler(STDLIB, new CompilerOptions());
         var result = compiler.compile(validator, List.of(libs));
         assertFalse(result.hasErrors(), "Compilation failed: " + result);
         assertNotNull(result.program(), "Program should not be null");
@@ -1891,7 +1891,7 @@ class StdlibCompileEvalTest {
                             TxOut txOut = PlutusData.cast(Builtins.headList(fields), TxOut.class);
                             Address expected = PlutusData.cast(Builtins.headList(Builtins.tailList(fields)), Address.class);
                             Address actual = OutputLib.txOutAddress(txOut);
-                            return actual == expected;
+                            return actual.equals(expected);
                         }
                     }
                     """;
@@ -2073,7 +2073,7 @@ class StdlibCompileEvalTest {
                             Address addr = PlutusData.cast(Builtins.headList(Builtins.tailList(fields)), Address.class);
                             TxOut unique = OutputLib.uniqueOutputAt(outputs, addr);
                             // Verify it's the expected output by checking address equality
-                            return OutputLib.txOutAddress(unique) == addr;
+                            return OutputLib.txOutAddress(unique).equals(addr);
                         }
                     }
                     """;
@@ -2112,7 +2112,7 @@ class StdlibCompileEvalTest {
                             Address addr = PlutusData.cast(Builtins.headList(Builtins.tailList(fields)), Address.class);
                             TxOut unique = OutputLib.uniqueOutputAt(outputs, addr);
                             // Force evaluation of unique by comparing its address field
-                            return unique.address() == addr;
+                            return unique.address().equals(addr);
                         }
                     }
                     """;
@@ -2389,7 +2389,7 @@ class StdlibCompileEvalTest {
                         }
                     }
                     """;
-            var compiler = new JulcCompiler(STDLIB, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER));
+            var compiler = new JulcCompiler(STDLIB, new CompilerOptions());
             var result = compiler.compile(validator, List.of(userLib));
             assertFalse(result.hasErrors(), "Compilation should succeed: " + result);
             var evalResult = vm.evaluateWithArgs(result.program(), List.of(mockCtx(PlutusData.constr(0))));
@@ -2426,7 +2426,7 @@ class StdlibCompileEvalTest {
                         }
                     }
                     """;
-            var compiler = new JulcCompiler(STDLIB, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER));
+            var compiler = new JulcCompiler(STDLIB, new CompilerOptions());
             var result = compiler.compile(validator, List.of(userLib));
             assertFalse(result.hasErrors(), "Compilation should succeed: " + result);
             var evalResult = vm.evaluateWithArgs(result.program(), List.of(mockCtx(PlutusData.integer(0))));
@@ -2474,7 +2474,7 @@ class StdlibCompileEvalTest {
                         }
                     }
                     """;
-            var compiler = new JulcCompiler(STDLIB, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER));
+            var compiler = new JulcCompiler(STDLIB, new CompilerOptions());
             var result = compiler.compile(validator, List.of(helperLib, middleLib));
             assertFalse(result.hasErrors(), "Compilation should succeed: " + result);
             var evalResult = vm.evaluateWithArgs(result.program(), List.of(mockCtx(PlutusData.integer(0))));
@@ -2491,71 +2491,6 @@ class StdlibCompileEvalTest {
     class HighLevelAbstractions {
 
         // --- Pair instance methods ---
-
-        @Test
-        void pairKeyOnMapEntry() {
-            var source = """
-                    import java.util.Map;
-                    import org.julclang.stdlib.Builtins;
-                    import org.julclang.core.PlutusData;
-                    import org.julclang.stdlib.annotation.Entrypoint;
-                    import org.julclang.stdlib.annotation.SpendingValidator;
-                    import org.julclang.core.types.JulcMap;
-
-                    @SpendingValidator
-                    class TestValidator {
-                        @Entrypoint
-                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) redeemer;
-                            long total = 0;
-                            for (var entry : m) {
-                                total = total + Builtins.unIData(entry.key());
-                            }
-                            return total == 3;
-                        }
-                    }
-                    """;
-            var program = compileDialectValidator(source);
-            // Map with keys 1 and 2 → total = 3
-            var mapData = PlutusData.map(
-                    new PlutusData.Pair(PlutusData.integer(1), PlutusData.integer(10)),
-                    new PlutusData.Pair(PlutusData.integer(2), PlutusData.integer(20))
-            );
-            var result = vm.evaluateWithArgs(program, List.of(mockCtx(mapData)));
-            assertTrue(result.isSuccess(), "pair.key() in for-each over map should work. Got: " + result);
-        }
-
-        @Test
-        void pairValueOnMapEntry() {
-            var source = """
-                    import java.util.Map;
-                    import org.julclang.stdlib.Builtins;
-                    import org.julclang.core.PlutusData;
-                    import org.julclang.stdlib.annotation.Entrypoint;
-                    import org.julclang.stdlib.annotation.SpendingValidator;
-                    import org.julclang.core.types.JulcMap;
-
-                    @SpendingValidator
-                    class TestValidator {
-                        @Entrypoint
-                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) redeemer;
-                            long total = 0;
-                            for (var entry : m) {
-                                total = total + Builtins.unIData(entry.value());
-                            }
-                            return total == 30;
-                        }
-                    }
-                    """;
-            var program = compileDialectValidator(source);
-            var mapData = PlutusData.map(
-                    new PlutusData.Pair(PlutusData.integer(1), PlutusData.integer(10)),
-                    new PlutusData.Pair(PlutusData.integer(2), PlutusData.integer(20))
-            );
-            var result = vm.evaluateWithArgs(program, List.of(mockCtx(mapData)));
-            assertTrue(result.isSuccess(), "pair.value() in for-each over map should work. Got: " + result);
-        }
 
         // --- Map instance methods ---
 
@@ -2668,66 +2603,6 @@ class StdlibCompileEvalTest {
         }
 
         // --- For-each over Map ---
-
-        @Test
-        void forEachOverMapAccumulates() {
-            var source = """
-                    import java.util.Map;
-                    import org.julclang.stdlib.Builtins;
-                    import org.julclang.core.PlutusData;
-                    import org.julclang.stdlib.annotation.Entrypoint;
-                    import org.julclang.stdlib.annotation.SpendingValidator;
-                    import org.julclang.core.types.JulcMap;
-
-                    @SpendingValidator
-                    class TestValidator {
-                        @Entrypoint
-                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) redeemer;
-                            long sum = 0;
-                            for (var entry : m) {
-                                sum = sum + Builtins.unIData(entry.key()) + Builtins.unIData(entry.value());
-                            }
-                            return sum == 33;
-                        }
-                    }
-                    """;
-            var program = compileDialectValidator(source);
-            // keys: 1,2  values: 10,20 → sum = 1+10+2+20 = 33
-            var mapData = PlutusData.map(
-                    new PlutusData.Pair(PlutusData.integer(1), PlutusData.integer(10)),
-                    new PlutusData.Pair(PlutusData.integer(2), PlutusData.integer(20))
-            );
-            var result = vm.evaluateWithArgs(program, List.of(mockCtx(mapData)));
-            assertTrue(result.isSuccess(), "for-each over map with accumulator should work. Got: " + result);
-        }
-
-        @Test
-        void forEachOverEmptyMap() {
-            var source = """
-                    import java.util.Map;
-                    import org.julclang.core.PlutusData;
-                    import org.julclang.stdlib.annotation.Entrypoint;
-                    import org.julclang.stdlib.annotation.SpendingValidator;
-                    import org.julclang.core.types.JulcMap;
-
-                    @SpendingValidator
-                    class TestValidator {
-                        @Entrypoint
-                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) redeemer;
-                            long count = 0;
-                            for (var entry : m) {
-                                count = count + 1;
-                            }
-                            return count == 0;
-                        }
-                    }
-                    """;
-            var program = compileDialectValidator(source);
-            var result = vm.evaluateWithArgs(program, List.of(mockCtx(PlutusData.map())));
-            assertTrue(result.isSuccess(), "for-each over empty map should yield 0. Got: " + result);
-        }
 
         // --- Value instance methods ---
 
@@ -4387,37 +4262,6 @@ class StdlibCompileEvalTest {
         // D. For-each on MapType from field access
         // ================================================================
 
-        @Test
-        void forEachOnMapFromFieldAccess() {
-            var source = """
-                    import java.util.Map;
-                    import org.julclang.core.PlutusData;
-                    import org.julclang.ledger.ScriptContext;
-                    import org.julclang.ledger.TxInfo;
-                    import org.julclang.stdlib.annotation.Entrypoint;
-                    import org.julclang.stdlib.annotation.SpendingValidator;
-                    import org.julclang.core.types.JulcMap;
-
-                    @SpendingValidator
-                    class TestValidator {
-                        @Entrypoint
-                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            TxInfo txInfo = ctx.txInfo();
-                            JulcMap<PlutusData, PlutusData> w = PlutusData.cast(txInfo.withdrawals(), JulcMap.class);
-                            int count = 0;
-                            for (var entry : w) {
-                                count = count + 1;
-                            }
-                            return count == 2;
-                        }
-                    }
-                    """;
-            var program = compileDialectValidator(source);
-            var ctx = fieldAccessCtx(twoEntryWithdrawals());
-            var result = vm.evaluateWithArgs(program, List.of(ctx));
-            assertTrue(result.isSuccess(), "forEachOnMapFromFieldAccess should count 2 entries. Got: " + result);
-        }
-
         // ================================================================
         // E. Mixed paths: field access + method chaining
         // ================================================================
@@ -5201,7 +5045,7 @@ class StdlibCompileEvalTest {
                         }
                     }
                     """;
-            var compiler = new JulcCompiler(STDLIB, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER));
+            var compiler = new JulcCompiler(STDLIB, new CompilerOptions());
             var compiled = compiler.compile(source);
             assertFalse(compiled.hasErrors(), "Compilation failed: " + compiled);
             assertTrue(compiled.isParameterized(), "Should be parameterized");
@@ -5245,7 +5089,7 @@ class StdlibCompileEvalTest {
                         }
                     }
                     """;
-            var compiler = new JulcCompiler(STDLIB, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER));
+            var compiler = new JulcCompiler(STDLIB, new CompilerOptions());
             var compiled = compiler.compile(source);
             assertFalse(compiled.hasErrors(), "Compilation failed: " + compiled);
 
@@ -5383,33 +5227,6 @@ class StdlibCompileEvalTest {
             var redeemer = PlutusData.list(PlutusData.integer(1), PlutusData.integer(2), PlutusData.integer(3));
             var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
             assertTrue(result.isSuccess(), "list.all with typed lambda should work. Got: " + result);
-        }
-
-        @Test
-        void listFindWithTypedLambda() {
-            var source = """
-                    import org.julclang.stdlib.Builtins;
-                    import java.util.List;
-                    import org.julclang.core.PlutusData;
-                    import org.julclang.ledger.ScriptContext;
-                    import org.julclang.stdlib.annotation.Entrypoint;
-                    import org.julclang.stdlib.annotation.SpendingValidator;
-                    import java.math.BigInteger;
-                    import org.julclang.core.types.JulcList;
-                    @SpendingValidator
-                    class TestValidator {
-                        @Entrypoint
-                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            JulcList<PlutusData> items = PlutusData.cast(Builtins.unListData(redeemer), JulcList.class);
-                            PlutusData found = items.find((PlutusData x) -> Builtins.unIData(x).equals(BigInteger.valueOf(3)));
-                            return Builtins.constrTag(found) == 0;
-                        }
-                    }
-                    """;
-            var program = compileValidator(source);
-            var redeemer = PlutusData.list(PlutusData.integer(1), PlutusData.integer(2), PlutusData.integer(3));
-            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
-            assertTrue(result.isSuccess(), "list.find with typed lambda should return Some. Got: " + result);
         }
 
         // --- B. Instance HOFs with type inference (core feature) ---
@@ -5573,60 +5390,6 @@ class StdlibCompileEvalTest {
         }
 
         // --- D. Static HOF type inference ---
-
-        @Test
-        void listsLibMapInferred() {
-            var source = """
-                    import java.math.BigInteger;
-                    import org.julclang.core.types.JulcList;
-                    import org.julclang.stdlib.Builtins;
-                    import org.julclang.stdlib.lib.ListsLib;
-                    import org.julclang.core.PlutusData;
-                    import org.julclang.ledger.ScriptContext;
-                    import org.julclang.stdlib.annotation.Entrypoint;
-                    import org.julclang.stdlib.annotation.SpendingValidator;
-                    @SpendingValidator
-                    class TestValidator {
-                        @Entrypoint
-                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            JulcList<BigInteger> items = PlutusData.cast(Builtins.unListData(redeemer), JulcList.class);
-                            JulcList<PlutusData> mapped = ListsLib.map(items, x -> x + 1);
-                            return Builtins.unIData(mapped.head()).equals(BigInteger.TWO);
-                        }
-                    }
-                    """;
-            var program = compileDialectValidator(source);
-            var redeemer = PlutusData.list(PlutusData.integer(1), PlutusData.integer(2), PlutusData.integer(3));
-            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
-            assertTrue(result.isSuccess(), "ListsLib.map with inferred types should work. Got: " + result);
-        }
-
-        @Test
-        void listsLibFilterInferred() {
-            var source = """
-                    import java.math.BigInteger;
-                    import org.julclang.core.types.JulcList;
-                    import org.julclang.stdlib.Builtins;
-                    import org.julclang.stdlib.lib.ListsLib;
-                    import org.julclang.core.PlutusData;
-                    import org.julclang.ledger.ScriptContext;
-                    import org.julclang.stdlib.annotation.Entrypoint;
-                    import org.julclang.stdlib.annotation.SpendingValidator;
-                    @SpendingValidator
-                    class TestValidator {
-                        @Entrypoint
-                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            JulcList<BigInteger> items = PlutusData.cast(Builtins.unListData(redeemer), JulcList.class);
-                            JulcList<BigInteger> filtered = ListsLib.filter(items, x -> x > 2);
-                            return filtered.size() == 1;
-                        }
-                    }
-                    """;
-            var program = compileDialectValidator(source);
-            var redeemer = PlutusData.list(PlutusData.integer(1), PlutusData.integer(2), PlutusData.integer(3));
-            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
-            assertTrue(result.isSuccess(), "ListsLib.filter with inferred types should work. Got: " + result);
-        }
 
         // --- E. Chained HOFs ---
 
@@ -5799,33 +5562,6 @@ class StdlibCompileEvalTest {
             assertTrue(result.isSuccess(), "map returning Bool should wrapEncode to ConstrData. Got: " + result);
         }
 
-        @Test
-        void listFindInferred() {
-            var source = """
-                    import java.math.BigInteger;
-                    import org.julclang.core.types.JulcList;
-                    import org.julclang.stdlib.Builtins;
-                    import org.julclang.core.PlutusData;
-                    import org.julclang.ledger.ScriptContext;
-                    import org.julclang.stdlib.annotation.Entrypoint;
-                    import org.julclang.stdlib.annotation.SpendingValidator;
-                    @SpendingValidator
-                    class TestValidator {
-                        @Entrypoint
-                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            JulcList<BigInteger> items = PlutusData.cast(Builtins.unListData(redeemer), JulcList.class);
-                            PlutusData found = PlutusData.cast(items.find(x -> x.compareTo(BigInteger.TWO) > 0), PlutusData.class);
-                            // found should be Some(IData(3)) = Constr(0, [IData(3)])
-                            return Builtins.constrTag(found) == 0;
-                        }
-                    }
-                    """;
-            var program = compileValidator(source);
-            var redeemer = PlutusData.list(PlutusData.integer(1), PlutusData.integer(2), PlutusData.integer(3));
-            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
-            assertTrue(result.isSuccess(), "list.find with inferred type should return Some. Got: " + result);
-        }
-
         // --- G. ByteStringType HOF double-unwrap fix ---
 
         @Test
@@ -5964,38 +5700,6 @@ class StdlibCompileEvalTest {
             var redeemer = PlutusData.constr(0, namesList, PlutusData.bytes(new byte[]{65, 66}));
             var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
             assertTrue(result.isSuccess(), "Unregistered field accessor on ByteStringType should generate UnBData. Got: " + result);
-        }
-
-        @Test
-        void listsLibAnyInferredByteStringType() {
-            // Same double-unwrap bug via static ListsLib.any() path
-            var source = """
-                    import org.julclang.stdlib.Builtins;
-                    import org.julclang.core.types.JulcList;
-                    import org.julclang.stdlib.lib.ListsLib;
-                    import org.julclang.core.PlutusData;
-                    import org.julclang.ledger.PubKeyHash;
-                    import org.julclang.ledger.ScriptContext;
-                    import org.julclang.stdlib.annotation.Entrypoint;
-                    import org.julclang.stdlib.annotation.SpendingValidator;
-                    @SpendingValidator
-                    class TestValidator {
-                        @Entrypoint
-                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            var fields = Builtins.sndPair(Builtins.unConstrData(redeemer));
-                            JulcList<PubKeyHash> sigs = PlutusData.cast(Builtins.unListData(Builtins.headList(fields)), JulcList.class);
-                            byte[] target = Builtins.unBData(Builtins.headList(Builtins.tailList(fields)));
-                            return ListsLib.any(sigs, sig -> Builtins.equalsByteString((byte[])(Object) sig.hash(), target));
-                        }
-                    }
-                    """;
-            var program = compileDialectValidator(source);
-            var sigsList = PlutusData.list(
-                    PlutusData.bytes(new byte[]{1, 2, 3}),
-                    PlutusData.bytes(new byte[]{4, 5, 6}));
-            var redeemer = PlutusData.constr(0, sigsList, PlutusData.bytes(new byte[]{1, 2, 3}));
-            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
-            assertTrue(result.isSuccess(), "ListsLib.any with inferred ByteStringType should not double-unwrap. Got: " + result);
         }
 
         // --- H. Nested HOF save/restore of hofUnwrappedVars ---
@@ -6297,7 +6001,7 @@ class StdlibCompileEvalTest {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
                             Address addr = MyLib.getFirstOutput(redeemer).address();
-                            return addr == addr;
+                            return addr.equals(addr);
                         }
                     }
                     """;

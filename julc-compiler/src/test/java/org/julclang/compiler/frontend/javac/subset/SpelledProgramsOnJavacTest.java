@@ -46,7 +46,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * value in this file is written by hand.
  * <p>
  * A slice that ports a construct moves rows here from {@link Stops} to {@link Agrees}, which is the point of the table:
- * each program that starts to compile meets the JVM the moment it does. Every program of {@link SpelledReadingsTest} has a
+ * each program that starts to compile meets the JVM the moment it does. Every program of {@link SpelledPrograms} has a
  * row, and so has each program of the review's sources that a statement reaches.
  */
 class SpelledProgramsOnJavacTest {
@@ -89,7 +89,7 @@ class SpelledProgramsOnJavacTest {
     /** A record's member other than a nested type: ADR-067 D9 on the javac frontend (D11), ahead of what it reads. */
     private static final Answer RECORD_MEMBER = rejects("JULC0080");
 
-    /** What each program of {@link SpelledReadingsTest} does here. */
+    /** What each program of {@link SpelledPrograms} does here. */
     private static final Map<String, Answer> SPELLED = Map.ofEntries(
             entry("a validator's nested class beside an unimported pool class of its name", UNDEFINED_VARIABLE),
             entry("a nested class beside a pool class of the same package", UNDEFINED_VARIABLE),
@@ -317,7 +317,7 @@ class SpelledProgramsOnJavacTest {
     }
 
     private static Stream<Case> programs() {
-        var spelled = SpelledReadingsTest.programs().map(program -> {
+        var spelled = SpelledPrograms.programs().map(program -> {
             var run = program.root().equals(OPTIONAL_DATUM) ? ABSENT_DATUM : null;
             return new Case(program.label(), SPELLED.get(program.label()), program.root(), program.pool(),
                     run == null ? null : run.oracle(), run == null ? List.of() : run.arguments(), program.root().contains("@Entrypoint"));
@@ -334,7 +334,7 @@ class SpelledProgramsOnJavacTest {
     /** Every program of the other table has a row here, so a program added there has an answer on this frontend. */
     @Test
     void aRowPerProgram() {
-        var labels = SpelledReadingsTest.programs().map(SpelledReadingsTest.Program::label).collect(Collectors.toSet());
+        var labels = SpelledPrograms.programs().map(SpelledPrograms.Program::label).collect(Collectors.toSet());
         assertEquals(labels, SPELLED.keySet());
     }
 

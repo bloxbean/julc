@@ -15,7 +15,6 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.julclang.compiler.frontend.javac.lower.LoweringFixture.assertMethodNotPorted;
 import static org.julclang.compiler.frontend.javac.lower.LoweringFixture.assertMethodRejected;
 import static org.julclang.compiler.frontend.javac.lower.LoweringFixture.assertSameMethodAsReference;
 import static org.julclang.compiler.frontend.javac.lower.LoweringFixture.assertSameMethodRejectionAsReference;
@@ -159,8 +158,6 @@ class JavacLiteralsTest {
         var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAC);
         var failure = assertThrows(CompilerException.class, () -> new JulcCompiler(null, options).compileMethod(source, "m", List.of()));
         assertTrue(failure.getMessage().contains("unpaired surrogate U+D83D"), failure::getMessage);
-        var reference = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod(source, "m", List.of()));
-        assertTrue(reference.getMessage().contains("unpaired surrogate U+D83D"), reference::getMessage);
     }
 
     @Test

@@ -33,11 +33,11 @@ class DebugCompileResultTest {
 
     @Test
     void localsCollectionIsByteIdenticalToSourceMapOnlyCompilation() {
-        var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setSourceMapEnabled(true);
+        var options = new CompilerOptions().setSourceMapEnabled(true);
         var sourceMapOnly = new JulcCompiler(StdlibRegistry.defaultRegistry(), options)
                 .compileWithDetails(SOURCE, List.of());
         var withLocals = new JulcCompiler(StdlibRegistry.defaultRegistry(),
-                new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setSourceMapEnabled(true)).compileForDebug(SOURCE, List.of());
+                new CompilerOptions().setSourceMapEnabled(true)).compileForDebug(SOURCE, List.of());
 
         assertArrayEquals(UplcFlatEncoder.encodeProgram(sourceMapOnly.program()),
                 UplcFlatEncoder.encodeProgram(withLocals.compileResult().program()));
@@ -49,9 +49,9 @@ class DebugCompileResultTest {
     @Test
     void metadataIdsAndDigestAreDeterministicAcrossFreshCompilers() {
         var first = new JulcCompiler(StdlibRegistry.defaultRegistry(),
-                new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setSourceMapEnabled(true)).compileForDebug(SOURCE, List.of()).debugMetadata();
+                new CompilerOptions().setSourceMapEnabled(true)).compileForDebug(SOURCE, List.of()).debugMetadata();
         var second = new JulcCompiler(StdlibRegistry.defaultRegistry(),
-                new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setSourceMapEnabled(true)).compileForDebug(SOURCE, List.of()).debugMetadata();
+                new CompilerOptions().setSourceMapEnabled(true)).compileForDebug(SOURCE, List.of()).debugMetadata();
 
         assertEquals(first.bindings().stream().map(org.julclang.core.debug.DebugMetadata.Binding::id).toList(),
                 second.bindings().stream().map(org.julclang.core.debug.DebugMetadata.Binding::id).toList());
@@ -60,7 +60,7 @@ class DebugCompileResultTest {
 
     @Test
     void debugEntryPointRequiresExplicitSourceMapCompilation() {
-        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER));
+        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions());
         var error = assertThrows(IllegalStateException.class, () -> compiler.compileForDebug(SOURCE, List.of()));
         assertTrue(error.getMessage().contains("source-map"));
     }
@@ -81,50 +81,6 @@ class DebugCompileResultTest {
         assertTrue(metadata.suspensionPoints().stream().anyMatch(point ->
                         point.visibleBindings().stream().anyMatch(value -> value.bindingId().equals(exactId))),
                 "the local must become visible in the continuation after initialization");
-    }
-
-    @Test
-    void lambdaCapturesAndSameSpellingUseStableDistinctIdentities() {
-        var metadata = compileDialectDebug("""
-                import java.math.BigInteger;
-                import org.julclang.core.PlutusData;
-                import org.julclang.ledger.ScriptContext;
-                import org.julclang.stdlib.annotation.Entrypoint;
-                import org.julclang.stdlib.annotation.SpendingValidator;
-
-                @SpendingValidator
-                class CaptureDebugValidator {
-                    @Entrypoint
-                    static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                        BigInteger captured = BigInteger.TEN;
-                        var first = (BigInteger x) -> x.add(captured);
-                        var second = (BigInteger x) -> x.subtract(captured);
-                        return true;
-                    }
-                }
-                """).debugMetadata();
-
-        var xBindings = metadata.bindings().stream().filter(binding -> binding.name().equals("x")).toList();
-        assertEquals(2, xBindings.size());
-        assertEquals(2, xBindings.stream().map(DebugMetadata.Binding::id).collect(Collectors.toSet()).size());
-        Set<String> loweredX = metadata.loweredBindings().stream()
-                .map(DebugMetadata.LoweredBinding::sourceBindingId)
-                .filter(id -> id != null && xBindings.stream().anyMatch(binding -> binding.id().equals(id)))
-                .collect(Collectors.toSet());
-        assertEquals(2, loweredX.size());
-
-        String captured = metadata.bindings().stream().filter(binding -> binding.name().equals("captured"))
-                .map(DebugMetadata.Binding::id).findFirst().orElseThrow();
-        assertTrue(metadata.suspensionPoints().stream().anyMatch(point -> {
-            var visible = point.visibleBindings().stream().map(DebugMetadata.VisibleBinding::bindingId)
-                    .collect(Collectors.toSet());
-            return visible.contains(captured) && xBindings.stream().anyMatch(binding -> visible.contains(binding.id()));
-        }), "a lambda body must retain the exact outer capture identity");
-        assertFalse(metadata.suspensionPoints().stream().anyMatch(point -> {
-            var visible = point.visibleBindings().stream().map(DebugMetadata.VisibleBinding::bindingId)
-                    .collect(Collectors.toSet());
-            return visible.containsAll(xBindings.stream().map(DebugMetadata.Binding::id).toList());
-        }), "same-spelled parameters from separate lambdas must never alias");
     }
 
     @Test
@@ -167,12 +123,12 @@ class DebugCompileResultTest {
 
     /** ADR-068 M1b: lambdas bound to {@code var} locals are not Java (U3); compiled with the javac gate off. */
     private static DebugCompileResult compileDialectDebug(String source) {
-        return new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setSourceMapEnabled(true)
-                .setJavacGate(JavacGateMode.OFF)).compileForDebug(source, List.of());
+        return new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setSourceMapEnabled(true)
+                ).compileForDebug(source, List.of());
     }
 
     private static DebugCompileResult compileDebug(String source) {
         return new JulcCompiler(StdlibRegistry.defaultRegistry(),
-                new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setSourceMapEnabled(true)).compileForDebug(source, List.of());
+                new CompilerOptions().setSourceMapEnabled(true)).compileForDebug(source, List.of());
     }
 }

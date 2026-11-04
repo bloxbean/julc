@@ -515,50 +515,6 @@ class ParameterizedValidatorTest {
     // --- @Param passed to library methods (Fix 2: type coercion) ---
 
     @Test
-    void paramByteArrayPassedToDataLibMethod() {
-        // @Param byte[] is decoded to ByteStringType. Library method expects PlutusData (DataType).
-        // The compiler should insert BData coercion to encode ByteString → Data.
-        var libSource = """
-                import org.julclang.core.PlutusData;
-                import org.julclang.stdlib.annotation.OnchainLibrary;
-                @OnchainLibrary
-                class DataLib {
-                    static boolean isNonEmpty(PlutusData x) {
-                        return true;
-                    }
-                }
-                """;
-        var validatorSource = """
-                import org.julclang.core.PlutusData;
-                import org.julclang.ledger.ScriptContext;
-                import org.julclang.stdlib.annotation.Entrypoint;
-                import org.julclang.stdlib.annotation.Param;
-                import org.julclang.stdlib.annotation.SpendingValidator;
-                @SpendingValidator
-                class ParamLibValidator {
-                    @Param static byte[] owner;
-
-                    @Entrypoint
-                    static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                        return DataLib.isNonEmpty(owner);
-                    }
-                }
-                """;
-        // ADR-068 M1b: the implicit bytes-to-Data encoding at the call is the subject, and it is not Java (U4).
-        var result = new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.OFF))
-                .compile(validatorSource, java.util.List.of(libSource));
-        assertTrue(result.isParameterized());
-
-        var concrete = result.program().applyParams(PlutusData.bytes(new byte[]{1, 2, 3}));
-        var ctx = buildScriptContext(
-                buildTxInfo(new PlutusData[0]),
-                PlutusData.integer(0),
-                PlutusData.constr(0, PlutusData.bytes(new byte[28])));
-        var evalResult = vm.evaluateWithArgs(concrete, java.util.List.of(ctx));
-        assertTrue(evalResult.isSuccess(), "@Param byte[] passed to PlutusData lib method should succeed: " + evalResult);
-    }
-
-    @Test
     void paramIntegerPassedToIntegerLibMethodDirectly() {
         // @Param BigInteger is decoded to IntegerType. Library also expects BigInteger (IntegerType).
         // Types match — no coercion needed. This verifies @Param decode + library call round-trip.

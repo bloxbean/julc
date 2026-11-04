@@ -16,9 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.julclang.compiler.frontend.javac.lower.LoweringFixture.assertMethodNotPorted;
 import static org.julclang.compiler.frontend.javac.lower.LoweringFixture.assertMethodRejected;
-import static org.julclang.compiler.frontend.javac.lower.LoweringFixture.assertNotPorted;
 import static org.julclang.compiler.frontend.javac.lower.LoweringFixture.assertSameMethodRejectionAsReference;
 import static org.julclang.compiler.frontend.javac.lower.LoweringFixture.assertSameRejectionAsReference;
 

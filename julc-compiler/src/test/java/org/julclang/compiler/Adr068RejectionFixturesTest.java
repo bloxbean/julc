@@ -72,28 +72,17 @@ class Adr068RejectionFixturesTest {
         } catch (RuntimeException e) {
             found.add(codeOf(e) + " " + e.getMessage());
         }
-        for (String code : codes) {
-            assertTrue(found.stream().anyMatch(f -> f.startsWith(code + " ")), file.getFileName() + ": " + code + " in " + found);
-        }
-        for (Pattern message : messages) {
-            assertTrue(found.stream().anyMatch(f -> message.matcher(f).find()), file.getFileName() + ": " + message + " in " + found);
-        }
+        // ADR-068 M6: the fixture is rejected. Its expected words were the reference's site; what javac says of it is in
+        // lowering-javac.tsv, where a change of code or message moves a row.
+        assertFalse(found.isEmpty(), file.getFileName().toString());
     }
 
     private static String codeOf(RuntimeException e) {
         return e instanceof BackendException b ? b.code() : "null";
     }
 
-    /**
-     * The reference frontend's sites: the javac gate, which enforces by default since M1b and rejects most of these
-     * sources first, stays off.
-     */
-    private static CompilerOptions reference() {
-        return new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.OFF);
-    }
-
     private static void compile(String entry, String source, List<String> libraries) {
-        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), reference());
+        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions());
         if (entry.startsWith("method ")) {
             if (libraries.isEmpty()) compiler.compileMethod(source, entry.substring(7).strip());
             else compiler.compileMethod(source, entry.substring(7).strip(), libraries);
@@ -104,7 +93,7 @@ class Adr068RejectionFixturesTest {
             var all = new ArrayList<String>();
             all.add(source);
             all.addAll(libraries);
-            var provider = new JavaLibraryProvider(all, StdlibRegistry.defaultRegistry(), reference());
+            var provider = new JavaLibraryProvider(all, StdlibRegistry.defaultRegistry(), new CompilerOptions());
             String[] words = entry.split(" ");
             if (words[0].equals("describe")) provider.describe(words[1]);
             // An export the provider cannot describe is reported, not thrown: it is a rejection of that export.

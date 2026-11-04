@@ -146,8 +146,8 @@ class JavacGateEnvironmentTest {
     /** F530: without a javac, readJars fails with JULC0089 when enforced, and keeps B0's path check otherwise. */
     @Test
     void readJarsWithoutJavacFailsWhenEnforcedAndChecksPathsOtherwise(@TempDir Path dir) throws Exception {
-        Path foo = JavacGateReviewTest.jar(dir.resolve("foo.jar"), "app/Foo.java", JavacGateReviewTest.FOO);
-        Path bar = JavacGateReviewTest.jar(dir.resolve("bar.jar"), "app/Bar.java", JavacGateReviewTest.BAR);
+        Path foo = JavacFrontendPoolTest.jar(dir.resolve("foo.jar"), "app/Foo.java", JavacFrontendPoolTest.FOO);
+        Path bar = JavacFrontendPoolTest.jar(dir.resolve("bar.jar"), "app/Bar.java", JavacFrontendPoolTest.BAR);
         String saved = System.getProperty(JavacGate.MODE_PROPERTY);
         try (var loader = withoutCompilerApi()) {
             var readJars = loader.loadClass("org.julclang.compiler.LibrarySources").getMethod("readJars", List.class);
@@ -160,7 +160,7 @@ class JavacGateEnvironmentTest {
                 assertEquals(2, ((java.util.Map<?, ?>) readJars.invoke(null, List.of(foo, bar))).size(), mode);
             }
             // A clash of entry paths is still B0's error.
-            Path again = JavacGateReviewTest.jar(dir.resolve("again.jar"), "app/Foo.java", JavacGateReviewTest.FOO);
+            Path again = JavacFrontendPoolTest.jar(dir.resolve("again.jar"), "app/Foo.java", JavacFrontendPoolTest.FOO);
             var path = assertThrows(InvocationTargetException.class, () -> readJars.invoke(null, List.of(foo, again)));
             assertTrue(path.getCause().getMessage().startsWith("Duplicate library source ownership"),
                     path.getCause().getMessage());

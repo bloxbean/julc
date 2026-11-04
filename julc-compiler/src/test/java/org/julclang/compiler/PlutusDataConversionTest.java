@@ -34,7 +34,7 @@ class PlutusDataConversionTest {
      * with no Java declaration; javac rejects it, so it is compiled with the gate off (M1b's report).
      */
     static Program compileDialectValidator(String source) {
-        var compiler = new JulcCompiler(STDLIB, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.OFF));
+        var compiler = new JulcCompiler(STDLIB, new CompilerOptions());
         var result = compiler.compile(source);
         assertFalse(result.hasErrors(), "Compilation failed: " + result);
         assertNotNull(result.program(), "Program should not be null");
@@ -42,7 +42,7 @@ class PlutusDataConversionTest {
     }
 
     static Program compileValidator(String source) {
-        var compiler = new JulcCompiler(STDLIB, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER));
+        var compiler = new JulcCompiler(STDLIB, new CompilerOptions());
         var result = compiler.compile(source);
         assertFalse(result.hasErrors(), "Compilation failed: " + result);
         assertNotNull(result.program(), "Program should not be null");
@@ -85,34 +85,6 @@ class PlutusDataConversionTest {
         }
 
         @Test
-        void pubKeyHashFromPlutusDataIsIdentity() {
-            // PubKeyHash maps to ByteStringType — fromPlutusData is identity
-            var source = """
-                    import org.julclang.ledger.*;
-                    import org.julclang.stdlib.Builtins;
-                    import org.julclang.core.PlutusData;
-                    import org.julclang.stdlib.annotation.Entrypoint;
-                    import org.julclang.stdlib.annotation.SpendingValidator;
-
-                    @SpendingValidator
-                    class TestValidator {
-                        @Entrypoint
-                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            byte[] raw = Builtins.unBData(redeemer);
-                            var pkh = PubKeyHash.fromPlutusData(redeemer);
-                            // PubKeyHash is ByteStringType; fromPlutusData passes raw Data through
-                            return Builtins.equalsData(pkh, redeemer);
-                        }
-                    }
-                    """;
-            var program = compileValidator(source);
-            var redeemer = PlutusData.bytes(new byte[28]);
-            var ctx = PlutusData.constr(0, PlutusData.integer(0), redeemer, PlutusData.integer(0));
-            var result = vm.evaluateWithArgs(program, List.of(ctx));
-            assertTrue(result.isSuccess(), "PubKeyHash.fromPlutusData() should be identity. Got: " + result);
-        }
-
-        @Test
         void addressFromPlutusDataIsIdentity() {
             // Address is a complex record — fromPlutusData is still identity
             var source = """
@@ -139,36 +111,6 @@ class PlutusDataConversionTest {
             var ctx = PlutusData.constr(0, PlutusData.integer(0), addressData, PlutusData.integer(0));
             var result = vm.evaluateWithArgs(program, List.of(ctx));
             assertTrue(result.isSuccess(), "Address.fromPlutusData() should be identity. Got: " + result);
-        }
-
-        @Test
-        void userDefinedRecordFromPlutusDataIsIdentity() {
-            // User-defined records also support fromPlutusData as identity
-            var source = """
-                    import org.julclang.ledger.*;
-                    import org.julclang.stdlib.Builtins;
-                    import java.math.BigInteger;
-                    import org.julclang.core.PlutusData;
-                    import org.julclang.stdlib.annotation.Entrypoint;
-                    import org.julclang.stdlib.annotation.SpendingValidator;
-
-                    @SpendingValidator
-                    class TestValidator {
-                        record MyDatum(BigInteger count, byte[] owner) {}
-
-                        @Entrypoint
-                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            var datum = MyDatum.fromPlutusData(redeemer);
-                            return Builtins.equalsData(datum, redeemer);
-                        }
-                    }
-                    """;
-            var program = compileDialectValidator(source);
-            // MyDatum = Constr(0, [count, owner])
-            var datumData = PlutusData.constr(0, PlutusData.integer(42), PlutusData.bytes(new byte[28]));
-            var ctx = PlutusData.constr(0, PlutusData.integer(0), datumData, PlutusData.integer(0));
-            var result = vm.evaluateWithArgs(program, List.of(ctx));
-            assertTrue(result.isSuccess(), "User record fromPlutusData() should be identity. Got: " + result);
         }
 
         @Test
@@ -200,35 +142,6 @@ class PlutusDataConversionTest {
             var ctx = PlutusData.constr(0, PlutusData.integer(0), credData, PlutusData.integer(0));
             var result = vm.evaluateWithArgs(program, List.of(ctx));
             assertTrue(result.isSuccess(), "Switch on fromPlutusData result should work. Got: " + result);
-        }
-
-        @Test
-        void fromPlutusDataInFieldAccess() {
-            // fromPlutusData result can be used for field access on records
-            var source = """
-                    import org.julclang.ledger.*;
-                    import org.julclang.stdlib.Builtins;
-                    import java.math.BigInteger;
-                    import org.julclang.core.PlutusData;
-                    import org.julclang.stdlib.annotation.Entrypoint;
-                    import org.julclang.stdlib.annotation.SpendingValidator;
-
-                    @SpendingValidator
-                    class TestValidator {
-                        record MyDatum(BigInteger count) {}
-
-                        @Entrypoint
-                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            var datum = MyDatum.fromPlutusData(redeemer);
-                            return datum.count() > 0;
-                        }
-                    }
-                    """;
-            var program = compileDialectValidator(source);
-            var datumData = PlutusData.constr(0, PlutusData.integer(42));
-            var ctx = PlutusData.constr(0, PlutusData.integer(0), datumData, PlutusData.integer(0));
-            var result = vm.evaluateWithArgs(program, List.of(ctx));
-            assertTrue(result.isSuccess(), "Field access on fromPlutusData result should work. Got: " + result);
         }
 
         @Test
@@ -362,40 +275,6 @@ class PlutusDataConversionTest {
             assertTrue(result.isSuccess(), "Nested record construction should produce correct encoding. Got: " + result);
         }
 
-        @Test
-        void userDefinedSealedInterfaceFromPlutusData() {
-            // User-defined sealed interfaces support fromPlutusData
-            var source = """
-                    import org.julclang.ledger.*;
-                    import org.julclang.stdlib.Builtins;
-                    import java.math.BigInteger;
-                    import org.julclang.core.PlutusData;
-                    import org.julclang.stdlib.annotation.Entrypoint;
-                    import org.julclang.stdlib.annotation.SpendingValidator;
-
-                    @SpendingValidator
-                    class TestValidator {
-                        sealed interface Action permits Mint, Burn {}
-                        record Mint(BigInteger amount) implements Action {}
-                        record Burn(BigInteger amount) implements Action {}
-
-                        @Entrypoint
-                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            var action = Action.fromPlutusData(redeemer);
-                            return switch (action) {
-                                case Mint m -> m.amount().compareTo(BigInteger.ZERO) > 0;
-                                case Burn b -> b.amount().compareTo(BigInteger.ZERO) > 0;
-                            };
-                        }
-                    }
-                    """;
-            var program = compileDialectValidator(source);
-            // Mint = Constr(0, [amount])
-            var mintData = PlutusData.constr(0, PlutusData.integer(100));
-            var ctx = PlutusData.constr(0, PlutusData.integer(0), mintData, PlutusData.integer(0));
-            var result = vm.evaluateWithArgs(program, List.of(ctx));
-            assertTrue(result.isSuccess(), "User sealed interface fromPlutusData should work. Got: " + result);
-        }
     }
 
     // =========================================================================
@@ -517,34 +396,5 @@ class PlutusDataConversionTest {
             assertTrue(result.isSuccess(), "fromPlutusData -> toPlutusData roundtrip should be identity. Got: " + result);
         }
 
-        @Test
-        void recordToPlutusDataIsIdentity() {
-            // RecordType → identity (already Data/ConstrData)
-            var source = """
-                    import org.julclang.ledger.*;
-                    import org.julclang.stdlib.Builtins;
-                    import java.math.BigInteger;
-                    import org.julclang.core.PlutusData;
-                    import org.julclang.stdlib.annotation.Entrypoint;
-                    import org.julclang.stdlib.annotation.SpendingValidator;
-
-                    @SpendingValidator
-                    class TestValidator {
-                        record MyDatum(BigInteger count, byte[] owner) {}
-
-                        @Entrypoint
-                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            var datum = MyDatum.fromPlutusData(redeemer);
-                            var data = datum.toPlutusData();
-                            return Builtins.equalsData(data, redeemer);
-                        }
-                    }
-                    """;
-            var program = compileDialectValidator(source);
-            var datumData = PlutusData.constr(0, PlutusData.integer(42), PlutusData.bytes(new byte[28]));
-            var ctx = PlutusData.constr(0, PlutusData.integer(0), datumData, PlutusData.integer(0));
-            var result = vm.evaluateWithArgs(program, List.of(ctx));
-            assertTrue(result.isSuccess(), "RecordType.toPlutusData() should be identity. Got: " + result);
-        }
     }
 }

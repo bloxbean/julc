@@ -2,39 +2,28 @@ package org.julclang.compiler.frontend.javac.lower;
 
 import org.julclang.compiler.CompileResult;
 import org.julclang.compiler.CompilerException;
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.OptimizationLevel;
 import org.julclang.compiler.error.CompilerDiagnostic;
-import org.julclang.compiler.frontend.javac.NotPorted;
 import org.julclang.compiler.pir.StdlibLookup;
 import org.julclang.core.flat.UplcFlatEncoder;
 
-import java.io.IOException;
-import java.io.UncheckedIOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.LinkedHashMap;
-import java.util.Objects;
-import java.util.TreeSet;
+import org.junit.jupiter.api.function.Executable;
+
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
-import java.util.function.Function;
 import java.util.function.UnaryOperator;
-import java.util.regex.Pattern;
 
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
- * What ADR-068's lowering tests compare. The expected value is always the frozen JavaParser frontend's, on the same
- * source, at every level: nothing here is derived from the code under test. Each helper fails if the reference rejects
- * what it is meant to accept, so a fixture cannot go vacuous.
+ * What ADR-068's lowering tests compare. The expected value is always the JavaParser frontend's on the same source, at every
+ * level, frozen as data at M6, when that frontend left ({@link FrozenReference}): nothing here is derived from the code
+ * under test. A source with no frozen row fails, so a fixture cannot go vacuous; a new test states what it expects.
  */
 public final class LoweringFixture {
 
@@ -44,117 +33,83 @@ public final class LoweringFixture {
     private LoweringFixture() {
     }
 
-    private static CompilerOptions options(OptimizationLevel level, boolean sourceMap, CompilerFrontend frontend) {
-        return new CompilerOptions().setOptimizationLevel(level).setSourceMapEnabled(sourceMap).setFrontend(frontend);
+    private static CompilerOptions options(OptimizationLevel level, boolean sourceMap) {
+        return new CompilerOptions().setOptimizationLevel(level).setSourceMapEnabled(sourceMap);
     }
 
-    private static CompileResult validator(String source, OptimizationLevel level, boolean sourceMap, CompilerFrontend frontend) {
-        return new JulcCompiler(null, options(level, sourceMap, frontend)).compile(source, List.of());
+    private static CompileResult validator(String source, List<String> libraries, StdlibLookup stdlib, OptimizationLevel level, boolean sourceMap) {
+        return new JulcCompiler(stdlib, options(level, sourceMap)).compile(source, libraries);
     }
 
-    private static CompileResult method(String source, String name, OptimizationLevel level, boolean sourceMap,
-                                        CompilerFrontend frontend) {
-        return method(source, name, level, sourceMap, frontend, null);
+    private static CompileResult method(String source, String name, List<String> libraries, StdlibLookup stdlib, OptimizationLevel level, boolean sourceMap) {
+        return new JulcCompiler(stdlib, options(level, sourceMap)).compileMethod(source, name, libraries);
     }
 
-    private static CompileResult method(String source, String name, OptimizationLevel level, boolean sourceMap,
-                                        CompilerFrontend frontend, StdlibLookup stdlib) {
-        return new JulcCompiler(stdlib, options(level, sourceMap, frontend)).compileMethod(source, name, List.of());
+    /** What a row of the frozen reference is keyed on: the entry, the sources and whether a stdlib lookup was given. */
+    private static String what(String entry, String source, List<String> libraries, StdlibLookup stdlib) {
+        return entry + "|" + source + "|" + libraries + "|" + (stdlib != null);
     }
 
     /** Same FLAT bytes as the reference at every level, with and without a source map. */
     public static void assertSameAsReference(String source) {
-        for (var level : OptimizationLevel.values()) {
-            for (boolean sourceMap : List.of(false, true)) {
-                assertBytes(validator(source, level, sourceMap, CompilerFrontend.JAVAPARSER),
-                        validator(source, level, sourceMap, CompilerFrontend.JAVAC), level + " sourceMap=" + sourceMap);
-            }
-        }
+        assertSameAsReference(source, List.of(), null);
     }
 
     /** {@link #assertSameAsReference}, with {@code libraries} as the pool and {@code stdlib} as the lookup. */
     public static void assertSameAsReference(String source, List<String> libraries, StdlibLookup stdlib) {
         for (var level : OptimizationLevel.values()) {
             for (boolean sourceMap : List.of(false, true)) {
-                assertBytes(validator(source, libraries, stdlib, level, sourceMap, CompilerFrontend.JAVAPARSER),
-                        validator(source, libraries, stdlib, level, sourceMap, CompilerFrontend.JAVAC), level + " sourceMap=" + sourceMap);
+                FrozenReference.assertSame(what("validator", source, libraries, stdlib) + "|" + level + "|" + sourceMap,
+                        observed(validator(source, libraries, stdlib, level, sourceMap)));
             }
         }
+    }
+
+    /** {@link #assertSameAsReference} for a {@code compileMethod} target. */
+    public static void assertSameMethodAsReference(String source, String name) {
+        assertSameMethodAsReference(source, name, List.of(), null);
+    }
+
+    /** {@link #assertSameMethodAsReference(String, String)} with a stdlib. */
+    public static void assertSameMethodAsReference(String source, String name, StdlibLookup stdlib) {
+        assertSameMethodAsReference(source, name, List.of(), stdlib);
     }
 
     /** {@link #assertSameMethodAsReference(String, String, StdlibLookup)}, with {@code libraries} as the pool. */
     public static void assertSameMethodAsReference(String source, String name, List<String> libraries, StdlibLookup stdlib) {
         for (var level : OptimizationLevel.values()) {
             for (boolean sourceMap : List.of(false, true)) {
-                assertBytes(method(source, name, libraries, level, sourceMap, CompilerFrontend.JAVAPARSER, stdlib),
-                        method(source, name, libraries, level, sourceMap, CompilerFrontend.JAVAC, stdlib), level + " sourceMap=" + sourceMap);
+                FrozenReference.assertSame(what("method " + name, source, libraries, stdlib) + "|" + level + "|" + sourceMap,
+                        observed(method(source, name, libraries, stdlib, level, sourceMap)));
             }
         }
     }
 
     /** {@link #assertSameRejectionAsReference}, with {@code libraries} as the pool and {@code stdlib} as the lookup. */
     public static void assertSameRejectionAsReference(String source, List<String> libraries, StdlibLookup stdlib) {
-        assertSameRejection(frontend -> validator(source, libraries, stdlib, OptimizationLevel.DEFAULT, false, frontend));
+        assertSameRejection(what("validator", source, libraries, stdlib),
+                () -> validator(source, libraries, stdlib, OptimizationLevel.DEFAULT, false), UnaryOperator.identity());
     }
 
     /** {@link #assertSameMethodRejectionAsReference(String, String)}, with {@code libraries} as the pool. */
     public static void assertSameMethodRejectionAsReference(String source, String name, List<String> libraries, StdlibLookup stdlib) {
-        assertSameRejection(frontend -> method(source, name, libraries, OptimizationLevel.DEFAULT, false, frontend, stdlib));
+        assertSameMethodRejectionAsReference(source, name, libraries, stdlib, UnaryOperator.identity());
     }
 
-    /** The reference's result, gate off, and javac's, of a validator with {@code libraries}. */
-    public static CompileResult validatorOn(CompilerFrontend frontend, String source, List<String> libraries, StdlibLookup stdlib,
-                                            OptimizationLevel level) {
-        return validator(source, libraries, stdlib, level, false, frontend);
+    /** A validator's result, with {@code libraries}. */
+    public static CompileResult validatorOf(String source, List<String> libraries, StdlibLookup stdlib, OptimizationLevel level) {
+        return validator(source, libraries, stdlib, level, false);
     }
 
-    private static CompileResult validator(String source, List<String> libraries, StdlibLookup stdlib, OptimizationLevel level,
-                                           boolean sourceMap, CompilerFrontend frontend) {
-        return new JulcCompiler(stdlib, options(level, sourceMap, frontend)).compile(source, libraries);
+    /** The size of {@code name}'s script at {@code level}. */
+    public static int methodSize(String source, String name, OptimizationLevel level, boolean sourceMap, StdlibLookup stdlib) {
+        return UplcFlatEncoder.encodeProgram(method(source, name, List.of(), stdlib, level, sourceMap).program()).length;
     }
 
-    private static CompileResult method(String source, String name, List<String> libraries, OptimizationLevel level,
-                                        boolean sourceMap, CompilerFrontend frontend, StdlibLookup stdlib) {
-        return new JulcCompiler(stdlib, options(level, sourceMap, frontend)).compileMethod(source, name, libraries);
-    }
-
-    /** {@link #assertSameAsReference} for a {@code compileMethod} target. */
-    public static void assertSameMethodAsReference(String source, String name) {
-        for (var level : OptimizationLevel.values()) {
-            for (boolean sourceMap : List.of(false, true)) {
-                assertBytes(method(source, name, level, sourceMap, CompilerFrontend.JAVAPARSER),
-                        method(source, name, level, sourceMap, CompilerFrontend.JAVAC), level + " sourceMap=" + sourceMap);
-            }
-        }
-    }
-
-    /** {@link #assertSameMethodAsReference(String, String)} with a stdlib. */
-    public static void assertSameMethodAsReference(String source, String name, StdlibLookup stdlib) {
-        for (var level : OptimizationLevel.values()) {
-            for (boolean sourceMap : List.of(false, true)) {
-                assertBytes(method(source, name, level, sourceMap, CompilerFrontend.JAVAPARSER, stdlib),
-                        method(source, name, level, sourceMap, CompilerFrontend.JAVAC, stdlib), level + " sourceMap=" + sourceMap);
-            }
-        }
-    }
-
-    /** The size of {@code name}'s script at {@code level} on {@code frontend}. */
-    public static int methodSize(String source, String name, OptimizationLevel level, boolean sourceMap, CompilerFrontend frontend, StdlibLookup stdlib) {
-        return UplcFlatEncoder.encodeProgram(method(source, name, level, sourceMap, frontend, stdlib).program()).length;
-    }
-
-    /** The reference compiles {@code name}, which a test of a difference needs to be sure of. */
-    public static void assertReferenceAcceptsMethod(String source, String name) {
-        assertEquals(false, method(source, name, OptimizationLevel.DEFAULT, false, CompilerFrontend.JAVAPARSER).hasErrors());
-    }
-
-    private static void assertBytes(CompileResult reference, CompileResult javac, String where) {
-        var expected = UplcFlatEncoder.encodeProgram(reference.program());
-        assertArrayEquals(expected, UplcFlatEncoder.encodeProgram(javac.program()), () -> where + ": expected "
-                + HexFormat.of().formatHex(expected));
-        assertEquals(reference.params(), javac.params(), where);
-        assertEquals(reference.diagnostics(), javac.diagnostics(), where);
-        if (reference.sourceMap() != null) assertEquals(positions(reference), positions(javac), where);
+    /** The bytes, the {@code @Param} infos, the diagnostics and the located terms: what the reference and the javac frontend were compared on. */
+    private static String observed(CompileResult result) {
+        return HexFormat.of().formatHex(UplcFlatEncoder.encodeProgram(result.program())) + "|" + result.params() + "|"
+                + result.diagnostics() + "|" + (result.sourceMap() == null ? "" : positions(result));
     }
 
     /** I7: each located UPLC term's line and column. The fragment is M2's rule, and the file name a D13 row. */
@@ -165,34 +120,39 @@ public final class LoweringFixture {
         return positions;
     }
 
-    /** Both frontends reject with one code and one message, at one line and column. */
+    /** The rejection the reference gave: one code and one message, at one line and column. */
     public static void assertSameRejectionAsReference(String source) {
-        assertSameRejection(frontend -> validator(source, OptimizationLevel.DEFAULT, false, frontend));
+        assertSameRejectionAsReference(source, List.of(), null);
     }
 
     /** {@link #assertSameRejectionAsReference} for a {@code compileMethod} target. */
     public static void assertSameMethodRejectionAsReference(String source, String name) {
-        assertSameRejection(frontend -> method(source, name, OptimizationLevel.DEFAULT, false, frontend));
+        assertSameMethodRejectionAsReference(source, name, List.of(), null);
     }
 
     /** {@link #assertSameMethodRejectionAsReference(String, String)} with a stdlib. */
     public static void assertSameMethodRejectionAsReference(String source, String name, StdlibLookup stdlib) {
-        assertSameRejection(frontend -> method(source, name, OptimizationLevel.DEFAULT, false, frontend, stdlib));
+        assertSameMethodRejectionAsReference(source, name, List.of(), stdlib);
     }
 
-    /** {@link #assertSameMethodRejectionAsReference(String, String, StdlibLookup)}, with both messages read through {@code message}. */
+    /** {@link #assertSameMethodRejectionAsReference(String, String, StdlibLookup)}, with the message read through {@code message}. */
     public static void assertSameMethodRejectionAsReference(String source, String name, StdlibLookup stdlib, UnaryOperator<String> message) {
-        assertSameRejection(frontend -> method(source, name, OptimizationLevel.DEFAULT, false, frontend, stdlib), message);
+        assertSameMethodRejectionAsReference(source, name, List.of(), stdlib, message);
     }
 
-    static void assertSameRejection(Function<CompilerFrontend, CompileResult> compile) {
-        assertSameRejection(compile, UnaryOperator.identity());
+    private static void assertSameMethodRejectionAsReference(String source, String name, List<String> libraries, StdlibLookup stdlib, UnaryOperator<String> message) {
+        assertSameRejection(what("method " + name, source, libraries, stdlib),
+                () -> method(source, name, libraries, stdlib, OptimizationLevel.DEFAULT, false), message);
     }
 
-    private static void assertSameRejection(Function<CompilerFrontend, CompileResult> compile, UnaryOperator<String> message) {
-        var reference = assertThrows(CompilerException.class, () -> compile.apply(CompilerFrontend.JAVAPARSER));
-        var javac = assertThrows(CompilerException.class, () -> compile.apply(CompilerFrontend.JAVAC));
-        assertEquals(message.apply(error(reference, javac)), message.apply(error(javac)), () -> javac.getMessage());
+    private static void assertSameRejection(String what, Executable compile, UnaryOperator<String> message) {
+        var javac = assertThrows(CompilerException.class, compile);
+        FrozenReference.assertSame(what + "|rejected", message.apply(error(javac)));
+    }
+
+    /** The reference's rejection of {@code what}: it stays frozen, under the name a test gives it. */
+    public static void assertSameRejection(String what, CompilerException javac) {
+        FrozenReference.assertSame(what + "|rejected", error(javac));
     }
 
     private static String error(CompilerException e) {
@@ -200,109 +160,15 @@ public final class LoweringFixture {
         return error.map(d -> d.code() + " " + d.message() + " @" + d.line() + ":" + d.column()).orElse(e.getMessage());
     }
 
-    /** The reference's text in its own form, where it holds a position or a hint: {@code File.java:4:2: words\n  Hint: ...}. */
-    private static final Pattern LOCATED = Pattern.compile("(?s)[^\\n]*?:(\\d+):(\\d+): (.*?)(?:\\n  Hint: .*)?");
-
-    /**
-     * The reference's error, as the javac frontend must give it. ADR-068 I2a: an uncoded rejection gets a code when it is
-     * ported, so where the reference's error has no code and javac's has one, javac's must have the code the rejection
-     * catalogue gives that reference site ({@link #codeOfUncoded}), the reference's words, without the position and hint the
-     * reference wrote into its text, and the reference's position, from its diagnostic or from that text. Any other difference
-     * is a difference.
-     */
-    private static String error(CompilerException reference, CompilerException javac) {
-        var referenceError = reference.diagnostics().stream().filter(CompilerDiagnostic::isError).findFirst();
-        var javacError = javac.diagnostics().stream().filter(CompilerDiagnostic::isError).findFirst();
-        String words = referenceError.map(CompilerDiagnostic::message).orElse(reference.getMessage());
-        if (referenceError.map(CompilerDiagnostic::code).isPresent() || javacError.map(CompilerDiagnostic::code).isEmpty()) {
-            return error(reference);
-        }
-        String code = codeOfUncoded(words);
-        int line = referenceError.map(CompilerDiagnostic::line).orElse(0);
-        int column = referenceError.map(CompilerDiagnostic::column).orElse(0);
-        var located = LOCATED.matcher(words);
-        if (line == 0 && located.matches()) {
-            line = Integer.parseInt(located.group(1));
-            column = Integer.parseInt(located.group(2));
-            words = located.group(3);
-        }
-        int hint = words.indexOf(". Hint: ");
-        if (hint >= 0) words = words.substring(0, hint);
-        var coded = javacError.orElseThrow();
-        if (line == 0) {
-            line = coded.line();
-            column = coded.column();
-        }
-        return code + " " + words + " @" + line + ":" + column;
-    }
-
-    /** The rejection catalogue: julc-difftest's {@code rejection-sites.tsv}, which names each uncoded site a code ports. */
-    private static final Path SITES = Path.of("../julc-difftest/src/test/resources/adr068/rejection-sites.tsv");
-    private static final Pattern PORTED_SITES = Pattern.compile("uncoded \\((U-[\\w-]+(?:, U-[\\w-]+)*)\\)");
-    private static Map<Pattern, String> uncodedSites;
-
-    /**
-     * The code the catalogue gives the uncoded reference site whose pattern finds {@code message}: a code row names the sites it
-     * ports ("the reference rejects the same source uncoded (U-...)"). No such site, or two with different codes, is no code.
-     */
-    static synchronized String codeOfUncoded(String message) {
-        if (uncodedSites == null) {
-            try {
-                var patterns = new TreeMap<String, Pattern>();
-                var codes = new TreeMap<String, String>();
-                for (String row : Files.readAllLines(SITES)) {
-                    if (row.isBlank() || row.startsWith("#")) continue;
-                    String[] cells = row.split("\t", -1);
-                    if (cells[1].equals("uncoded")) patterns.put(cells[0], Pattern.compile(cells[2]));
-                    var ported = PORTED_SITES.matcher(cells[4]);
-                    if (cells[1].equals("code") && ported.find()) {
-                        for (String site : ported.group(1).split(", ")) codes.put(site, cells[2]);
-                    }
-                }
-                var sites = new LinkedHashMap<Pattern, String>();
-                codes.forEach((site, code) -> sites.put(Objects.requireNonNull(patterns.get(site), site), code));
-                uncodedSites = sites;
-            } catch (IOException e) {
-                throw new UncheckedIOException(e);
-            }
-        }
-        var found = new TreeSet<String>();
-        uncodedSites.forEach((pattern, code) -> {
-            if (pattern.matcher(message).find()) found.add(code);
-        });
-        return found.size() == 1 ? found.first() : "no catalogued code for " + found + ": " + message;
-    }
-
-    /** The compilation stops with {@code JULC0084} at {@code construct}, on the line given. The reference must not. */
-    public static NotPorted assertNotPorted(String source, String construct, int line) {
-        return assertNotPorted(() -> validator(source, OptimizationLevel.DEFAULT, false, CompilerFrontend.JAVAC), construct, line);
-    }
-
-    /** {@link #assertNotPorted} for a {@code compileMethod} target. */
-    public static NotPorted assertMethodNotPorted(String source, String name, String construct, int line) {
-        return assertNotPorted(() -> method(source, name, OptimizationLevel.DEFAULT, false, CompilerFrontend.JAVAC),
-                construct, line);
-    }
-
     /**
      * The rejection with {@code code} at {@code line}, not a stop: what was {@code JULC0084} until ADR-068 M5 has a code, or the
      * reference's words with their code (I2a).
      */
     public static CompilerDiagnostic assertMethodRejected(String source, String name, String code, int line) {
-        var e = assertThrows(CompilerException.class, () -> method(source, name, OptimizationLevel.DEFAULT, false, CompilerFrontend.JAVAC));
-        assertFalse(e instanceof NotPorted, e::getMessage);
+        var e = assertThrows(CompilerException.class, () -> method(source, name, List.of(), null, OptimizationLevel.DEFAULT, false));
         var diagnostic = e.diagnostics().stream().filter(CompilerDiagnostic::isError).findFirst().orElseThrow();
         assertEquals(code, diagnostic.code(), e::getMessage);
         assertEquals(line, diagnostic.line(), e::getMessage);
         return diagnostic;
-    }
-
-    private static NotPorted assertNotPorted(org.junit.jupiter.api.function.Executable compile, String construct, int line) {
-        var e = assertThrows(NotPorted.class, compile);
-        assertEquals(construct, e.construct(), e::getMessage);
-        var diagnostic = e.diagnostics().getFirst();
-        assertEquals("JULC0084", diagnostic.code());
-        assertEquals(line, diagnostic.line(), e::getMessage);
-        return e;
     }
 }

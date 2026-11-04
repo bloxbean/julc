@@ -7,18 +7,15 @@ import com.sun.source.tree.VariableTree;
 import com.sun.source.util.TreeScanner;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerFrontend;
+import org.julclang.compiler.frontend.javac.lower.FrozenReference;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JavaLibraryProvider;
-import org.julclang.compiler.JavaSourceParser;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.LedgerTypeProvider;
 import org.julclang.compiler.backend.LibraryType;
 import org.julclang.compiler.error.DiagnosticCodes;
 import org.julclang.compiler.pir.PirType;
-import org.julclang.compiler.resolve.LedgerSourceLoader;
-import org.julclang.compiler.resolve.TypeRegistrar;
 import org.julclang.compiler.resolve.TypeRegistry;
-import org.julclang.compiler.resolve.TypeResolver;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
@@ -51,7 +48,7 @@ import java.util.stream.Stream;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.params.provider.Arguments.arguments;
 
-/** ADR-068 D7: types from javac. Expected values here are written out, or come from the JavaParser frontend. */
+/** ADR-068 D7: types from javac. Expected values here are written out, or are the JavaParser frontend's, frozen ({@code FrozenReference}). */
 class JavacTypesTest {
 
     private static final String HEADER = """
@@ -108,14 +105,6 @@ class JavacTypesTest {
                 arguments("org.julclang.ledger.PubKeyHash", BYTES), arguments("org.julclang.ledger.TxId", BYTES));
     }
 
-    /** The JavaParser path's reading of one source, as JulcCompiler runs it. */
-    private static TypeResolver reference(String source) {
-        var resolver = new TypeResolver();
-        new TypeRegistrar().registerAll(LedgerSourceLoader.loadLedgerSources(JavacTypesTest.class.getClassLoader()), resolver);
-        new TypeRegistrar().registerAll(List.of(JavaSourceParser.parseCompilationUnit(source)), resolver);
-        return resolver;
-    }
-
     private static PirType.Field field(String name, PirType type) {
         return new PirType.Field(name, type);
     }
@@ -126,27 +115,17 @@ class JavacTypesTest {
     @Nested
     class Ledger {
         @Test
-        void registryEqualsTheJavaParserPath() {
+        void registryIsTheReferences() {
             var javac = read("class P { static boolean m() { return true; } }").registry().snapshot();
-            var source = new TypeResolver();
-            new TypeRegistrar().registerAll(LedgerSourceLoader.loadLedgerSources(JavacTypesTest.class.getClassLoader()), source);
-            var reference = source.snapshot();
-            assertEquals(new TreeMap<>(reference.records()), new TreeMap<>(javac.records()));
-            assertEquals(new TreeMap<>(reference.sums()), new TreeMap<>(javac.sums()));
-            assertEquals(new TreeMap<>(reference.variants()), new TreeMap<>(javac.variants()));
-            assertEquals(new TreeMap<>(reference.newTypes()), new TreeMap<>(javac.newTypes()));
-            assertEquals(reference.parameterized(), javac.parameterized());
-            assertEquals(List.copyOf(reference.records().keySet()), List.copyOf(javac.records().keySet()), "registration order");
-            assertEquals(List.copyOf(reference.sums().keySet()), List.copyOf(javac.sums().keySet()), "registration order");
+            FrozenReference.assertSame("the ledger's registry", new TreeMap<>(javac.records()) + "|" + new TreeMap<>(javac.sums()) + "|"
+                    + new TreeMap<>(javac.variants()) + "|" + new TreeMap<>(javac.newTypes()) + "|" + javac.parameterized() + "|"
+                    + List.copyOf(javac.records().keySet()) + "|" + List.copyOf(javac.sums().keySet()));
         }
 
         @Test
-        void providerOutputEqualsTheJavaParserPath() {
-            var reference = new LedgerTypeProvider(new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER));
-            var javac = new LedgerTypeProvider(new CompilerOptions().setFrontend(CompilerFrontend.JAVAC));
-            assertEquals(new TreeMap<>(reference.types()), new TreeMap<>(javac.types()));
-            assertEquals(List.copyOf(reference.types().keySet()), List.copyOf(javac.types().keySet()), "iteration order");
-            assertEquals(new TreeMap<>(reference.namedDefinitions()), new TreeMap<>(javac.namedDefinitions()));
+        void providerOutputIsTheReferences() {
+            var javac = new LedgerTypeProvider(new CompilerOptions());
+            FrozenReference.assertSame("the ledger's provider", new TreeMap<>(javac.types()) + "|" + new TreeMap<>(javac.namedDefinitions()));
             assertEquals(34, javac.types().size());
             assertEquals(79, javac.namedDefinitions().size());
         }
@@ -465,7 +444,6 @@ class JavacTypesTest {
             var records = read(source).registry().snapshot().records();
             assertEquals(List.of(field("v", new PirType.BoolType())), records.get("P$1R").fields());
             assertEquals(List.of(field("v", BYTES)), records.get("P$2R").fields());
-            assertTrue(assertThrows(RuntimeException.class, () -> reference(source)).getMessage().contains("Duplicate record type 'R'"));
         }
 
         @Test
@@ -636,7 +614,6 @@ class JavacTypesTest {
             var registry = read(source).registry().snapshot();
             assertFalse(registry.newTypes().containsKey("N"));
             assertEquals(new PirType.RecordType("N", List.of(field("v", INTEGER))), registry.records().get("N"));
-            assertEquals(INTEGER, reference(source).snapshot().newTypes().get("N"), "the reference reads a @NewType");
         }
 
         /** Every spelling of JuLC's annotation is the annotation; the reference matches one marker form (F803, F828). */
@@ -645,8 +622,6 @@ class JavacTypesTest {
         void anyWayOfWritingTheAnnotationIsTheAnnotation(String annotation) {
             String source = HEADER + annotation + " record N(BigInteger v) {}\nclass P {}\n";
             assertEquals(INTEGER, registryOf(source).newTypes().get("N"));
-            assertEquals(new PirType.RecordType("N", List.of(field("v", INTEGER))), reference(source).snapshot().records().get("N"),
-                    "the reference reads a record, so its Data is a Constr where javac's is the integer");
         }
 
         /** F806: the same type, written out. The reference compares strings and rejects it; identity cannot tell. */
@@ -655,7 +630,6 @@ class JavacTypesTest {
         void aQualifiedSpellingOfASupportedTypeIsThatType(String component, String kind) {
             String source = HEADER + "@NewType record N(" + component + " v) {}\nclass P {}\n";
             assertEquals(kind, registryOf(source).newTypes().get("N").getClass().getSimpleName());
-            assertTrue(assertThrows(RuntimeException.class, () -> reference(source)).getMessage().contains("is not supported"));
         }
 
         /** F802: the reference rejects it, so the door through @NewType stays shut. */
@@ -754,10 +728,6 @@ class JavacTypesTest {
         void anyOtherVarargsComponentIsAnArray() {
             String source = HEADER + "record R(BigInteger... v) {} class P {}";
             assertEquals("JULC0014", assertThrows(CompilerException.class, () -> read(source)).diagnostics().getFirst().code());
-            var reference = new TypeResolver();
-            new TypeRegistrar().registerAll(LedgerSourceLoader.loadLedgerSources(JavacTypesTest.class.getClassLoader()), reference);
-            new TypeRegistrar().registerAll(List.of(JavaSourceParser.parseCompilationUnit(source)), reference);
-            assertEquals(List.of(field("v", INTEGER)), reference.snapshot().records().get("R").fields());
         }
 
         @Test
@@ -801,14 +771,8 @@ class JavacTypesTest {
                     record B(Optional<A> a) {}
                     class P {}
                     """;
-            var cu = JavaSourceParser.parseCompilationUnit(source);
-            var reference = new TypeResolver();
-            new TypeRegistrar().registerAll(LedgerSourceLoader.loadLedgerSources(JavacTypesTest.class.getClassLoader()), reference);
-            new TypeRegistrar().registerAll(List.of(cu), reference);
             var javac = read(source).registry().snapshot();
-            assertEquals(reference.snapshot().sums().get("Tree"), javac.sums().get("Tree"));
-            assertEquals(reference.snapshot().records().get("A"), javac.records().get("A"));
-            assertEquals(reference.snapshot().records().get("B"), javac.records().get("B"));
+            FrozenReference.assertSame("a recursive sum and two optional records", javac.sums().get("Tree") + "|" + javac.records().get("A") + "|" + javac.records().get("B"));
         }
 
         @Test
@@ -843,15 +807,7 @@ class JavacTypesTest {
         private static final CompilerOptions JAVAC = new CompilerOptions().setFrontend(CompilerFrontend.JAVAC);
 
         @Test
-        void theDefaultIsJavac() {
-            // ADR-068 M5: javac is the default; JavaParser is selected only explicitly, until M6.
-            assertEquals(CompilerFrontend.JAVAC, new CompilerOptions().getFrontend());
-            assertEquals(CompilerFrontend.JAVAC, CompilerFrontend.DEFAULT);
-            // What javac's frontend stops at names the way back to the JavaParser frontend until M6.
-            for (var info : List.of(DiagnosticCodes.FRONTEND_CONSTRUCT_NOT_PORTED, DiagnosticCodes.ARRAY_EQUALS_UNSUPPORTED)) {
-                assertTrue(info.fix().contains("--frontend javaparser"), info.fix());
-                assertTrue(info.fix().contains("CompilerFrontend.JAVAPARSER"), info.fix());
-            }
+        void aByteArraysEqualsNamesItsRemedy() {
             assertTrue(DiagnosticCodes.ARRAY_EQUALS_UNSUPPORTED.fix().contains("Builtins.equalsByteString(a, b)"));
             assertTrue(DiagnosticCodes.ARRAY_EQUALS_UNSUPPORTED.fix().contains("ByteStringLib.equals(a, b)"));
         }
@@ -918,8 +874,7 @@ class JavacTypesTest {
         @Test
         void javacsRejectionStandsWhateverTheGateSays() {
             String dialect = "import java.math.BigInteger;\nclass P { static BigInteger m(BigInteger a) { return a + a; } }\n";
-            var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)
-                    .setJavacGate(JavacGateMode.OFF);
+            var options = new CompilerOptions();
             var e = assertThrows(CompilerException.class, () -> new JulcCompiler(null, options).compileMethod(dialect, "m", List.of()));
             assertEquals(DiagnosticCodes.JAVAC_ERROR.code(), e.diagnostics().getFirst().code());
         }
@@ -928,9 +883,6 @@ class JavacTypesTest {
         @Test
         void sourceTheJavaParserFrontendRejectsNeverReachesIt() {
             String source = "class V { static String m() { return \"\\uD800\"; } }";
-            var reference = assertThrows(CompilerException.class, () -> new JulcCompiler(null,
-                    new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.OFF)).compileMethod(source, "m", List.of()));
-            assertNotEquals(DiagnosticCodes.JAVAC_ERROR.code(), reference.diagnostics().isEmpty() ? null : reference.diagnostics().getFirst().code());
             var javac = assertThrows(CompilerException.class, () -> new JulcCompiler(null, JAVAC).compileMethod(source, "m", List.of()));
             assertEquals(DiagnosticCodes.STRING_LITERAL_UNPAIRED_SURROGATE.code(), javac.diagnostics().getFirst().code(), javac.getMessage());
         }
@@ -986,22 +938,17 @@ class JavacTypesTest {
                 """;
 
         @Test
-        void aProvidersTypesEqualTheJavaParserPath() {
-            var reference = new JavaLibraryProvider(List.of(LIBRARY), null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.OFF));
+        void aProvidersTypesAreTheReferences() {
             var javac = new JavaLibraryProvider(List.of(LIBRARY), null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC));
-            assertEquals(new TreeMap<>(reference.types()), new TreeMap<>(javac.types()));
-            assertEquals(new TreeMap<>(reference.namedDefinitions()), new TreeMap<>(javac.namedDefinitions()));
+            FrozenReference.assertSame("a provider's types", new TreeMap<>(javac.types()) + "|" + new TreeMap<>(javac.namedDefinitions()));
             assertTrue(javac.types().containsKey("lib.L.Shape"));
         }
 
         /** Group 3a: the exports are lowered, as the reference lowers them ({@code JavacExportsTest} compares them). */
         @Test
         void theExportsAreTheReferences() {
-            var reference = new JavaLibraryProvider(List.of(LIBRARY), null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.OFF));
             var javac = new JavaLibraryProvider(List.of(LIBRARY), null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC));
-            assertEquals(reference.describe("lib.L"), javac.describe("lib.L"));
-            assertEquals(reference.schemes("lib.L"), javac.schemes("lib.L"));
-            assertEquals(reference.unsupportedExports(), javac.unsupportedExports());
+            FrozenReference.assertSame("a provider's exports", javac.describe("lib.L") + "|" + javac.schemes("lib.L") + "|" + new TreeMap<>(javac.unsupportedExports()));
         }
 
         @Test

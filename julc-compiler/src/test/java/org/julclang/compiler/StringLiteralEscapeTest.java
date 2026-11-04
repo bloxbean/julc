@@ -170,15 +170,6 @@ class StringLiteralEscapeTest {
     }
 
     @Test
-    void theJavaParserReaderStillFailsClosed() {
-        assertTrue(LITERALS.containsAll(READER_FAILS_CLOSED));
-        for (String literal : READER_FAILS_CLOSED) {
-            assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(),
-                    new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod(source(literal), "m"), literal);
-        }
-    }
-
-    @Test
     void aBigIntegerLiteralDecodesItsEscapes() {
         // new BigInteger("\061\062") is 12 in Java.
         String source = "import java.math.BigInteger; class Lit { static BigInteger m() { return new BigInteger(\"\\061\\062\"); } }";

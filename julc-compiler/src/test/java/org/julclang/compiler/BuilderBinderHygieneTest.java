@@ -55,7 +55,7 @@ class BuilderBinderHygieneTest {
     }
 
     private static boolean accepts(String body, PlutusData redeemer, OptimizationLevel level) {
-        var result = new JulcCompiler(STDLIB, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setOptimizationLevel(level))
+        var result = new JulcCompiler(STDLIB, new CompilerOptions().setOptimizationLevel(level))
                 .compile(LISTS.formatted(body));
         assertFalse(result.hasErrors(), () -> "Compilation failed: " + result);
         return CompilerTestVm.pv11()
@@ -82,17 +82,6 @@ class BuilderBinderHygieneTest {
                     + name + ")));", SHARED, DISJOINT);
             decides("return outer.any(" + name + " -> !inner.all(y -> !Builtins.equalsData(y, "
                     + name + ")));", SHARED, DISJOINT);
-        }
-    }
-
-    @Test
-    void staticListsLibHofsDoNotCaptureOuterLambdaParameters() {
-        // ADR-068 M1b: ListsLib's higher-order functions exist only in the stdlib registry, not in Java.
-        DialectGate.off();
-        try {
-            staticListsLibHofs();
-        } finally {
-            DialectGate.restore();
         }
     }
 
@@ -125,16 +114,6 @@ class BuilderBinderHygieneTest {
 
     @Test
     void zipAndSizeDoNotCaptureListVariables() {
-        // ADR-068 M1b: ListsLib.zip exists only in the stdlib registry, not in Java.
-        DialectGate.off();
-        try {
-            decides("JulcList<PlutusData> go_zip = outer; "
-                            + "JulcList<PlutusData> zipped = ListsLib.zip(go_zip, inner); "
-                            + "return zipped.size() == 1;",
-                    SHARED, DISJOINT);
-        } finally {
-            DialectGate.restore();
-        }
         decides("JulcList<PlutusData> go__f = outer; return go__f.size() == 1;",
                 SHARED, DISJOINT);
     }
