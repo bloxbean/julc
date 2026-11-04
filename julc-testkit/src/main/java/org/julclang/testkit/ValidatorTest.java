@@ -404,6 +404,15 @@ public final class ValidatorTest {
     }
 
     /**
+     * {@link #compileValidator(Class, java.nio.file.Path)} on the given Java frontend (experimental, ADR-068 D4).
+     * {@link CompilerFrontend#JAVAC} is the default; {@link CompilerFrontend#JAVAPARSER} stays selectable until M6.
+     */
+    public static CompileResult compileValidator(Class<?> validatorClass, java.nio.file.Path sourceRoot,
+                                                 CompilerFrontend frontend) {
+        return SourceDiscovery.compile(validatorClass, sourceRoot, new CompilerOptions().setFrontend(frontend));
+    }
+
+    /**
      * Compile a validator by fully-qualified class name with auto-discovered library dependencies.
      * Uses the default source root ({@code src/main/java}).
      * <p>
@@ -425,6 +434,14 @@ public final class ValidatorTest {
      */
     public static CompileResult compileValidatorByName(String fqcn, java.nio.file.Path sourceRoot) {
         return SourceDiscovery.compile(fqcn, sourceRoot);
+    }
+
+    /**
+     * {@link #compileValidatorByName(String, java.nio.file.Path)} on the given Java frontend (experimental, ADR-068 D4).
+     */
+    public static CompileResult compileValidatorByName(String fqcn, java.nio.file.Path sourceRoot,
+                                                       CompilerFrontend frontend) {
+        return SourceDiscovery.compile(fqcn, sourceRoot, new CompilerOptions().setFrontend(frontend));
     }
 
     // --- Method evaluation (delegates to MethodEvaluator) ---

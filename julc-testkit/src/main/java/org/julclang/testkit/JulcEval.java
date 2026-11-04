@@ -299,20 +299,10 @@ public final class JulcEval {
         CompileResult compiled;
         if (javaSource != null) {
             compiled = compiler.compileMethod(javaSource, methodName);
-        } else if (frontend == CompilerFrontend.JAVAC) {
-            // The class's source, with the project's and the class path's libraries as its pool (ADR-068 D8)
-            compiled = SourceDiscovery.compileMethod(sourceClass, sourceRoot, methodName, options);
         } else {
-            // Read source file and compile method with source maps
-            var sourceFile = SourceDiscovery.sourceFileFor(sourceClass, sourceRoot);
-            String source;
-            try {
-                source = java.nio.file.Files.readString(sourceFile);
-            } catch (java.io.IOException e) {
-                throw new org.julclang.vm.TermExtractor.ExtractionException(
-                        "Cannot read source: " + sourceFile);
-            }
-            compiled = compiler.compileMethod(source, methodName);
+            // The class's source, with the project's and the class path's libraries as its pool (ADR-068 D8), on
+            // either frontend: the same pool the default path builds (MethodEvaluator, SourceDiscovery).
+            compiled = SourceDiscovery.compileMethod(sourceClass, sourceRoot, methodName, options);
         }
         if (compiled.hasErrors()) {
             throw new org.julclang.vm.TermExtractor.ExtractionException(

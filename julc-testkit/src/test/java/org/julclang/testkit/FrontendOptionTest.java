@@ -123,6 +123,36 @@ class FrontendOptionTest {
         assertTrue(isNotPorted(validator), validator::getMessage);
     }
 
+    /**
+     * The review's F1: a class whose sibling {@code @OnchainLibrary} only the source root offers compiles on each frontend,
+     * with and without a source map, so the opt-back keeps the project's libraries.
+     */
+    @Test
+    void forClassFindsTheProjectsLibrariesOnEachFrontend() {
+        var root = java.nio.file.Path.of("src/test/java");
+        var user = org.julclang.testkit.fixtures.SiblingLibraryUser.class;
+        for (var frontend : CompilerFrontend.values()) {
+            assertEquals(BigInteger.valueOf(42), JulcEval.forClass(user, root).frontend(frontend)
+                    .call("m", BigInteger.valueOf(21)).asInteger(), frontend.name());
+            assertEquals(BigInteger.valueOf(42), JulcEval.forClass(user, root).frontend(frontend).sourceMap()
+                    .call("m", BigInteger.valueOf(21)).asInteger(), frontend + " with a source map");
+        }
+        assertEquals(BigInteger.valueOf(42), JulcEval.forClass(user, root).call("m", BigInteger.valueOf(21)).asInteger());
+    }
+
+    /** The review's F2: the class-based compile entries take a frontend, and find the project's libraries on each. */
+    @Test
+    void classBasedCompilationTakesAFrontend() {
+        var root = java.nio.file.Path.of("src/test/java");
+        var sample = org.julclang.testkit.fixtures.SiblingLibraryValidator.class;
+        byte[] reference = UplcFlatEncoder.encodeProgram(ValidatorTest.compileValidator(sample, root, CompilerFrontend.JAVAPARSER).program());
+        assertArrayEquals(reference, UplcFlatEncoder.encodeProgram(ValidatorTest.compileValidator(sample, root, CompilerFrontend.JAVAC).program()));
+        assertArrayEquals(reference, UplcFlatEncoder.encodeProgram(
+                ValidatorTest.compileValidatorByName(sample.getName(), root, CompilerFrontend.JAVAPARSER).program()));
+        assertArrayEquals(reference, UplcFlatEncoder.encodeProgram(
+                ValidatorTest.compileValidatorByName(sample.getName(), root, CompilerFrontend.JAVAC).program()));
+    }
+
     @Test
     void validatorTestCompilesOnEachFrontend() {
         assertArrayEquals(UplcFlatEncoder.encodeProgram(ValidatorTest.compile(VALIDATOR, CompilerFrontend.JAVAPARSER)),

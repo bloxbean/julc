@@ -71,6 +71,19 @@ public final class SourceDiscovery {
      * @throws AssertionError if the source file cannot be read or compilation fails
      */
     public static CompileResult compile(String fqcn, Path sourceRoot) {
+        return compile(fqcn, sourceRoot, new CompilerOptions());
+    }
+
+    /**
+     * {@link #compile(String, Path)} with custom compiler options, such as the frontend (ADR-068 D4).
+     *
+     * @param fqcn       the fully-qualified class name (e.g., "com.example.MyValidator")
+     * @param sourceRoot the root of the source tree
+     * @param options    compiler options
+     * @return the compilation result
+     * @throws AssertionError if the source file cannot be read or compilation fails
+     */
+    public static CompileResult compile(String fqcn, Path sourceRoot, CompilerOptions options) {
         Path sourceFile = sourceRoot.resolve(fqcn.replace('.', '/') + ".java");
         String validatorSource;
         try {
@@ -85,8 +98,7 @@ public final class SourceDiscovery {
         List<String> libSources = LibrarySourceResolver.resolve(validatorSource, pool);
 
         // Compile with stdlib
-        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(),
-                new CompilerOptions().setJarLibrarySources(jarTexts));
+        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), options.setJarLibrarySources(jarTexts));
         var result = compiler.compile(validatorSource, libSources);
 
         if (result.hasErrors()) {
