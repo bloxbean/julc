@@ -1557,7 +1557,10 @@
       "title": "A class instance is constructed",
       "category": "TYPE",
       "severity": "error",
-      "template": "Cannot construct non-record type: {0},
+      "template": "Cannot construct non-record type: {0}",
+      "summary": "A new of a class that is not a record, a tuple, a sealed variant or a supported API type. On-chain a value is a record's components, and a class's constructor and fields have no on-chain form. Emitted by the javac frontend (ADR-068 I2a); the reference frontend reports it uncoded.",
+      "fix": "Only record types can be constructed on-chain. Declare the type as a record."
+    },
     {
       "code": "JULC0130",
       "constant": "COMPOUND_ASSIGNMENT_NARROWS",
@@ -1568,9 +1571,6 @@
       "template": "Compound assignment {0} to the int ''{1}'' takes a long: Java narrows the result to 32 bits and the on-chain integer does not, so a JVM test and the script could differ",
       "summary": "An int variable updated with +=, -=, *=, /= or %= from a long operand. Java casts the result back to int without saying so, and an on-chain integer has no width, so past 32 bits the JVM and the script would give different values. Emitted by the javac frontend (ADR-068 r19).",
       "fix": "Declare the variable as long, e.g. long total = 0; total += amount; (BigInteger for values that can pass 64 bits). If you do want Java's 32-bit result, write the cast: x = (int) (x + y);"
-    }",
-      "summary": "A new of a class that is not a record, a tuple, a sealed variant or a supported API type. On-chain a value is a record's components, and a class's constructor and fields have no on-chain form. Emitted by the javac frontend (ADR-068 I2a); the reference frontend reports it uncoded.",
-      "fix": "Only record types can be constructed on-chain. Declare the type as a record."
     }
   ]
 }
