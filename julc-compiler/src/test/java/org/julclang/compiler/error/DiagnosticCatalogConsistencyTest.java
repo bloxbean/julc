@@ -31,7 +31,7 @@ class DiagnosticCatalogConsistencyTest {
     private static final Pattern CONSTANT_FIELD = Pattern.compile("\"constant\"\\s*:\\s*\"([A-Z][A-Z0-9_]*)\"");
     private static final Pattern STATUS_FIELD = Pattern.compile("\"status\"\\s*:\\s*\"([A-Za-z]+)\"");
     private static final Pattern PLACEHOLDER = Pattern.compile("\\{(\\d+)(?:,[^}]*)?}");
-    private static final Set<String> RETIRED_CODES = Set.of("JULC0084", "JULC0100");
+    private static final Set<String> RETIRED_CODES = Set.of("JULC0005", "JULC0071", "JULC0073", "JULC0082", "JULC0084", "JULC0100");
     private static final Set<String> RETIRED_CONSTANTS = Set.of("FRONTEND_CONSTRUCT_NOT_PORTED", "TYPE_NAME_READ_BY_SPELLING");
     private static final Set<String> VALID_STATUS = Set.of("emitted", "planned", "lintOnly", "internal", "retired");
 

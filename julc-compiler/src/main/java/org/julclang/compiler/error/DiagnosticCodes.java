@@ -789,14 +789,6 @@ public final class DiagnosticCodes {
             "Reassignment of switch case-pattern variable ''{0}'' is not supported",
             "Copy the pattern variable to a fresh local accumulator inside the arm, update that local, and yield its result instead.");
 
-    public static final DiagnosticInfo SWITCH_DUPLICATE_DEFAULT = new DiagnosticInfo(
-            "JULC0082",
-            "SWITCH_DUPLICATE_DEFAULT",
-            CompilerDiagnostic.Level.ERROR,
-            "CONTROL_FLOW",
-            "Switch has more than one default label (second at {0})",
-            "Keep one `default` label.");
-
     public static final DiagnosticInfo SWITCH_FIELD_SHADOWS_PARAMETER = new DiagnosticInfo(
             "JULC0021",
             "SWITCH_FIELD_SHADOWS_PARAMETER",
@@ -828,30 +820,6 @@ public final class DiagnosticCodes {
             "CONTROL_FLOW",
             "Guard on ''{0}'' declares pattern variable ''{1}'', which is not supported",
             "Use a nested record pattern instead, `case P(C c) -> c.w()`, or test the type without a binding (`p.t() instanceof C`) and read the value in the arm.");
-
-    public static final DiagnosticInfo SWITCH_GUARD_VARIABLE_NOT_EFFECTIVELY_FINAL = new DiagnosticInfo(
-            "JULC0073",
-            "SWITCH_GUARD_VARIABLE_NOT_EFFECTIVELY_FINAL",
-            CompilerDiagnostic.Level.ERROR,
-            "CONTROL_FLOW",
-            "Guard on ''{0}'' reads ''{1}'', which is reassigned; a variable used in a guard must be final or effectively final",
-            "Copy the variable's final value into a new local after the loop, and use that local in the guard.");
-
-    public static final DiagnosticInfo SWITCH_LABEL_DOMINATED = new DiagnosticInfo(
-            "JULC0071",
-            "SWITCH_LABEL_DOMINATED",
-            CompilerDiagnostic.Level.ERROR,
-            "CONTROL_FLOW",
-            "Switch label ''{0}'' is dominated by {1} and can never be selected",
-            "Remove the dominated label, or move the more specific (or guarded) label before the general one and `default` last.");
-
-    public static final DiagnosticInfo SWITCH_NOT_EXHAUSTIVE = new DiagnosticInfo(
-            "JULC0005",
-            "SWITCH_NOT_EXHAUSTIVE",
-            CompilerDiagnostic.Level.ERROR,
-            "CONTROL_FLOW",
-            "Switch on sealed interface {0} is not exhaustive. Missing cases: {1}",
-            "Add the missing case branches (an unguarded one per variant when the others are guarded) or include a `default ->` branch to handle all remaining variants.");
 
     public static final DiagnosticInfo SWITCH_REQUIRES_SEALED_INTERFACE = new DiagnosticInfo(
             "JULC0007",
@@ -1105,14 +1073,10 @@ public final class DiagnosticCodes {
             STRING_LITERAL_UNPAIRED_SURROGATE,
             SWITCH_ARM_UPDATE_UNSUPPORTED,
             SWITCH_CASE_VARIABLE_REASSIGNED,
-            SWITCH_DUPLICATE_DEFAULT,
             SWITCH_FIELD_SHADOWS_PARAMETER,
             SWITCH_GROUP_UNSUPPORTED,
             SWITCH_GUARD_INVALID,
             SWITCH_GUARD_PATTERN_VARIABLE_UNSUPPORTED,
-            SWITCH_GUARD_VARIABLE_NOT_EFFECTIVELY_FINAL,
-            SWITCH_LABEL_DOMINATED,
-            SWITCH_NOT_EXHAUSTIVE,
             SWITCH_REQUIRES_SEALED_INTERFACE,
             SYNCHRONIZED_UNSUPPORTED,
             THIS_OR_SUPER_UNSUPPORTED,

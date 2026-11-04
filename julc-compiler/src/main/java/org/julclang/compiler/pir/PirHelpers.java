@@ -217,7 +217,7 @@ public final class PirHelpers {
 
     /**
      * Whether {@code term} reads a method's binder: a method with no parameters, called. A method is bound under a qualified
-     * name, in the namespace {@link org.julclang.compiler.resolve.SymbolTable#declareMethod} describes, which no variable
+     * name, in a namespace of their own, which no variable
      * can have. Such a read is no variable: if its body may fail, {@link DelayedMethodPass} makes it a call, so evaluating
      * it has an effect, and a term that reads it twice runs the body twice.
      */
@@ -345,7 +345,7 @@ public final class PirHelpers {
 
     /**
      * JULC0091 (ADR-068 D6, #298): a value of {@code type} is about to be Data-encoded, and a native
-     * array has no Data encoding. The diagnostic has no position; {@link PirGenerator} attaches the
+     * array has no Data encoding. The diagnostic has no position; the lowering attaches the
      * expression whose value is encoded.
      */
     public static void requireDataEncodable(PirType type) {

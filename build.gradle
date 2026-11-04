@@ -100,12 +100,9 @@ subprojects {
         group = 'verification'
         description = 'ADR-068 D12: fails on any JavaParser name in this module and on any class path that holds it'
         def scanned = fileTree(projectDir) {
-            include 'src/**/*.java', 'src/**/reachability-metadata.json', 'build.gradle'
-        }
-        def classPaths = configurations.matching {
-            it.canBeResolved && it.name in ['compileClasspath', 'runtimeClasspath', 'testCompileClasspath', 'testRuntimeClasspath',
-                                            'annotationProcessor', 'testAnnotationProcessor', 'pairCaseBackend']
-        }
+            include 'src/**/*.java', 'src/**/*.json', 'src/**/*.properties', 'build.gradle'
+        } + rootProject.files('build.gradle', 'settings.gradle', 'gradle/libs.versions.toml', 'julc-bom/build.gradle')
+        def classPaths = configurations.matching { it.canBeResolved }
         inputs.files(scanned)
         outputs.upToDateWhen { false }
         doLast {

@@ -4,7 +4,7 @@ package org.julclang.compiler;
 import java.util.Arrays;
 
 /**
- * Translates the Unicode escapes of a Java source as javac does (JLS 21 §3.3), for {@link JavaSourceParser}
+ * Translates the Unicode escapes of a Java source as javac does (JLS 21 §3.3), for the compiler's readers of source text
  * (ADR-062 T24), and maps positions in the translated text back to the source as written.
  * <p>
  * An escape is a backslash preceded by an even number of raw backslashes, one or more {@code u}, and four
@@ -45,11 +45,6 @@ final class UnicodeEscapes {
     /** The translated source. */
     String text() {
         return text;
-    }
-
-    /** Whether the source has no escape, so the translated text is the source and positions need no mapping. */
-    boolean isIdentity() {
-        return beginLine == null;
     }
 
     /**

@@ -29,8 +29,8 @@ import java.util.function.Function;
  * The rules on a {@code switch} expression that javac does not make (ADR-068 D11), and the labels' model the lowering
  * uses. javac has rejected a duplicate {@code default}, a dominated label, a mix of case kinds, a switch that is not
  * exhaustive, a pattern variable that conflicts, and a pattern that is not applicable to the selector, so
- * {@code JULC0005}, {@code JULC0071}, {@code JULC0073}, {@code JULC0082} and {@code JULC0083}, but for one shape of a
- * guard's, are javac's diagnostics here.
+ * {@code JULC0083}, but for one shape of a guard's, is javac's diagnostic here, and {@code JULC0005}, {@code JULC0071},
+ * {@code JULC0073} and {@code JULC0082} are retired.
  * <p>
  * The lowering calls these where the reference calls {@code SwitchPatternChecker}: {@link #requireLocalUpdates} before the
  * selector is lowered, and {@link #check} after, on a sealed interface. So a rejection keeps its place in the reference's

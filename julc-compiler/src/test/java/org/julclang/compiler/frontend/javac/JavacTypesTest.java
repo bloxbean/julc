@@ -815,7 +815,7 @@ class JavacTypesTest {
          * The reference accepts {@link #VALIDATOR}, so a rejection here says nothing went to it (I8): until ADR-068 M5 a stop,
          * {@code JULC0084}, and since then the cast's own code, {@code JULC0124}.
          */
-        private static void assertNotPorted(Executable compile) {
+        private static void assertIsRejected(Executable compile) {
             var e = assertThrows(CompilerException.class, compile);
             var diagnostic = e.diagnostics().getFirst();
             assertEquals(DiagnosticCodes.PRIMITIVE_TYPE_UNSUPPORTED.code(), diagnostic.code(), e.getMessage());
@@ -837,25 +837,25 @@ class JavacTypesTest {
         }
 
         @Test
-        void everyStringEntryPointIsNotPortedNeverAFallback() {
+        void everyStringEntryPointRejectsNeverAFallback() {
             var compiler = new JulcCompiler(null, JAVAC);
-            assertNotPorted(() -> compiler.compile(VALIDATOR));
-            assertNotPorted(() -> compiler.compile(VALIDATOR, List.of()));
-            assertNotPorted(() -> compiler.compileWithDetails(VALIDATOR));
-            assertNotPorted(() -> compiler.compileWithDetails(VALIDATOR, List.of()));
-            assertNotPorted(() -> compiler.compileContract(VALIDATOR));
-            assertNotPorted(() -> compiler.compileContract(VALIDATOR, List.of()));
-            assertNotPorted(() -> compiler.compileContractWithDetails(VALIDATOR));
-            assertNotPorted(() -> compiler.compileContractWithDetails(VALIDATOR, List.of()));
-            assertNotPorted(() -> compiler.compileMethod(VALIDATOR, "validate"));
-            assertNotPorted(() -> compiler.compileMethod(VALIDATOR, "validate", List.of()));
+            assertIsRejected(() -> compiler.compile(VALIDATOR));
+            assertIsRejected(() -> compiler.compile(VALIDATOR, List.of()));
+            assertIsRejected(() -> compiler.compileWithDetails(VALIDATOR));
+            assertIsRejected(() -> compiler.compileWithDetails(VALIDATOR, List.of()));
+            assertIsRejected(() -> compiler.compileContract(VALIDATOR));
+            assertIsRejected(() -> compiler.compileContract(VALIDATOR, List.of()));
+            assertIsRejected(() -> compiler.compileContractWithDetails(VALIDATOR));
+            assertIsRejected(() -> compiler.compileContractWithDetails(VALIDATOR, List.of()));
+            assertIsRejected(() -> compiler.compileMethod(VALIDATOR, "validate"));
+            assertIsRejected(() -> compiler.compileMethod(VALIDATOR, "validate", List.of()));
         }
 
         @Test
         void theDebugEntryPointsAreNotPorted() {
             var compiler = new JulcCompiler(null, new CompilerOptions().setSourceMapEnabled(true));
-            assertNotPorted(() -> compiler.compileForDebug(VALIDATOR));
-            assertNotPorted(() -> compiler.compileForDebug(VALIDATOR, List.of()));
+            assertIsRejected(() -> compiler.compileForDebug(VALIDATOR));
+            assertIsRejected(() -> compiler.compileForDebug(VALIDATOR, List.of()));
         }
 
         @Test
@@ -863,11 +863,11 @@ class JavacTypesTest {
             Path file = dir.resolve("V.java");
             Files.writeString(file, VALIDATOR);
             var compiler = new JulcCompiler(null, JAVAC);
-            assertNotPorted(() -> compiler.compile(file));
-            assertNotPorted(() -> compiler.compile(file, List.of()));
-            assertNotPorted(() -> compiler.compile(file.toFile()));
-            assertNotPorted(() -> compiler.compileContract(file));
-            assertNotPorted(() -> compiler.compileWithSiblings(file));
+            assertIsRejected(() -> compiler.compile(file));
+            assertIsRejected(() -> compiler.compile(file, List.of()));
+            assertIsRejected(() -> compiler.compile(file.toFile()));
+            assertIsRejected(() -> compiler.compileContract(file));
+            assertIsRejected(() -> compiler.compileWithSiblings(file));
         }
 
         @Test

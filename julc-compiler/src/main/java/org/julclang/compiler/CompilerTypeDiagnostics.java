@@ -51,7 +51,7 @@ public final class CompilerTypeDiagnostics {
         return exception(info.code(), info.level(), info.fix(), message, location);
     }
 
-    /** The message of {@link #unknownTypeEncoded}, by which PirGenerator places it. */
+    /** The message of {@link #unknownTypeEncoded}, by which the lowering places it. */
     public static final String UNKNOWN_TYPE_ENCODED = "the type of this value, a switch expression whose arms have different types";
 
     /**
