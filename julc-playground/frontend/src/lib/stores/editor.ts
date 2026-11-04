@@ -9,6 +9,7 @@ import type {
 } from '../api/client';
 
 const DEFAULT_JAVA_SOURCE = `import java.math.BigInteger;
+import org.julclang.ledger.ScriptContext;
 import org.julclang.stdlib.annotation.Entrypoint;
 import org.julclang.stdlib.annotation.SpendingValidator;
 
@@ -19,7 +20,7 @@ class SimpleValidator {
     }
 
     @Entrypoint
-    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+    static boolean validate(BigInteger redeemer, ScriptContext ctx) {
         return isPositive(BigInteger.valueOf(42));
     }
 }
