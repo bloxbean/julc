@@ -1,0 +1,19 @@
+format: 2
+name: a boolean list's found element read as a boolean
+class: Case
+method: m
+arg: 01
+expect: DIVERGE M5 Value/Failure
+jvm: Value 01 []
+uplc: Failure []
+note: The reference leaves find's element of a JulcList<Boolean> as Data where a boolean is read (BooleanPositionLevelsTest). Closed by M5.
+note: ADR-068 D13: on frontend=JAVAC this agrees with the JVM (Adr068SavedCasesOnJavacTest).
+---
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.core.types.JulcList;
+import org.julclang.stdlib.annotation.NewType;
+
+public class Case {
+    public static long m(BigInteger a) { JulcList<Boolean> xs = JulcList.of(true); if (xs.find(b -> b)) { return 1; } return 0; }
+}

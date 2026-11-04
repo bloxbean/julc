@@ -1,0 +1,19 @@
+format: 2
+name: a boolean list's head read as a boolean
+class: Case
+method: m
+arg: 01
+expect: DIVERGE M5 Value/Failure
+jvm: Value 01 []
+uplc: Failure []
+note: The reference leaves a JulcList<Boolean>'s element as Data where a boolean is read (BooleanPositionLevelsTest). Closed by M5.
+note: ADR-068 D13: on frontend=JAVAC this agrees with the JVM (Adr068SavedCasesOnJavacTest).
+---
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.core.types.JulcList;
+import org.julclang.stdlib.annotation.NewType;
+
+public class Case {
+    public static long m(BigInteger a) { var xs = JulcList.of(true); if (xs.head()) { return 1; } return 0; }
+}
