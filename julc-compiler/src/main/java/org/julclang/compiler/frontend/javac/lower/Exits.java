@@ -14,7 +14,7 @@ import java.util.List;
 /**
  * What a statement's shape says about leaving it, read from the tree alone. {@link Ifs} chooses its shape from these. Only
  * statement structure is walked, so a {@code return} in a lambda is not one of these, and evaluation has no order to state.
- * A statement no slice has ported holds no exit here, and its lowering stops at {@code JULC0084}.
+ * A statement the subset does not hold has no exit here: the scan rejected it.
  */
 final class Exits {
 

@@ -56,11 +56,19 @@ class Adr068MetadataCorpusTest {
     }
 
     /**
-     * The one word of javac's that a run does not fix: where a source reaches a class the closed platform does not hold (a
-     * test of this repository), which class javac names first varies between runs. Such a source is rejected either way.
+     * What may differ from the baseline. The one word of javac's that a run does not fix: where a source reaches a class the
+     * closed platform does not hold (a test of this repository), which class javac names first varies between runs, and such a
+     * source is rejected either way. And two fix strings M6 rewrote, JULC0087's way back to the JavaParser frontend and
+     * JULC0101's, so a baseline's line reads as today's.
      */
     private static String stable(String line) {
-        return line.replaceAll("cannot access [\\w.]+\\\\n  class file for [\\w.$]+ not found", "cannot access a class of no platform");
+        return line.replaceAll("cannot access [\\w.]+\\\\n  class file for [\\w.$]+ not found", "cannot access a class of no platform")
+                .replace(", which keeps the script the JavaParser frontend made for a.equals(b)", "")
+                .replace(" Until ADR-068 M6 the JavaParser frontend, which compares the bytes on-chain but by identity on the JVM,"
+                        + " stays selectable: julc build --frontend javaparser, julc { frontend = 'javaparser' } in Gradle, or"
+                        + " CompilerOptions.setFrontend(CompilerFrontend.JAVAPARSER).", "")
+                .replace("suggestion=Give the method another name.",
+                        "suggestion=Give the method or component another name, and read the component through its generated accessor.");
     }
 
     /** What the tool gives for a corpus file, one line. */

@@ -1,7 +1,6 @@
 package org.julclang.testkit;
 
 import org.julclang.compiler.CompileResult;
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.core.PlutusData;
 import org.julclang.core.Program;
@@ -296,14 +295,6 @@ public abstract class ContractTest {
      */
     protected CompileResult compileValidator(Class<?> validatorClass, Path sourceRoot) {
         return SourceDiscovery.compile(validatorClass, sourceRoot);
-    }
-
-    /**
-     * {@link #compileValidator(Class, Path)} on the given Java frontend (experimental, ADR-068 D4). {@code JAVAC} is the
-     * default; {@code JAVAPARSER} stays selectable until M6.
-     */
-    protected CompileResult compileValidator(Class<?> validatorClass, Path sourceRoot, CompilerFrontend frontend) {
-        return SourceDiscovery.compile(validatorClass, sourceRoot, new CompilerOptions().setFrontend(frontend));
     }
 
     // --- Source map support ---

@@ -253,35 +253,6 @@ final class CallTargets {
         return new CallTarget.Wrapper(name);
     }
 
-    /**
-     * Whether the reference applies {@code UnBData} to this read: it takes a hash in a variable to be Data still, as a
-     * loop's variable is, and only a read from a call to be decoded. A variable holds bytes, so that term fails on-chain
-     * where Java returns them, and it does not lower. A lambda's parameter and a for-each's variable are the ones it knows
-     * to be decoded.
-     */
-    private boolean decodesAgain(String name, ExpressionTree receiver) {
-        if (name.equals("value") || isLambdaParameter(receiver) || isLoopVariable(receiver)) return false;
-        var call = receiver instanceof MethodInvocationTree tree ? tree : null;
-        return name.equals("hash") ? call == null || !typedCall(call) : call == null;
-    }
-
-    private boolean isLoopVariable(ExpressionTree tree) {
-        return tree instanceof IdentifierTree && facts.element(tree) instanceof VariableElement variable
-                && facts.declaration(variable) != null && facts.parent(facts.declaration(variable)) instanceof EnhancedForLoopTree;
-    }
-
-    /** Whether {@code tree} reads a parameter of a lambda around it. */
-    private boolean isLambdaParameter(ExpressionTree tree) {
-        if (!(tree instanceof IdentifierTree)) return false;
-        var element = facts.element(tree);
-        for (var at = facts.enclosing(tree, Tree.Kind.LAMBDA_EXPRESSION); at != null; at = facts.enclosing(at, Tree.Kind.LAMBDA_EXPRESSION)) {
-            if (((LambdaExpressionTree) at).getParameters().stream().anyMatch(parameter -> facts.element(parameter).equals(element))) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     /** Whether {@code tree} is a call of an API static method, whose result's type the reference does not know. */
     boolean isStdlibCall(ExpressionTree tree) {
         return tree instanceof MethodInvocationTree call && classify(call) instanceof CallTarget.Stdlib;

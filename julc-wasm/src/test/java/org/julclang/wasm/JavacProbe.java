@@ -16,11 +16,11 @@ import java.util.List;
 
 /**
  * ADR-068 M1 host smoke: the javac gate, enforced, in an image built from julc-wasm's class path
- * ({@code :julc-wasm:wasmGateProbe} builds it as a Web Image and runs it under Node; {@link JavacGateProbeTest} runs
+ * ({@code :julc-wasm:wasmGateProbe} builds it as a Web Image and runs it under Node; {@link JavacProbeTest} runs
  * it on the JVM and pins the same lines). It prints the javac environment, accepts a stdlib-using and a
  * {@code @RequiresSigner} validator, and rejects JuLC's dialect.
  */
-public final class JavacGateProbe {
+public final class JavacProbe {
     static final String STDLIB = """
             import java.math.BigInteger;
             import org.julclang.core.PlutusData;

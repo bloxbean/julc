@@ -1,15 +1,12 @@
 package org.julclang.compiler.frontend.javac.lower;
 
 import org.julclang.compiler.CompilerException;
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.OptimizationLevel;
 import org.julclang.compiler.CompileResult;
 import org.julclang.compiler.frontend.javac.JavacFrontend;
-import org.julclang.compiler.frontend.javac.JavacGateMode;
 import org.julclang.compiler.frontend.javac.JavacProgram;
-import org.julclang.compiler.frontend.javac.subset.SpelledTypes;
 import org.julclang.compiler.frontend.javac.subset.UnloweredInitializers;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.pir.TypeMethodRegistry;
@@ -41,9 +38,8 @@ import static org.julclang.compiler.frontend.javac.lower.LoweringFixture.assertS
 import static org.julclang.compiler.frontend.javac.lower.LoweringFixture.assertSameRejectionAsReference;
 
 /**
- * The subset's rules for an entry point, for what a field initializer may hold and for a cast to {@code boolean}, on both
- * frontends: the same code, words and position. One rule runs on javac's trees for both, so what these tests say about one
- * frontend they say about the other. Rules only the javac frontend makes say so.
+ * The subset's rules for an entry point, for what a field initializer may hold and for a cast to {@code boolean}, with the
+ * code, words and position the JavaParser frontend gave them until ADR-068 M6, where it gave them.
  */
 class SubsetRulesTest {
 
@@ -219,16 +215,15 @@ class SubsetRulesTest {
                                             final BigInteger ctx) { return true; }
                 }
                 """;
-        for (var frontend : List.of(CompilerFrontend.JAVAC, CompilerFrontend.JAVAPARSER)) {
-            var options = new CompilerOptions().setFrontend(frontend);
-            var diagnostic = assertThrows(CompilerException.class, () -> new JulcCompiler(null, options).compile(source))
-                    .diagnostics().getFirst();
-            assertEquals("JULC0103", diagnostic.code());
-            assertEquals("Entrypoint validate of V takes java.math.BigInteger as its last parameter; the last parameter is "
-                    + "the script context, ScriptContext or PlutusData", diagnostic.message());
-            assertEquals(9, diagnostic.line());
-            assertEquals(29, diagnostic.column());
-        }
+        var options = new CompilerOptions();
+        var diagnostic = assertThrows(CompilerException.class, () -> new JulcCompiler(null, options).compile(source))
+                .diagnostics().getFirst();
+        assertEquals("JULC0103", diagnostic.code());
+        assertEquals("Entrypoint validate of V takes java.math.BigInteger as its last parameter; the last parameter is "
+                + "the script context, ScriptContext or PlutusData", diagnostic.message());
+        assertEquals(9, diagnostic.line());
+        assertEquals(29, diagnostic.column());
+    
     }
 
     /** A count the purpose does not take is the count's rejection, as on the reference with the gate off: the rule does not overtake it. */
@@ -900,24 +895,6 @@ class SubsetRulesTest {
     }
 
     // --- A name the compiler reads by spelling: a type ---
-
-    /** The set is {@code TypeResolver}'s, so a name it learns must come here. */
-    @Test
-    void theSpelledNamesAreTypeResolversOwn() throws IOException {
-        var source = Files.readString(Path.of("src/main/java/org/julclang/compiler/resolve/TypeResolver.java"));
-        var body = source.substring(source.indexOf("private PirType resolveClassType"));
-        body = body.substring(0, body.indexOf("default -> {"));
-        var names = new TreeSet<String>(TypeRegistry.ledgerHashNames());
-        var cases = Pattern.compile("(?m)^\\s+case ([^-]+) ->").matcher(body);
-        while (cases.find()) {
-            for (String name : cases.group(1).split(",")) names.add(name.strip().replace("\"", ""));
-        }
-        assertTrue(SpelledTypes.NAMES.keySet().containsAll(names), names.toString());
-    }
-
-    private static Stream<String> spelledNames() {
-        return SpelledTypes.NAMES.keySet().stream().sorted();
-    }
 
     @Test
     void anotherNameIsAName() {

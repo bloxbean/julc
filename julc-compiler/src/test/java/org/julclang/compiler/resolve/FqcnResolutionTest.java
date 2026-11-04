@@ -1,11 +1,8 @@
 package org.julclang.compiler.resolve;
 
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerOptions;
-import org.julclang.compiler.JavaSourceParser;
 import org.julclang.compiler.JulcCompiler;
-import org.julclang.compiler.frontend.javac.JavacGateMode;
 import org.julclang.stdlib.StdlibRegistry;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;

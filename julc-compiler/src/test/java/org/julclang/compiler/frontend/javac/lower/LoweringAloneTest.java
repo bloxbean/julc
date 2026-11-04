@@ -1,6 +1,5 @@
 package org.julclang.compiler.frontend.javac.lower;
 
-import org.julclang.compiler.CompilerFrontend;
 import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.MethodTree;
 import com.sun.source.tree.VariableTree;
@@ -12,7 +11,6 @@ import org.julclang.compiler.codegen.StrictRecordEntrypoint;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacFrontend;
 import org.julclang.compiler.frontend.javac.JavacProgram;
-import org.julclang.compiler.frontend.javac.NotPorted;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirSubstitution;
 import org.julclang.compiler.pir.PirType;

@@ -1,7 +1,6 @@
 package org.julclang.compiler.frontend.javac.lower;
 
 import org.julclang.compiler.CompilerException;
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.error.DiagnosticCodes;
@@ -22,7 +21,7 @@ import static org.julclang.compiler.frontend.javac.lower.LoweringFixture.assertS
 /** Names, static constants and {@code @Param} fields, against the reference's bytes (ADR-068 I3, D14). */
 class JavacNamesTest {
 
-    private static final CompilerOptions JAVAC = new CompilerOptions().setFrontend(CompilerFrontend.JAVAC);
+    private static final CompilerOptions JAVAC = new CompilerOptions();
 
     private static CompilerException rejected(String source) {
         return assertThrows(CompilerException.class, () -> new JulcCompiler(null, JAVAC).compileMethod(source, "m", List.of()));

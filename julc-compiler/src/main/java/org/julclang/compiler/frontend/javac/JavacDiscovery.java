@@ -126,8 +126,8 @@ final class JavacDiscovery {
      * Annotations count by name here, as the JavaParser frontend reads them, so that a user's own annotation of that
      * name decides nothing in its favour.
      */
-    ClassTree compiledClass(CompilationUnitTree unit, JavacGate.Compiled compiled) {
-        if (compiled == JavacGate.Compiled.METHOD) {
+    ClassTree compiledClass(CompilationUnitTree unit, SubsetRules.Compiled compiled) {
+        if (compiled == SubsetRules.Compiled.METHOD) {
             return types(unit).stream().filter(tree -> tree.getKind() == Tree.Kind.CLASS).findFirst().orElse(null);
         }
         return types(unit).stream().filter(JavacDiscovery::isClassOrInterface)

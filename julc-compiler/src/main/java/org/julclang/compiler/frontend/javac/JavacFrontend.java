@@ -10,7 +10,6 @@ import com.sun.source.util.TaskListener;
 import com.sun.source.util.Trees;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.error.DiagnosticCodes;
-import org.julclang.compiler.frontend.javac.subset.SpelledTypes;
 import org.julclang.compiler.resolve.TypeRegistry;
 
 import javax.lang.model.SourceVersion;
@@ -75,14 +74,6 @@ public final class JavacFrontend {
     private final BundledSources bundled;
     private volatile JavaCompiler compiler;
     private volatile String unsupported;
-    /** Results of this environment, by input digest (JavacGate); a frontend's environment never changes. */
-    private final Map<String, JavacResult> cache = new LinkedHashMap<>(16, 0.75f, true) {
-        @Override
-        protected boolean removeEldestEntry(Map.Entry<String, JavacResult> eldest) {
-            return size() > CACHE_LIMIT;
-        }
-    };
-    private static final int CACHE_LIMIT = 512;
 
     /**
      * Where a pool unit comes from (D8: roots, then same-project sources, then JAR sources). A host that merges a
@@ -151,19 +142,6 @@ public final class JavacFrontend {
         return bundled;
     }
 
-    /** The cached result for {@code key} in this environment, else {@code analysis}'s, cached. */
-    JavacResult cached(String key, Supplier<JavacResult> analysis) {
-        synchronized (cache) {
-            JavacResult hit = cache.get(key);
-            if (hit != null) return hit;
-        }
-        JavacResult result = analysis.get();
-        synchronized (cache) {
-            cache.put(key, result);
-        }
-        return result;
-    }
-
     /** The host's Java runtime version, which is javac's on a JVM host (D3: recorded with the result). */
     public static String javacVersion() {
         return Runtime.version().toString();
@@ -218,66 +196,6 @@ public final class JavacFrontend {
     /** {@link #analyze(List, List)}, keeping the attributed trees. */
     Attribution attribute(List<Unit> roots, List<Unit> pool) {
         return analyze(roots, pool, null, true, null);
-    }
-
-    /** {@link #analyze(List, List)}, then, on what javac accepted, the subset's rules ({@link SubsetRules}). */
-    JavacResult analyzeWithRules(List<Unit> roots, List<Unit> pool, JavacGate.Compiled compiled) {
-        var attribution = attribute(roots, pool);
-        if (!attribution.result().isAccepted() || attribution.trees() == null) return attribution.result();
-        try {
-            var facts = JavacFacts.of(attribution, new TypeRegistry());
-            SubsetRules.checkSpellings(facts, attribution.roots(), attribution.libraries(), compiled, reading(roots, pool, compiled, attribution.result().dropped()));
-            SubsetRules.check(facts, attribution.roots(), attribution.libraries(), compiled);
-            return attribution.result().withWarnings(SubsetRules.warnings(facts, attribution.roots()));
-        } catch (CompilerException e) {
-            var rejected = e.diagnostics().stream().map(diagnostic -> new JavacDiagnostic(diagnostic.code(), null,
-                    diagnostic.message(), diagnostic.fileName(), diagnostic.line(), diagnostic.column(), -1, -1,
-                    diagnostic.suggestion())).toList();
-            return new JavacResult(rejected, javacVersion(), platform.platformDigest(), platform.stubsDigest(),
-                    attribution.result().dropped());
-        }
-    }
-
-    /** What the JavaParser frontend reads in this environment, for these units: every one it compiles, read by javac or not. */
-    private SpelledTypes.Reading reading(List<Unit> roots, List<Unit> pool, JavacGate.Compiled compiled, Set<String> dropped) {
-        var rootTexts = new LinkedHashSet<String>();
-        roots.forEach(unit -> rootTexts.add(unit.text()));
-        var libraries = new LinkedHashSet<>(bundled.texts().values());
-        pool.forEach(unit -> libraries.add(unit.text()));
-        libraries.removeAll(rootTexts);
-        libraries.removeIf(text -> dropped.contains(JavacPlatform.identity(text)));
-        if (compiled == JavacGate.Compiled.LIBRARY) {
-            libraries.addAll(rootTexts);
-            rootTexts.clear();
-        }
-        var libraryInfos = JavacUnits.infos(compiler(), platform, List.copyOf(libraries));
-        var rootInfos = JavacUnits.infos(compiler(), platform, List.copyOf(rootTexts));
-        var registered = new HashSet<String>();
-        libraryInfos.forEach(info -> registered.addAll(info.classes()));
-        var packages = new HashSet<String>();
-        var unnamed = new HashSet<String>();
-        var offered = new HashSet<String>();
-        var repeated = new HashSet<String>();
-        for (var infos : List.of(libraryInfos, rootInfos)) {
-            for (var info : infos) {
-                registered.addAll(info.dataTypes());
-                packages.add(firstName(info.packageName()));
-                if (info.packageName().isEmpty()) unnamed.addAll(info.topLevelNames());
-                for (var names : List.of(info.dataTypes(), info.classes())) {
-                    for (String name : names) {
-                        if (!offered.add(name)) repeated.add(name);
-                    }
-                }
-            }
-        }
-        var identities = new HashSet<>(platform.stubIdentities());
-        identities.addAll(bundled.digests().keySet());
-        return SpelledTypes.Reading.of(identities, registered, offered, repeated, packages, unnamed);
-    }
-
-    private static String firstName(String packageName) {
-        int dot = packageName.indexOf('.');
-        return dot < 0 ? packageName : packageName.substring(0, dot);
     }
 
     /**

@@ -1,12 +1,10 @@
 package org.julclang.compiler.frontend.javac.lower;
 
 import org.julclang.compiler.CompilerException;
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.CompilerTestVm;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.OptimizationLevel;
-import org.julclang.compiler.frontend.javac.NotPorted;
 import org.julclang.core.PlutusData;
 import org.julclang.core.text.UplcPrinter;
 import org.julclang.ledger.TxOutRef;
@@ -101,7 +99,7 @@ class JavacLedgerFromDataTest {
 
     private static EvalResult run(String source, OptimizationLevel level, PlutusData... arguments) {
         var program = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()
-                .setFrontend(CompilerFrontend.JAVAC).setOptimizationLevel(level)).compileMethod(source, "m").program();
+                .setOptimizationLevel(level)).compileMethod(source, "m").program();
         return CompilerTestVm.pv11("Java").evaluateWithArgs(program, List.of(arguments));
     }
 
@@ -135,7 +133,7 @@ class JavacLedgerFromDataTest {
         var hash = new byte[]{1, 2, 3};
         for (var level : OptimizationLevel.values()) {
             var program = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()
-                    .setFrontend(CompilerFrontend.JAVAC).setOptimizationLevel(level)).compileMethod(source, "m").program();
+                    .setOptimizationLevel(level)).compileMethod(source, "m").program();
             var result = CompilerTestVm.pv11("Java").evaluateWithArgs(program, List.of(new PlutusData.BytesData(hash)));
             var success = assertInstanceOf(EvalResult.Success.class, result, result::toString);
             String printed = UplcPrinter.print(success.resultTerm());
@@ -205,7 +203,7 @@ class JavacLedgerFromDataTest {
         String two = one.replace("TxOutRef r = TxOutRef.fromPlutusData(e);",
                 "TxOutRef r = TxOutRef.fromPlutusData(e); Address b = Address.fromPlutusData(e); TxOutRef s = TxOutRef.fromPlutusData(d);");
         for (var level : OptimizationLevel.values()) {
-            var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAC).setOptimizationLevel(level);
+            var options = new CompilerOptions().setOptimizationLevel(level);
             int once = new JulcCompiler(StdlibRegistry.defaultRegistry(), options).compileMethod(one, "m").scriptSizeBytes();
             int twice = new JulcCompiler(StdlibRegistry.defaultRegistry(), options).compileMethod(two, "m").scriptSizeBytes();
             assertTrue(twice - once < 40, () -> level + ": " + once + " then " + twice + " bytes");
@@ -226,7 +224,7 @@ class JavacLedgerFromDataTest {
                 class C { static byte[] m(PlutusData d) { return Builtins.unBData(d); } }
                 """;
         for (var level : OptimizationLevel.values()) {
-            var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAC).setOptimizationLevel(level);
+            var options = new CompilerOptions().setOptimizationLevel(level);
             assertEquals(new JulcCompiler(StdlibRegistry.defaultRegistry(), options).compileMethod(unBData, "m").scriptSizeBytes(),
                     new JulcCompiler(StdlibRegistry.defaultRegistry(), options).compileMethod(fromData, "m").scriptSizeBytes(), level::toString);
         }
@@ -256,7 +254,7 @@ class JavacLedgerFromDataTest {
                     }
                 }
                 """;
-        var program = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAC))
+        var program = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions())
                 .compile(source).program();
         for (var credential : List.of(constr(0, bytes(28)), constr(0, integer(5)))) {
             var context = constr(0, integer(0), constr(0, credential), constr(0, bytes(28)));
@@ -271,7 +269,6 @@ class JavacLedgerFromDataTest {
     @ValueSource(strings = {"Value", "TxOut", "TxInInfo", "TxInfo", "ScriptContext", "Committee", "GovernanceAction"})
     void aTypeThatHoldsAMapIsNotDecoded(String type) {
         var rejection = assertThrows(CompilerException.class, () -> run(source(type), OptimizationLevel.DEFAULT));
-        assertFalse(rejection instanceof NotPorted, rejection::getMessage);
         assertEquals("JULC0128", rejection.diagnostics().getFirst().code(), rejection::getMessage);
     }
 }

@@ -22,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * the project's library sources); with {@code julc.javacGate=enforce} a javac error fails the build. The gate runs before
  * the JavaParser frontend, selected explicitly ({@code --frontend javaparser}) from ADR-068 M5.
  */
-class BuildCommandJavacGateTest {
+class BuildCommandJavacTest {
 
     static Path project(Path dir, String condition) throws Exception {
         Path project = dir.resolve("gate-build");

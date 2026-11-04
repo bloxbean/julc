@@ -109,7 +109,8 @@ def renderDiagnosticCodes = { File catalogFile, File outputFile ->
         sb.toString()
     }
 
-    def sorted = entries.toSorted { a, b -> a.constant.toString() <=> b.constant.toString() }
+    // A retired code keeps its entry, so that it is never reused, and has no constant: nothing can report it.
+    def sorted = entries.findAll { it.status != 'retired' }.toSorted { a, b -> a.constant.toString() <=> b.constant.toString() }
     def out = new StringBuilder()
     out.append('// GENERATED FROM julc-compiler/src/main/resources/diagnostics.json\n')
     out.append('// DO NOT EDIT - run `./gradlew :julc-compiler:generateDiagnosticCodes` and commit.\n')
@@ -373,90 +374,7 @@ publishing {
     }
 }
 
-// ADR-068 M1: summarize a javac gate report (every source the gate would reject, and why):
-//   ./gradlew test --offline --continue --rerun -Pjulc.javacGate.report=build/javac-gate
-//   ./gradlew :julc-compiler:javacGateSummary -Pjulc.javacGate.report=build/javac-gate
-tasks.register('javacGateSummary', JavaExec) {
-    description = 'Summarize a javac gate report directory (-Pjulc.javacGate.report=<dir>).'
-    group = 'verification'
-    classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'org.julclang.compiler.frontend.javac.JavacGateReport'
-    javaLauncher = javacToolLauncher
-    argumentProviders.add({
-        def dir = providers.gradleProperty('julc.javacGate.report')
-        if (!dir.present) throw new GradleException('Pass -Pjulc.javacGate.report=<dir>')
-        [rootProject.file(dir.get()).absolutePath]
-    } as CommandLineArgumentProvider)
-    outputs.upToDateWhen { false }
-}
 
-// ADR-068 M1: the gate over a recorded corpus (ADR-068 M0's recording), with the shipped blobs: rejections by javac
-// key, every case's outcome, and a check that the derived platform gives the same diagnostics as all of java.base:
-//   ./gradlew :julc-compiler:javacGateCorpus -Pjulc.javacGate.corpus=build/julc-corpus -Pjulc.javacGate.out=<dir>
-tasks.register('javacGateCorpus', JavaExec) {
-    description = 'Run the javac gate over a recorded corpus (-Pjulc.javacGate.corpus, -Pjulc.javacGate.out).'
-    group = 'verification'
-    javacTool(it)
-    dependsOn 'generateJavacStubs', 'generateJavacPlatform'
-    maxHeapSize = '6g'
-    argumentProviders.add({
-        def corpus = providers.gradleProperty('julc.javacGate.corpus')
-        if (!corpus.present) throw new GradleException('Pass -Pjulc.javacGate.corpus=<dir>')
-        def out = providers.gradleProperty('julc.javacGate.out').orElse('build/javac-gate-corpus')
-        ['gate-corpus', javacPlatformBlob.get().asFile.path, javacStubsBlob.get().asFile.path,
-         rootProject.file(corpus.get()).path, rootProject.file(out.get()).path] +
-                javacDerivationSources.take(2).collect { rootProject.file(it).path }
-    } as CommandLineArgumentProvider)
-    outputs.upToDateWhen { false }
-}
-
-// ADR-068 M1b: the dialect codemod (test tooling) over a javac gate report; writes rewrites back with -Pcodemod.apply:
-//   ./gradlew :julc-compiler:dialectCodemod -Pjulc.javacGate.report=build/javac-gate -Pcodemod.out=build/codemod [-Pcodemod.apply]
-tasks.register('dialectCodemod', JavaExec) {
-    description = 'Rewrite JuLC dialect sources into Java from a javac gate report (ADR-068 M1b).'
-    group = 'verification'
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'org.julclang.compiler.frontend.javac.DialectCodemod'
-    javaLauncher = javacToolLauncher
-    maxHeapSize = '4g'
-    argumentProviders.add({
-        def dir = providers.gradleProperty('julc.javacGate.report')
-        if (!dir.present) throw new GradleException('Pass -Pjulc.javacGate.report=<dir>')
-        def out = providers.gradleProperty('codemod.out').orElse('build/codemod')
-        [rootProject.file(dir.get()).absolutePath, rootDir.absolutePath, rootProject.file(out.get()).absolutePath] +
-                (providers.gradleProperty('codemod.apply').present ? ['apply'] : [])
-    } as CommandLineArgumentProvider)
-    outputs.upToDateWhen { false }
-}
-tasks.register('dialectCodemodDebug', JavaExec) {
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'org.julclang.compiler.frontend.javac.DialectCodemod'
-    javaLauncher = javacToolLauncher
-    argumentProviders.add({
-        ['debug', rootProject.file(providers.gradleProperty('julc.javacGate.report').get()).absolutePath,
-         providers.gradleProperty('codemod.case').get()]
-    } as CommandLineArgumentProvider)
-    outputs.upToDateWhen { false }
-}
-// ./gradlew :julc-compiler:dialectCodemodMarkdown -Pcodemod.out=<dir> -Pcodemod.files=<a.md,b.md>
-tasks.register('dialectCodemodMarkdown', JavaExec) {
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'org.julclang.compiler.frontend.javac.DialectCodemod'
-    javaLauncher = javacToolLauncher
-    argumentProviders.add({
-        ['markdown', rootProject.file(providers.gradleProperty('codemod.out').get()).absolutePath] +
-                providers.gradleProperty('codemod.files').get().split(',').collect { rootProject.file(it).absolutePath }
-    } as CommandLineArgumentProvider)
-    outputs.upToDateWhen { false }
-}
-// ./gradlew :julc-compiler:dialectCompare -Pcodemod.args=<old.java>,<new.java>[,method]
-tasks.register('dialectCompare', JavaExec) {
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'org.julclang.compiler.frontend.javac.DialectCodemod'
-    javaLauncher = javacToolLauncher
-    argumentProviders.add({ ['compare'] + providers.gradleProperty('codemod.args').get().split(',').toList() } as CommandLineArgumentProvider)
-    outputs.upToDateWhen { false }
-}
 
 // ADR-068 M6: the equivalence gate, what a tool gives against the frozen baseline of 068/m6-tools-baseline.tsv:
 //   ./gradlew :julc-compiler:adr068Tools -Padr068.tools.sources=<dir>[:<dir>...] -Padr068.tools.baseline=<dir> [-Padr068.tools.out=<dir>] --offline

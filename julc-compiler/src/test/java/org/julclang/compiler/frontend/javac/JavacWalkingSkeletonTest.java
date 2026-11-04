@@ -1,7 +1,6 @@
 package org.julclang.compiler.frontend.javac;
 
 import org.julclang.compiler.CompileResult;
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.OptimizationLevel;

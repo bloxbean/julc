@@ -1,6 +1,5 @@
 package org.julclang.compiler.frontend.javac;
 
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerOptions;
 
@@ -10,7 +9,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 /**
- * F510's probe, run in a JVM without julc-stdlib on its class path ({@link JavacGateEnvironmentTest}): the gate in
+ * F510's probe, run in a JVM without julc-stdlib on its class path ({@link JavacEnvironmentTest}): the gate in
  * enforce mode, first with no bundled set, then with julc-stdlib supplied through the thread context loader.
  * Arguments: julc-stdlib's class-path entries.
  */
@@ -28,9 +27,9 @@ public final class JavacEnvironmentProbe {
 
     static String outcome(String source) {
         try {
-            var result = JavacGate.check("probe", List.of(JavacFrontend.Unit.of(source)), List.of(),
-                    new CompilerOptions());
-            return result.isAccepted() ? "accepted" : "rejected?";
+            var result = JavacFrontend.shared().analyze(List.of(JavacFrontend.Unit.of(source)), List.of());
+            if (!result.isAccepted()) throw new CompilerException(result.compilerDiagnostics());
+            return "accepted";
         } catch (CompilerException e) {
             var d = e.diagnostics().getFirst();
             return "rejected " + d.code() + (d.message().contains("(compiler.err.") ? " "

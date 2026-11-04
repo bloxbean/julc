@@ -1,7 +1,6 @@
 package org.julclang.compiler.frontend.javac.subset;
 
 import org.julclang.compiler.CompilerException;
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JavaLibraryProvider;
 import org.julclang.compiler.JulcCompiler;
@@ -36,7 +35,7 @@ class JavacRecordMembersTest {
             """;
 
     private static CompilerOptions javac() {
-        return new CompilerOptions().setFrontend(CompilerFrontend.JAVAC);
+        return new CompilerOptions();
     }
 
     private static JulcCompiler compiler() {

@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * ADR-068 D8, M1: the playground's host adapter. The editor source is the root and the server's cached class-path
  * scan is the pool, as the playground compiles them; with {@code julc.javacGate=enforce} a javac error is reported.
  */
-class CompileControllerJavacGateTest {
+class CompileControllerJavacTest {
 
     static final ObjectMapper JSON = new ObjectMapper();
     private CompilationSandbox sandbox;

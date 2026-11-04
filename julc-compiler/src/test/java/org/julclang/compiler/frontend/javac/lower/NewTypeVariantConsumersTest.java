@@ -1,7 +1,6 @@
 package org.julclang.compiler.frontend.javac.lower;
 
 import org.julclang.compiler.CompilerException;
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JavaLibraryProvider;
 import org.julclang.compiler.JulcCompiler;
@@ -44,7 +43,7 @@ class NewTypeVariantConsumersTest {
                 : "sealed interface W permits V { } static final class V implements W { }";
     }
 
-    private static final CompilerOptions JAVAC = new CompilerOptions().setFrontend(CompilerFrontend.JAVAC);
+    private static final CompilerOptions JAVAC = new CompilerOptions();
 
     private static void assertRefused(Executable compile) {
         var e = assertThrows(CompilerException.class, compile);

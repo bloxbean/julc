@@ -1,7 +1,6 @@
 package org.julclang.compiler.error;
 
 import org.julclang.compiler.CompilerException;
-import com.github.javaparser.ast.Node;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -47,45 +46,6 @@ public class DiagnosticCollector {
     }
 
     /**
-     * Record an error with source position from an AST node.
-     */
-    public void error(Node node, String message) {
-        error(node, message, null);
-    }
-
-    /**
-     * Record an error with source position and a suggestion.
-     */
-    public void error(Node node, String message, String suggestion) {
-        errorWithCode(node, null, message, suggestion);
-    }
-
-    /**
-     * Record an error with a stable code (e.g. {@code "JULC0001"}), source
-     * position, message, and an optional fix suggestion. The code is looked
-     * up in the diagnostics catalog by downstream tooling (MCP, lint, docs).
-     */
-    public void errorWithCode(Node node, String code, String message, String suggestion) {
-        add(CompilerDiagnostic.Level.ERROR, node, code, message, suggestion);
-    }
-
-    /**
-     * Record an error from the generated diagnostics catalog.
-     */
-    public void errorWithCode(Node node, DiagnosticInfo info, Object... args) {
-        errorWithCodeWithSuggestion(node, info, info.fix(), args);
-    }
-
-    /**
-     * Record an error from the generated diagnostics catalog with a
-     * source-specific suggestion override.
-     */
-    public void errorWithCodeWithSuggestion(Node node, DiagnosticInfo info,
-                                            String suggestionOverride, Object... args) {
-        add(info.level(), node, info.code(), info.format(args), suggestionOverride);
-    }
-
-    /**
      * Record an error without a source node (structural errors).
      */
     /** An error at a 1-based line and column (0 when unknown), as {@link #error(Node, String, String)} records it. */
@@ -104,66 +64,6 @@ public class DiagnosticCollector {
     public void error(String message, String suggestion) {
         diagnostics.add(new CompilerDiagnostic(
                 CompilerDiagnostic.Level.ERROR, message, fileName, 0, 0, suggestion));
-    }
-
-    /**
-     * Record an error without a source node but with a stable code + suggestion.
-     */
-    public void errorWithCode(String code, String message, String suggestion) {
-        diagnostics.add(new CompilerDiagnostic(
-                CompilerDiagnostic.Level.ERROR, message, fileName, 0, 0, suggestion, code));
-    }
-
-    /**
-     * Record a warning with source position.
-     */
-    public void warning(Node node, String message) {
-        warning(node, message, null);
-    }
-
-    /**
-     * Record a warning with source position and a suggestion.
-     */
-    public void warning(Node node, String message, String suggestion) {
-        warningWithCode(node, null, message, suggestion);
-    }
-
-    /**
-     * Record a warning with a stable code (e.g. {@code "JULC0021"}), source
-     * position, message, and an optional fix suggestion.
-     */
-    public void warningWithCode(Node node, String code, String message, String suggestion) {
-        add(CompilerDiagnostic.Level.WARNING, node, code, message, suggestion);
-    }
-
-    /**
-     * Record a warning from the generated diagnostics catalog.
-     */
-    public void warningWithCode(Node node, DiagnosticInfo info, Object... args) {
-        warningWithCodeWithSuggestion(node, info, info.fix(), args);
-    }
-
-    /**
-     * Record a warning from the generated diagnostics catalog with a
-     * source-specific suggestion override.
-     */
-    public void warningWithCodeWithSuggestion(Node node, DiagnosticInfo info,
-                                              String suggestionOverride, Object... args) {
-        add(info.level(), node, info.code(), info.format(args), suggestionOverride);
-    }
-
-    private void add(CompilerDiagnostic.Level level, Node node, String code,
-                     String message, String suggestion) {
-        int line = 0, col = 0;
-        if (node != null) {
-            var begin = node.getBegin();
-            if (begin.isPresent()) {
-                line = begin.get().line;
-                col = begin.get().column;
-            }
-        }
-        diagnostics.add(new CompilerDiagnostic(
-                level, message, fileName, line, col, suggestion, code));
     }
 
     /**

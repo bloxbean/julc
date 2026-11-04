@@ -1,7 +1,6 @@
 package org.julclang.compiler.frontend.javac.lower;
 
 import org.julclang.compiler.CompilerException;
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.OptimizationLevel;
@@ -33,7 +32,7 @@ class JavacSubsetCodesTest {
             """;
 
     private static String code(String source) {
-        var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAC).setOptimizationLevel(OptimizationLevel.DEFAULT);
+        var options = new CompilerOptions().setOptimizationLevel(OptimizationLevel.DEFAULT);
         var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, options).compileMethod(source, "m"));
         return thrown.diagnostics().stream().filter(CompilerDiagnostic::isError).findFirst().orElseThrow().code();
     }
@@ -112,7 +111,7 @@ class JavacSubsetCodesTest {
     @Test
     void theScanCollectsEveryErrorInOrder() {
         var both = IMPORTS + "class F { static long m(long a) { BigInteger z = null; synchronized (z) { return a; } } }";
-        var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAC);
+        var options = new CompilerOptions();
         var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, options).compileMethod(both, "m"));
         var codes = thrown.diagnostics().stream().filter(CompilerDiagnostic::isError).map(CompilerDiagnostic::code).toList();
         assertEquals(List.of("JULC0017", "JULC0104"), codes);
@@ -123,7 +122,7 @@ class JavacSubsetCodesTest {
     @Test
     void anErrorComesBeforeAStop() {
         var source = IMPORTS + "class F { static long m(long a) { BigInteger z = null; long c = 'a'; return a; } }";
-        var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAC);
+        var options = new CompilerOptions();
         var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, options).compileMethod(source, "m"));
         assertTrue(thrown.diagnostics().stream().noneMatch(d -> "JULC0084".equals(d.code())), thrown.getMessage());
         assertEquals("JULC0017", thrown.diagnostics().getFirst().code());
@@ -168,7 +167,7 @@ class JavacSubsetCodesTest {
     @Test
     void codeNothingLowersCollectsEveryError() {
         var source = IMPORTS + "class F { static long m() { return 1; } long n(BigInteger a) { BigInteger z = null; synchronized (a) { return 1; } } }";
-        var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAC);
+        var options = new CompilerOptions();
         var codes = assertThrows(CompilerException.class, () -> new JulcCompiler(null, options).compileMethod(source, "m"))
                 .diagnostics().stream().filter(CompilerDiagnostic::isError).map(CompilerDiagnostic::code).toList();
         assertEquals(List.of("JULC0017", "JULC0104"), codes);
@@ -188,7 +187,7 @@ class JavacSubsetCodesTest {
     @Test
     void twoDeclaratorsAreOneRejection() {
         var source = IMPORTS + "class F { static long m() { long a = 1, b = 2; return a; } }";
-        var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAC);
+        var options = new CompilerOptions();
         var codes = assertThrows(CompilerException.class, () -> new JulcCompiler(null, options).compileMethod(source, "m"))
                 .diagnostics().stream().filter(CompilerDiagnostic::isError).map(CompilerDiagnostic::code).toList();
         assertEquals(List.of("JULC0053"), codes);
@@ -208,7 +207,7 @@ class JavacSubsetCodesTest {
             """;
 
     private static String javacCode(String source) {
-        var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAC);
+        var options = new CompilerOptions();
         var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, options).compile(source));
         return thrown.diagnostics().stream().filter(CompilerDiagnostic::isError).findFirst().orElseThrow().code();
     }
@@ -277,7 +276,7 @@ class JavacSubsetCodesTest {
     /** The rule names the member it read: a compact constructor is not any canonical one. */
     @Test
     void theRuleNamesTheMember() {
-        var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAC);
+        var options = new CompilerOptions();
         var compact = assertThrows(CompilerException.class, () -> new JulcCompiler(null, options).compile(VALIDATOR.formatted("record R(long v) { R { } }")))
                 .diagnostics().getFirst();
         assertEquals("Record R declares a compact canonical constructor, which JuLC does not compile; a record body may contain only "
@@ -300,7 +299,7 @@ class JavacSubsetCodesTest {
             "class F { static <T> boolean m(JulcList<T> xs, T x) { return xs.contains(x); } }",
             "class F { static boolean m(java.util.Optional<BigInteger> a, java.util.Optional b) { return java.util.Objects.equals(a, b); } }"})
     void aTypeTheCheckCannotReadIsToldAsSuch(String body) {
-        var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAC);
+        var options = new CompilerOptions();
         var diagnostic = assertThrows(CompilerException.class, () -> new JulcCompiler(null, options).compileMethod(IMPORTS + body, "m"))
                 .diagnostics().getFirst();
         assertEquals("JULC0087", diagnostic.code(), diagnostic.message());
@@ -311,7 +310,7 @@ class JavacSubsetCodesTest {
     void anArrayAndWhatTheCheckCannotReadAreToldApart() {
         var array = IMPORTS + "class F { static boolean m(byte[] a, byte[] b) { return a.equals(b); } }";
         var raw = IMPORTS + "class F { static boolean m(JulcList xs, BigInteger b) { return xs.contains(b); } }";
-        var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAC);
+        var options = new CompilerOptions();
         var first = assertThrows(CompilerException.class, () -> new JulcCompiler(null, options).compileMethod(array, "m"))
                 .diagnostics().getFirst();
         assertEquals("JULC0087", first.code());

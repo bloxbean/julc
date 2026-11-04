@@ -7,8 +7,6 @@ import org.julclang.compiler.CompilerTestVm;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.CompilerTarget;
 import org.julclang.compiler.OptimizationLevel;
-import org.julclang.compiler.resolve.SymbolTable;
-import org.julclang.compiler.resolve.TypeResolver;
 import org.julclang.compiler.uplc.UplcGenerator;
 import org.julclang.core.Constant;
 import org.julclang.core.DefaultFun;
@@ -95,34 +93,6 @@ class PairDestructuringPassTest {
         assertEquals(Term.const_(Constant.integer(132)), ((EvalResult.Success) equivalent(term)).resultTerm());
         var escapedShadow = binding(data(), new PirTerm.Lam("p", PAIR, add(first(P), second(P))));
         assertSame(escapedShadow, lower(escapedShadow));
-    }
-
-    @Test
-    void pairMatchBindersTypeAndSourcePositionsArePreserved() {
-        var fst = first(P);
-        var body = new PirTerm.Let("fields", second(P), fst);
-        var term = binding(data(), body);
-        var locations = new IdentityHashMap<PirTerm, SourceLocation>();
-        var rootLocation = new SourceLocation("Pair.java", 10, 1, "pair binding");
-        var projectionLocation = new SourceLocation("Pair.java", 12, 3, "first projection");
-        locations.put(term, rootLocation);
-        locations.put(fst, projectionLocation);
-        var result = new PairDestructuringPass(context(OptimizationLevel.PV11_SAFE), locations).lower(term);
-        var match = assertInstanceOf(PirTerm.PairMatch.class, result.term());
-        assertEquals(rootLocation, result.positions().get(match));
-        assertEquals(projectionLocation, result.positions().get(((PirTerm.Let) match.body()).body()));
-        var generator = new UplcGenerator(context(OptimizationLevel.PV11_SAFE), result.positions());
-        var uplc = generator.generate(match);
-        assertEquals(rootLocation, generator.getUplcPositions().get(uplc));
-        assertTrue(generator.getUplcPositions().containsValue(projectionLocation));
-        var open = new PirTerm.PairMatch(new PirTerm.Var("outside", PAIR), PAIR, "a", "b",
-                add(new PirTerm.Var("a", INT), new PirTerm.Var("free", INT)));
-        assertEquals(Set.of("outside", "free"), PirSubstitution.collectFreeVarNames(open));
-        var substituted = PirSubstitution.substitute(open, "a", integer(999));
-        assertEquals(open, substituted);
-        assertFalse(PirSubstitution.collectFreeVarNames(PirSubstitution.substitute(open, "free", integer(7))).contains("free"));
-        var inference = new TypeInferenceHelper(new SymbolTable(), new TypeResolver(), null, null);
-        assertEquals(INT, inference.inferPirType(new PirTerm.PairMatch(data(), PAIR, "a", "b", new PirTerm.Error(INT))));
     }
 
     @Test

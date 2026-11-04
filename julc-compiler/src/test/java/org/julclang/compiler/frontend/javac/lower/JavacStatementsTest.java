@@ -1,10 +1,8 @@
 package org.julclang.compiler.frontend.javac.lower;
 
 import org.julclang.compiler.CompilerException;
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JulcCompiler;
-import org.julclang.compiler.frontend.javac.NotPorted;
 import org.julclang.stdlib.StdlibRegistry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -204,9 +202,8 @@ class JavacStatementsTest {
     @ParameterizedTest
     @ValueSource(strings = {"byte b = 1; return b;", "short b = 1; return b;", "Integer b = 1; return b;", "Object b = 1; return 1;"})
     void aLocalOfATypeOutsideTheSubset(String body) {
-        var failure = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC))
+        var failure = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions())
                 .compileMethod(source("static long m() { " + body + " }"), "m", List.of()));
-        assertFalse(failure instanceof NotPorted, failure::getMessage);
         assertEquals(13, failure.diagnostics().getFirst().line());
     }
 
@@ -284,7 +281,6 @@ class JavacStatementsTest {
 
     private static void rejectedWith(String members, String message) {
         var failure = javac(SUM + members);
-        assertFalse(failure instanceof NotPorted, failure::getMessage);
         assertEquals(message, failure.diagnostics().getFirst().message());
     }
 
@@ -322,7 +318,7 @@ class JavacStatementsTest {
 
     private static CompilerException javac(String members) {
         return assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(),
-                new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compileMethod(source(members), "m", List.of()));
+                new CompilerOptions()).compileMethod(source(members), "m", List.of()));
     }
 
     /** What the JVM tests by class and a tag cannot: each stops, and never compiles to another answer. */

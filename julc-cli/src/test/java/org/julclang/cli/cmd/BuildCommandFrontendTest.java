@@ -17,10 +17,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * ADR-068 D4: {@code julc build --frontend}. The script from {@code javac} must equal the reference's ({@code javaparser},
- * selected explicitly), and a construct javac alone rejects must stop that frontend and not the reference: the second
- * proves the option reaches the compilation. javac is the default from ADR-068 M5. Most of these pass
- * {@code --no-blueprint}; {@link #aBlueprintBuildsOnTheDefault} builds one.
+ * ADR-068 M6 removed {@code julc build --frontend}: a build that still names another frontend stops with what to do, and javac
+ * is what JuLC does anyway. A blueprint builds on javac.
  */
 class BuildCommandFrontendTest {
 
@@ -64,69 +62,28 @@ class BuildCommandFrontendTest {
         return artifacts;
     }
 
-    /** D8: the CLI's pool, the project's library sources and the class path's, is javac's pool too: the same script. */
     @Test
-    void aProjectLibraryBuildsAsOnTheReference(@TempDir Path dir) throws Exception {
-        String body = "return FeeRules.ok(ctx.txInfo().fee()) && MathLib.pow(BigInteger.TWO, BigInteger.TEN).signum() > 0;";
-        Path reference = project(dir, "reference", body);
-        Path javac = project(dir, "javac", body);
-        for (var project : List.of(reference, javac)) {
-            var validator = ProjectLayout.srcDir(project).resolve("AlwaysSucceeds.java");
-            Files.writeString(validator, Files.readString(validator).replace("import java.math.BigInteger;",
-                    "import java.math.BigInteger;\nimport org.julclang.stdlib.lib.MathLib;"));
-            Files.writeString(ProjectLayout.srcDir(project).resolve("FeeRules.java"), """
-                    import java.math.BigInteger;
-                    import org.julclang.stdlib.annotation.OnchainLibrary;
-
-                    @OnchainLibrary
-                    public class FeeRules {
-                        static final BigInteger LIMIT = BigInteger.TWO;
-                        public static boolean ok(BigInteger fee) { return fee.compareTo(LIMIT) > 0; }
-                    }
-                    """);
+    void naming_javaparser_stopsTheBuildWithWhatToDo(@TempDir Path dir) throws Exception {
+        var err = System.err;
+        var written = new java.io.ByteArrayOutputStream();
+        System.setErr(new java.io.PrintStream(written, true));
+        try {
+            assertEquals(1, build(project(dir, "old", "return true;"), "--frontend", "javaparser"));
+        } finally {
+            System.setErr(err);
         }
-        assertEquals(0, build(reference));
-        assertEquals(0, build(javac));
-        assertFalse(artifacts(reference).isEmpty());
-        assertEquals(artifacts(reference), artifacts(javac));
+        assertTrue(written.toString().contains("The Java frontend option is gone"), written.toString());
     }
 
     @Test
-    void javacBuildsTheScriptTheReferenceDoes(@TempDir Path dir) throws Exception {
-        String body = "return ctx.txInfo().fee().compareTo(BigInteger.TWO) > 0;";
-        Path reference = project(dir, "reference", body);
-        Path javac = project(dir, "javac", body);
-        assertEquals(0, build(reference));
-        assertEquals(0, build(javac));
-        assertFalse(artifacts(reference).isEmpty());
-        assertEquals(artifacts(reference), artifacts(javac));
+    void naming_javac_builds(@TempDir Path dir) throws Exception {
+        assertEquals(0, build(project(dir, "still", "return true;"), "--frontend", "javac"));
     }
 
     @Test
-    void theOptionReachesTheCompilation(@TempDir Path dir) throws Exception {
-        String body = "long fee = (short) ctx.txInfo().fee().longValue(); return fee > 0;";
-        assertEquals(0, build(project(dir, "reference", body)));
-        assertEquals(1, build(project(dir, "javac", body)));
-        // ADR-068 M5: javac is the default when no frontend is named.
-        assertEquals(1, build(project(dir, "default", body)));
-    }
-
-    /** ADR-068 M5: a blueprint builds on the default frontend, javac, and equals the reference's. */
-    @Test
-    void aBlueprintBuildsOnTheDefault(@TempDir Path dir) throws Exception {
-        String body = "return ctx.txInfo().fee().compareTo(BigInteger.TWO) > 0;";
-        // One project name, so the blueprints' titles agree.
-        Path reference = project(dir.resolve("reference"), "blueprint", body);
-        Path javac = project(dir.resolve("javac"), "blueprint", body);
-        assertEquals(0, new CommandLine(new BuildCommand()).execute(reference.toString()));
-        assertEquals(0, new CommandLine(new BuildCommand()).execute(javac.toString()));
-        var artifacts = artifacts(javac);
-        assertTrue(artifacts.containsKey("plutus.json"), artifacts.keySet()::toString);
-        assertEquals(artifacts(reference), artifacts);
-    }
-
-    @Test
-    void anUnknownFrontendFailsTheBuild(@TempDir Path dir) throws Exception {
-        assertEquals(1, build(project(dir, "unknown", "return true;"), "--frontend", "eclipse"));
+    void aBlueprintBuilds(@TempDir Path dir) throws Exception {
+        Path project = project(dir, "blueprint", "return ctx.txInfo().fee().compareTo(BigInteger.TWO) > 0;");
+        assertEquals(0, new CommandLine(new BuildCommand()).execute(project.toString()));
+        assertTrue(artifacts(project).containsKey("plutus.json"), () -> project.toString());
     }
 }

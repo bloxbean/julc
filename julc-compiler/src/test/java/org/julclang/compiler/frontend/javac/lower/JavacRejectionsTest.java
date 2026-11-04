@@ -1,6 +1,5 @@
 package org.julclang.compiler.frontend.javac.lower;
 
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.JulcCompiler;
@@ -145,7 +144,7 @@ class JavacRejectionsTest {
                 """;
         assertSameMethodRejectionAsReference(source, "m");
         var e = assertThrows(CompilerException.class, () -> new JulcCompiler(null,
-                new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compileMethod(source, "m", List.of()));
+                new CompilerOptions()).compileMethod(source, "m", List.of()));
         assertEquals(DiagnosticCodes.NATIVE_TYPE_MISMATCH.code(), e.diagnostics().getFirst().code(), e.getMessage());
         assertTrue(e.diagnostics().getFirst().message().contains("Return value"), e.getMessage());
     }
@@ -163,7 +162,7 @@ class JavacRejectionsTest {
                 """.formatted(parameters);
         assertSameMethodRejectionAsReference(source, "m");
         var e = assertThrows(CompilerException.class, () -> new JulcCompiler(null,
-                new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compileMethod(source, "m", List.of()));
+                new CompilerOptions()).compileMethod(source, "m", List.of()));
         assertEquals(DiagnosticCodes.NATIVE_TYPE_AT_DATA_BOUNDARY.code(), e.diagnostics().getFirst().code(), e.getMessage());
     }
 
@@ -171,7 +170,7 @@ class JavacRejectionsTest {
     void anUnpairedSurrogateHasACodeHere() {
         String source = "class P {\n    static String m() { return \"\\uD800\"; }\n}\n";
         var e = assertThrows(CompilerException.class,
-                () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compileMethod(source, "m", List.of()));
+                () -> new JulcCompiler(null, new CompilerOptions()).compileMethod(source, "m", List.of()));
         var diagnostic = e.diagnostics().getFirst();
         assertEquals(DiagnosticCodes.STRING_LITERAL_UNPAIRED_SURROGATE.code(), diagnostic.code());
         assertTrue(diagnostic.message().contains("U+D800"), diagnostic.message());
@@ -182,7 +181,7 @@ class JavacRejectionsTest {
     void aLoneSurrogateIsRejectedEvenWhereLoweringNeverLooks() {
         String source = "class P {\n    String instance() { return \"\\uDC00\"; }\n    static long m() { return 1; }\n}\n";
         var e = assertThrows(CompilerException.class,
-                () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compileMethod(source, "m", List.of()));
+                () -> new JulcCompiler(null, new CompilerOptions()).compileMethod(source, "m", List.of()));
         assertEquals(DiagnosticCodes.STRING_LITERAL_UNPAIRED_SURROGATE.code(), e.diagnostics().getFirst().code());
     }
 
@@ -206,7 +205,7 @@ class JavacRejectionsTest {
         // Each is the reference validator's rule, so it is the reference's rejection here, with its code (I2a).
         String source = "class P {\n    static long m() { return 1; }\n    " + member + "\n}\n";
         assertSameMethodRejectionAsReference(source, "m");
-        var failure = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC))
+        var failure = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions())
                 .compileMethod(source, "m", List.of()));
         assertNotNull(failure.diagnostics().getFirst().code(), construct);
     }
@@ -273,14 +272,14 @@ class JavacRejectionsTest {
                 @OnchainLibrary
                 public class L { public static long one() { return 1; } }
                 """;
-        var bytes = new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC))
+        var bytes = new JulcCompiler(null, new CompilerOptions())
                 .compileMethod("class P { static long m() { return 1; } }", "m", List.of(library));
         assertTrue(bytes.program() != null);
     }
 
     @Test
     void aStatementTheReferenceDoesNotLowerIsNamedWhereItIs() {
-        var e = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compile(IMPORTS + """
+        var e = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions()).compile(IMPORTS + """
                 @SpendingValidator
                 class V {
                     @Entrypoint

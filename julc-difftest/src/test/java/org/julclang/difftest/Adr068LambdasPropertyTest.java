@@ -8,7 +8,6 @@ import net.jqwik.api.Provide;
 import net.jqwik.api.RandomDistribution;
 import net.jqwik.api.lifecycle.AfterProperty;
 import net.jqwik.api.lifecycle.BeforeProperty;
-import org.julclang.compiler.CompilerFrontend;
 
 import java.util.ArrayList;
 import java.util.List;

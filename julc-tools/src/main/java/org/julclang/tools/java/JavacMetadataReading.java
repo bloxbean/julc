@@ -28,8 +28,7 @@ import java.util.Optional;
 
 /**
  * {@link JavaMetadataExtractor}'s reading on javac's syntax trees (ADR-068 M6): the same validator, purpose,
- * {@code @Param} fields, datum and redeemer, found by the same rules, read from javac's parser. JavaParser's names map
- * to javac's trees so: a class or interface declaration is a named {@link ClassTree} of kind {@code CLASS} or
+ * {@code @Param} fields, datum and redeemer, found by the same rules, read from javac's parser: a class or interface declaration is a named {@link ClassTree} of kind {@code CLASS} or
  * {@code INTERFACE}; a record's parameters are its instance fields, which javac's parser lists first among its members;
  * a type prints as {@link JavacSyntax#typeName} prints it, as JavaParser's {@code asString} did.
  * <p>

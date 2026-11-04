@@ -226,30 +226,6 @@ class PatternMatchTest {
 
     @Nested
     class PatternMatchDesugarerTests {
-        @Test
-        void buildDataMatchReordersByTag() {
-            var intType = new PirType.IntegerType();
-            var sumType = new PirType.SumType("AB", List.of(
-                    new PirType.Constructor("A", 0, List.of(new PirType.Field("x", intType))),
-                    new PirType.Constructor("B", 1, List.of(new PirType.Field("y", intType)))));
-
-            var desugarer = new org.julclang.compiler.desugar.PatternMatchDesugarer(null);
-            // Provide branches in reverse order
-            var entries = List.of(
-                    new org.julclang.compiler.desugar.PatternMatchDesugarer.MatchEntry(
-                            "B", List.of("y"), new PirTerm.Const(Constant.integer(BigInteger.TWO))),
-                    new org.julclang.compiler.desugar.PatternMatchDesugarer.MatchEntry(
-                            "A", List.of("x"), new PirTerm.Const(Constant.integer(BigInteger.ONE))));
-
-            var result = desugarer.buildDataMatch(
-                    new PirTerm.Const(Constant.integer(BigInteger.ZERO)), sumType, entries);
-
-            assertInstanceOf(PirTerm.DataMatch.class, result);
-            var dm = (PirTerm.DataMatch) result;
-            assertEquals(2, dm.branches().size());
-            assertEquals("A", dm.branches().get(0).constructorName()); // Ordered by tag
-            assertEquals("B", dm.branches().get(1).constructorName());
-        }
     }
 
     @Nested

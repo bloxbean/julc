@@ -2,12 +2,10 @@ package org.julclang.compiler.frontend.javac.subset;
 
 import org.julclang.compiler.CompileResult;
 import org.julclang.compiler.CompilerException;
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.CompilerTarget;
 import org.julclang.compiler.CompilerTestVm;
 import org.julclang.compiler.JulcCompiler;
-import org.julclang.compiler.frontend.javac.NotPorted;
 import org.julclang.core.Constant;
 import org.julclang.core.PlutusData;
 import org.julclang.core.Term;
@@ -45,20 +43,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * another answer. The JVM is the oracle: the sources run through javac here and a real class is called, so no expected
  * value in this file is written by hand.
  * <p>
- * A slice that ports a construct moves rows here from {@link Stops} to {@link Agrees}, which is the point of the table:
- * each program that starts to compile meets the JVM the moment it does. Every program of {@link SpelledPrograms} has a
- * row, and so has each program of the review's sources that a statement reaches.
+ * Each program of the review's sources that a statement reaches has a row too.
  */
 class SpelledProgramsOnJavacTest {
 
     /** What {@code frontend=JAVAC} does with a program. */
-    private sealed interface Answer permits Stops, Rejects, Agrees, Views {
+    private sealed interface Answer permits Rejects, Agrees, Views {
     }
 
     /** {@code JULC0084}, at this construct. */
-    private record Stops(String construct) implements Answer {
-    }
-
     /** A rule of the javac frontend. */
     private record Rejects(String code) implements Answer {
     }
@@ -69,10 +62,6 @@ class SpelledProgramsOnJavacTest {
 
     /** It compiles, to the reference's bytes, and the JVM throws: the one such row, D6's view. */
     private record Views() implements Answer {
-    }
-
-    private static Answer stops(String construct) {
-        return new Stops(construct);
     }
 
     private static Answer rejects(String code) {
@@ -326,7 +315,7 @@ class SpelledProgramsOnJavacTest {
     }
 
     private static CompileResult compile(Case program) {
-        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAC));
+        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions());
         return program.validator() ? compiler.compile(program.root(), program.pool())
                 : compiler.compileMethod(program.root(), "m", program.pool());
     }
@@ -342,11 +331,8 @@ class SpelledProgramsOnJavacTest {
     @MethodSource("programs")
     void itStopsOrAgrees(Case program, @TempDir Path directory) throws Exception {
         switch (program.answer()) {
-            case Stops(var construct) -> assertEquals(construct,
-                    assertThrows(NotPorted.class, () -> compile(program), program.label()).construct());
             case Rejects(var code) -> {
                 var failure = assertThrows(CompilerException.class, () -> compile(program), program.label());
-                assertFalse(failure instanceof NotPorted, failure::getMessage);
                 // A rejection in the reference's words alone, such as Undefined variable, can have no diagnostic.
                 assertEquals(code, failure.diagnostics().isEmpty() ? null : failure.diagnostics().getFirst().code(), failure::getMessage);
             }

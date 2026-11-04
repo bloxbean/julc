@@ -29,7 +29,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * library also declares is shadowed by it, not rejected as equal standing: on the compile, evaluate and source-debug
  * paths, with the gate enforced.
  */
-class JavacGateToolsHostTest {
+class JavacToolsHostTest {
 
     static final String JAR_FEES = """
             package com.example;

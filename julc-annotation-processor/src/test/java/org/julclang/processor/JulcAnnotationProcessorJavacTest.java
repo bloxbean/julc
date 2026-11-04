@@ -24,7 +24,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * round's validators with the round's same-project libraries and its class loader's bundled sources; the javac gate
  * runs a second, nested javac over them (ADR-068 risk 4).
  */
-class JulcAnnotationProcessorJavacGateTest {
+class JulcAnnotationProcessorJavacTest {
 
     @TempDir
     Path out;

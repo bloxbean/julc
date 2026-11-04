@@ -1,11 +1,9 @@
 package org.julclang.compiler.frontend.javac.lower;
 
 import org.julclang.compiler.CompilerException;
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.OptimizationLevel;
-import org.julclang.compiler.frontend.javac.NotPorted;
 import org.julclang.stdlib.StdlibRegistry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -434,7 +432,7 @@ class JavacLoopsTest {
     void aNativeElementHasAPosition() {
         var source = source("static long m(long n) { JulcList<JulcG1> g = JulcList.empty(); long s = 0;\nfor (var x : g) { s = s + 1; } return s; }");
         var failure = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(),
-                new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compileMethod(source, "m", List.of()));
+                new CompilerOptions()).compileMethod(source, "m", List.of()));
         assertEquals("JULC0041", failure.diagnostics().getFirst().code());
         assertEquals(12, failure.diagnostics().getFirst().line());
         assertEquals(14, failure.diagnostics().getFirst().column());
@@ -445,7 +443,7 @@ class JavacLoopsTest {
     void aNativeAccumulatorHasAPosition() {
         var source = source("static long h(JulcG1 g, long n) { long s = 0;\nwhile (s < n) { s = s + 1; g = g; } return s; } static long m() { return 1; }");
         var failure = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(),
-                new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compileMethod(source, "m", List.of()));
+                new CompilerOptions()).compileMethod(source, "m", List.of()));
         assertEquals("JULC0041", failure.diagnostics().getFirst().code());
         assertEquals(12, failure.diagnostics().getFirst().line());
     }
@@ -476,7 +474,7 @@ class JavacLoopsTest {
                 + "static long m(S s, long n) { var x = switch (s) { case S.A a -> a; case S.B b -> BigInteger.ONE; }; long i = 0;\n"
                 + "while (i < n) { i = i + 1; x = x; } return i; }");
         var failure = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(),
-                new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compileMethod(source, "m", List.of()));
+                new CompilerOptions()).compileMethod(source, "m", List.of()));
         assertEquals("JULC0012", failure.diagnostics().getFirst().code());
         // The switch of arms of two types is itself rejected (ADR-068 M5), on its own line.
         assertEquals(12, failure.diagnostics().getFirst().line());

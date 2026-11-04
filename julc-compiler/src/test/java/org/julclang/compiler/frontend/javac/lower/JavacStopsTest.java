@@ -1,10 +1,8 @@
 package org.julclang.compiler.frontend.javac.lower;
 
 import org.julclang.compiler.CompilerException;
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JulcCompiler;
-import org.julclang.compiler.frontend.javac.NotPorted;
 import org.julclang.compiler.pir.StdlibLookup;
 import org.julclang.stdlib.StdlibRegistry;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -132,10 +130,8 @@ class JavacStopsTest {
     /** {@code lowers}, a rejection's code, or {@code JULC0084} and the construct: the last no longer happens (ADR-068 M5). */
     private static String onJavac(String members) {
         try {
-            new JulcCompiler(stdlib(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compileMethod(source(members), "m", List.of());
+            new JulcCompiler(stdlib(), new CompilerOptions()).compileMethod(source(members), "m", List.of());
             return "lowers";
-        } catch (NotPorted e) {
-            return "JULC0084 " + e.construct();
         } catch (CompilerException e) {
             var code = e.diagnostics().isEmpty() ? null : e.diagnostics().getFirst().code();
             return code == null ? "uncoded" : code;

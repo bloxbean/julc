@@ -6,7 +6,6 @@ import com.sun.source.tree.MethodTree;
 import com.sun.source.tree.VariableTree;
 import com.sun.source.util.TreeScanner;
 import org.julclang.compiler.CompilerException;
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.frontend.javac.lower.FrozenReference;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JavaLibraryProvider;
@@ -173,7 +172,7 @@ class JavacTypesTest {
             assertEquals(BYTES, types.lookupNominal("org.julclang.ledger.PubKeyHash").orElseThrow());
             var value = (PirType.RecordType) types.lookupNominal("org.julclang.ledger.Value").orElseThrow();
             assertEquals(List.of("inner"), value.fields().stream().map(PirType.Field::name).toList());
-            var described = new LedgerTypeProvider(new CompilerOptions().setFrontend(CompilerFrontend.JAVAC))
+            var described = new LedgerTypeProvider(new CompilerOptions())
                     .types().get("org.julclang.ledger.Value");
             assertEquals(Set.of(), described.operations(), "a map-encoded record has no constructor operations");
         }
@@ -804,7 +803,7 @@ class JavacTypesTest {
                 }
                 """;
         private static final String COVERED = VALIDATOR.replace("(short) (1 + 1) == 0", "true");
-        private static final CompilerOptions JAVAC = new CompilerOptions().setFrontend(CompilerFrontend.JAVAC);
+        private static final CompilerOptions JAVAC = new CompilerOptions();
 
         @Test
         void aByteArraysEqualsNamesItsRemedy() {
@@ -833,7 +832,7 @@ class JavacTypesTest {
             assertNotNull(compiler.compileMethod(COVERED, "validate", List.of()).program());
             assertNotNull(compiler.compileContract(COVERED).contractSchema());
             assertNotNull(compiler.compileContract(COVERED, List.of()).contractSchema());
-            var debug = new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC).setSourceMapEnabled(true));
+            var debug = new JulcCompiler(null, new CompilerOptions().setSourceMapEnabled(true));
             assertNotNull(debug.compileForDebug(COVERED, List.of()).debugMetadata());
         }
 
@@ -854,7 +853,7 @@ class JavacTypesTest {
 
         @Test
         void theDebugEntryPointsAreNotPorted() {
-            var compiler = new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC).setSourceMapEnabled(true));
+            var compiler = new JulcCompiler(null, new CompilerOptions().setSourceMapEnabled(true));
             assertNotPorted(() -> compiler.compileForDebug(VALIDATOR));
             assertNotPorted(() -> compiler.compileForDebug(VALIDATOR, List.of()));
         }
@@ -939,7 +938,7 @@ class JavacTypesTest {
 
         @Test
         void aProvidersTypesAreTheReferences() {
-            var javac = new JavaLibraryProvider(List.of(LIBRARY), null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC));
+            var javac = new JavaLibraryProvider(List.of(LIBRARY), null, new CompilerOptions());
             FrozenReference.assertSame("a provider's types", new TreeMap<>(javac.types()) + "|" + new TreeMap<>(javac.namedDefinitions()));
             assertTrue(javac.types().containsKey("lib.L.Shape"));
         }
@@ -947,13 +946,13 @@ class JavacTypesTest {
         /** Group 3a: the exports are lowered, as the reference lowers them ({@code JavacExportsTest} compares them). */
         @Test
         void theExportsAreTheReferences() {
-            var javac = new JavaLibraryProvider(List.of(LIBRARY), null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC));
+            var javac = new JavaLibraryProvider(List.of(LIBRARY), null, new CompilerOptions());
             FrozenReference.assertSame("a provider's exports", javac.describe("lib.L") + "|" + javac.schemes("lib.L") + "|" + new TreeMap<>(javac.unsupportedExports()));
         }
 
         @Test
         void anEmptyProviderHasNoExports() {
-            var javac = new JavaLibraryProvider(List.of(), null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC));
+            var javac = new JavaLibraryProvider(List.of(), null, new CompilerOptions());
             assertEquals(List.of(), javac.describe("lib.L"));
             assertEquals(Map.of(), javac.unsupportedExports());
         }
@@ -961,7 +960,7 @@ class JavacTypesTest {
         @Test
         void aClassThatIsNotALibraryIsRejected() {
             var e = assertThrows(IllegalArgumentException.class, () -> new JavaLibraryProvider(List.of("class Ordinary {}"),
-                    null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)));
+                    null, new CompilerOptions()));
             assertTrue(e.getMessage().contains("Only @OnchainLibrary sources can be exported: Ordinary"));
         }
 
@@ -973,7 +972,7 @@ class JavacTypesTest {
 
         @Test
         void aLibraryTypeCarriesItsConstructors() {
-            var javac = new JavaLibraryProvider(List.of(LIBRARY), null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC));
+            var javac = new JavaLibraryProvider(List.of(LIBRARY), null, new CompilerOptions());
             LibraryType shape = javac.types().get("lib.L.Shape");
             assertEquals(List.of("Circle", "Dot"), shape.constructors().stream().map(LibraryType.Constructor::name).toList());
         }

@@ -7,7 +7,6 @@ import net.jqwik.api.ForAll;
 import net.jqwik.api.Property;
 import net.jqwik.api.Provide;
 import net.jqwik.api.lifecycle.AfterContainer;
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.LedgerTypeProvider;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.core.PlutusData;

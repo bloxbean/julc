@@ -9,7 +9,7 @@ import java.util.function.BiFunction;
  * empty {@code JavaLibraryProvider}). Only its {@code Elements} and {@code Types} are exposed, so {@code parse()} and
  * {@code analyze()} cannot be called on it.
  * <p>
- * One instance is shared by a process ({@link JavacGate#metadata}), and javac's model is not thread-safe: it
+ * One instance is shared by a process ({@code JavacLibraryTypes.metadata}), and javac's model is not thread-safe: it
  * completes classes lazily, so even a call on an element obtained earlier reads the task. The instance therefore
  * synchronizes itself: the task is reached only through {@link #read}, which runs a whole query under the instance's
  * lock. Callers take no lock of their own, and must not keep model objects to use after the query returns.

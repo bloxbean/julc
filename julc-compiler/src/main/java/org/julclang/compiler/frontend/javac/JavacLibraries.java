@@ -167,7 +167,7 @@ final class JavacLibraries {
     }
 
     private static String stopped(CompilerException e) {
-        return e instanceof NotPorted notPorted ? notPorted.construct() : JavacCompilation.REJECTED;
+        return JavacCompilation.REJECTED;
     }
 
     /**

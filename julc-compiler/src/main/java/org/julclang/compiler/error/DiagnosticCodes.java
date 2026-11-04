@@ -19,7 +19,7 @@ public final class DiagnosticCodes {
             CompilerDiagnostic.Level.ERROR,
             "TYPE",
             "{0} compares {1}, whose equality on the JVM {2}",
-            "Compare the bytes: Builtins.equalsByteString(a, b) for byte[], which keeps the script the JavaParser frontend made for a.equals(b) (ByteStringLib.equals(a, b) is equivalent, a few bytes larger), and Builtins.equalsByteString(a.value(), b.value()) on the component accessors of a @NewType byte wrapper. Where the type cannot be read, compare at the value's own declared type. Until ADR-068 M6 the JavaParser frontend, which compares the bytes on-chain but by identity on the JVM, stays selectable: julc build --frontend javaparser, julc { frontend = 'javaparser' } in Gradle, or CompilerOptions.setFrontend(CompilerFrontend.JAVAPARSER).");
+            "Compare the bytes: Builtins.equalsByteString(a, b) for byte[] (ByteStringLib.equals(a, b) is equivalent, a few bytes larger), and Builtins.equalsByteString(a.value(), b.value()) on the component accessors of a @NewType byte wrapper. Where the type cannot be read, compare at the value's own declared type.");
 
     public static final DiagnosticInfo ARRAY_UNSUPPORTED = new DiagnosticInfo(
             "JULC0014",
@@ -325,14 +325,6 @@ public final class DiagnosticCodes {
             "floating point types (float/double) are not supported on-chain",
             "Use BigInteger for integer arithmetic or Rational for fractions");
 
-    public static final DiagnosticInfo FRONTEND_CONSTRUCT_NOT_PORTED = new DiagnosticInfo(
-            "JULC0084",
-            "FRONTEND_CONSTRUCT_NOT_PORTED",
-            CompilerDiagnostic.Level.ERROR,
-            "FRONTEND",
-            "The javac frontend does not compile {0} yet",
-            "Write the construct another way within the subset, or report it. Until ADR-068 M6 the JavaParser frontend may compile it: julc build --frontend javaparser, julc { frontend = 'javaparser' } in Gradle, or CompilerOptions.setFrontend(CompilerFrontend.JAVAPARSER). If that frontend rejects it too, it is outside the subset.");
-
     public static final DiagnosticInfo FUNCTIONAL_INTERFACE_CALL_UNSUPPORTED = new DiagnosticInfo(
             "JULC0106",
             "FUNCTIONAL_INTERFACE_CALL_UNSUPPORTED",
@@ -491,7 +483,7 @@ public final class DiagnosticCodes {
             CompilerDiagnostic.Level.ERROR,
             "SYNTAX",
             "{0} has a name JuLC reads in place of its body, so a program does not declare it",
-            "Give the method another name.");
+            "Give the method or component another name, and read the component through its generated accessor.");
 
     public static final DiagnosticInfo METHOD_OVERLOAD_UNSUPPORTED = new DiagnosticInfo(
             "JULC0054",
@@ -901,14 +893,6 @@ public final class DiagnosticCodes {
             "try/catch is not supported on-chain",
             "Use if/else checks instead of exception handling");
 
-    public static final DiagnosticInfo TYPE_NAME_READ_BY_SPELLING = new DiagnosticInfo(
-            "JULC0100",
-            "TYPE_NAME_READ_BY_SPELLING",
-            CompilerDiagnostic.Level.ERROR,
-            "SYNTAX",
-            "JuLC reads {0} as {1}, and here it is {2}, so a program does not write it",
-            "Rename the declaration, or write the type JuLC reads.");
-
     public static final DiagnosticInfo TYPE_RESOLUTION_FAILED = new DiagnosticInfo(
             "JULC0012",
             "TYPE_RESOLUTION_FAILED",
@@ -1063,7 +1047,6 @@ public final class DiagnosticCodes {
             EXPRESSION_UNSUPPORTED,
             FIELD_ASSIGNMENT_UNSUPPORTED,
             FLOATING_POINT_UNSUPPORTED,
-            FRONTEND_CONSTRUCT_NOT_PORTED,
             FUNCTIONAL_INTERFACE_CALL_UNSUPPORTED,
             GENERIC_LIBRARY_CALL_UNSUPPORTED,
             INHERITANCE_UNSUPPORTED,
@@ -1135,7 +1118,6 @@ public final class DiagnosticCodes {
             THIS_OR_SUPER_UNSUPPORTED,
             THROW_UNSUPPORTED,
             TRY_CATCH_UNSUPPORTED,
-            TYPE_NAME_READ_BY_SPELLING,
             TYPE_RESOLUTION_FAILED,
             UNARY_OPERATOR_UNSUPPORTED,
             UNDECLARED_ASSIGNMENT,

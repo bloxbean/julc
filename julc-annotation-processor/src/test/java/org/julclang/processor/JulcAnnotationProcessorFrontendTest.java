@@ -18,10 +18,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/**
- * ADR-068 D4: {@code -Ajulc.frontend}, which the Gradle plugin passes, so a project's validators under {@code src/main/java}
- * are compiled by the frontend it chose.
- */
+/** ADR-068 M6 removed {@code -Ajulc.frontend}: naming another frontend stops the processor with what to do. */
 class JulcAnnotationProcessorFrontendTest {
 
     private static String validator(String body) {
@@ -65,50 +62,23 @@ class JulcAnnotationProcessorFrontendTest {
         return diagnostics.stream().filter(d -> d.getKind() == Diagnostic.Kind.ERROR).map(d -> d.getMessage(null)).toList();
     }
 
-    @Test
-    void javacCompilesTheScriptTheReferenceDoes(@TempDir Path reference, @TempDir Path javac) throws Exception {
-        String source = validator("return ctx.txInfo().signatories().isEmpty();");
-        assertEquals(List.of(), errors(process(reference, source)));
-        assertEquals(List.of(), errors(process(javac, source)));
-        try (var files = Files.walk(reference)) {
-            var output = files.filter(Files::isRegularFile).findFirst().orElseThrow();
-            assertEquals(Files.readString(output), Files.readString(javac.resolve(reference.relativize(output))));
-        }
-    }
-
-    /** D8: the processor's pool, its class loader's library sources, is javac's pool too: the same script. */
-    @Test
-    void aLibraryOfThePoolCompilesAsOnTheReference(@TempDir Path reference, @TempDir Path javac) throws Exception {
-        String source = validator("return MathLib.pow(BigInteger.TWO, BigInteger.TEN).signum() > 0;")
-                .replace("import org.julclang.core.PlutusData;",
-                        "import java.math.BigInteger;\nimport org.julclang.core.PlutusData;\nimport org.julclang.stdlib.lib.MathLib;");
-        assertEquals(List.of(), errors(process(reference, source)));
-        assertEquals(List.of(), errors(process(javac, source)));
-        try (var files = Files.walk(reference)) {
-            var outputs = files.filter(Files::isRegularFile).toList();
-            assertTrue(!outputs.isEmpty());
-            for (var output : outputs) assertEquals(Files.readString(output), Files.readString(javac.resolve(reference.relativize(output))));
-        }
-    }
-
     /** ADR-068 M5: a rejection of javac's frontend shows its code and fix, here {@code byte[].equals}'s remedy. */
     @Test
     void aRejectionShowsItsCodeAndFix(@TempDir Path out) throws Exception {
         String source = validator("byte[] a = new byte[]{1}; return a.equals(new byte[]{1});");
         var errors = errors(process(out, source));
         assertTrue(errors.stream().anyMatch(message -> message.contains("JULC0087")
-                && message.contains("Builtins.equalsByteString(a, b)") && message.contains("--frontend javaparser")), errors::toString);
+                && message.contains("Builtins.equalsByteString(a, b)")), errors::toString);
     }
 
-    /** A cast to {@code short} has no representation on {@code JAVAC}: {@code JULC0124} (until ADR-068 M5 a stop, {@code JULC0084}). */
     @Test
-    void theOptionReachesTheCompilation(@TempDir Path out) throws Exception {
-        String source = validator("long fee = (short) ctx.txInfo().fee().longValue(); return fee > 0;");
-        assertEquals(List.of(), errors(process(out, source)));
-        var errors = errors(process(out, source));
-        assertTrue(errors.stream().anyMatch(message -> message.contains("JULC0124")), errors::toString);
-        // ADR-068 M5: javac is the default when no frontend is named.
-        var byDefault = errors(process(out, source));
-        assertTrue(byDefault.stream().anyMatch(message -> message.contains("JULC0124")), byDefault::toString);
+    void naming_javaparser_stopsWithWhatToDo(@TempDir Path out) throws Exception {
+        var errors = errors(process(out, validator("return true;"), "-Ajulc.frontend=javaparser"));
+        assertTrue(errors.stream().anyMatch(message -> message.contains("The Java frontend option is gone")), errors::toString);
+    }
+
+    @Test
+    void naming_javac_compiles(@TempDir Path out) throws Exception {
+        assertTrue(errors(process(out, validator("return true;"), "-Ajulc.frontend=javac")).isEmpty());
     }
 }

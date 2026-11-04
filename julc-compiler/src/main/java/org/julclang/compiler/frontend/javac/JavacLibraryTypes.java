@@ -5,7 +5,7 @@ import com.sun.source.tree.CompilationUnitTree;
 import com.sun.source.tree.ParameterizedTypeTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.util.TreeScanner;
-import org.julclang.compiler.CompilerOptions;
+import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.backend.LibraryOperations;
 import org.julclang.compiler.backend.LibraryType;
 import org.julclang.compiler.pir.PirType;
@@ -47,10 +47,33 @@ public final class JavacLibraryTypes {
         this.facts = facts;
     }
 
+    private static volatile JavacMetadata metadata;
+
+    /**
+     * The empty {@code JavaLibraryProvider}'s metadata-only task (D8): built over the shipped stubs, which must define the
+     * ledger's {@code ScriptContext}, once per process. The instance synchronizes its own queries ({@link JavacMetadata#read}).
+     */
+    private static JavacMetadata metadata() {
+        JavacMetadata cached = metadata;
+        if (cached != null) return cached;
+        var support = JavacFrontend.shared().supported();
+        if (!support.isAccepted()) throw new CompilerException(support.compilerDiagnostics());
+        synchronized (JavacLibraryTypes.class) {
+            if (metadata == null) {
+                var built = JavacFrontend.shared().metadata();
+                if (built.read((elements, types) -> elements.getTypeElement(JavacNames.SCRIPT_CONTEXT) == null)) {
+                    throw new BrokenJulcBuildException("the javac stubs do not define " + JavacNames.SCRIPT_CONTEXT);
+                }
+                metadata = built;
+            }
+            return metadata;
+        }
+    }
+
     /** The types of {@code sources}, and the ledger's. */
     public static Described describe(List<String> sources) {
         if (sources.isEmpty()) {
-            var metadata = JavacGate.metadata(new CompilerOptions().setJavacGate(JavacGateMode.ENFORCE));
+            var metadata = metadata();
             return metadata.read((elements, types) -> {
                 var facts = JavacFacts.of(elements, types, new TypeRegistry());
                 var registrar = new JavacTypeRegistrar(facts, JavacFrontend.shared());
@@ -60,7 +83,7 @@ public final class JavacLibraryTypes {
         }
         var program = JavacProgram.analyze(sources.stream().map(JavacFrontend.Unit::of).toList(), List.of());
         program.roots().forEach(unit -> requireLibraries(program.facts(), unit));
-        SubsetRules.checkOnJavacFrontend(program.facts(), program.roots(), program.libraries(), JavacGate.Compiled.LIBRARY);
+        SubsetRules.checkOnJavacFrontend(program.facts(), program.roots(), program.libraries(), SubsetRules.Compiled.LIBRARY);
         return new JavacLibraryTypes(program.facts()).describe(program.declarations());
     }
 

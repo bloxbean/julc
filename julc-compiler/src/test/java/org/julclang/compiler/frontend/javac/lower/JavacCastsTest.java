@@ -1,7 +1,6 @@
 package org.julclang.compiler.frontend.javac.lower;
 
 import org.julclang.compiler.CompilerException;
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.CompilerTestVm;
 import org.julclang.compiler.JulcCompiler;
@@ -90,7 +89,7 @@ class JavacCastsTest {
                 (long) Integer.MIN_VALUE - 1, 1L << 32, (1L << 32) + 5, -(1L << 32) - 5, Long.MAX_VALUE, Long.MIN_VALUE};
         for (var level : OptimizationLevel.values()) {
             var program = new JulcCompiler(STDLIB, new CompilerOptions().setOptimizationLevel(level)
-                    .setFrontend(CompilerFrontend.JAVAC)).compileMethod(source, "m", List.of()).program();
+                    ).compileMethod(source, "m", List.of()).program();
             for (long x : values) {
                 long java = (int) x;
                 var result = JulcVm.create().evaluateWithArgs(program, List.of(PlutusData.integer(x)));
@@ -232,7 +231,7 @@ class JavacCastsTest {
     @Test
     void aConstantNarrowsAtCompileTime() {
         var source = method("static long m() { return (int) 4294967301L; }");
-        var program = new JulcCompiler(STDLIB, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC))
+        var program = new JulcCompiler(STDLIB, new CompilerOptions())
                 .compileMethod(source, "m", List.of()).program();
         var result = JulcVm.create().evaluateWithArgs(program, List.of());
         assertEquals(new Term.Const(Constant.integer(BigInteger.valueOf(5))), assertInstanceOf(EvalResult.Success.class, result).resultTerm());
@@ -308,7 +307,7 @@ class JavacCastsTest {
     void aRawReceiverThroughACastIsJulc0087() {
         var source = method("static boolean m(PlutusData v, PlutusData p) { return ((JulcMap)(Object) v).containsKey(p); }");
         var failure = assertThrows(CompilerException.class, () -> new JulcCompiler(STDLIB,
-                new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compileMethod(source, "m", List.of()));
+                new CompilerOptions()).compileMethod(source, "m", List.of()));
         assertEquals("JULC0087", failure.diagnostics().getFirst().code(), failure::getMessage);
         var values = """
                 import org.julclang.ledger.Value;

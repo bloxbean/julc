@@ -1,6 +1,5 @@
 package org.julclang.compiler.frontend.javac;
 
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.LedgerTypeProvider;
 import org.julclang.compiler.backend.LibraryType;

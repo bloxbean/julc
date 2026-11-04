@@ -1,7 +1,6 @@
 package org.julclang.compiler.frontend.javac.lower;
 
 import org.julclang.compiler.CompilerException;
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.error.DiagnosticCodes;
@@ -46,13 +45,12 @@ class ByteEqualsRemedyTest {
     private static final String LIBRARY = source("import org.julclang.stdlib.lib.ByteStringLib;", "ByteStringLib.equals(a, b)");
 
     @Test
-    void theOldFormIsJulc0087WithTheRemedyAndTheWayBack() {
+    void theOldFormIsJulc0087WithTheRemedy() {
         var e = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry()).compileMethod(OLD, "m"));
         var diagnostic = e.diagnostics().getFirst();
         assertEquals(DiagnosticCodes.ARRAY_EQUALS_UNSUPPORTED.code(), diagnostic.code(), e.getMessage());
         assertTrue(diagnostic.message().contains("byte[]"), diagnostic.message());
         assertTrue(diagnostic.suggestion().contains("Builtins.equalsByteString(a, b)"), diagnostic.suggestion());
-        assertTrue(diagnostic.suggestion().contains("--frontend javaparser"), diagnostic.suggestion());
     }
 
     @ParameterizedTest

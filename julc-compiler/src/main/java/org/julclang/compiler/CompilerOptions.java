@@ -1,6 +1,5 @@
 package org.julclang.compiler;
 
-import org.julclang.compiler.frontend.javac.JavacGateMode;
 import org.julclang.vm.OptimizationCostProfile;
 
 import java.util.Collection;
@@ -25,10 +24,7 @@ public class CompilerOptions {
     private OptimizationCostProfile optimizationCostProfile;
     private final Set<String> disabledOptimizationRules = new LinkedHashSet<>();
     private Consumer<String> logger = System.out::println;
-    private JavacGateMode javacGate;
     private Set<String> jarLibrarySources = Set.of();
-    private CompilerFrontend frontend = CompilerFrontend.DEFAULT;
-    private LoweredMethodObserver methodObserver;
 
     /**
      * Select the ledger target for this compilation.
@@ -118,30 +114,11 @@ public class CompilerOptions {
     }
 
     /**
-     * Experimental (ADR-068 M1): how the javac gate acts, which has javac analyze every compilation's sources before
-     * the JavaParser frontend compiles them. It applies only to {@link CompilerFrontend#JAVAPARSER}; the javac frontend,
-     * the default from ADR-068 M5, has no gate to turn off (D15). {@code null} (the default) defers to the system property
-     * {@code julc.javacGate} ({@code off}, {@code report} or {@code enforce}), and then to {@code enforce}, which
-     * fails a compilation javac rejects. {@code report} never fails one. The subset's rules that rest on what javac
-     * resolved run in the gate, so they follow its mode, and {@code off} turns them off with the rest of it.
-     */
-    public CompilerOptions setJavacGate(JavacGateMode javacGate) {
-        this.javacGate = javacGate;
-        return this;
-    }
-
-    /** The javac gate's mode, or {@code null} to use the system property. */
-    public JavacGateMode getJavacGate() {
-        return javacGate;
-    }
-
-    /**
      * Experimental (ADR-068 M1, D8): the library sources of this compilation that came from JARs (a class-path scan),
      * by provenance: the {@code String} objects the scan returned, compared by identity, never by text, so a project
-     * source whose text equals a JAR copy stays a project source. The javac gate ranks JAR sources below project
+     * source whose text equals a JAR copy stays a project source. javac ranks JAR sources below project
      * sources (a JAR unit declaring a project unit's name is shadowed); every other library source is a project
-     * source. In {@code enforce} mode the JavaParser frontend compiles the same effective pool; in {@code report} and
-     * {@code off} modes it compiles the libraries as given.
+     * source.
      */
     public CompilerOptions setJarLibrarySources(Collection<String> sources) {
         var identities = Collections.newSetFromMap(new IdentityHashMap<String, Boolean>());
@@ -153,36 +130,6 @@ public class CompilerOptions {
     /** The library sources marked as JAR sources, an identity set ({@link #setJarLibrarySources}). */
     public Set<String> getJarLibrarySources() {
         return jarLibrarySources;
-    }
-
-    /**
-     * Experimental (ADR-068 D4): the Java frontend of this compilation, {@link CompilerFrontend#JAVAC} by default from
-     * ADR-068 M5. javac reads and types the sources and never falls back (I8). {@link CompilerFrontend#JAVAPARSER}, the
-     * frozen reference frontend, is selected only explicitly, runs behind the javac gate ({@link #setJavacGate}), and is
-     * removed at M6 with this option.
-     */
-    public CompilerOptions setFrontend(CompilerFrontend frontend) {
-        this.frontend = Objects.requireNonNull(frontend, "frontend");
-        return this;
-    }
-
-    /**
-     * Experimental, evidence tooling only (ADR-068 I1b): told each method the JavaParser frontend lowers. It sees PIR and
-     * changes nothing, so a compilation's bytes do not depend on it. Removed with the option at M6.
-     */
-    public CompilerOptions setMethodObserver(LoweredMethodObserver methodObserver) {
-        this.methodObserver = methodObserver;
-        return this;
-    }
-
-    /** The evidence observer, or null. */
-    LoweredMethodObserver getMethodObserver() {
-        return methodObserver;
-    }
-
-    /** The Java frontend of this compilation. */
-    public CompilerFrontend getFrontend() {
-        return frontend;
     }
 
     public CompilerOptions setLogger(Consumer<String> logger) {
@@ -213,5 +160,18 @@ public class CompilerOptions {
      */
     public void warnf(String fmt, Object... args) {
         logger.accept("[julc] WARN: " + String.format(fmt, args));
+    }
+
+    /**
+     * For a host that still takes the old frontend option (ADR-068 M6 removed it): {@code null} and {@code javac} are what JuLC
+     * does anyway, and anything else stops with what to do.
+     *
+     * @throws CompilerException for any other value
+     */
+    public static void requireJavacFrontend(String frontend) {
+        if (frontend == null || frontend.equalsIgnoreCase("javac")) return;
+        throw new CompilerException("The Java frontend option is gone: JuLC reads Java with javac alone since ADR-068 M6, and '"
+                + frontend + "' is no longer selectable. Remove the option from the build; the release notes list the rewrites"
+                + " for sources javac rejects.");
     }
 }

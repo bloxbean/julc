@@ -39,7 +39,7 @@ import java.util.List;
  * The javac trees of a program to PIR (ADR-068 D2): the one dispatch over expressions and the construct families around
  * it. A family lowers its construct and comes back here for its parts, so this page is the map of what is covered. Reads
  * javac only through {@link JavacFacts}; assumes validated input (I12), so a tree kind not listed here is
- * {@code JULC0084}, naming the construct, and never falls back (I8).
+ * a rejection, naming the construct.
  */
 public final class Lowering {
 

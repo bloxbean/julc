@@ -1,6 +1,5 @@
 package org.julclang.difftest;
 
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.difftest.gen.G0Enumeration;
 import org.julclang.difftest.gen.KnownDivergences;
 import org.junit.jupiter.api.DynamicTest;

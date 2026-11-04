@@ -1,6 +1,5 @@
 package org.julclang.compiler.corpus;
 
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.CompilerTarget;
 import org.julclang.compiler.JavaLibraryProvider;

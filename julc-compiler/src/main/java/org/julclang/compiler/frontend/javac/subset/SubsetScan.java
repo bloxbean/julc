@@ -44,7 +44,6 @@ import org.julclang.compiler.error.CompilerDiagnostic;
 import org.julclang.compiler.error.DiagnosticCodes;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacNames;
-import org.julclang.compiler.frontend.javac.NotPorted;
 import org.julclang.core.source.SourceLocation;
 
 import javax.lang.model.element.ElementKind;
@@ -64,9 +63,8 @@ import java.util.Set;
 
 /**
  * ADR-068 I2c at its first size: an allow-list of tree kinds, with the contextual rules each needs, over declarations and
- * method bodies. A method nothing lowers does not run, but the JavaParser frontend's {@code SubsetValidator} still reads
- * it, so what that frontend rejects there is {@code JULC0084} here until its rule is ported. That is what the list decides,
- * and {@code JULC0084} fails closed.
+ * method bodies. A method nothing lowers does not run, but the subset's rules still read it, as the reference's validator
+ * did. That is what the list decides, and it fails closed.
  * <p>
  * <b>A kind goes on this list when lowering reaches it, and it is allowed where lowering reaches it, not everywhere.</b> A
  * field initializer and an initializer block run when a class is loaded, whether or not anything lowers them, so this scan
@@ -165,8 +163,7 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
     /**
      * A rule's rejection does not stop the scan: as the reference's validator does, it collects every error and goes on past
      * the subtree that broke the rule, and the compilation fails with all of them, and the warnings found before, in the
-     * order found. The first error is the one a source with one error would give alone. A construct not ported stops the scan
-     * at once ({@code JULC0084}, I8), and if an error came before it, the errors are what the compilation fails with.
+     * order found. The first error is the one a source with one error would give alone.
      *
      * @param lowered the methods and fields of {@code unit} that the compilation lowers, by identity
      * @return what the scan warns of, in source order
@@ -204,8 +201,6 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
         }
         try {
             return super.scan(tree, unused);
-        } catch (NotPorted stop) {
-            throw stop;
         } catch (CompilerException rejection) {
             if (rejection.diagnostics().isEmpty()) throw rejection;
             diagnostics.addAll(rejection.diagnostics());
@@ -345,8 +340,6 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
             if (facts.isGenerated(node) || !walked.add(node)) continue;
             try {
                 requireNothingRejected(node);
-            } catch (NotPorted stop) {
-                throw stop;
             } catch (CompilerException rejection) {
                 if (rejection.diagnostics().isEmpty()) throw rejection;
                 diagnostics.addAll(rejection.diagnostics());

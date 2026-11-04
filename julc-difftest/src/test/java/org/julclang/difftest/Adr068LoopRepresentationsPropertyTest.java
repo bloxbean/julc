@@ -5,7 +5,6 @@ import net.jqwik.api.Arbitrary;
 import net.jqwik.api.ForAll;
 import net.jqwik.api.Property;
 import net.jqwik.api.Provide;
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.core.PlutusData;
 
 import java.math.BigInteger;

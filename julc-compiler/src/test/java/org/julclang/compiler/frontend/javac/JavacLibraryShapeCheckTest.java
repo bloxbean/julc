@@ -1,6 +1,5 @@
 package org.julclang.compiler.frontend.javac;
 
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JavaLibraryProvider;
 import org.julclang.compiler.pir.PirHelpers;
@@ -36,7 +35,7 @@ class JavacLibraryShapeCheckTest {
     @Test
     void anExportsShapeCheckIsItsOwn() {
         var provider = new JavaLibraryProvider(List.of(LIBRARY), StdlibRegistry.defaultRegistry(),
-                new CompilerOptions().setFrontend(CompilerFrontend.JAVAC));
+                new CompilerOptions());
         var term = provider.materialize("lib.Decodes.credential");
         assertEquals(List.of(), PirHelpers.freeVariables(term).stream().filter(PirHelpers::isGeneratedName).toList());
     }

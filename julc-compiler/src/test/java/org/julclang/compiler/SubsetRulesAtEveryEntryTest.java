@@ -7,7 +7,6 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.julclang.compiler.error.CompilerDiagnostic;
-import org.julclang.compiler.frontend.javac.JavacGate;
 import org.julclang.stdlib.StdlibRegistry;
 
 import java.io.IOException;
@@ -438,7 +437,7 @@ class SubsetRulesAtEveryEntryTest {
 
     @Test
     void theJavacFrontendReadsALibraryUnitByTheRulesOnAClass() {
-        var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAC);
+        var options = new CompilerOptions();
         var thrown = assertThrows(CompilerException.class, () -> new JavaLibraryProvider(List.of(LIBRARY), null, options));
         assertEquals("JULC0095", thrown.diagnostics().getFirst().code());
         var constructor = assertThrows(CompilerException.class,

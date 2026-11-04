@@ -41,7 +41,7 @@ private static final String VALIDATOR = """
     private static void assertRecorded(JavacProvenance provenance) {
         var environment = JavacEnvironment.current();
         assertEquals(new JavacProvenance(environment.javacVersion(), environment.platformDigest(),
-                environment.stubsDigest(), null, Outcome.ACCEPTED), provenance);
+                environment.stubsDigest(), Outcome.ACCEPTED), provenance);
     }
 
     @Test

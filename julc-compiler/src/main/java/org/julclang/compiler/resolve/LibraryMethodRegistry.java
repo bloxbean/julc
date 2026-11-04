@@ -71,18 +71,6 @@ public class LibraryMethodRegistry implements StdlibLookup {
         classNameIndex.computeIfAbsent(simpleName, k -> new LinkedHashSet<>()).add(className);
     }
 
-    /**
-     * Record a generic method that is not compiled for Java callers. Generic
-     * {@code @OnchainLibrary} methods are specialized only by language-neutral library
-     * providers (ADR-059); a Java call to one fails with a diagnostic.
-     */
-    public void registerTemplate(String className, String methodName) {
-        templates.add(className + "." + methodName);
-        var simpleName = className.contains(".")
-                ? className.substring(className.lastIndexOf('.') + 1) : className;
-        classNameIndex.computeIfAbsent(simpleName, k -> new LinkedHashSet<>()).add(className);
-    }
-
     /** Whether a qualified method name is a generic template. */
     public boolean isTemplate(String qualifiedName) {
         return templates.contains(qualifiedName);
@@ -218,13 +206,6 @@ public class LibraryMethodRegistry implements StdlibLookup {
                 || type instanceof PirType.StringType
                 || type instanceof PirType.ListType
                 || type instanceof PirType.MapType;
-    }
-
-    /**
-     * Return all registered library methods (for wrapping as Let bindings).
-     */
-    public Collection<LibraryMethod> allMethods() {
-        return Collections.unmodifiableCollection(methods.values());
     }
 
     /**

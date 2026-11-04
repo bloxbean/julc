@@ -66,17 +66,6 @@ public final class CompilerTypeDiagnostics {
     }
 
     /**
-     * JULC0012 (#299): a diamond {@code new Tuple2<>(...)} whose component types neither a declared
-     * target nor the arguments give. Its components could not be Data-encoded by type.
-     */
-    public static CompilerException diamondTypeArgumentsUnknown(String typeName, SourceLocation location) {
-        var info = DiagnosticCodes.TYPE_RESOLUTION_FAILED;
-        var message = info.format("the type arguments of new " + typeName + "<>(...): neither a declared target type nor "
-                + "the arguments give them. Write them, as in new " + typeName + "<BigInteger, byte[]>(a, b)");
-        return exception(info.code(), info.level(), info.fix(), message, location);
-    }
-
-    /**
      * JULC0012 (#299): a non-Data component of a raw {@code Tuple2} or {@code Tuple3}. javac types
      * its components {@code Object}, so it has no on-chain encoding and its reads no on-chain type.
      */
@@ -141,12 +130,6 @@ public final class CompilerTypeDiagnostics {
     public static CompilerException fieldAssignment(String field, String reason, SourceLocation location) {
         var info = DiagnosticCodes.FIELD_ASSIGNMENT_UNSUPPORTED;
         return exception(info.code(), info.level(), info.fix(), info.format(field, reason), location);
-    }
-
-    /** JULC0070 (ADR-062 T25): an integer literal javac rejects; {@code problem} says why. */
-    public static CompilerException invalidIntegerLiteral(String literal, String problem, SourceLocation location) {
-        var info = DiagnosticCodes.INTEGER_LITERAL_INVALID;
-        return exception(info.code(), info.level(), info.fix(), info.format(literal, problem), location);
     }
 
     /**
@@ -253,7 +236,7 @@ public final class CompilerTypeDiagnostics {
         return exception(info.code(), info.level(), info.fix(), info.format(owner, what), location);
     }
 
-    /** JULC0101: a method or component under a name the JavaParser frontend reads in place of its body. */
+    /** JULC0101: a method or component a record declares in place of what its Data is. */
     public static CompilerException methodNameReadBySpelling(String method, SourceLocation location) {
         var info = DiagnosticCodes.METHOD_NAME_READ_BY_SPELLING;
         return exception(info.code(), info.level(), info.fix(), info.format(method), location);
@@ -269,12 +252,6 @@ public final class CompilerTypeDiagnostics {
     public static CompilerException sealedPermitsRequired(String sealed, List<String> permitted, SourceLocation location) {
         var info = DiagnosticCodes.SEALED_PERMITS_REQUIRED;
         return exception(info.code(), info.level(), info.fix(), info.format(sealed, String.join(", ", permitted)), location);
-    }
-
-    /** JULC0100: {@code name}, which the JavaParser frontend reads as {@code read}, is {@code here} in this program. */
-    public static CompilerException typeNameReadBySpelling(String name, String read, String here, SourceLocation location) {
-        var info = DiagnosticCodes.TYPE_NAME_READ_BY_SPELLING;
-        return exception(info.code(), info.level(), info.fix(), info.format(name, read, here), location);
     }
 
     /** JULC0099: a constructor that holds a statement. */

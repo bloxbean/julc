@@ -1,12 +1,10 @@
 package org.julclang.compiler.frontend.javac.lower;
 
 import org.julclang.compiler.CompilerException;
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.OptimizationLevel;
 import org.julclang.compiler.error.CompilerDiagnostic;
-import org.julclang.compiler.frontend.javac.NotPorted;
 import org.julclang.core.Constant;
 import org.julclang.core.PlutusData;
 import org.julclang.core.Term;
@@ -62,7 +60,6 @@ class JavacM5aTest {
 
     private static CompilerDiagnostic rejected(String members) {
         var failure = javac(members);
-        assertFalse(failure instanceof NotPorted, failure::getMessage);
         assertEquals(1, failure.diagnostics().size(), failure::getMessage);
         return failure.diagnostics().getFirst();
     }
@@ -283,7 +280,7 @@ class JavacM5aTest {
             "int x = 5; for (var y : xs) { x += (int) y.longValue(); } return x; | 5",
     })
     void whatDoesNotHideANarrowingCompiles(String body, long java) {
-        var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAC).setOptimizationLevel(OptimizationLevel.BASELINE);
+        var options = new CompilerOptions().setOptimizationLevel(OptimizationLevel.BASELINE);
         var program = new JulcCompiler(StdlibRegistry.defaultRegistry(), options)
                 .compileMethod(source("static long m(JulcList<BigInteger> xs) { " + body + " }"), "m").program();
         var argument = PlutusData.list(PlutusData.integer(4294967296L));

@@ -1,6 +1,5 @@
 package org.julclang.compiler.corpus;
 
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompileResult;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerOptions;

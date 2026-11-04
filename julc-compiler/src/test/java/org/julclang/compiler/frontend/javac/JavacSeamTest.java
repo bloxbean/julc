@@ -7,7 +7,6 @@ import com.sun.source.tree.VariableTree;
 import com.sun.source.util.TreeScanner;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.resolve.TypeRegistry;
-import org.julclang.compiler.resolve.TypeResolver;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -44,35 +43,13 @@ class JavacSeamTest {
     void theRegistryHasNoLookupByName() {
         var methods = Arrays.stream(TypeRegistry.class.getDeclaredMethods()).map(Method::getName).toList();
         assertTrue(methods.stream().noneMatch(BY_SIMPLE_NAME::contains), methods.toString());
-        // TypeResolver is where they are, so this list is live: a name that moved would not be checked.
-        var resolver = Arrays.stream(TypeResolver.class.getDeclaredMethods()).map(Method::getName).toList();
-        assertTrue(resolver.containsAll(Set.of("resolveNameToType", "lookupRecord", "lookupSumType", "isNewType", "isRegistered")));
     }
 
     @Test
     void theFrontendHoldsARegistryNotAResolver() throws Exception {
         assertEquals(TypeRegistry.class, JavacProgram.class.getMethod("registry").getReturnType());
         assertEquals(TypeRegistry.class, JavacFacts.class.getMethod("registry").getReturnType());
-        assertEquals(TypeRegistry.class, read("class P {}").registry().getClass(), "not a TypeResolver behind the type");
-    }
-
-    @Test
-    void noFrontendSourceNamesTheResolverOrJavaParser() throws IOException {
-        var offenders = new ArrayList<String>();
-        try (Stream<Path> sources = Files.walk(MAIN.resolve("frontend/javac"))) {
-            for (Path source : sources.filter(p -> p.toString().endsWith(".java")).toList()) {
-                String text = Files.readString(source);
-                if (text.contains("com.github.javaparser") || text.contains("TypeResolver")) offenders.add(source.toString());
-            }
-        }
-        assertEquals(List.of(), offenders);
-    }
-
-    @ParameterizedTest
-    @ValueSource(strings = {"resolve/TypeRegistry.java", "resolve/TypeGroups.java", "backend/LibraryOperations.java",
-            "codegen/ValidatorAssembly.java", "OnchainOverloads.java"})
-    void theNeutralClassesImportNoJavaParser(String file) throws IOException {
-        assertFalse(Files.readString(MAIN.resolve(file)).contains("com.github.javaparser"), file);
+        assertEquals(TypeRegistry.class, read("class P {}").registry().getClass());
     }
 
     /** F840's three probes, as they read through the seam: identity, and no way to ask by simple name. */

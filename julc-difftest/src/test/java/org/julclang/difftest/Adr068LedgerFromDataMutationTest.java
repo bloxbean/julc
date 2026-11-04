@@ -1,11 +1,9 @@
 package org.julclang.difftest;
 
 import org.julclang.compiler.CompilerException;
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.LedgerTypeProvider;
-import org.julclang.compiler.frontend.javac.NotPorted;
 import org.julclang.core.PlutusData;
 import org.julclang.stdlib.StdlibRegistry;
 import org.junit.jupiter.api.Test;

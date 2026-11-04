@@ -13,7 +13,7 @@ public final class LedgerTypeProvider {
         this(new CompilerOptions());
     }
 
-    /** The ledger's types as the frontend {@code options} selects reads them (ADR-068 D8). */
+    /** The ledger's types, as javac reads them (ADR-068 D8). */
     public LedgerTypeProvider(CompilerOptions options) {
         provider = new JavaLibraryProvider(List.of(), null, options);
     }

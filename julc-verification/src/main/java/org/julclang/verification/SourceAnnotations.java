@@ -16,10 +16,10 @@ import java.util.List;
 
 /**
  * What the verification resolvers read of a source: its package, its imports, and the annotations on its top-level
- * types, as written. JavaParser or javac's parser reads it (ADR-068 M6) into this one model, so the resolvers do not
- * depend on either tree; {@link #defaultReader()} is the one switch, and M6 deletes the JavaParser reading.
+ * types, as written. javac's parser reads it (ADR-068 M6) into this one model, so the resolvers do not
+ * depend on its tree. An annotation is the resolvers' by its spelling, the source's imports and its package.
  * <p>
- * An annotation's {@link Annotation#text() text} is printed as JavaParser prints it, {@code @Name(a = v, b = w)}, with
+ * An annotation's {@link Annotation#text() text} is printed {@code @Name(a = v, b = w)}, with
  * each value as written, since it is the property's source fragment.
  */
 final class SourceAnnotations {

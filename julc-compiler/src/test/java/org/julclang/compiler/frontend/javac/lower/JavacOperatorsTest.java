@@ -1,11 +1,9 @@
 package org.julclang.compiler.frontend.javac.lower;
 
 import org.julclang.compiler.CompilerException;
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.error.CompilerDiagnostic;
-import org.julclang.compiler.frontend.javac.NotPorted;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -40,7 +38,7 @@ class JavacOperatorsTest {
     }
 
     private static CompilerException javac(String members) {
-        return assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC))
+        return assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions())
                 .compileMethod(source(members), "m", List.of()));
     }
 
@@ -68,7 +66,7 @@ class JavacOperatorsTest {
     void theNegationOfAMinimumValueIsJavas(String body) {
         // Java's negation wraps a type's minimum value to itself (JLS 15.15.4); the reference gives the positive one (M5).
         // Adr068M5bHarnessTest holds the value to the JVM's at every level.
-        new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC))
+        new JulcCompiler(null, new CompilerOptions())
                 .compileMethod(source("static long m() { return " + body + "; }"), "m", List.of());
     }
 
@@ -103,7 +101,7 @@ class JavacOperatorsTest {
         var members = "static PlutusData h(boolean c, JulcG1 a, JulcG2 b) { return Builtins.listData(JulcList.of(c ? a : b)); }\n"
                 + "static boolean m() { return true; }";
         var source = source(members);
-        var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAC);
+        var options = new CompilerOptions();
         var javac = assertThrows(CompilerException.class, () -> new JulcCompiler(null, options).compileMethod(source, "m", List.of()));
         // Arms of two types are rejected at the conditional first (ADR-068 M5), and never meet the native boundary.
         assertEquals("JULC0012", javac.diagnostics().getFirst().code(), javac::getMessage);
@@ -335,7 +333,7 @@ class JavacOperatorsTest {
 
     private static void compileParam(String field) {
         var source = "import org.julclang.stdlib.annotation.Param;\nclass C {\n" + field + "\nstatic boolean m() { return true; }\n}\n";
-        new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compileMethod(source, "m", List.of());
+        new JulcCompiler(null, new CompilerOptions()).compileMethod(source, "m", List.of());
     }
 
     @Test

@@ -1,7 +1,6 @@
 package org.julclang.testkit;
 
 import org.julclang.compiler.CompileResult;
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.core.Term;
 import org.julclang.vm.EvalResult;
@@ -54,7 +53,6 @@ public final class JulcEval {
     private final org.julclang.core.PlutusData[] params;
     private boolean sourceMapEnabled;
     private boolean tracingEnabled;
-    private CompilerFrontend frontend = CompilerFrontend.DEFAULT;
     private volatile List<ExecutionTraceEntry> lastExecutionTrace = List.of();
     private volatile List<BuiltinExecution> lastBuiltinTrace = List.of();
 
@@ -116,15 +114,6 @@ public final class JulcEval {
     public static JulcEval forSource(String javaSource) {
         Objects.requireNonNull(javaSource, "javaSource must not be null");
         return new JulcEval(javaSource, null, null, null);
-    }
-
-    /**
-     * Experimental (ADR-068 D4): the Java frontend that compiles the methods, {@link CompilerFrontend#JAVAC} by default
-     * from ADR-068 M5. {@link CompilerFrontend#JAVAPARSER} is selectable explicitly until M6, which removes this option.
-     */
-    public JulcEval frontend(CompilerFrontend frontend) {
-        this.frontend = Objects.requireNonNull(frontend, "frontend must not be null");
-        return this;
     }
 
     /**
@@ -281,8 +270,7 @@ public final class JulcEval {
     // --- Internal ---
 
     private Term evaluateTerm(String methodName, org.julclang.core.PlutusData[] args) {
-        // MethodEvaluator compiles with the default options, so it serves only the default frontend without a map.
-        if (sourceMapEnabled || frontend != CompilerFrontend.DEFAULT) {
+        if (sourceMapEnabled) {
             return evaluateTermWithOptions(methodName, args);
         }
         if (javaSource != null) {
@@ -292,7 +280,7 @@ public final class JulcEval {
     }
 
     private Term evaluateTermWithOptions(String methodName, org.julclang.core.PlutusData[] args) {
-        var options = new CompilerOptions().setSourceMapEnabled(sourceMapEnabled).setFrontend(frontend);
+        var options = new CompilerOptions().setSourceMapEnabled(sourceMapEnabled);
         var compiler = new org.julclang.compiler.JulcCompiler(
                 org.julclang.stdlib.StdlibRegistry.defaultRegistry(), options);
 

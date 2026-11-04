@@ -1,6 +1,5 @@
 package org.julclang.compiler;
 
-import org.julclang.compiler.frontend.javac.JavacGateMode;
 
 import org.julclang.compiler.error.CompilerDiagnostic;
 import org.junit.jupiter.api.Test;

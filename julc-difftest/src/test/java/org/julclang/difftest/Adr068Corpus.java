@@ -1,6 +1,5 @@
 package org.julclang.difftest;
 
-import org.julclang.compiler.CompilerFrontend;
 import java.util.regex.Pattern;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JulcCompiler;

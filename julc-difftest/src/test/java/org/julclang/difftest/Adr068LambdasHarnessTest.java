@@ -1,6 +1,5 @@
 package org.julclang.difftest;
 
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.core.PlutusData;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;

@@ -640,11 +640,6 @@ public final class JavacFacts {
         return end(tree) < 0 ? tree.toString() : written(path(tree).getCompilationUnit(), start(tree), end(tree));
     }
 
-    /** Whether a unit declares {@code element}. An API type comes in as a class file, so its members are not. */
-    public boolean isDeclaredInSource(Element element) {
-        return trees.getTree(element) != null;
-    }
-
     /** Whether javac generated {@code tree}: it has no source text, as a default constructor has none. */
     public boolean isGenerated(Tree tree) {
         return end(tree) < 0;

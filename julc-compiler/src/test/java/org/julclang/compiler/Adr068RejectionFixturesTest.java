@@ -3,7 +3,6 @@ package org.julclang.compiler;
 import org.julclang.compiler.backend.BackendException;
 import org.julclang.compiler.backend.LibraryRequest;
 import org.julclang.compiler.backend.LibraryType;
-import org.julclang.compiler.frontend.javac.JavacGateMode;
 import org.julclang.stdlib.StdlibRegistry;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.TestFactory;

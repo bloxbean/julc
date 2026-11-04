@@ -1,10 +1,8 @@
 package org.julclang.compiler.frontend.javac.lower;
 
 import org.julclang.compiler.CompilerException;
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JulcCompiler;
-import org.julclang.compiler.frontend.javac.NotPorted;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -94,7 +92,7 @@ class JavacLiteralsTest {
     /** A qualified class name is rejected by the reference ({@code Undefined variable: java}), so it is not accepted here. */
     @Test
     void anApiConstantSpelledAnotherWayIsTheReferencesRejection() {
-        var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAC);
+        var options = new CompilerOptions();
         var failure = assertThrows(CompilerException.class, () -> new JulcCompiler(null, options)
                 .compileMethod(returning("BigInteger", "java.math.BigInteger.ZERO"), "m", List.of()));
         assertTrue(failure.getMessage().contains("Undefined variable: java"), failure::getMessage);
@@ -125,7 +123,7 @@ class JavacLiteralsTest {
     /** A char literal is the reference's "Unsupported expression: CharLiteralExpr", with a code (JULC0125, I2a). */
     @Test
     void aCharLiteralHasNoRepresentation() {
-        var failure = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC))
+        var failure = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions())
                 .compileMethod(returning("int", "'a'"), "m", List.of()));
         assertEquals("JULC0125", failure.diagnostics().getFirst().code(), failure::getMessage);
         assertEquals("Unsupported expression: CharLiteralExpr", failure.diagnostics().getFirst().message());
@@ -155,7 +153,7 @@ class JavacLiteralsTest {
     @Test
     void aPairSplitAcrossAConcatenationIsRejected() {
         var source = returning("String", "\"\\uD83D\" + \"\\uDE00\"");
-        var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAC);
+        var options = new CompilerOptions();
         var failure = assertThrows(CompilerException.class, () -> new JulcCompiler(null, options).compileMethod(source, "m", List.of()));
         assertTrue(failure.getMessage().contains("unpaired surrogate U+D83D"), failure::getMessage);
     }

@@ -1,8 +1,6 @@
 package org.julclang.compiler.error;
 
 import org.julclang.compiler.CompilerException;
-import com.github.javaparser.StaticJavaParser;
-import com.github.javaparser.ast.expr.IntegerLiteralExpr;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -12,7 +10,7 @@ class DiagnosticCollectorTest {
     @Test
     void collectsWarnings() {
         var collector = new DiagnosticCollector("test.java");
-        collector.warning(null, "Test warning");
+        collector.warning("Test warning");
 
         assertFalse(collector.hasErrors());
         assertEquals(1, collector.size());
@@ -22,7 +20,7 @@ class DiagnosticCollectorTest {
     @Test
     void throwIfErrorsDoesNothingWhenNoErrors() {
         var collector = new DiagnosticCollector();
-        collector.warning(null, "Just a warning");
+        collector.warning("Just a warning");
         assertDoesNotThrow(collector::throwIfErrors);
     }
 
@@ -43,7 +41,7 @@ class DiagnosticCollectorTest {
 
         var collector2 = new DiagnosticCollector("file2.java");
         collector2.error("Error 2");
-        collector2.warning(null, "Warning 1");
+        collector2.warning("Warning 1");
 
         collector1.addAll(collector2);
         assertEquals(3, collector1.size());
@@ -55,7 +53,7 @@ class DiagnosticCollectorTest {
     void clearRemovesAllDiagnostics() {
         var collector = new DiagnosticCollector();
         collector.error("Error 1");
-        collector.warning(null, "Warning 1");
+        collector.warning("Warning 1");
         collector.clear();
 
         assertTrue(collector.isEmpty());

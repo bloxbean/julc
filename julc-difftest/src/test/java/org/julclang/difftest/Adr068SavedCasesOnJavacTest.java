@@ -1,6 +1,5 @@
 package org.julclang.difftest;
 
-import org.julclang.compiler.CompilerFrontend;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.TestFactory;
 

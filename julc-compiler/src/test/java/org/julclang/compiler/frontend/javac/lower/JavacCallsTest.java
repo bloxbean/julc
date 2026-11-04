@@ -1,11 +1,9 @@
 package org.julclang.compiler.frontend.javac.lower;
 
 import org.julclang.compiler.CompilerException;
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.error.CompilerDiagnostic;
-import org.julclang.compiler.frontend.javac.NotPorted;
 import org.julclang.core.flat.UplcFlatEncoder;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -43,7 +41,7 @@ class JavacCallsTest {
     }
 
     private static CompilerException javac(String members) {
-        return assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC))
+        return assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions())
                 .compileMethod(source(members), "m", List.of()));
     }
 
@@ -51,10 +49,6 @@ class JavacCallsTest {
         var failure = javac(members);
         assertEquals(1, failure.diagnostics().size(), failure::getMessage);
         return failure.diagnostics().getFirst();
-    }
-
-    private static String notPorted(String members) {
-        return assertInstanceOf(NotPorted.class, javac(members)).construct();
     }
 
     private static void assertSame(String members) {
@@ -101,7 +95,7 @@ class JavacCallsTest {
     /** {@code Shadow} in D4: a variable next to a class of its name is a variable, on javac as in Java. */
     @Test
     void aVariableNamedLikeAClassIsTheVariable() {
-        var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAC);
+        var options = new CompilerOptions();
         var shadowing = new JulcCompiler(null, options).compileMethod(source(
                 "static class Shadow { static boolean compareTo(BigInteger x) { return true; } }\n"
                         + "static boolean m(BigInteger Shadow, BigInteger y) { return Shadow.compareTo(y) > 0; }"), "m", List.of());
@@ -249,7 +243,7 @@ class JavacCallsTest {
     }
 
     private static void lowers(String members) {
-        new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compileMethod(source(members), "m", List.of());
+        new JulcCompiler(null, new CompilerOptions()).compileMethod(source(members), "m", List.of());
     }
 
     @Test
@@ -288,7 +282,7 @@ class JavacCallsTest {
      */
     @Test
     void fromPlutusDataOnAHashIsItsBytes() {
-        var program = new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC))
+        var program = new JulcCompiler(null, new CompilerOptions())
                 .compileMethod(source("static byte[] m(PlutusData d) { return PubKeyHash.fromPlutusData(d).hash(); }"), "m", List.of());
         assertTrue(program.program() != null);
     }
@@ -396,7 +390,7 @@ class JavacCallsTest {
                 }
                 """;
         var failure = assertThrows(CompilerException.class, () ->
-                new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compile(source, List.of()));
+                new JulcCompiler(null, new CompilerOptions()).compile(source, List.of()));
         assertTrue(failure.getMessage().contains("Entrypoint validate of V is not static"), failure::getMessage);
     }
 

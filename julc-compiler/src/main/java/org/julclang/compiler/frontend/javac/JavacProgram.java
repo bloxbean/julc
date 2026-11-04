@@ -28,8 +28,6 @@ import java.util.function.Function;
  * </ul>
  * These are rules for the code in this module: {@link #read} returns whatever its query does, so nothing stops a query
  * from returning an element, and {@link #roots()} hands out trees.
- * <p>
- * A construct not ported yet is {@link NotPorted}: nothing here hands a program to the JavaParser frontend (I8).
  */
 public final class JavacProgram {
 

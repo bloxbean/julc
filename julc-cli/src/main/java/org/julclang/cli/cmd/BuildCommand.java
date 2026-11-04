@@ -3,7 +3,6 @@ package org.julclang.cli.cmd;
 import org.julclang.clientlib.JulcScriptAdapter;
 import org.julclang.compiler.CompileResult;
 import org.julclang.compiler.CompilerException;
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.CompilerTargetRegistry;
 import org.julclang.compiler.JulcCompiler;
@@ -59,10 +58,8 @@ public class BuildCommand implements Callable<Integer> {
             description = "Optional compatibility profile ID (e.g. plutus-v3-pv11-costs-v1); unused by compilation")
     private String costProfile;
 
-    @Option(names = "--frontend",
-            defaultValue = "javac",
-            description = "Experimental: the Java frontend, javac or javaparser (default: ${DEFAULT-VALUE}). javaparser,"
-                    + " the frozen reference frontend, stays selectable until it is removed (ADR-068 M6)")
+    /** ADR-068 M6 removed the option: naming another frontend fails with what to do, and javac is what JuLC does anyway. */
+    @Option(names = "--frontend", hidden = true)
     private String frontend;
 
     @Override
@@ -75,11 +72,11 @@ public class BuildCommand implements Callable<Integer> {
                 return 1;
             }
 
+            CompilerOptions.requireJavacFrontend(frontend);
             var config = TomlParser.parse(tomlFile);
             var compilerTarget = CompilerTargetRegistry.targetForProfileId(targetProfile);
             var options = OptimizationConfiguration.apply(
-                    new CompilerOptions().setTarget(compilerTarget).setVerbose(verbose)
-                            .setFrontend(CompilerFrontend.parse(frontend)),
+                    new CompilerOptions().setTarget(compilerTarget).setVerbose(verbose),
                     optimizationProfile,
                     costProfile);
             System.out.println("Building " + AnsiColors.bold(config.name())

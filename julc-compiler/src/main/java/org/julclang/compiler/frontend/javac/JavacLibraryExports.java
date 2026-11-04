@@ -85,7 +85,7 @@ public final class JavacLibraryExports {
 
     private JavacLibraryTypes.Described read(JavacFacts facts) {
         program.roots().forEach(unit -> JavacLibraryTypes.requireLibraries(facts, unit));
-        SubsetRules.checkOnJavacFrontend(facts, program.roots(), program.libraries(), JavacGate.Compiled.LIBRARY);
+        SubsetRules.checkOnJavacFrontend(facts, program.roots(), program.libraries(), SubsetRules.Compiled.LIBRARY);
         var types = new JavacLibraryTypes(facts);
         var described = types.describe(program.declarations());
         var discovery = new JavacDiscovery(facts);

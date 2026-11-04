@@ -1,20 +1,14 @@
 package org.julclang.compiler;
 
-import org.julclang.compiler.frontend.javac.JavacGateMode;
 
-import org.julclang.compiler.pir.PirGenerator;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
-import org.julclang.compiler.resolve.SymbolTable;
-import org.julclang.compiler.resolve.TypeResolver;
 import org.julclang.compiler.uplc.UplcGenerator;
 import org.julclang.core.Constant;
 import org.julclang.core.DefaultFun;
 import org.julclang.core.Term;
 import org.julclang.vm.EvalResult;
 import org.julclang.vm.JulcVm;
-import com.github.javaparser.ParserConfiguration;
-import com.github.javaparser.StaticJavaParser;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -33,7 +27,6 @@ class LambdaExpressionTest {
     @BeforeAll
     static void setUp() {
         vm = CompilerTestVm.pv11();
-        StaticJavaParser.getParserConfiguration().setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
     }
 
     @Nested

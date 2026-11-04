@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * ADR-068 D8, M1: the {@code julc-wasm} full engine's host adapter, on the JVM (the Web Image runs the same code;
  * its image smoke is separate). The editor source is the root and the engine's class-path scan is the pool.
  */
-class FullApiJavacGateTest {
+class FullApiJavacTest {
 
     static String compile(String condition) throws Exception {
         String source = """

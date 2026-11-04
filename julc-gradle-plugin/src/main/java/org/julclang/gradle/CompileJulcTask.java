@@ -12,7 +12,6 @@ import org.julclang.compiler.CompilerTargetRegistry;
 import org.julclang.compiler.JavaSourceIntrospector;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.ScriptPurposeMetadata;
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.OptimizationConfiguration;
 import org.julclang.core.source.SourceMapSerializer;
 import org.julclang.stdlib.StdlibRegistry;
@@ -78,8 +77,9 @@ public abstract class CompileJulcTask extends DefaultTask {
     @Optional
     public abstract Property<String> getCostProfile();
 
-    /** Experimental (ADR-068 D4): the Java frontend. */
+    /** Removed (ADR-068 M6): only for {@link CompilerOptions#requireJavacFrontend}'s message. */
     @Input
+    @Optional
     public abstract Property<String> getFrontend();
 
     /** Blueprint preamble title. */
@@ -97,11 +97,12 @@ public abstract class CompileJulcTask extends DefaultTask {
         outDir.mkdirs();
         boolean blueprintEnabled = Boolean.TRUE.equals(getBlueprint().getOrElse(true));
         boolean sourceMapEnabled = Boolean.TRUE.equals(getSourceMap().getOrElse(false));
+        CompilerOptions.requireJavacFrontend(getFrontend().getOrNull());
         var compilerTarget = CompilerTargetRegistry.targetForProfileId(getTarget().get());
 
         var stdlib = StdlibRegistry.defaultRegistry();
         var options = OptimizationConfiguration.apply(
-                new CompilerOptions().setTarget(compilerTarget).setFrontend(CompilerFrontend.parse(getFrontend().get())),
+                new CompilerOptions().setTarget(compilerTarget),
                 getOptimization().get(),
                 getCostProfile().getOrNull());
         if (sourceMapEnabled) {

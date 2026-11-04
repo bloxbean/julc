@@ -4,12 +4,12 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/** ADR-068 M1: {@link JavacGateProbe} on the JVM, whose lines the Web Image must reproduce. */
-class JavacGateProbeTest {
+/** ADR-068 M1: {@link JavacProbe} on the JVM, whose lines the Web Image must reproduce. */
+class JavacProbeTest {
 
     @Test
     void probeAcceptsJavaAndRejectsDialect() throws Exception {
-        var lines = JavacGateProbe.run();
+        var lines = JavacProbe.run();
         assertEquals(4, lines.size(), lines.toString());
         assertTrue(lines.get(0).startsWith("environment supported=true platform=c45dd2df"), lines.get(0));
         assertTrue(lines.get(1).startsWith("accepted FeeGate "), lines.get(1));

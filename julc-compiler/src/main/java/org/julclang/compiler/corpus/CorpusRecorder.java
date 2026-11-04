@@ -1,7 +1,6 @@
 package org.julclang.compiler.corpus;
 
 import org.julclang.compiler.CompilationContext;
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.OptimizationLevel;
 import org.julclang.compiler.backend.LibraryRequest;
@@ -48,15 +47,9 @@ public interface CorpusRecorder {
      * @param sourceMap           whether a source map was requested
      * @param disabledRules       the disabled optimization rules, sorted
      * @param optimizationLevel   the optimization level
-     * @param frontend            the Java frontend that compiled it (ADR-068 M5). Not part of the case's key: a case is
-     *                            its inputs, which the I1 tool compiles on both frontends; it is recorded beside the case
-     *                            as a {@code frontend-<NAME>} marker, so a later gate can tell which frontend a test used
-     *                            <p>
-     *                            Construct this through {@link #of}: the components are test-recording infrastructure, and
-     *                            their number changed at M5.
      */
     record Options(String targetProfileId, String costProfile, boolean sourceMap, List<String> disabledRules,
-                   OptimizationLevel optimizationLevel, CompilerFrontend frontend) {
+                   OptimizationLevel optimizationLevel) {
 
         public Options {
             disabledRules = List.copyOf(new TreeSet<>(disabledRules));
@@ -68,7 +61,7 @@ public interface CorpusRecorder {
             return new Options(context.target().profileId(),
                     profile == null ? null : profile.profileId() + " " + profile.parameterHash(),
                     context.isSourceMapEnabled(), List.copyOf(context.disabledOptimizationRules()),
-                    context.optimizationLevel(), context.frontend());
+                    context.optimizationLevel());
         }
 
         /** The options as they are now (for the cases the ledger builds; a compilation records its context). */
@@ -77,7 +70,7 @@ public interface CorpusRecorder {
             return new Options(options.getTarget().profileId(),
                     profile == null ? null : profile.profileId() + " " + profile.parameterHash(),
                     options.isSourceMapEnabled(), List.copyOf(options.getDisabledOptimizationRules()),
-                    options.getOptimizationLevel(), options.getFrontend());
+                    options.getOptimizationLevel());
         }
     }
 

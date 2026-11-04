@@ -231,8 +231,8 @@ tasks.register('typeScriptDeclarations', JavaExec) {
 }
 tasks.named('test') { dependsOn 'typeScriptDeclarations' }
 
-// ADR-068 M1 host smoke: JavacGateProbe (test sources) as a Web Image, run under Node; its lines must equal the
-// JVM's (JavacGateProbeTest). Writes build/wasm-gate-probe/{probe.txt,jvm.txt}:
+// ADR-068 M1 host smoke: JavacProbe (test sources) as a Web Image, run under Node; its lines must equal the
+// JVM's (JavacProbeTest). Writes build/wasm-gate-probe/{probe.txt,jvm.txt}:
 //   ./gradlew :julc-wasm:wasmGateProbe -PgraalvmHome=<GraalVM 25.3 with Web Image>
 tasks.register('wasmGateProbe', Exec) {
     group = 'verification'
@@ -251,7 +251,7 @@ tasks.register('wasmGateProbe', Exec) {
         executable resolveNativeImage().absolutePath
         args '--tool:svm-wasm', '-cp', cp.collect { it.absolutePath }.join(File.pathSeparator),
                 '-o', new File(out, 'probe').absolutePath, '-H:+ReportExceptionStackTraces',
-                'org.julclang.wasm.JavacGateProbe'
+                'org.julclang.wasm.JavacProbe'
     }
     doLast {
         def out = dir.get().asFile
@@ -267,7 +267,7 @@ tasks.register('wasmGateProbe', Exec) {
                 .asFile.absolutePath
         def cp = (sourceSets.test.output.classesDirs.files + sourceSets.test.runtimeClasspath.files)
                 .collect { it.absolutePath }.join(File.pathSeparator)
-        def jvm = run([java, '-cp', cp, 'org.julclang.wasm.JavacGateProbe'])
+        def jvm = run([java, '-cp', cp, 'org.julclang.wasm.JavacProbe'])
         new File(out, 'probe.txt').text = wasm.join('\n') + '\n'
         new File(out, 'jvm.txt').text = jvm.join('\n') + '\n'
         if (wasm != jvm) throw new GradleException("Web Image probe differs from the JVM:\n${wasm}\nvs\n${jvm}")

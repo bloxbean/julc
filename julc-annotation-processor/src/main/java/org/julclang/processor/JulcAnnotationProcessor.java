@@ -5,7 +5,6 @@ import org.julclang.blueprint.BlueprintGenerator;
 import org.julclang.clientlib.JulcScriptAdapter;
 import org.julclang.clientlib.ValidatorOutput;
 import org.julclang.compiler.CompilerException;
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.CompilerTarget;
 import org.julclang.compiler.CompilerTargetRegistry;
@@ -72,7 +71,6 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
     private CompilerTarget compilerTarget;
     private OptimizationLevel optimizationLevel;
     private OptimizationCostProfile optimizationCostProfile;
-    private CompilerFrontend frontend = CompilerFrontend.DEFAULT;
 
     /** Accumulated compiled validators for CIP-57 blueprint generation. */
     private final List<BlueprintGenerator.CompiledValidator> compiledValidators = new ArrayList<>();
@@ -99,8 +97,7 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
                 "julc.target", CompilerTarget.PLUTUS_V3_PV11.profileId());
         try {
             this.compilerTarget = CompilerTargetRegistry.targetForProfileId(targetProfile);
-            var frontendName = processingEnv.getOptions().get("julc.frontend");
-            if (frontendName != null) this.frontend = CompilerFrontend.parse(frontendName);
+            CompilerOptions.requireJavacFrontend(processingEnv.getOptions().get("julc.frontend"));
             var optimizationOptions = OptimizationConfiguration.apply(
                     new CompilerOptions().setTarget(compilerTarget),
                     processingEnv.getOptions().getOrDefault(
@@ -221,8 +218,7 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
             // 3. Compile with JulcCompiler (multi-file if libraries found)
             var options = new CompilerOptions()
                     .setTarget(compilerTarget)
-                    .setOptimizationLevel(optimizationLevel)
-                    .setFrontend(frontend);
+                    .setOptimizationLevel(optimizationLevel);
             if (optimizationCostProfile != null) {
                 options.setOptimizationCostProfile(optimizationCostProfile);
             }

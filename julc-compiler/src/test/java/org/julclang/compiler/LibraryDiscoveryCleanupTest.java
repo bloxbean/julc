@@ -1,6 +1,5 @@
 package org.julclang.compiler;
 
-import org.julclang.compiler.frontend.javac.JavacGateMode;
 
 import org.julclang.compiler.pir.CompositeStdlibLookup;
 import org.julclang.compiler.pir.PirTerm;

@@ -40,7 +40,7 @@ import java.util.List;
  * things differently, so the rules need these answers: what JavaParser calls a method, a field, a local variable
  * declarator and a name expression, and where a declarator's name starts. Every search is in pre-order, as
  * JavaParser's {@code findAll} is.
- * <p><b>Internal</b> (ADR-068 M6): for JuLC's own tools while JavaParser and javac readings coexist; not an API,
+ * <p><b>Internal</b> (ADR-068 M6): for JuLC's own tools; not an API,
  * and it may change or go without notice.
  */
 public final class LintTrees {

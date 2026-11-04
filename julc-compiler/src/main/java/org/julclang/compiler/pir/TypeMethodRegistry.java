@@ -81,11 +81,6 @@ public final class TypeMethodRegistry {
                 new MethodRegistration(handler, returnType, requirements));
     }
 
-    /** The type keys of this registry's rows: a record of one of these names reaches that key's rows by its name. */
-    public Set<String> typeKeys() {
-        return registry.keySet().stream().map(key -> key.substring(0, key.indexOf('.'))).collect(Collectors.toSet());
-    }
-
     public Optional<PirTerm> dispatch(PirTerm scope, String method,
                                        List<PirTerm> args, PirType scopeType, List<PirType> argTypes) {
         return dispatch(
@@ -142,15 +137,6 @@ public final class TypeMethodRegistry {
         return registration != null
                 ? registration.requirements().resolve(context)
                 : LoweringRequirements.NONE;
-    }
-
-    /**
-     * Whether {@link #dispatch} of {@code method} on {@code scopeType} selects the default
-     * registry's integer {@code compareTo} lowering (ADR-068 D6, D4 exception 1).
-     */
-    public boolean selectsIntegerCompareTo(PirType scopeType, String method) {
-        return integerCompareTo != null && scopeType instanceof PirType.IntegerType
-                && registry.get(scopeType.getClass().getSimpleName() + "." + method) == integerCompareTo;
     }
 
     public boolean contains(String typeKey, String method) {

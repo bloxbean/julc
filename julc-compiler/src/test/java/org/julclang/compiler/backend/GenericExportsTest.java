@@ -1,11 +1,9 @@
 package org.julclang.compiler.backend;
 
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.CompilerTestVm;
 import org.julclang.compiler.JavaLibraryProvider;
-import org.julclang.compiler.frontend.javac.JavacGateMode;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.backend.LibraryType.Reference;
 import org.julclang.compiler.pir.PirTerm;

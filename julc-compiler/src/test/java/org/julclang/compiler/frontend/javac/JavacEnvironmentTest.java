@@ -17,7 +17,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 /** Regressions for the M1a re-review: F510 and the two boundary gaps (child JVMs and isolated class loaders). */
-class JavacGateEnvironmentTest {
+class JavacEnvironmentTest {
 
     static List<String> classPath() {
         return List.of(System.getProperty("java.class.path").split(File.pathSeparator));
@@ -31,7 +31,7 @@ class JavacGateEnvironmentTest {
     @Test
     void resultsAreScopedToTheEnvironmentThatProducedThem() throws Exception {
         var withoutStdlib = classPath().stream().filter(e -> !isStdlib(e)).toList();
-        var stdlib = classPath().stream().filter(JavacGateEnvironmentTest::isStdlib).toList();
+        var stdlib = classPath().stream().filter(JavacEnvironmentTest::isStdlib).toList();
         assertFalse(stdlib.isEmpty(), "julc-stdlib must be on the test class path");
         var command = new ArrayList<>(List.of(Path.of(System.getProperty("java.home"), "bin", "java").toString(),
                 "-cp", String.join(File.pathSeparator, withoutStdlib), JavacEnvironmentProbe.class.getName()));
@@ -52,7 +52,7 @@ class JavacGateEnvironmentTest {
             @Override
             public URL getResource(String name) {
                 return name.equals(JavacFrontend.BundledSources.STDLIB_MARKER)
-                        ? JavacGateEnvironmentTest.class.getResource("JavacGateEnvironmentTest.class") : null;
+                        ? JavacEnvironmentTest.class.getResource("JavacEnvironmentTest.class") : null;
             }
 
             @Override
@@ -92,44 +92,13 @@ class JavacGateEnvironmentTest {
         };
     }
 
-    /** Boundary: a loader that denies the compiler API gives JULC0089, in report mode without an exception. */
-    @Test
-    void aLoaderWithoutTheCompilerApiIsJulc0089() throws Exception {
-        try (var loader = withoutCompilerApi()) {
-            Class<?> modes = loader.loadClass(JavacGateMode.class.getName());
-            Class<?> optionsClass = loader.loadClass("org.julclang.compiler.CompilerOptions");
-            Class<?> unit = loader.loadClass(JavacFrontend.Unit.class.getName());
-            Class<?> gate = loader.loadClass(JavacGate.class.getName());
-            Object root = unit.getMethod("of", String.class).invoke(null, "class A {}");
-            var check = gate.getMethod("check", String.class, List.class, List.class, optionsClass);
-            for (String mode : List.of("REPORT", "ENFORCE")) {
-                Object options = optionsClass.getConstructor().newInstance();
-                optionsClass.getMethod("setJavacGate", modes).invoke(options, Enum.valueOf(cast(modes), mode));
-                String code;
-                try {
-                    Object result = check.invoke(null, "probe", List.of(root), List.of(), options);
-                    assertEquals("REPORT", mode, "enforce must reject");
-                    code = codeOf(result.getClass().getMethod("diagnostics").invoke(result));
-                } catch (InvocationTargetException e) {
-                    assertEquals("ENFORCE", mode, String.valueOf(e.getCause()));
-                    assertEquals("org.julclang.compiler.CompilerException", e.getCause().getClass().getName(),
-                            String.valueOf(e.getCause()));
-                    code = codeOf(e.getCause().getClass().getMethod("diagnostics").invoke(e.getCause()));
-                }
-                assertEquals("JULC0089", code, mode);
-            }
-        }
-    }
-
     /** I6: the javac frontend on a runtime without the compiler API is JULC0089, at every door. */
     @Test
-    void aLoaderWithoutTheCompilerApiIsJulc0089OnTheJavacFrontend() throws Exception {
+    void aLoaderWithoutTheCompilerApiIsJulc0089ForACompilation() throws Exception {
         try (var loader = withoutCompilerApi()) {
-            Class<?> frontends = loader.loadClass("org.julclang.compiler.CompilerFrontend");
             Class<?> optionsClass = loader.loadClass("org.julclang.compiler.CompilerOptions");
             Class<?> lookup = loader.loadClass("org.julclang.compiler.pir.StdlibLookup");
             Object options = optionsClass.getConstructor().newInstance();
-            optionsClass.getMethod("setFrontend", frontends).invoke(options, Enum.valueOf(cast(frontends), "JAVAC"));
             Class<?> compilerClass = loader.loadClass("org.julclang.compiler.JulcCompiler");
             Object compiler = compilerClass.getConstructor(lookup, optionsClass).newInstance(null, options);
             var compile = assertThrows(InvocationTargetException.class, () -> compilerClass
@@ -143,30 +112,16 @@ class JavacGateEnvironmentTest {
         }
     }
 
-    /** F530: without a javac, readJars fails with JULC0089 when enforced, and keeps B0's path check otherwise. */
+    /** F530: without a javac, readJars fails with JULC0089. */
     @Test
-    void readJarsWithoutJavacFailsWhenEnforcedAndChecksPathsOtherwise(@TempDir Path dir) throws Exception {
+    void readJarsWithoutJavacFails(@TempDir Path dir) throws Exception {
         Path foo = JavacFrontendPoolTest.jar(dir.resolve("foo.jar"), "app/Foo.java", JavacFrontendPoolTest.FOO);
         Path bar = JavacFrontendPoolTest.jar(dir.resolve("bar.jar"), "app/Bar.java", JavacFrontendPoolTest.BAR);
-        String saved = System.getProperty(JavacGate.MODE_PROPERTY);
         try (var loader = withoutCompilerApi()) {
             var readJars = loader.loadClass("org.julclang.compiler.LibrarySources").getMethod("readJars", List.class);
-            System.setProperty(JavacGate.MODE_PROPERTY, "enforce");
             var e = assertThrows(InvocationTargetException.class, () -> readJars.invoke(null, List.of(foo, bar)));
             assertEquals("org.julclang.compiler.CompilerException", e.getCause().getClass().getName());
             assertEquals("JULC0089", codeOf(e.getCause().getClass().getMethod("diagnostics").invoke(e.getCause())));
-            for (String mode : List.of("report", "off")) {
-                System.setProperty(JavacGate.MODE_PROPERTY, mode);
-                assertEquals(2, ((java.util.Map<?, ?>) readJars.invoke(null, List.of(foo, bar))).size(), mode);
-            }
-            // A clash of entry paths is still B0's error.
-            Path again = JavacFrontendPoolTest.jar(dir.resolve("again.jar"), "app/Foo.java", JavacFrontendPoolTest.FOO);
-            var path = assertThrows(InvocationTargetException.class, () -> readJars.invoke(null, List.of(foo, again)));
-            assertTrue(path.getCause().getMessage().startsWith("Duplicate library source ownership"),
-                    path.getCause().getMessage());
-        } finally {
-            if (saved == null) System.clearProperty(JavacGate.MODE_PROPERTY);
-            else System.setProperty(JavacGate.MODE_PROPERTY, saved);
         }
     }
 

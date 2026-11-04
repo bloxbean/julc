@@ -7,7 +7,6 @@ import net.jqwik.api.ForAll;
 import net.jqwik.api.Property;
 import net.jqwik.api.Provide;
 import net.jqwik.api.lifecycle.AfterProperty;
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.frontend.javac.ArrayIdentityEquality;
 import org.julclang.compiler.frontend.javac.EqualityRelation;
 import org.julclang.core.PlutusData;

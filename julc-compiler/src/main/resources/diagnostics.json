@@ -1014,13 +1014,13 @@
     {
       "code": "JULC0084",
       "constant": "FRONTEND_CONSTRUCT_NOT_PORTED",
-      "status": "internal",
+      "status": "retired",
       "title": "Construct not yet ported to the javac frontend",
       "category": "FRONTEND",
       "severity": "error",
       "template": "The javac frontend does not compile {0} yet",
-      "summary": "Reserved by ADR-068 (D4): the javac frontend (CompilerOptions.frontend = JAVAC, the default from ADR-068 M5) rejects a construct it has not ported, naming it, and never falls back to the JavaParser frontend (I8). No program of the ADR-068 corpus reaches it at M5.",
-      "fix": "Write the construct another way within the subset, or report it. Until ADR-068 M6 the JavaParser frontend may compile it: julc build --frontend javaparser, julc { frontend = 'javaparser' } in Gradle, or CompilerOptions.setFrontend(CompilerFrontend.JAVAPARSER). If that frontend rejects it too, it is outside the subset."
+      "summary": "Retired at ADR-068 M6, never reused: the javac frontend had not ported a construct. No compilation reports it: every construct of the subset is lowered or has a code of its own.",
+      "fix": "None: no compilation reports this code."
     },
     {
       "code": "JULC0085",
@@ -1057,7 +1057,7 @@
       "severity": "error",
       "template": "{0} compares {1}, whose equality on the JVM {2}",
       "summary": "An equals call or collection operation whose JVM implementation compares elements or keys with equals, at a static type through which an array is compared by identity (directly, or through record components, sealed variants or type arguments), is true on-chain for equal bytes but false on the JVM (ADR-068 D6). A type the check cannot read (a raw collection, Object, a type variable, an operand of no readable type) is rejected the same way, because it cannot be shown to compare by value. Emitted by the javac frontend.",
-      "fix": "Compare the bytes: Builtins.equalsByteString(a, b) for byte[], which keeps the script the JavaParser frontend made for a.equals(b) (ByteStringLib.equals(a, b) is equivalent, a few bytes larger), and Builtins.equalsByteString(a.value(), b.value()) on the component accessors of a @NewType byte wrapper. Where the type cannot be read, compare at the value's own declared type. Until ADR-068 M6 the JavaParser frontend, which compares the bytes on-chain but by identity on the JVM, stays selectable: julc build --frontend javaparser, julc { frontend = 'javaparser' } in Gradle, or CompilerOptions.setFrontend(CompilerFrontend.JAVAPARSER)."
+      "fix": "Compare the bytes: Builtins.equalsByteString(a, b) for byte[] (ByteStringLib.equals(a, b) is equivalent, a few bytes larger), and Builtins.equalsByteString(a.value(), b.value()) on the component accessors of a @NewType byte wrapper. Where the type cannot be read, compare at the value's own declared type."
     },
     {
       "code": "JULC0088",
@@ -1182,12 +1182,12 @@
       "code": "JULC0101",
       "constant": "METHOD_NAME_READ_BY_SPELLING",
       "status": "emitted",
-      "title": "A method does not take a name JuLC reads in place of its body",
+      "title": "A record does not declare a method its Data would skip",
       "category": "SYNTAX",
       "severity": "error",
       "template": "{0} has a name JuLC reads in place of its body, so a program does not declare it",
-      "summary": "JuLC lowers some calls by their spelling, so a body declared under that name would not run: fromPlutusData and toPlutusData on any type, of and instance methods on a @NewType record, an explicit accessor or equals on a record, equals on a sealed interface, and a @NewType's component named like a method of the type it lowers to. A @NewType of byte[] names its component value. A @NewType takes no instance call but its accessor, and no field read. A byte[] or a ledger hash takes no other no-argument call, and a no-argument call on an Optional of a record does not take the name of a component. A call named headList, tailList, mkCons, mkNilData, mkNilPairData, mkPairData, unMapData, fstPair or sndPair is Builtins' own.",
-      "fix": "Give the method another name.",
+      "summary": "JuLC compiles a record as its components, so a declared toPlutusData or an explicit accessor is never what a script's Data is, and a generated accessor that implements ToPlutusData.toPlutusData is not lowered.",
+      "fix": "Give the method or component another name, and read the component through its generated accessor.",
       "example": {
         "bad": "record Amount(BigInteger v) { public BigInteger v() { return v.abs(); } }",
         "good": "record Amount(BigInteger v) { static BigInteger size(Amount a) { return a.v().abs(); } }"
@@ -1196,13 +1196,13 @@
     {
       "code": "JULC0100",
       "constant": "TYPE_NAME_READ_BY_SPELLING",
-      "status": "emitted",
+      "status": "retired",
       "title": "A name JuLC reads by its spelling binds to what JuLC reads",
       "category": "SYNTAX",
       "severity": "error",
       "template": "JuLC reads {0} as {1}, and here it is {2}, so a program does not write it",
-      "summary": "JuLC reads some names by their spelling, so at every use such a name binds to what JuLC reads, whether it stands as a type, a qualifier or an annotation. A program does not bind it to a variable, a parameter, a type parameter or another type, declared, imported or inherited. A name of the ledger may also be a nested or packaged record or sealed interface, or a library of another unit. A top-level type of the unnamed package takes no name of the ledger, of another type of the compilation, or of a package of the compilation. A variable does not take the name of a type offered to the compilation. A class or an interface that is not sealed does not share its name with a record, a sealed interface or a library class of the compilation. A record or sealed interface reached by inheritance or a static import is written with its owner, and a name in a guard does not bind to such a member. Two variants of a sealed interface do not share a name, a class or a record does not take a type key of JuLC's lowering, such as ListType or Value, and the datum of an entry point is written Optional<...> exactly when it is one. new has no class body, and the operand of instanceof on a variant has the variant's type or its sealed interface's.",
-      "fix": "Rename the declaration, or write the type JuLC reads.",
+      "summary": "Retired at ADR-068 M6, never reused: a name the JavaParser frontend read by its spelling bound elsewhere. javac binds every name to its declaration, so no compilation reports it.",
+      "fix": "None: no compilation reports this code.",
       "example": {
         "bad": "@NewType record Boolean(BigInteger v) { }",
         "good": "@NewType record Flag(BigInteger v) { }"

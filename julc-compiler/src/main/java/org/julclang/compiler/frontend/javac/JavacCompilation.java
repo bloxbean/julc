@@ -164,8 +164,6 @@ public final class JavacCompilation {
                     BindingCheck.check(parts.bindAround(term), lowering.terms().provenance());
                 }
                 attempts.add(new MethodAttempt(parts.binder(method), parts.methodType(method), term, null));
-            } catch (NotPorted e) {
-                attempts.add(new MethodAttempt(parts.binder(method), null, null, e.construct()));
             } catch (CompilerException e) {
                 attempts.add(new MethodAttempt(parts.binder(method), null, null, REJECTED));
             }
@@ -367,7 +365,7 @@ public final class JavacCompilation {
                 var compilation = new JavacCompilation(program, facts, context, null);
                 var unit = program.roots().getFirst();
                 var validator = compilation.discovery.validatorClassOrNull(unit);
-                var compiled = validator != null ? JavacGate.Compiled.VALIDATOR : JavacGate.Compiled.METHOD;
+                var compiled = validator != null ? SubsetRules.Compiled.VALIDATOR : SubsetRules.Compiled.METHOD;
                 compilation.subsetRules(compiled);
                 compilation.subsetScan(unit, validator != null ? validator : compilation.discovery.firstClassOrNull(unit));
                 return null;
@@ -381,7 +379,7 @@ public final class JavacCompilation {
     }
 
     /** 1b. The subset's rules, first as on the JavaParser frontend, whose compilations get them from the gate. */
-    private void subsetRules(JavacGate.Compiled compiled) {
+    private void subsetRules(SubsetRules.Compiled compiled) {
         SubsetRules.checkOnJavacFrontend(facts, program.roots(), program.libraries(), compiled);
         SubsetRules.warnings(facts, program.roots()).forEach(context::report);
     }
@@ -394,7 +392,7 @@ public final class JavacCompilation {
 
     private Compiled validator(Request request) {
         var unit = program.roots().getFirst();
-        subsetRules(JavacGate.Compiled.VALIDATOR);
+        subsetRules(SubsetRules.Compiled.VALIDATOR);
         // 1c. Debug metadata's declarations, scanned before the subset is validated, as in the reference
         DebugMetadataCollector debug = null;
         if (request.debugLibraries() != null) {
@@ -537,7 +535,7 @@ public final class JavacCompilation {
 
     private CompileResult method(String methodName) {
         var unit = program.roots().getFirst();
-        subsetRules(JavacGate.Compiled.METHOD);
+        subsetRules(SubsetRules.Compiled.METHOD);
         // 2. Validate subset
         subsetScan(unit, discovery.firstClassOrNull(unit));
         verifyBinderNamespace(unit);

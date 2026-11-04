@@ -9,7 +9,6 @@ import org.julclang.compiler.frontend.javac.subset.ConstantStringJoins;
 import org.julclang.compiler.frontend.javac.subset.ConstructorBodies;
 import org.julclang.compiler.frontend.javac.subset.RecordDeclarations;
 import org.julclang.compiler.frontend.javac.subset.SpelledMethods;
-import org.julclang.compiler.frontend.javac.subset.SpelledTypes;
 import org.julclang.compiler.frontend.javac.subset.UnloweredInitializers;
 
 import javax.lang.model.element.ExecutableElement;
@@ -21,11 +20,8 @@ import java.util.List;
 
 /**
  * The subset's rules that rest on what javac resolved. They run once, here, on javac's trees, after {@code analyze()}
- * succeeds: from {@link JavacGate} for a compilation on the JavaParser frontend, whose trees have no types, and from
- * {@link JavacCompilation} for one on the javac frontend. So both frontends have one rule, with one code, one message and
- * one position. The rules read the units javac read: the roots, and the libraries they reference. A library unit nothing
- * references is not read, so the rules say nothing of it. On the javac frontend such a unit is not compiled; on the
- * JavaParser frontend every library it is given is lowered, read or not.
+ * succeeds, from {@link JavacCompilation}. The rules read the units javac read: the roots, and the libraries they reference.
+ * A library unit nothing references is not read, so the rules say nothing of it, and it is not compiled.
  * <ul>
  *   <li>An entry point returns {@code boolean} or {@code java.lang.Boolean} ({@code JULC0094}).</li>
  *   <li>An entry point's last parameter is the script context: {@code ScriptContext} or {@code PlutusData}
@@ -39,25 +35,23 @@ import java.util.List;
  * An API type comes in as a class file, so these rules never read one.
  * <p>
  * {@link #warnings} rejects nothing: a {@code +} of string constants ({@link ConstantStringJoins}, {@code JULC0102}).
- * <p>
- * Two more rules are about how the JavaParser frontend reads a name, so only the gate has them
- * ({@link #checkSpellings}): the javac frontend binds a name to its element, and has no such reading.
- * <ul>
- *   <li>A name that frontend reads by its spelling binds, at every use, to what it reads ({@link SpelledTypes}, {@code JULC0100}).</li>
- *   <li>A method does not take any other name it reads in place of the method's body ({@link SpelledMethods}, {@code JULC0101}).</li>
- * </ul>
  */
 final class SubsetRules {
+
+    /** What a compilation compiles of its roots, which decides what the subset's rules read as lowered. */
+    public enum Compiled {
+        VALIDATOR, METHOD, LIBRARY
+    }
 
     private SubsetRules() {
     }
 
     /** @throws org.julclang.compiler.CompilerException at the first rule a unit breaks */
     static void check(JavacFacts facts, List<CompilationUnitTree> roots, List<CompilationUnitTree> libraries,
-                      JavacGate.Compiled compiled) {
+                      Compiled compiled) {
         var discovery = new JavacDiscovery(facts);
         for (var unit : roots) {
-            if (compiled == JavacGate.Compiled.LIBRARY) {
+            if (compiled == Compiled.LIBRARY) {
                 library(facts, unit);
                 continue;
             }
@@ -65,7 +59,7 @@ final class SubsetRules {
             var type = discovery.compiledClass(unit, compiled);
             if (type == null) continue;
             UnloweredInitializers.check(facts, unit, field -> discovery.isLowered(field, type));
-            if (compiled == JavacGate.Compiled.VALIDATOR) requireEntrypointSignatures(facts, discovery, type);
+            if (compiled == Compiled.VALIDATOR) requireEntrypointSignatures(facts, discovery, type);
             BooleanCasts.check(facts, unit);
             ConstructorBodies.check(facts, unit);
         }
@@ -81,7 +75,7 @@ final class SubsetRules {
      * @throws org.julclang.compiler.CompilerException at the first rule a unit breaks
      */
     static void checkOnJavacFrontend(JavacFacts facts, List<CompilationUnitTree> roots, List<CompilationUnitTree> libraries,
-                                     JavacGate.Compiled compiled) {
+                                     Compiled compiled) {
         check(facts, roots, libraries, compiled);
         for (var units : List.of(roots, libraries)) {
             for (var unit : units) SpelledMethods.checkRecordMembers(facts, unit);
@@ -96,23 +90,6 @@ final class SubsetRules {
         var warnings = new ArrayList<CompilerDiagnostic>();
         for (var unit : roots) warnings.addAll(ConstantStringJoins.in(facts, unit));
         return warnings;
-    }
-
-    /** @throws org.julclang.compiler.CompilerException at the first rule a unit breaks */
-    static void checkSpellings(JavacFacts facts, List<CompilationUnitTree> roots, List<CompilationUnitTree> libraries,
-                               JavacGate.Compiled compiled, SpelledTypes.Reading reading) {
-        var libraryUnits = new ArrayList<>(libraries);
-        if (compiled == JavacGate.Compiled.LIBRARY) libraryUnits.addAll(roots);
-        var compiledAsLibraries = new HashSet<>(libraryUnits);
-        for (var units : List.of(roots, libraries)) {
-            for (var unit : units) {
-                SpelledTypes.check(facts, unit, reading, compiledAsLibraries);
-                SpelledMethods.check(facts, unit);
-            }
-        }
-        SpelledTypes.checkUnreadUnits(reading);
-        // The JavaParser frontend binds a library's static fields at script start, whether or not Java initializes the class.
-        for (var unit : libraryUnits) UnloweredInitializers.check(facts, unit, field -> false);
     }
 
     /**

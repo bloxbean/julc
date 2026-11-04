@@ -79,7 +79,6 @@ class SwitchLabelsTest {
 
     private static String stop(SwitchExpressionTree tree) {
         var rejection = assertThrows(CompilerException.class, () -> new SwitchRules(PROGRAM.facts()).check(tree, null, null));
-        assertFalse(rejection instanceof NotPorted, rejection::getMessage);
         return rejection.diagnostics().getFirst().code();
     }
 

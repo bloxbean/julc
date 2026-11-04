@@ -1,11 +1,9 @@
 package org.julclang.compiler.frontend.javac.lower;
 
 import org.julclang.compiler.CompilerException;
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.OptimizationLevel;
-import org.julclang.compiler.frontend.javac.JavacGateMode;
 import org.julclang.core.Constant;
 import org.julclang.core.PlutusData;
 import org.julclang.core.Term;
@@ -422,7 +420,7 @@ class JavacLibrariesTest {
                 }
                 """;
         var javac = assertThrows(CompilerException.class, () -> new JulcCompiler(STDLIB,
-                new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compileMethod(source, "f", List.of(library)));
+                new CompilerOptions()).compileMethod(source, "f", List.of(library)));
         assertEquals("JULC0095", javac.diagnostics().getFirst().code(), javac::getMessage);
         assertTrue(javac.getMessage().contains("SEVEN"), javac::getMessage);
         LoweringFixture.assertSameMethodAsReference(source, "f", List.of(library.replace("BigInteger.valueOf(7)", "BigInteger.TEN")), STDLIB);
@@ -460,7 +458,7 @@ class JavacLibrariesTest {
         var source = stdlibSource("ByteStringLib");
         for (var level : OptimizationLevel.values()) {
             var javac = new JulcCompiler(STDLIB, new CompilerOptions().setOptimizationLevel(level)
-                    .setFrontend(CompilerFrontend.JAVAC)).compileMethod(source, "length");
+                    ).compileMethod(source, "length");
             FrozenReference.assertSameBytes("a library root|" + level, javac.program());
         }
     }
@@ -491,11 +489,11 @@ class JavacLibrariesTest {
                 + "public static <T> T f(T x, BigInteger y) { return x; }\n");
         var caller = "import com.lib.G;\nimport java.math.BigInteger;\nclass M { static BigInteger f(BigInteger a) { return G.f(a); } }\n";
         var javac = assertThrows(CompilerException.class, () -> new JulcCompiler(STDLIB,
-                new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compileMethod(caller, "f", List.of(g)));
+                new CompilerOptions()).compileMethod(caller, "f", List.of(g)));
         FrozenReference.assertSame("a concrete method named as a template", javac.getMessage());
         var simple = library("G", "static <T> T id(T x) { return x; }\npublic static BigInteger f(BigInteger x) { return id(x); }\n");
         var failure = assertThrows(CompilerException.class, () -> new JulcCompiler(STDLIB,
-                new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compileMethod(caller, "f", List.of(simple)));
+                new CompilerOptions()).compileMethod(caller, "f", List.of(simple)));
         assertTrue(failure.getMessage().contains("Unknown method: id"), failure::getMessage);
     }
 
@@ -513,7 +511,7 @@ class JavacLibrariesTest {
         }
         var cycle = o.replace("return y.add(BigInteger.TEN);", "return R.g(y);");
         var actual = assertThrows(CompilerException.class, () -> new JulcCompiler(STDLIB,
-                new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compileMethod(r, "f", List.of(r, cycle)));
+                new CompilerOptions()).compileMethod(r, "f", List.of(r, cycle)));
         FrozenReference.assertSame("a root's field calls a library in a cycle", actual.getMessage());
     }
 

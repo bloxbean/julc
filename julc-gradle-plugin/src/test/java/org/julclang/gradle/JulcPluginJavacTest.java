@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * directory is the pool, as the plugin compiles them; {@code -Djulc.javacGate=enforce} makes a javac error fail the
  * build (the property is set for the build only).
  */
-class JulcPluginJavacGateTest {
+class JulcPluginJavacTest {
 
     @TempDir
     Path project;

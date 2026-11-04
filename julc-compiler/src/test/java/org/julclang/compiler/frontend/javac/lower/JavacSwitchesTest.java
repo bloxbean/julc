@@ -1,7 +1,6 @@
 package org.julclang.compiler.frontend.javac.lower;
 
 import org.julclang.compiler.CompilerException;
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.CompilerTestVm;
 import org.julclang.compiler.JulcCompiler;
@@ -340,7 +339,7 @@ class JavacSwitchesTest {
 
     /** What Java cannot build: a switch reads Data no strict boundary read. Outcomes are ADR-067's, on this frontend's script. */
     private static EvalResult evaluate(String members, PlutusData... arguments) {
-        var program = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)
+        var program = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()
                 .setOptimizationLevel(OptimizationLevel.DEFAULT)).compileMethod(source(members), "m").program();
         return CompilerTestVm.pv11("Java").evaluateWithArgs(program, List.of(arguments));
     }
@@ -349,7 +348,7 @@ class JavacSwitchesTest {
     private static Class<?> outcome(String members, PlutusData... arguments) {
         var outcomes = new HashSet<Class<?>>();
         for (var level : OptimizationLevel.values()) {
-            var program = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)
+            var program = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()
                     .setOptimizationLevel(level)).compileMethod(source(members), "m").program();
             outcomes.add(CompilerTestVm.pv11("Java").evaluateWithArgs(program, List.of(arguments)).getClass());
         }
@@ -425,7 +424,7 @@ class JavacSwitchesTest {
 
     private static String javacCode(String members) {
         var failure = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(),
-                new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compileMethod(source(members), "m"));
+                new CompilerOptions()).compileMethod(source(members), "m"));
         return failure.diagnostics().getFirst().code();
     }
 
@@ -559,7 +558,7 @@ class JavacSwitchesTest {
     void aCastOfAParamDecodesWhatIsApplied(String value) {
         String source = "import java.math.BigInteger; import org.julclang.core.PlutusData; import org.julclang.core.types.JulcMap; import org.julclang.stdlib.annotation.Param; class C { "
                 + "@Param static PlutusData P = PlutusData.UNIT; static long m(boolean c, PlutusData d) { JulcMap<BigInteger, BigInteger> z = PlutusData.cast(" + value + ", JulcMap.class); return z.size(); } }";
-        var result = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compileMethod(source, "m");
+        var result = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()).compileMethod(source, "m");
         var map = new PlutusData.MapData(List.of(new PlutusData.Pair(PlutusData.integer(1), PlutusData.integer(2))));
         var evaluated = CompilerTestVm.pv11("Java").evaluateWithArgs(result.program().applyParams(map), List.of(constr(1), map));
         assertInstanceOf(EvalResult.Success.class, evaluated, evaluated::toString);
@@ -712,11 +711,10 @@ class JavacSwitchesTest {
             "static class Rc { static long L = 3; } static long m(S s, long x) { return switch (s) { case A a when x > Rc.L -> 1; default -> 2; }; }",
     })
     void aFieldOfATypeThatIsNoConstantInAGuard(String members) {
-        for (var frontend : CompilerFrontend.values()) {
-            var e = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(),
-                    new CompilerOptions().setFrontend(frontend)).compileMethod(source(members), "m"));
-            assertTrue(e.getMessage().contains("Undefined variable"), () -> frontend + ": " + e.getMessage());
-        }
+        var e = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(),
+                new CompilerOptions()).compileMethod(source(members), "m"));
+        assertTrue(e.getMessage().contains("Undefined variable"), e::getMessage);
+    
     }
 
     @Test
@@ -758,7 +756,7 @@ class JavacSwitchesTest {
     })
     void aConstantGuardThatReadsALocalThroughANewIsJavasConstant(String members) {
         // The reference keeps it a read at run time, in other bytes; here it is Java's constant (M5, the harness's values).
-        new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compileMethod(source(members), "m", List.of());
+        new JulcCompiler(null, new CompilerOptions()).compileMethod(source(members), "m", List.of());
     }
 
     /** A local on the same side of the {@code new}, no local, no {@code new}, or a guard read at run time on both. */
@@ -800,11 +798,10 @@ class JavacSwitchesTest {
             "static boolean m(JulcList<S> xs) { return xs.any(v -> { var w = v; return w instanceof A; }); }",
     })
     void anInstanceofWithNoPatternHasNoVariant(String members) {
-        for (var frontend : CompilerFrontend.values()) {
-            var e = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(),
-                    new CompilerOptions().setFrontend(frontend)).compileMethod(source(members), "m"));
-            assertTrue(e.getMessage().contains("Unsupported instanceof pattern"), () -> frontend + ": " + e.getMessage());
-        }
+        var e = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(),
+                new CompilerOptions()).compileMethod(source(members), "m"));
+        assertTrue(e.getMessage().contains("Unsupported instanceof pattern"), e::getMessage);
+    
     }
 
     @Test

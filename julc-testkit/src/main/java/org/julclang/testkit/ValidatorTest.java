@@ -1,7 +1,6 @@
 package org.julclang.testkit;
 
 import org.julclang.compiler.CompileResult;
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.CompilerTarget;
 import org.julclang.compiler.CompilerTargetDiagnostics;
@@ -148,26 +147,6 @@ public final class ValidatorTest {
     public static Program compile(String javaSource) {
         Objects.requireNonNull(javaSource, "javaSource must not be null");
         var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry());
-        CompileResult result = compiler.compile(javaSource);
-        if (result.hasErrors()) {
-            throw new AssertionError("Compilation produced errors: " + result.diagnostics());
-        }
-        return result.program();
-    }
-
-    /**
-     * Compile Java source to a UPLC Program on the given Java frontend (experimental, ADR-068 D4).
-     * {@link CompilerFrontend#JAVAC} is the default from ADR-068 M5; {@link CompilerFrontend#JAVAPARSER} stays selectable
-     * until M6.
-     *
-     * @param javaSource the Java source code
-     * @param frontend   the Java frontend
-     * @return the compiled Program
-     * @throws org.julclang.compiler.CompilerException if compilation fails
-     */
-    public static Program compile(String javaSource, CompilerFrontend frontend) {
-        Objects.requireNonNull(javaSource, "javaSource must not be null");
-        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(frontend));
         CompileResult result = compiler.compile(javaSource);
         if (result.hasErrors()) {
             throw new AssertionError("Compilation produced errors: " + result.diagnostics());
@@ -404,15 +383,6 @@ public final class ValidatorTest {
     }
 
     /**
-     * {@link #compileValidator(Class, java.nio.file.Path)} on the given Java frontend (experimental, ADR-068 D4).
-     * {@link CompilerFrontend#JAVAC} is the default; {@link CompilerFrontend#JAVAPARSER} stays selectable until M6.
-     */
-    public static CompileResult compileValidator(Class<?> validatorClass, java.nio.file.Path sourceRoot,
-                                                 CompilerFrontend frontend) {
-        return SourceDiscovery.compile(validatorClass, sourceRoot, new CompilerOptions().setFrontend(frontend));
-    }
-
-    /**
      * Compile a validator by fully-qualified class name with auto-discovered library dependencies.
      * Uses the default source root ({@code src/main/java}).
      * <p>
@@ -434,14 +404,6 @@ public final class ValidatorTest {
      */
     public static CompileResult compileValidatorByName(String fqcn, java.nio.file.Path sourceRoot) {
         return SourceDiscovery.compile(fqcn, sourceRoot);
-    }
-
-    /**
-     * {@link #compileValidatorByName(String, java.nio.file.Path)} on the given Java frontend (experimental, ADR-068 D4).
-     */
-    public static CompileResult compileValidatorByName(String fqcn, java.nio.file.Path sourceRoot,
-                                                       CompilerFrontend frontend) {
-        return SourceDiscovery.compile(fqcn, sourceRoot, new CompilerOptions().setFrontend(frontend));
     }
 
     // --- Method evaluation (delegates to MethodEvaluator) ---

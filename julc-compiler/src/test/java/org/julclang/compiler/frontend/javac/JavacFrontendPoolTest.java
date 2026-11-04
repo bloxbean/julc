@@ -356,10 +356,10 @@ class JavacFrontendPoolTest {
     void aMissingBlobIsABrokenBuildNotAnUnsupportedJavac() {
         var e = assertThrows(BrokenJulcBuildException.class, () -> JavacPlatform.resource("/no/such/platform.bin"));
         assertTrue(e.getMessage().startsWith("broken JuLC build: missing resource"), e.getMessage());
-        assertFalse(JavacGate.isMissingCompiler(new ExceptionInInitializerError(e)));
-        assertTrue(JavacGate.isMissingCompiler(new NoClassDefFoundError("javax/tools/ToolProvider")));
-        assertTrue(JavacGate.isMissingCompiler(new NoClassDefFoundError("com/sun/source/util/JavacTask")));
-        assertFalse(JavacGate.isMissingCompiler(new NoClassDefFoundError("org/julclang/Something")));
+        assertFalse(JavacRuntime.isMissingCompiler(new ExceptionInInitializerError(e)));
+        assertTrue(JavacRuntime.isMissingCompiler(new NoClassDefFoundError("javax/tools/ToolProvider")));
+        assertTrue(JavacRuntime.isMissingCompiler(new NoClassDefFoundError("com/sun/source/util/JavacTask")));
+        assertFalse(JavacRuntime.isMissingCompiler(new NoClassDefFoundError("org/julclang/Something")));
     }
 
     @Test

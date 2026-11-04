@@ -1,41 +1,26 @@
 package org.julclang.compiler.frontend.javac;
 
 /**
- * What javac saw of one compilation (ADR-068 D3): the host's javac version, the digests of the embedded platform and
- * API stubs, the gate's mode and its outcome. It is provenance only: compiled bytes do not depend on it, and it is not
- * written to generated artifacts, so {@code plutus.json} stays the same across JDK patch releases.
+ * What javac saw of a compilation (ADR-068 D3): on a {@code CompileResult}, so that a build can name the environment it ran in.
  *
  * @param javacVersion   the host's javac version; null unless javac ran
  * @param platformDigest SHA-256 of the java.base blob; null unless javac ran
  * @param stubsDigest    SHA-256 of the API stubs; null unless javac ran
- * @param gate           the gate's mode; null when no gate ran: this compilation's mode is unknown ({@link #UNAVAILABLE})
- *                       or the javac frontend read the sources ({@link #frontend})
- * @param outcome        what the gate, or the javac frontend, made of the sources
+ * @param outcome        what javac made of the sources
  */
-public record JavacProvenance(String javacVersion, String platformDigest, String stubsDigest, JavacGateMode gate,
-                              Outcome outcome) {
+public record JavacProvenance(String javacVersion, String platformDigest, String stubsDigest, Outcome outcome) {
 
-    /** What became of the sources. An enforced rejection has no result, so {@code REJECTED} is report mode's. */
+    /** What became of the sources. */
     public enum Outcome {
         ACCEPTED, REJECTED, NOT_RUN
     }
 
     /** A result built outside a compilation, which never takes this process's environment for its own. */
-    public static final JavacProvenance UNAVAILABLE = notRun(null);
+    public static final JavacProvenance UNAVAILABLE = new JavacProvenance(null, null, null, Outcome.NOT_RUN);
 
-    /** The gate did not run: {@code off}, or report mode when javac itself failed. */
-    public static JavacProvenance notRun(JavacGateMode gate) {
-        return new JavacProvenance(null, null, null, gate, Outcome.NOT_RUN);
-    }
-
-    /** The javac frontend read the compilation: no gate ran, and {@code gate} is null. */
+    /** The javac frontend read the compilation. */
     public static JavacProvenance frontend(JavacResult result) {
-        return of(null, result);
-    }
-
-    /** The gate ran in {@code gate} and produced {@code result}. */
-    public static JavacProvenance of(JavacGateMode gate, JavacResult result) {
-        return new JavacProvenance(result.javacVersion(), result.platformDigest(), result.stubsDigest(), gate,
+        return new JavacProvenance(result.javacVersion(), result.platformDigest(), result.stubsDigest(),
                 result.isAccepted() ? Outcome.ACCEPTED : Outcome.REJECTED);
     }
 }

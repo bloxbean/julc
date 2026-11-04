@@ -1,6 +1,5 @@
 package org.julclang.gradle;
 
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.OptimizationLevel;
 import org.gradle.api.Project;
 import org.gradle.api.file.DirectoryProperty;
@@ -19,8 +18,6 @@ import java.util.Locale;
  *   <li>{@code sourceMap} — enable source map generation for debugging (default: {@code false})</li>
  *   <li>{@code blueprint} — generate strict CIP-57 metadata (default: {@code true})</li>
  *   <li>{@code target} — exact compiler target profile ID (default: PV11)</li>
- *   <li>{@code frontend} — experimental (ADR-068 D4): {@code javac} or {@code javaparser} (default: {@code javac};
- *       {@code javaparser} stays selectable until ADR-068 M6)</li>
  * </ul>
  * <p>
  * Example:
@@ -54,7 +51,7 @@ public class JulcExtension {
         optimization = objects.property(String.class)
                 .convention(OptimizationLevel.DEFAULT_PROFILE_ID);
         costProfile = objects.property(String.class);
-        frontend = objects.property(String.class).convention(CompilerFrontend.DEFAULT.name().toLowerCase(Locale.ROOT));
+        frontend = objects.property(String.class);
     }
 
     public DirectoryProperty getSourceDir() {
@@ -95,9 +92,10 @@ public class JulcExtension {
     }
 
     /**
-     * Experimental (ADR-068 D4): the Java frontend, {@code javac} (the default from ADR-068 M5) or {@code javaparser}, the
-     * frozen reference frontend, selectable explicitly until M6 removes it and this option.
+     * Removed (ADR-068 M6): JuLC reads Java with javac alone. Kept so that a build that still sets it gets
+     * {@link org.julclang.compiler.CompilerOptions#requireJavacFrontend}'s message, not an unknown property.
      */
+    @Deprecated
     public Property<String> getFrontend() {
         return frontend;
     }

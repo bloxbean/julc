@@ -31,7 +31,7 @@ import java.util.Locale;
  * @param unit      javac's tree of it; after a syntax error, the tree javac's parser recovered
  * @param positions the trees' start and end offsets
  * @param errors    the parser's errors, in emission order
- * <p><b>Internal</b> (ADR-068 M6): for JuLC's own tools while JavaParser and javac readings coexist; not an API,
+ * <p><b>Internal</b> (ADR-068 M6): for JuLC's own tools; not an API,
  * and it may change or go without notice.
  */
 public record JavacSyntax(String text, CompilationUnitTree unit, SourcePositions positions,

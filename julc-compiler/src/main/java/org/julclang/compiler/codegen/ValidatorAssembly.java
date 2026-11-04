@@ -29,12 +29,9 @@ import java.util.function.Consumer;
 import java.util.function.UnaryOperator;
 
 /**
- * What a program's lowered methods become, whichever frontend lowered them (ADR-068 F846): static field, helper and
+ * What a program's lowered methods become (ADR-068 F846): static field, helper and
  * library {@code let}s, the validator wrapper, the {@code @Param} lambdas, and the backend. A frontend discovers the
  * parts and lowers their bodies; everything here takes PIR and resolved types, and reads no source tree.
- * <p>
- * The JavaParser frontend's steps 13 to 22 moved here unchanged, so its bytes did not move. Those are checked by the
- * gate-off baseline against B1.
  */
 public final class ValidatorAssembly {
 

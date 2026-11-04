@@ -5,7 +5,6 @@ import net.jqwik.api.Property;
 import net.jqwik.api.constraints.BigRange;
 import net.jqwik.api.constraints.IntRange;
 import net.jqwik.api.constraints.Size;
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.core.PlutusData;
 import org.julclang.core.types.JulcList;
 import org.julclang.stdlib.lib.BitwiseLib;

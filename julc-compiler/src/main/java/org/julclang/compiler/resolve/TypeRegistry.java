@@ -20,9 +20,7 @@ import java.util.stream.Collectors;
 /**
  * The named types of a compilation, by identity (ADR-068 D2, I12): records, sealed interfaces and their variants, and
  * {@code @NewType}s, each keyed by FQCN. This class is frontend-neutral. It knows no source syntax and has no lookup by
- * simple name, so code typed on it cannot bind a name the way a Java reader must not. {@link TypeResolver} adds the
- * JavaParser frontend's source-side resolution on top of it; the javac frontend uses this class alone, and the compiler
- * enforces that.
+ * simple name, so code typed on it cannot bind a name the way a Java reader must not.
  */
 public class TypeRegistry {
 
@@ -35,7 +33,7 @@ public class TypeRegistry {
     // Map of variant FQCN -> its enclosing SumType (for constructor tag lookup)
     final Map<String, PirType.SumType> variantToSumType = new LinkedHashMap<>();
     // Map of variant FQCN -> its constructor. Two variants of a sum can share a simple name, so a constructor is never
-    // found by name. It holds what registerSealed registered; the JavaParser frontend reads variantToSumType.
+    // found by name. It holds what registerSealed registered.
     private final Map<String, PirType.Constructor> variantConstructors = new LinkedHashMap<>();
     // Sealed interfaces that declare type parameters; type arguments are dropped, so a switch over
     // one cannot be checked (ADR-067 D4, JULC0007)
@@ -64,11 +62,6 @@ public class TypeRegistry {
     /** Return the set of ledger hash FQCNs (needed for ImportResolver knownFqcns). */
     public static Set<String> ledgerHashFqcns() {
         return LEDGER_HASH_FQCNS;
-    }
-
-    /** Return the set of ledger hash simple names. */
-    public static Set<String> ledgerHashNames() {
-        return LEDGER_HASH_NAMES;
     }
 
     /** One variant of a sealed interface, in tag order. */
@@ -183,9 +176,7 @@ public class TypeRegistry {
     }
 
     /**
-     * What a registry holds, by identity (ADR-068 I11): the frontends' registries are compared on this. The JavaParser
-     * frontend's flat ledger aliases ({@link TypeResolver#addFlatVariantAliases}) are lookups, not declarations, so they
-     * are not in it.
+     * What a registry holds, by identity (ADR-068 I11).
      *
      * @param records       record identity -> its type
      * @param sums          sealed interface identity -> its type
@@ -344,17 +335,6 @@ public class TypeRegistry {
         result.putAll(recordTypes);
         result.putAll(sumTypes);
         return Collections.unmodifiableMap(result);
-    }
-
-    /** Return all registered FQCNs (for building knownFqcns sets). */
-    public Set<String> allRegisteredFqcns() {
-        var all = new LinkedHashSet<String>();
-        all.addAll(recordTypes.keySet());
-        all.addAll(sumTypes.keySet());
-        all.addAll(variantToSumType.keySet());
-        all.addAll(newTypes.keySet());
-        all.addAll(forwardTypes.keySet());
-        return all;
     }
 
     /**

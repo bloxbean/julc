@@ -34,19 +34,6 @@ public record JavacResult(List<JavacDiagnostic> diagnostics, String javacVersion
         return new JavacResult(diagnostics, javacVersion, platformDigest, stubsDigest, identities, warnings);
     }
 
-    JavacResult withWarnings(List<CompilerDiagnostic> found) {
-        return new JavacResult(diagnostics, javacVersion, platformDigest, stubsDigest, dropped, found);
-    }
-
-    /**
-     * The effective pool (D8): {@code pool} without the units precedence left out (shadowed units). An enforced
-     * compilation hands this to the JavaParser frontend too, so what javac accepted is what is compiled.
-     */
-    public <T> List<T> effective(List<T> pool, Function<T, String> text) {
-        if (dropped.isEmpty()) return pool;
-        return pool.stream().filter(unit -> !dropped.contains(JavacPlatform.identity(text.apply(unit)))).toList();
-    }
-
     static JavacResult accepted(JavacPlatform platform) {
         return rejected(List.of(), platform);
     }

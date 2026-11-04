@@ -1,6 +1,5 @@
 package org.julclang.compiler.corpus;
 
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.CompilerTestVm;
 import org.julclang.compiler.JulcCompiler;
@@ -201,29 +200,6 @@ class CorpusRecorderTest {
                 LibraryType.Reference.variable("t")), Map.of("demo.Quote", record, "demo.Choice", sum,
                 "demo.Map", new PirType.MapType(new PirType.ByteStringType(), new PirType.OptionalType(new PirType.BoolType()))));
         assertEquals(request, RequestText.decode(RequestText.encode(request)));
-    }
-
-    /**
-     * ADR-068 M5 (gap 2): the recorder records a compilation on either frontend. A case is its inputs, so one method
-     * compiled on both frontends is one case, with a {@code frontend-<NAME>} marker for each; one compiled on the default
-     * alone, javac, is recorded too.
-     */
-    @Test
-    void aRecordingHoldsCompilationsOnEitherFrontend(@TempDir Path temp) throws Exception {
-        Path corpus = temp.resolve("corpus");
-        assertEquals("ok", run(CorpusRecorderFrontendProbe.class, corpus).strip());
-        var tree = tree(corpus);
-        var markers = new TreeMap<String, TreeSet<String>>();
-        for (String path : tree.keySet()) {
-            if (!path.startsWith("cases/")) continue;
-            String[] parts = path.split("/");
-            if (parts.length == 3 && parts[2].startsWith("frontend-")) {
-                markers.computeIfAbsent(parts[1], k -> new TreeSet<>()).add(parts[2].substring("frontend-".length()));
-            }
-        }
-        assertEquals(2, markers.size(), markers::toString);
-        assertTrue(markers.containsValue(new TreeSet<>(List.of("JAVAC", "JAVAPARSER"))), markers::toString);
-        assertTrue(markers.containsValue(new TreeSet<>(List.of("JAVAC"))), markers::toString);
     }
 
     /** Runs the probe in a child JVM, recording into {@code corpus} when it is not null. */

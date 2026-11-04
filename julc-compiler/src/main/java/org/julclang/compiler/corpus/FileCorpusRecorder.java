@@ -58,7 +58,6 @@ public final class FileCorpusRecorder implements CorpusRecorder {
             Path dir = root.resolve("cases").resolve(key);
             CorpusFiles.writeOnce(dir.resolve("case.txt"), caseText);
             CorpusFiles.touch(dir.resolve("level-" + options.optimizationLevel().name()));
-            CorpusFiles.touch(dir.resolve("frontend-" + options.frontend().name()));
             writeOrigin(dir);
             return key;
         } catch (IOException e) {

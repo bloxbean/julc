@@ -29,7 +29,7 @@ import java.util.function.Supplier;
  * {@code instanceof} (ADR-068 I12): a comparison of constructor tags. The variant and its tag are what javac bound, by
  * identity, so a record of another sum with the variant's simple name is not it, and two variants of one simple name have
  * two tags. A tag means something only within one sealed interface, so the operand's static type must be the variant or
- * that interface. Anything else stops at {@code JULC0084}: the comparison would run on a value of some other type, where
+ * that interface. Anything else is rejected: the comparison would run on a value of some other type, where
  * Java tests the value's class.
  * <p>
  * <b>Evaluation order.</b> The operand is evaluated once, then the test. As in the reference, {@code if (e instanceof V v)}

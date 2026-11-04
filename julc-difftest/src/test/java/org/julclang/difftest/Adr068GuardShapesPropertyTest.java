@@ -8,7 +8,6 @@ import net.jqwik.api.Property;
 import net.jqwik.api.Provide;
 import net.jqwik.api.lifecycle.AfterProperty;
 import net.jqwik.api.lifecycle.BeforeProperty;
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.core.PlutusData;
 
 import java.math.BigInteger;

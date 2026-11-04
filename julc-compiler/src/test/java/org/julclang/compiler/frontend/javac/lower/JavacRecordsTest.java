@@ -1,10 +1,8 @@
 package org.julclang.compiler.frontend.javac.lower;
 
 import org.julclang.compiler.CompilerException;
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JulcCompiler;
-import org.julclang.compiler.frontend.javac.NotPorted;
 import org.julclang.stdlib.StdlibRegistry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -75,7 +73,7 @@ class JavacRecordsTest {
     }
 
     private static CompilerException javac(String members) {
-        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAC));
+        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions());
         return assertThrows(CompilerException.class, () -> compiler.compileMethod(source(members), "m", List.of()));
     }
 
@@ -207,7 +205,7 @@ class JavacRecordsTest {
     /** A record's compact constructor, even an empty one, is a member a record does not hold (ADR-067 D9). */
     @Test
     void anEmptyCompactConstructorIsARecordMember() {
-        var failure = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC))
+        var failure = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions())
                 .compileMethod(source("record R(BigInteger a) { R { } } static R m(BigInteger x) { return new R(x); }"), "m", List.of()));
         assertEquals("JULC0080", failure.diagnostics().getFirst().code());
     }
@@ -300,7 +298,7 @@ class JavacRecordsTest {
                     @Entrypoint static boolean validate(PlutusData d, PlutusData r, PlutusData c) { %s }
                 }
                 """;
-        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAC));
+        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions());
         assertTrue(compiler.compile(source.formatted("return true;"), List.of()).params().isEmpty());
         var read = assertThrows(CompilerException.class,
                 () -> compiler.compile(source.formatted("return Nested.P.signum() > 0;"), List.of()));

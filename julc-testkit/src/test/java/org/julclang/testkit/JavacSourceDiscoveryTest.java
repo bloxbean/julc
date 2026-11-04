@@ -1,7 +1,6 @@
 package org.julclang.testkit;
 
 import org.julclang.compiler.CompilerException;
-import org.julclang.compiler.CompilerFrontend;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -18,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * bundled sources plus same-project sources found through imports and the package); the javac gate sees the
  * validator as root and that pool's libraries on the source path.
  */
-class JavacGateSourceDiscoveryTest {
+class JavacSourceDiscoveryTest {
 
     @TempDir
     Path root;
@@ -97,15 +96,6 @@ class JavacGateSourceDiscoveryTest {
 
     @Test
     void theHostsMeetTheCastAndNameRules() {
-        for (String[] rule : List.of(
-                new String[]{"JULC0098", CAST.replace("(boolean) (Object) redeemer", "org.julclang.core.PlutusData.cast(redeemer, Boolean.class)")},
-                new String[]{"JULC0100", CAST.replace("    @Entrypoint", "    record Boolean(BigInteger a) { }\n    @Entrypoint").replace("(boolean) (Object) redeemer", "true")},
-                new String[]{"JULC0101", CAST.replace("    @Entrypoint", "    record R(long a) { static boolean fromPlutusData(long x) { return false; } }\n    @Entrypoint").replace("(boolean) (Object) redeemer", "true")})) {
-            // The gate's rules (JULC0100, the gate-only JULC0101) are the JavaParser frontend's, selected explicitly from
-            // ADR-068 M5; javac binds names by element, so on the default only the cast rule and ADR-067 D9 apply.
-            var e = assertThrows(CompilerException.class, () -> ValidatorTest.compile(rule[1], CompilerFrontend.JAVAPARSER));
-            assertEquals(rule[0], e.diagnostics().getFirst().code(), e.diagnostics().toString());
-        }
         var cast = assertThrows(CompilerException.class, () -> ValidatorTest.compile(
                 CAST.replace("(boolean) (Object) redeemer", "org.julclang.core.PlutusData.cast(redeemer, Boolean.class)")));
         assertEquals("JULC0098", cast.diagnostics().getFirst().code(), cast.diagnostics().toString());

@@ -6,11 +6,9 @@ import net.jqwik.api.ForAll;
 import net.jqwik.api.Property;
 import net.jqwik.api.Provide;
 import org.julclang.compiler.CompileResult;
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.error.CompilerDiagnostic;
-import org.julclang.compiler.frontend.javac.JavacGateMode;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -39,7 +37,7 @@ class ConstantStringJoinsTest {
     }
 
     private static CompilerOptions javac() {
-        return new CompilerOptions().setFrontend(CompilerFrontend.JAVAC);
+        return new CompilerOptions();
     }
 
     @ParameterizedTest

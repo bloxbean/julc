@@ -1,6 +1,5 @@
 package org.julclang.tools.debug;
 
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.core.debug.DebugMetadata;
@@ -39,7 +38,7 @@ class JavacDebugMetadataTest {
     @Test
     void theDebuggersIndexReadsJavacMetadata() {
         var compiled = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()
-                .setFrontend(CompilerFrontend.JAVAC).setSourceMapEnabled(true)).compileForDebug(SOURCE, List.of());
+                .setSourceMapEnabled(true)).compileForDebug(SOURCE, List.of());
         var metadata = compiled.debugMetadata();
         assertEquals("JavacDebugged.java", metadata.sources().getFirst().uri());
         new JavaLocalsService(metadata, compiled.compileResult().program());

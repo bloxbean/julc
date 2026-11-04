@@ -1,6 +1,5 @@
 package org.julclang.difftest;
 
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.core.PlutusData;
 import org.julclang.core.types.JulcList;
 import org.julclang.core.types.JulcMap;

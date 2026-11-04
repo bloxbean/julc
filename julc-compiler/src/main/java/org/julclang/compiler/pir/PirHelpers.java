@@ -4,8 +4,6 @@ import org.julclang.compiler.CompilerTypeDiagnostics;
 import org.julclang.core.Constant;
 import org.julclang.core.DefaultFun;
 
-import com.github.javaparser.ast.stmt.BlockStmt;
-import com.github.javaparser.ast.stmt.Statement;
 
 import java.math.BigInteger;
 import java.util.HashSet;
@@ -674,12 +672,6 @@ public final class PirHelpers {
         var fields = builtinApp2(DefaultFun.MkCons, value, mkNil);
         return builtinApp2(DefaultFun.ConstrData,
                 new PirTerm.Const(Constant.integer(BigInteger.ZERO)), fields);
-    }
-
-    /** Extract statements from a BlockStmt, or wrap a single statement in a list. */
-    public static List<Statement> blockStmts(Statement stmt) {
-        if (stmt instanceof BlockStmt bs) return bs.getStatements();
-        return List.of(stmt);
     }
 
     /** Convenience: empty pair list (MkNilPairData(unit)). */

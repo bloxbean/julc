@@ -1,6 +1,5 @@
 package org.julclang.difftest;
 
-import org.julclang.compiler.CompilerFrontend;
 import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.CompilationUnitTree;
 import com.sun.source.util.JavacTask;
@@ -16,7 +15,6 @@ import org.julclang.compiler.backend.BackendException;
 import org.julclang.compiler.backend.LibraryRequest;
 import org.julclang.compiler.corpus.RequestText;
 import org.julclang.compiler.error.CompilerDiagnostic;
-import org.julclang.compiler.frontend.javac.JavacGateMode;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.StdlibLookup;
 import org.julclang.core.PlutusData;

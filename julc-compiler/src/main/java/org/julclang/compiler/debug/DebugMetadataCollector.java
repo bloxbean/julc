@@ -1,21 +1,5 @@
 package org.julclang.compiler.debug;
 
-import com.github.javaparser.Position;
-import com.github.javaparser.Range;
-import com.github.javaparser.ast.CompilationUnit;
-import com.github.javaparser.ast.Node;
-import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
-import com.github.javaparser.ast.body.FieldDeclaration;
-import com.github.javaparser.ast.body.MethodDeclaration;
-import com.github.javaparser.ast.body.Parameter;
-import com.github.javaparser.ast.expr.AssignExpr;
-import com.github.javaparser.ast.expr.LambdaExpr;
-import com.github.javaparser.ast.expr.UnaryExpr;
-import com.github.javaparser.ast.body.VariableDeclarator;
-import com.github.javaparser.ast.stmt.BlockStmt;
-import com.github.javaparser.ast.stmt.ForEachStmt;
-import com.github.javaparser.ast.stmt.SwitchEntry;
-import com.github.javaparser.ast.stmt.WhileStmt;
 import org.julclang.compiler.CompileResult;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerOptions;
@@ -45,15 +29,12 @@ import static org.julclang.core.debug.DebugMetadata.Availability.AVAILABLE;
 /**
  * Compiler-owned declaration identities and final UPLC environment-slot proof.
  * <p>
- * A frontend scans its trees into declarations (ADR-068: the JavaParser frontend's scan is here; the javac frontend's is
- * {@code JavacDebugScan}, through {@link #forSources} and {@link Declarations}). A declaration is keyed by the identity of
- * what that frontend holds for it, a JavaParser node or a javac element, and {@link #associate} takes the same key where the
- * frontend builds the declaration's binder, so provenance keys on PIR node identity and no name is read afterwards.
+ * The frontend scans its trees into declarations ({@code JavacDebugScan}, through {@link #forSources} and
+ * {@link Declarations}). A declaration is keyed by the identity of the javac element it holds for it, and {@link #associate}
+ * takes the same key where the frontend builds the declaration's binder, so provenance keys on PIR node identity and no name is read afterwards.
  */
 public final class DebugMetadataCollector {
-    public record SourceInput(String id, String uri, String content, CompilationUnit compilationUnit) {}
-
-    /** A source the metadata names, as a frontend other than the JavaParser one gives it. */
+    /** A source the metadata names. */
     public record SourceText(String id, String uri, String content) {}
 
     private static final List<DebugMetadata.Layout> LAYOUTS = List.of(
@@ -103,14 +84,6 @@ public final class DebugMetadataCollector {
     private final IdentityHashMap<Object, String> scopeIds = new IdentityHashMap<>();
     private final List<SourceText> texts = new ArrayList<>();
     private final PirDebugProvenance provenance = new PirDebugProvenance();
-
-    public DebugMetadataCollector(List<SourceInput> inputs) {
-        int sourceOrdinal = 0;
-        for (SourceInput input : inputs) {
-            addSource(new SourceText(input.id(), input.uri(), input.content()));
-            scan(input, sourceOrdinal++);
-        }
-    }
 
     private DebugMetadataCollector() {
     }
@@ -305,118 +278,6 @@ public final class DebugMetadataCollector {
         }
     }
 
-    private void scan(SourceInput input, int sourceOrdinal) {
-        int parameterOrdinal = 0;
-        var parameterFields = input.compilationUnit().findAll(FieldDeclaration.class).stream()
-                .filter(field -> field.getAnnotationByName("Param").isPresent())
-                .flatMap(field -> field.getVariables().stream())
-                .sorted(Comparator.comparingInt(node -> offset(input, node.getRange().orElse(null), true)))
-                .toList();
-        for (VariableDeclarator declaration : parameterFields) {
-            addBinding(input, declaration,
-                    input.id() + ":param:" + parameterOrdinal++ + ":" + declaration.getNameAsString(),
-                    declaration.getNameAsString(), classScope(input, declaration),
-                    DebugMetadata.BindingKind.PARAM_FIELD, declaration.getTypeAsString(), true);
-        }
-
-        var methods = input.compilationUnit().findAll(MethodDeclaration.class).stream()
-                .sorted(Comparator.comparingInt(node -> offset(input, node.getRange().orElse(null), true)))
-                .toList();
-        for (int methodOrdinal = 0; methodOrdinal < methods.size(); methodOrdinal++) {
-            MethodDeclaration method = methods.get(methodOrdinal);
-            String methodId = input.id() + ":method:" + methodOrdinal + ":" + method.getNameAsString();
-            String methodScope = scope(input, method, methodId);
-            // JuLC lowers reassignment and loop state through generated accumulator binders. Until
-            // that transformation has an identity-preserving proof, none of the declarations in
-            // such a method may be presented as its current Java value. This deliberately broad
-            // exclusion avoids resolving assignment targets by name.
-            boolean hasMutation = !method.findAll(AssignExpr.class).isEmpty()
-                    || method.findAll(UnaryExpr.class).stream().anyMatch(DebugMetadataCollector::isMutation);
-            int ordinal = 0;
-            for (Parameter parameter : method.getParameters()) {
-                addBinding(input, parameter, methodId + ":decl:" + ordinal++, parameter.getNameAsString(),
-                        methodScope, DebugMetadata.BindingKind.PARAMETER, parameter.getTypeAsString(), !hasMutation);
-            }
-            var declarations = method.findAll(VariableDeclarator.class).stream()
-                    .sorted(Comparator.comparingInt(node -> offset(input, node.getRange().orElse(null), true)))
-                    .toList();
-            for (VariableDeclarator declaration : declarations) {
-                String ownerScope = scope(input, declaration, methodId);
-                addBinding(input, declaration, methodId + ":decl:" + ordinal++, declaration.getNameAsString(),
-                        ownerScope, DebugMetadata.BindingKind.LOCAL, declaration.getTypeAsString(), !hasMutation);
-            }
-            var lambdaParameters = method.findAll(LambdaExpr.class).stream()
-                    .sorted(Comparator.comparingInt(node -> offset(input, node.getRange().orElse(null), true)))
-                    .flatMap(lambda -> lambda.getParameters().stream()).toList();
-            for (Parameter parameter : lambdaParameters) {
-                String ownerScope = scope(input, parameter, methodId);
-                addBinding(input, parameter, methodId + ":decl:" + ordinal++, parameter.getNameAsString(),
-                        ownerScope, DebugMetadata.BindingKind.PARAMETER, parameter.getTypeAsString(), !hasMutation);
-            }
-        }
-        if (sourceOrdinal == 0 && scopes.isEmpty()) {
-            throw new CompilerException("Java debug metadata found no method scopes");
-        }
-    }
-
-    private String classScope(SourceInput input, Node node) {
-        ClassOrInterfaceDeclaration owner = node.findAncestor(ClassOrInterfaceDeclaration.class)
-                .orElseThrow(() -> new CompilerException("Debug @Param declaration has no class scope"));
-        String existing = scopeIds.get(owner);
-        if (existing != null) return existing;
-        int start = offset(input, owner.getRange().orElse(null), true);
-        String ownerId = "class:" + input.id() + ":" + owner.getNameAsString() + ":" + start;
-        String id = "scope:" + ownerId;
-        var ownerRange = owner.getRange().map(value -> range(input, value))
-                .orElseThrow(() -> new CompilerException("Debug class scope has no source range"));
-        scopes.add(new DebugMetadata.Scope(id, null, input.id(), ownerRange,
-                DebugMetadata.ScopeKind.CLASS, ownerId));
-        scopeIds.put(owner, id);
-        return id;
-    }
-
-    private void addBinding(SourceInput input, Node node, String id, String name, String scopeId,
-                            DebugMetadata.BindingKind kind, String spelling, boolean materializable) {
-        if (bindingsByNode.containsKey(node) || node.getRange().isEmpty()) return;
-        var draft = new BindingDraft("binding:" + id, name, range(input, node.getRange().orElseThrow()),
-                scopeId, kind, spelling, materializable);
-        bindingsByNode.put(node, draft);
-        bindings.put(draft.id, draft);
-        types.putIfAbsent(draft.typeId, new DebugMetadata.TypeInfo(draft.typeId, spelling));
-    }
-
-    private String scope(SourceInput input, Node node, String methodId) {
-        Node owner = node;
-        while (!(owner instanceof MethodDeclaration || owner instanceof LambdaExpr || owner instanceof BlockStmt
-                || owner instanceof ForEachStmt || owner instanceof WhileStmt || owner instanceof SwitchEntry)) {
-            owner = owner.getParentNode().orElseThrow(() -> new CompilerException("Debug declaration has no scope"));
-        }
-        String existing = scopeIds.get(owner);
-        if (existing != null) return existing;
-        Node parentOwner = owner.getParentNode().orElse(null);
-        while (parentOwner != null && !(parentOwner instanceof MethodDeclaration || parentOwner instanceof LambdaExpr
-                || parentOwner instanceof BlockStmt || parentOwner instanceof ForEachStmt
-                || parentOwner instanceof WhileStmt || parentOwner instanceof SwitchEntry)) {
-            parentOwner = parentOwner.getParentNode().orElse(null);
-        }
-        String parentId = parentOwner == null || parentOwner == owner ? null : scope(input, parentOwner, methodId);
-        int start = offset(input, owner.getRange().orElse(null), true);
-        String id = "scope:" + input.id() + ":" + methodId + ":" + start + ":" + scopeKind(owner).name();
-        var range = owner.getRange().map(value -> range(input, value))
-                .orElseThrow(() -> new CompilerException("Debug scope has no source range"));
-        scopes.add(new DebugMetadata.Scope(id, parentId, input.id(), range, scopeKind(owner), methodId));
-        scopeIds.put(owner, id);
-        return id;
-    }
-
-    private static DebugMetadata.ScopeKind scopeKind(Node node) {
-        if (node instanceof MethodDeclaration) return DebugMetadata.ScopeKind.METHOD;
-        if (node instanceof LambdaExpr) return DebugMetadata.ScopeKind.LAMBDA;
-        if (node instanceof ForEachStmt || node instanceof WhileStmt) return DebugMetadata.ScopeKind.LOOP;
-        if (node instanceof SwitchEntry) return DebugMetadata.ScopeKind.PATTERN;
-        return DebugMetadata.ScopeKind.BLOCK;
-    }
-
     private DebugMetadata.SourceRange range(SourceLocation location) {
         if (location.fileName() == null) return null;
         List<SourceText> matches = texts.stream()
@@ -428,17 +289,23 @@ public final class DebugMetadataCollector {
         // manufacture an exact-looking Java location for a different compilation unit.
         if (matches.size() != 1) return null;
         SourceText input = matches.getFirst();
-        int start = offset(input.content(), new Position(location.line(), Math.max(1, location.column())));
+        int start = offset(input.content(), location.line(), Math.max(1, location.column()));
         int end = Math.min(input.content().length(), start + 1);
         return new DebugMetadata.SourceRange(input.id(), start, end, location.line(), Math.max(1, location.column()),
                 location.line(), Math.max(2, location.column() + 1));
     }
 
-    private static boolean isMutation(UnaryExpr expression) {
-        return switch (expression.getOperator()) {
-            case PREFIX_INCREMENT, PREFIX_DECREMENT, POSTFIX_INCREMENT, POSTFIX_DECREMENT -> true;
-            default -> false;
-        };
+    private static int offset(String content, int line, int column) {
+        List<Integer> starts = lineStarts(content);
+        int start = starts.get(Math.max(1, Math.min(line, starts.size())) - 1);
+        return Math.min(content.length(), start + Math.max(0, column - 1));
+    }
+
+    private static List<Integer> lineStarts(String content) {
+        var result = new ArrayList<Integer>();
+        result.add(0);
+        for (int i = 0; i < content.length(); i++) if (content.charAt(i) == '\n') result.add(i + 1);
+        return List.copyOf(result);
     }
 
     private boolean isLexicallyVisible(BindingDraft binding, DebugMetadata.SourceRange point) {
@@ -454,35 +321,6 @@ public final class DebugMetadataCollector {
         return scopes.stream().filter(value -> value.id().equals(scopeId))
                 .map(scope -> scope.range().endUtf16() - scope.range().startUtf16())
                 .findFirst().orElse(Integer.MAX_VALUE);
-    }
-
-    private static DebugMetadata.SourceRange range(SourceInput input, Range range) {
-        int start = offset(input, range.begin);
-        int end = Math.min(input.content().length(), offset(input, range.end) + 1);
-        return new DebugMetadata.SourceRange(input.id(), start, end, range.begin.line, range.begin.column,
-                range.end.line, range.end.column + 1);
-    }
-
-    private static int offset(SourceInput input, Range range, boolean begin) {
-        return range == null ? Integer.MAX_VALUE : offset(input, begin ? range.begin : range.end);
-    }
-
-    private static int offset(SourceInput input, Position position) {
-        return offset(input.content(), position);
-    }
-
-    private static int offset(String content, Position position) {
-        List<Integer> starts = lineStarts(content);
-        int line = Math.max(1, Math.min(position.line, starts.size()));
-        int start = starts.get(line - 1);
-        return Math.min(content.length(), start + Math.max(0, position.column - 1));
-    }
-
-    private static List<Integer> lineStarts(String content) {
-        var result = new ArrayList<Integer>();
-        result.add(0);
-        for (int i = 0; i < content.length(); i++) if (content.charAt(i) == '\n') result.add(i + 1);
-        return List.copyOf(result);
     }
 
     private static String layoutId(PirType type) {

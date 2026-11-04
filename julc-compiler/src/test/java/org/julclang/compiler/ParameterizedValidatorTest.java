@@ -1,6 +1,5 @@
 package org.julclang.compiler;
 
-import org.julclang.compiler.frontend.javac.JavacGateMode;
 
 import org.julclang.core.PlutusData;
 import org.julclang.vm.JulcVm;

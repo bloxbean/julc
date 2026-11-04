@@ -1,12 +1,10 @@
 package org.julclang.compiler.frontend.javac.lower;
 
 import org.julclang.compiler.CompilerException;
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.CompilerTarget;
 import org.julclang.compiler.CompilerTestVm;
 import org.julclang.compiler.JulcCompiler;
-import org.julclang.compiler.frontend.javac.NotPorted;
 import org.julclang.core.PlutusData;
 import org.julclang.stdlib.StdlibRegistry;
 import org.julclang.vm.EvalOptions;
@@ -59,7 +57,7 @@ class JavacLambdasTest {
     }
 
     private static CompilerException onJavac(String members) {
-        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAC));
+        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions());
         return assertThrows(CompilerException.class, () -> compiler.compileMethod(source(members), "m"));
     }
 
@@ -263,7 +261,7 @@ class JavacLambdasTest {
     /** What the reference types by what is written and javac by the element: a member the receiver's reading cannot find lowers. */
     @Test
     void aWrittenTypeIsWhatTheBodySees() {
-        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAC));
+        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions());
         assertFalse(compiler.compileMethod(source("static boolean m(BigInteger a) { var xs = JulcList.of(a); return xs.any((BigInteger x) -> x.signum() > 0); }"), "m")
                 .hasErrors());
     }
@@ -272,7 +270,6 @@ class JavacLambdasTest {
     @Test
     void aLocalOfAFunctionalTypeIsRejectedAtItsType() {
         var failure = onJavac("static boolean m(BigInteger a) { Predicate<BigInteger> p = x -> true; return true; }");
-        assertFalse(failure instanceof NotPorted, failure::getMessage);
         assertTrue(failure.getMessage().contains("Unknown type: Predicate"), failure::getMessage);
     }
 }

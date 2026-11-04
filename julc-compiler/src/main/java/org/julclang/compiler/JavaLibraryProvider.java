@@ -1,15 +1,12 @@
 package org.julclang.compiler;
 
-import com.github.javaparser.ast.CompilationUnit;
-import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
-import com.github.javaparser.ast.body.MethodDeclaration;
-import com.github.javaparser.ast.body.TypeDeclaration;
 
 import org.julclang.compiler.backend.*;
 import org.julclang.compiler.corpus.CorpusRecorder;
+import org.julclang.compiler.error.CompilerDiagnostic;
 import org.julclang.compiler.error.DiagnosticCodes;
 import org.julclang.compiler.frontend.javac.JavacFrontend;
-import org.julclang.compiler.frontend.javac.JavacGate;
+import org.julclang.compiler.frontend.javac.JavacRuntime;
 import org.julclang.compiler.frontend.javac.JavacLibraryExports;
 import org.julclang.compiler.frontend.javac.JavacLibraryTypes;
 import org.julclang.compiler.pir.*;
@@ -27,24 +24,23 @@ public final class JavaLibraryProvider implements LibraryProvider {
      * A generic method, specialized on request by {@code compile}, which takes its type variables' PIR types by name;
      * {@code scheme} is null when it cannot be described.
      */
-    private record Template(LibraryScheme scheme, Function<Map<String, PirType>, LibraryCompiler.Specialization> compile) {}
+    /** What a template gives for its type arguments: its term and type, or the rejections of it. */
+    private record Specialization(PirTerm body, PirType type, List<CompilerDiagnostic> errors) {}
+
+    /** A generic method, specialized on request by {@code compile}, which takes its type variables' bindings. */
+    private record Template(LibraryScheme scheme, Function<Map<String, PirType>, Specialization> compile) {}
 
     /** One compiled specialization. */
     private record Specialized(String name, PirTerm body, PirType type) {}
 
     private final CompilationContext context;
-    private final TypeResolver resolver;
     private final LibraryMethodRegistry registry;
     private final StdlibLookup lookup;
-    private final Set<String> known;
-    private final LibraryTypeDescriptions descriptions;
     private final String contentHash;
     private final Map<String, LibraryExport> exports = new LinkedHashMap<>();
     private final Map<String, Template> templates = new LinkedHashMap<>();
     private final Map<SpecializationKey, Specialized> specializations = new HashMap<>();
     private final Map<String, String> unsupported = new LinkedHashMap<>();
-    /** {@code Class.method} names declared more than once. */
-    private final Set<String> overloaded = new LinkedHashSet<>();
     private final Map<String, LibraryType> types;
     private final Map<String, PirType> definitions;
     /**
@@ -60,191 +56,30 @@ public final class JavaLibraryProvider implements LibraryProvider {
                 CorpusRecorder.Options.of(context));
         this.lookup = lookup;
         contentHash = contentHash(sources);
-        // ADR-068 D7, D8: javac reads the units and the stubs; nothing reaches the JavaParser frontend (I8).
-        if (context.frontend() == CompilerFrontend.JAVAC) {
-            resolver = null;
-            known = Set.of();
-            descriptions = null;
-            if (sources.isEmpty()) {
-                var described = JavacGate.onJavacFrontend(() -> JavacLibraryTypes.describe(sources));
-                types = described.types();
-                definitions = described.definitions();
-                registry = LibraryMethodRegistry.forCompilation(context);
-                return;
-            }
-            var javac = JavacGate.onJavacFrontend(() -> JavacLibraryExports.of(sources, lookup, context));
-            types = javac.types();
-            definitions = Map.copyOf(javac.definitions());
-            registry = javac.registry();
-            exports.putAll(javac.exports());
-            unsupported.putAll(javac.unsupported());
-            javac.templates().forEach((symbol, scheme) -> templates.put(symbol, new Template(scheme, environment -> {
-                try {
-                    var specialized = javac.specialize(symbol, environment);
-                    return new LibraryCompiler.Specialization(specialized.body(), specialized.type(), List.of());
-                } catch (CompilerException e) {
-                    // The reference's generator collects what it rejects, and the request names those messages.
-                    if (e.diagnostics().isEmpty()) throw e;
-                    return new LibraryCompiler.Specialization(null, null, e.diagnostics());
-                }
-            })));
+        // ADR-068 D7, D8: javac reads the units and the stubs.
+        if (sources.isEmpty()) {
+            var described = JavacRuntime.call(() -> JavacLibraryTypes.describe(sources));
+            types = described.types();
+            definitions = described.definitions();
+            registry = LibraryMethodRegistry.forCompilation(context);
             return;
         }
-        // ADR-068 M1's javac gate (D8): the supplied units are roots; with none, a metadata-only task over the stubs.
-        if (sources.isEmpty()) JavacGate.metadata(options);
-        else JavacGate.check("JavaLibraryProvider", sources.stream().map(JavacFrontend.Unit::of).toList(), List.of(),
-                options);
-        var units = new ArrayList<CompilationUnit>();
-        for (var source : sources) {
-            var parsed = JavaSourceParser.parse(source);
-            if (!parsed.isSuccessful())
-                throw new IllegalArgumentException(
-                        "Invalid Java library source: " + parsed.getProblems());
-            units.add(parsed.getResult().orElseThrow());
-        }
-        var owners = new HashSet<String>();
-        for (var unit : units) for (TypeDeclaration<?> declaration : unit.findAll(TypeDeclaration.class)) {
-            String identity = declaration.getFullyQualifiedName().orElseThrow();
-            if (!owners.add(identity)) throw new IllegalArgumentException("Duplicate library type ownership: " + identity);
-        }
-        resolver = new TypeResolver();
-        var ledgerSources = LedgerSourceLoader.loadLedgerSources(getClass().getClassLoader());
-        new TypeRegistrar().registerAll(ledgerSources, resolver);
-        for (String identity : owners) if (resolver.allRegisteredFqcns().contains(identity)
-                || TypeResolver.ledgerHashFqcns().contains(identity))
-            throw new IllegalArgumentException("Library type conflicts with bundled ledger type: " + identity);
-        new TypeRegistrar().registerAll(units, resolver);
-        var allSources = new ArrayList<>(ledgerSources);
-        allSources.addAll(units);
-        descriptions = new LibraryTypeDescriptions(allSources, resolver);
-        types = descriptions.types();
-        definitions = Map.copyOf(resolver.namedDefinitions());
-        known = new LinkedHashSet<>(resolver.allRegisteredFqcns());
-        known.addAll(TypeResolver.ledgerHashFqcns());
-        if (lookup != null) known.addAll(lookup.registeredClassNames());
-        for (var cu : units)
-            for (var cls : cu.findAll(ClassOrInterfaceDeclaration.class)) {
-                String fqcn = cls.getFullyQualifiedName().orElseThrow();
-                known.add(fqcn);
-                if (cls.isInterface()) continue;
-                if (cls.getAnnotationByName("OnchainLibrary").isEmpty())
-                    throw new IllegalArgumentException(
-                            "Only @OnchainLibrary sources can be exported: " + fqcn);
-                var names = new HashSet<String>();
-                for (var method : cls.getMethods())
-                    if (method.isStatic() && !names.add(method.getNameAsString()))
-                        overloaded.add(fqcn + "." + method.getNameAsString());
-            }
-        registry = LibraryMethodRegistry.forCompilation(context);
-        new LibraryCompiler(context).compile(units, resolver, registry, lookup, known);
-        for (var cu : units) {
-            for (var cls : cu.findAll(ClassOrInterfaceDeclaration.class)) {
-                if (cls.isInterface()) continue;
-                descriptions.scope(cls);
-                String conflict = overloadConflict(cls);
-                var exported = new HashSet<String>();
-                for (var method : cls.getMethods()) {
-                    if (!method.isPublic() || !method.isStatic() || cls.isInterface()) continue;
-                    var symbol =
-                            cls.getFullyQualifiedName().orElseThrow()
-                                    + "."
-                                    + method.getNameAsString();
-                    if (conflict != null) {
-                        unsupported.put(symbol, conflict);
-                        continue;
-                    }
-                    // Identical overloads compile to one method: export it once.
-                    if (!exported.add(symbol)) continue;
-                    if (!method.getTypeParameters().isEmpty()) {
-                        describeTemplate(cls, method, symbol);
-                        continue;
-                    }
-                    var compiled = registry.lookupMethod(symbol).orElseThrow();
-                    try {
-                        var parameters = method.getParameters().stream().map(p -> descriptions.reference(p.getType())).toList();
-                        var result = descriptions.reference(method.getType());
-                        PirType signature = descriptions.representation(result);
-                        for (int i = parameters.size() - 1; i >= 0; i--)
-                            signature = new PirType.FunType(descriptions.representation(parameters.get(i)), signature);
-                        if (!signature.equals(compiled.type()))
-                            throw new IllegalArgumentException("Source description disagrees with compiled representation for " + symbol);
-                        exports.put(
-                                symbol,
-                                new LibraryExport(
-                                        symbol, method.getParameters().size(), compiled.type(),
-                                        parameters, result));
-                    } catch (IllegalArgumentException e) {
-                        unsupported.put(symbol, e.getMessage());
-                    }
-                }
-            }
-        }
-    }
-
-    /**
-     * Library methods are registered and called by {@code Class.method}. {@link LibraryCompiler}
-     * already rejects overloads that compile to different code (JULC0054, ADR-060); an export
-     * also needs one source description, so every overload of a name must have the same source
-     * signature (for example {@code long} and {@code BigInteger} parameters, both {@code Int}).
-     * Otherwise every export of the class is unsupported; other classes are unaffected.
-     *
-     * @return the reason the class cannot be exported, or null
-     */
-    private String overloadConflict(ClassOrInterfaceDeclaration cls) {
-        String fqcn = cls.getFullyQualifiedName().orElseThrow();
-        var signatures = new LinkedHashMap<String, String>();
-        for (var method : cls.getMethods()) {
-            if (!method.isStatic() || !overloaded.contains(fqcn + "." + method.getNameAsString())) continue;
-            String signature;
+        var javac = JavacRuntime.call(() -> JavacLibraryExports.of(sources, lookup, context));
+        types = javac.types();
+        definitions = Map.copyOf(javac.definitions());
+        registry = javac.registry();
+        exports.putAll(javac.exports());
+        unsupported.putAll(javac.unsupported());
+        javac.templates().forEach((symbol, scheme) -> templates.put(symbol, new Template(scheme, environment -> {
             try {
-                signature = String.join(",", method.getParameters().stream()
-                        .map(p -> descriptions.reference(p.getType()).canonical()).toList())
-                        + "->" + descriptions.reference(method.getType()).canonical()
-                        + (method.getTypeParameters().isEmpty() ? "" : "<generic>");
-            } catch (IllegalArgumentException e) {
-                signature = "unsupported:" + method.getDeclarationAsString();
+                var specialized = javac.specialize(symbol, environment);
+                return new Specialization(specialized.body(), specialized.type(), List.of());
+            } catch (CompilerException e) {
+                // The reference's generator collects what it rejects, and the request names those messages.
+                if (e.diagnostics().isEmpty()) throw e;
+                return new Specialization(null, null, e.diagnostics());
             }
-            var previous = signatures.putIfAbsent(method.getNameAsString(), signature);
-            if (previous != null && !previous.equals(signature))
-                return "Ambiguous overloaded library export " + fqcn + "." + method.getNameAsString()
-                        + ": overloads with different signatures cannot be told apart on-chain; give them distinct names";
-        }
-        return null;
-    }
-
-    /**
-     * Describe a generic method as a scheme (ADR-059, #181). Bounded type parameters,
-     * wildcards and raw containers have no supported substitution and stay unsupported.
-     */
-    private void describeTemplate(ClassOrInterfaceDeclaration cls, MethodDeclaration method, String symbol) {
-        var names = method.getTypeParameters().stream().map(p -> p.getNameAsString()).toList();
-        var bounded = method.getTypeParameters().stream().filter(p -> !p.getTypeBound().isEmpty()).findFirst();
-        if (bounded.isPresent()) {
-            unsupported.put(symbol, "Type parameter " + bounded.get() + " has a bound; generic library "
-                    + "methods support only unbounded type parameters");
-            templates.put(symbol, new Template(null, null));
-            return;
-        }
-        try {
-            descriptions.variables(Set.copyOf(names));
-            var parameters = method.getParameters().stream().map(p -> descriptions.reference(p.getType())).toList();
-            var result = descriptions.reference(method.getType());
-            var typeParameters = names.stream().map(name -> new LibraryScheme.TypeParameter(name,
-                    Set.of(LibraryScheme.Constraint.DATA_ENCODABLE))).toList();
-            String identity = symbol + "<" + String.join(",", names) + ">("
-                    + String.join(",", parameters.stream().map(LibraryType.Reference::canonical).toList())
-                    + ")" + result.canonical();
-            var scheme = new LibraryScheme(identity, symbol, typeParameters, parameters, result, context.target());
-            templates.put(symbol, new Template(scheme, environment -> new LibraryCompiler(context).compileSpecialization(
-                    cls, method, environment, resolver, registry, lookup, known)));
-            unsupported.put(symbol, "Polymorphic Java method: describe it with schemes(module) and "
-                    + "instantiate it with LibraryRequest.Instantiate (ADR-059)");
-        } catch (IllegalArgumentException e) {
-            unsupported.put(symbol, e.getMessage());
-            templates.put(symbol, new Template(null, null));
-        } finally {
-            descriptions.variables(Set.of());
-        }
+        })));
     }
 
     @Override public Map<String, LibraryType> types() { return types; }
@@ -366,7 +201,7 @@ public final class JavaLibraryProvider implements LibraryProvider {
         var cached = specializations.get(key);
         if (cached != null) return cached;
         String name = "#" + request.symbol() + "#" + key.digest();
-        LibraryCompiler.Specialization compiled;
+        Specialization compiled;
         try {
             compiled = template.compile().apply(environment);
         } catch (CompilerException e) {

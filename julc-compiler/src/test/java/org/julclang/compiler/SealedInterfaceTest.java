@@ -1,19 +1,12 @@
 package org.julclang.compiler;
 
-import org.julclang.compiler.pir.PirGenerator;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
-import org.julclang.compiler.resolve.SymbolTable;
-import org.julclang.compiler.resolve.TypeResolver;
 import org.julclang.compiler.uplc.UplcGenerator;
 import org.julclang.core.Constant;
 import org.julclang.core.Term;
 import org.julclang.vm.EvalResult;
 import org.julclang.vm.JulcVm;
-import com.github.javaparser.ParserConfiguration;
-import com.github.javaparser.StaticJavaParser;
-import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
-import com.github.javaparser.ast.body.RecordDeclaration;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -33,7 +26,6 @@ class SealedInterfaceTest {
     @BeforeAll
     static void setUp() {
         vm = CompilerTestVm.pv11();
-        StaticJavaParser.getParserConfiguration().setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
     }
 
     @Nested
