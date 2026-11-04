@@ -135,7 +135,8 @@ class O11BlsTypesTest {
                 new Bad("G1 held as byte[]", "static byte[] m(byte[] dst) { byte[] p = Builtins.bls12_381_G1_hashToGroup(dst, dst); return p; }",
                         "JULC0085", "(compiler.err.prob.found.req)"),
                 new Bad("G1 compared with ==", "static boolean m(byte[] dst) { JulcG1 p = Builtins.bls12_381_G1_hashToGroup(dst, dst); return p == p; }",
-                        "JULC0041", "G1"),
+                        // javac's D6 equality rule reaches == first, so JULC0041 stands behind JULC0086 (ADR-068 D6)
+                        "JULC0086", "JulcG1 by reference"),
                 new Bad("G1 in a Data list", "static boolean m(byte[] dst) { JulcList<JulcG1> ps = JulcList.of(Builtins.bls12_381_G1_hashToGroup(dst, dst)); return true; }",
                         "JULC0041", "G1"),
                 new Bad("G1 at the boundary", "static boolean m(JulcG1 p) { return true; }", "JULC0042", "G1"),

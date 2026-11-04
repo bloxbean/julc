@@ -352,11 +352,13 @@ final class O9ListIndexFixtures {
             """;
 
     /**
-     * 20: the composition found in review (PR #144). A list-typed callback parameter holds a
-     * raw Data element, and ordinary well-typed Java passes it into a helper's list parameter;
-     * the helper indexes twice behind conditionals. Call-site provenance refutes the parameter,
-     * so the never-indexing path keeps succeeding at every level, and an indexing path fails
-     * identically at every level (the callback parameter is Data, which no level can index).
+     * 20: the composition found in review (PR #144). A list-typed callback parameter is passed
+     * by ordinary well-typed Java into a helper's list parameter; the helper indexes twice behind
+     * conditionals. On the JavaParser frontend the callback's parameter held a raw Data element,
+     * call-site provenance refuted the helper's parameter, and an indexing path failed at every
+     * level. On javac, the default frontend since ADR-068 M5, the calling convention decodes the
+     * element by its Java type (F1042), so the parameter is a proven list: the fixture promotes,
+     * and an indexing path returns the JVM's answer at every level.
      */
     static final String CALLBACK_HELPER = IMPORTS + """
             class CallbackHelper {
@@ -376,10 +378,11 @@ final class O9ListIndexFixtures {
             """;
 
     /**
-     * 21: one proven caller is not enough. The helper is called directly with the method's own
-     * decoded list and from a callback with the callback's raw element; the second call
-     * refutes the parameter, so the helper's pair stays recursive on both paths and its own
-     * out-of-range failure keeps its text.
+     * 21: every caller must prove the parameter. The helper is called directly with the method's
+     * own decoded list and from a callback. On the JavaParser frontend the callback held a raw
+     * element, which refuted the parameter. On javac the calling convention decodes the element
+     * (ADR-068 F1042), so both calls prove it, the helper promotes, and its out-of-range failure
+     * is the documented array failure. The refuting shape stays pinned by CAST_HELPER.
      */
     static final String HELPER_CALLERS = IMPORTS + """
             class HelperCallers {
@@ -543,15 +546,16 @@ final class O9ListIndexFixtures {
                     Input.untouched("int-data-empty-loop-no-index", PlutusData.integer(5), EMPTY, i(3)),
                     Input.failsElsewhere("list-data-empty-loop-index", ints(1, 2), EMPTY, i(1)),
                     Input.failsElsewhere("int-data-loop", PlutusData.integer(5), ints(1), i(3)))),
-            new Fixture("CALLBACK_HELPER", CALLBACK_HELPER, "callbackHelper", false, 0, 2, List.of(
-                    Input.untouched("no-index", PlutusData.list(ints(10, 20)), i(0)),
+            new Fixture("CALLBACK_HELPER", CALLBACK_HELPER, "callbackHelper", true, 1, 0, List.of(
+                    Input.pays("no-index", List.of(2), PlutusData.list(ints(10, 20)), i(0)),
                     Input.untouched("no-groups", PlutusData.list(), i(1)),
-                    Input.failsElsewhere("index-data-element", PlutusData.list(ints(10, 20)), i(1)))),
-            new Fixture("HELPER_CALLERS", HELPER_CALLERS, "helperCallers", false, 0, 2, List.of(
-                    Input.untouched("direct-1", ints(5, 6), PlutusData.list(ints(1)), i(1)),
-                    Input.untouched("direct-2", ints(5, 6), PlutusData.list(ints(1), ints(2)), i(2)),
-                    Input.untouched("direct-0-no-groups", ints(5, 6), PlutusData.list(), i(0)),
-                    Input.failsElsewhere("direct-out-of-range", ints(5), PlutusData.list(ints(1)), i(2)))),
+                    Input.pays("index-decoded-element", List.of(2), PlutusData.list(ints(10, 20)), i(1)),
+                    Input.outOfRange("index-past-the-end", 1, 1, PlutusData.list(ints(10)), i(2)))),
+            new Fixture("HELPER_CALLERS", HELPER_CALLERS, "helperCallers", true, 1, 0, List.of(
+                    Input.pays("direct-1", List.of(2, 1), ints(5, 6), PlutusData.list(ints(1)), i(1)),
+                    Input.pays("direct-2", List.of(2, 1, 1), ints(5, 6), PlutusData.list(ints(1), ints(2)), i(2)),
+                    Input.pays("direct-0-no-groups", List.of(2), ints(5, 6), PlutusData.list(), i(0)),
+                    Input.outOfRange("direct-out-of-range", 1, 1, ints(5), PlutusData.list(ints(1)), i(2)))),
             new Fixture("HELPER", HELPER, "helper", true, 1, 0, List.of(
                     Input.saves("eight-1", EIGHT, EIGHT, i(1)),
                     Input.saves("eight-7", EIGHT, EIGHT, i(7)),
