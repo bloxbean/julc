@@ -127,28 +127,40 @@ var items2 = PlutusData.cast(data, JulcList.class);                 // element t
 
 ### Arithmetic
 
+Operators apply to `int` and `long`, as in Java. A `BigInteger` uses its methods (`a.add(b)`, `a.subtract(b)`,
+`a.multiply(b)`, `a.divide(b)`, `a.remainder(b)`, `a.mod(b)`), which compile to the integer builtins.
+
 | Operator | Java Example | UPLC Builtin | Notes |
 |----------|-------------|-------------|-------|
-| `+` | `a + b` | `AddInteger` | For `BigInteger`/`int`/`long` operands |
-| `+` | `s1 + s2` | `AppendString` | For `String` operands |
-| `+` | `b1 + b2` | `AppendByteString` | For `byte[]` operands |
+| `+` | `a + b` | `AddInteger` | `int`/`long`; `a.add(b)` for `BigInteger` |
+| `+` | `s1 + s2` | `AppendString` | Two `String` operands; a non-`String` operand is `JULC0090` |
 | `-` | `a - b` | `SubtractInteger` | |
 | `*` | `a * b` | `MultiplyInteger` | |
 | `/` | `a / b` | `QuotientInteger` | Truncates toward zero, matching Java |
 | `%` | `a % b` | `RemainderInteger` | |
 
-The `+` operator is type-aware: the compiler infers the operand type and dispatches to the correct builtin.
+Bytes are joined with `Builtins.appendByteString(b1, b2)`.
 
 ### Comparison
 
+`==` and `!=` compare primitives (`int`, `long`, `boolean`). Between references they are reference equality in Java,
+so the compiler rejects them (`JULC0086`), except for constant strings built from literals and `+`. Compare
+references by value:
+
+| Java Example | UPLC Builtin | Notes |
+|-------------|-------------|-------|
+| `a == b` | `EqualsInteger` | `int`/`long` |
+| `x == y` | `IfThenElse` | `boolean` |
+| `a.equals(b)` | `EqualsInteger` | `BigInteger` |
+| `s1.equals(s2)` | `EqualsString` | `String` |
+| `Builtins.equalsByteString(b1, b2)` | `EqualsByteString` | `byte[]`: `b1.equals(b2)` compares references on the JVM, so it is `JULC0087` |
+| `d1.equals(d2)` | `EqualsData` | `PlutusData`, records and sealed interfaces whose components hold no `byte[]` |
+| `a.compareTo(b) < 0` | `LessThanInteger` | `BigInteger` ordering: `compareTo(...) OP 0` |
+
+Ordering on `int` and `long`:
+
 | Operator | Java Example | UPLC Builtin | Notes |
 |----------|-------------|-------------|-------|
-| `==` | `a == b` | `EqualsInteger` | For `BigInteger`/`int`/`long` (default) |
-| `==` | `s1 == s2` | `EqualsString` | For `String` operands |
-| `==` | `b1 == b2` | `EqualsByteString` | For `byte[]` operands |
-| `==` | `d1 == d2` | `EqualsData` | For `PlutusData`, records, sealed interfaces |
-| `==` | `x == y` | `IfThenElse` | For `boolean` operands |
-| `!=` | `a != b` | negated equality | Same type dispatch as `==` |
 | `<` | `a < b` | `LessThanInteger` | |
 | `<=` | `a <= b` | `LessThanEqualsInteger` | |
 | `>` | `a > b` | `LessThanInteger` (swapped) | |
@@ -445,14 +457,16 @@ MapType variables always hold pair lists internally. `insert` and `delete` retur
 | `.equals(other)` | `boolean` | `EqualsString` |
 | `.length()` | `BigInteger` | UTF-16 code units, counted from `EncodeUtf8(s)` |
 
-### ByteString (byte[]) Instance Methods
+### ByteString (byte[]) Operations
 
-| Method | Return Type | UPLC Translation |
+A `byte[]` is a Java array, so its operations are `Builtins` calls; `byte[].equals` compares references on the JVM and is
+`JULC0087`.
+
+| Call | Return Type | UPLC Translation |
 |--------|------------|-----------------|
-| `.equals(other)` | `boolean` | `EqualsByteString` |
-| `.length()` | `BigInteger` | `LengthOfByteString` |
-| `.length` | `BigInteger` | `LengthOfByteString` (field access form) |
-| `.hash()` | `byte[]` | `UnBData` (for list iteration context) |
+| `Builtins.equalsByteString(a, b)` | `boolean` | `EqualsByteString` |
+| `Builtins.lengthOfByteString(b)` | `long` | `LengthOfByteString` |
+| `b.length` | `int` | `LengthOfByteString` (field access form) |
 
 ### Optional Instance Methods
 
@@ -464,7 +478,8 @@ MapType variables always hold pair lists internally. `insert` and `delete` retur
 
 ### PlutusData Equality
 
-Raw `PlutusData` variables support `.equals()` and `==`/`!=` operators using `EqualsData`.
+Raw `PlutusData` variables compare with `.equals()`, using `EqualsData`. `==` and `!=` between them are reference
+equality in Java and are rejected (`JULC0086`).
 
 ## Standard Library Reference
 

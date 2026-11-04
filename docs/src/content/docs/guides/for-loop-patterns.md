@@ -69,7 +69,7 @@ return total;
 ```java
 boolean found = false;
 for (var sig : txInfo.signatories()) {
-    found = found || sig == redeemer;
+    found = found || sig.equals(redeemer);
 }
 return found;
 ```
@@ -107,7 +107,7 @@ The assignment can be a standalone statement before the `if`:
 ```java
 boolean found = false;
 for (var sig : txInfo.signatories()) {
-    found = sig == redeemer;
+    found = sig.equals(redeemer);
     if (found) {
         break;
     }
@@ -145,7 +145,7 @@ When two or more pre-loop variables are assigned inside the loop, the compiler p
 boolean found = false;
 BigInteger count = BigInteger.ZERO;
 for (var sig : txInfo.signatories()) {
-    found = found || sig == redeemer;
+    found = found || sig.equals(redeemer);
     count = count.add(BigInteger.ONE);
 }
 return found;
@@ -194,7 +194,7 @@ Combines multi-accumulator tuple packing with break-aware fold generation.
 boolean found = false;
 BigInteger index = BigInteger.ZERO;
 for (var sig : txInfo.signatories()) {
-    found = sig == redeemer;
+    found = sig.equals(redeemer);
     index = index.add(BigInteger.ONE);
     if (found) {
         break;

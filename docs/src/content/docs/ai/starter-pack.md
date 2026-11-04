@@ -307,7 +307,9 @@ JuLC supports self-recursion and mutual recursion between exactly 2 helpers (via
 
 ### 6.11 `String.equals(...)` works; `==` does not
 
-For `String` and `byte[]` comparison, use `.equals(...)` (compiles to `EqualsByteString`). `==` checks reference identity which is not meaningful in UPLC.
+For `String` comparison, use `.equals(...)` (compiles to `EqualsString`). For `byte[]`, use `Builtins.equalsByteString(a, b)`
+(compiles to `EqualsByteString`): `byte[].equals` compares references on the JVM, so the compiler rejects it with
+`JULC0087`. `==` between references is reference equality in Java and is rejected with `JULC0086`.
 
 ### 6.12 `BigInteger` comparison: use `.compareTo(...)`
 
