@@ -154,18 +154,18 @@ component	float	both-reject	Unsupported primitive type: float. Supported types: 
 in-sealed	float	both-reject	Unsupported primitive type: float. Supported types: boolean, int, long /// JULC0124: Unsupported primitive type: float. Supported types: boolean, int, long
 component	double	both-reject	Unsupported primitive type: double. Supported types: boolean, int, long /// JULC0124: Unsupported primitive type: double. Supported types: boolean, int, long
 in-sealed	double	both-reject	Unsupported primitive type: double. Supported types: boolean, int, long /// JULC0124: Unsupported primitive type: double. Supported types: boolean, int, long
-component	int[]	both-reject-same	Arrays are not supported except byte[]. Use List<T> instead. Got: int[] /// Arrays are not supported except byte[]. Use List<T> instead. Got: int[]
-in-sealed	int[]	both-reject-same	Arrays are not supported except byte[]. Use List<T> instead. Got: int[] /// Arrays are not supported except byte[]. Use List<T> instead. Got: int[]
-component	long[]	both-reject-same	Arrays are not supported except byte[]. Use List<T> instead. Got: long[] /// Arrays are not supported except byte[]. Use List<T> instead. Got: long[]
-in-sealed	long[]	both-reject-same	Arrays are not supported except byte[]. Use List<T> instead. Got: long[] /// Arrays are not supported except byte[]. Use List<T> instead. Got: long[]
-component	byte[][]	both-reject-same	Arrays are not supported except byte[]. Use List<T> instead. Got: byte[][] /// Arrays are not supported except byte[]. Use List<T> instead. Got: byte[][]
-in-sealed	byte[][]	both-reject-same	Arrays are not supported except byte[]. Use List<T> instead. Got: byte[][] /// Arrays are not supported except byte[]. Use List<T> instead. Got: byte[][]
-component	boolean[]	both-reject-same	Arrays are not supported except byte[]. Use List<T> instead. Got: boolean[] /// Arrays are not supported except byte[]. Use List<T> instead. Got: boolean[]
-in-sealed	boolean[]	both-reject-same	Arrays are not supported except byte[]. Use List<T> instead. Got: boolean[] /// Arrays are not supported except byte[]. Use List<T> instead. Got: boolean[]
-component	String[]	both-reject	Arrays are not supported except byte[]. Use List<T> instead. Got: String[] /// Arrays are not supported except byte[]. Use List<T> instead. Got: java.lang.String[]
-in-sealed	String[]	both-reject	Arrays are not supported except byte[]. Use List<T> instead. Got: String[] /// Arrays are not supported except byte[]. Use List<T> instead. Got: java.lang.String[]
-component	BigInteger[]	both-reject	Arrays are not supported except byte[]. Use List<T> instead. Got: BigInteger[] /// Arrays are not supported except byte[]. Use List<T> instead. Got: java.math.BigInteger[]
-in-sealed	BigInteger[]	both-reject	Arrays are not supported except byte[]. Use List<T> instead. Got: BigInteger[] /// Arrays are not supported except byte[]. Use List<T> instead. Got: java.math.BigInteger[]
+component	int[]	both-reject	Arrays are not supported except byte[]. Use List<T> instead. Got: int[] /// JULC0014: arrays are not supported on-chain
+in-sealed	int[]	both-reject	Arrays are not supported except byte[]. Use List<T> instead. Got: int[] /// JULC0014: arrays are not supported on-chain
+component	long[]	both-reject	Arrays are not supported except byte[]. Use List<T> instead. Got: long[] /// JULC0014: arrays are not supported on-chain
+in-sealed	long[]	both-reject	Arrays are not supported except byte[]. Use List<T> instead. Got: long[] /// JULC0014: arrays are not supported on-chain
+component	byte[][]	both-reject	Arrays are not supported except byte[]. Use List<T> instead. Got: byte[][] /// JULC0014: arrays are not supported on-chain
+in-sealed	byte[][]	both-reject	Arrays are not supported except byte[]. Use List<T> instead. Got: byte[][] /// JULC0014: arrays are not supported on-chain
+component	boolean[]	both-reject	Arrays are not supported except byte[]. Use List<T> instead. Got: boolean[] /// JULC0014: arrays are not supported on-chain
+in-sealed	boolean[]	both-reject	Arrays are not supported except byte[]. Use List<T> instead. Got: boolean[] /// JULC0014: arrays are not supported on-chain
+component	String[]	both-reject	Arrays are not supported except byte[]. Use List<T> instead. Got: String[] /// JULC0014: arrays are not supported on-chain
+in-sealed	String[]	both-reject	Arrays are not supported except byte[]. Use List<T> instead. Got: String[] /// JULC0014: arrays are not supported on-chain
+component	BigInteger[]	both-reject	Arrays are not supported except byte[]. Use List<T> instead. Got: BigInteger[] /// JULC0014: arrays are not supported on-chain
+in-sealed	BigInteger[]	both-reject	Arrays are not supported except byte[]. Use List<T> instead. Got: BigInteger[] /// JULC0014: arrays are not supported on-chain
 component	Short	both-reject	Unknown type: Short. Did you mean: TxOut? /// Unknown type: Short (resolved to java.lang.Short). Did you mean: TxOut?
 in-sealed	Short	both-reject	Unknown type: Short. Did you mean: TxOut? /// Unknown type: Short (resolved to java.lang.Short). Did you mean: TxOut?
 component	Byte	both-reject	Unknown type: Byte. Did you mean: Vote? /// Unknown type: Byte (resolved to java.lang.Byte). Did you mean: Vote?
@@ -192,13 +192,13 @@ component	org.julclang.ledger.Value	equal
 in-sealed	org.julclang.ledger.Value	equal	
 component	org.julclang.ledger.Credential.PubKeyCredential	equal	
 in-sealed	org.julclang.ledger.Credential.PubKeyCredential	equal	
-decl	record R<T>(T v) {} class P {}	both-reject-same	Unknown type: T. Did you mean: Vote? /// Unknown type: T. Did you mean: Vote?
+decl	record R<T>(T v) {} class P {}	both-reject	Unknown type: T. Did you mean: Vote? /// JULC0012: Cannot resolve type: type parameter T
 decl	record R<T>(BigInteger v) {} class P {}	equal	
-decl	record R<T extends BigInteger>(T v) {} class P {}	both-reject-same	Unknown type: T. Did you mean: Vote? /// Unknown type: T. Did you mean: Vote?
-decl	record Box<T>(T v) {} record H(Box<BigInteger> b) {} class P {}	both-reject-same	Unknown type: T. Did you mean: Vote? /// Unknown type: T. Did you mean: Vote?
+decl	record R<T extends BigInteger>(T v) {} class P {}	both-reject	Unknown type: T. Did you mean: Vote? /// JULC0012: Cannot resolve type: type parameter T
+decl	record Box<T>(T v) {} record H(Box<BigInteger> b) {} class P {}	both-reject	Unknown type: T. Did you mean: Vote? /// JULC0012: Cannot resolve type: type parameter T
 decl	sealed interface S<T> { record A(BigInteger v) implements S<BigInteger> {} record B() implements S<BigInteger> {} } class P {}	equal	
-decl	sealed interface S<T> { record A<T>(T v) implements S<T> {} record B<T>() implements S<T> {} } class P {}	both-reject-same	Unknown type: T. Did you mean: Vote? /// Unknown type: T. Did you mean: Vote?
-decl	sealed interface S<T> { record A<T>(T v) implements S<T> {} } record H(S<BigInteger> s) {} class P {}	both-reject-same	Unknown type: T. Did you mean: Vote? /// Unknown type: T. Did you mean: Vote?
+decl	sealed interface S<T> { record A<T>(T v) implements S<T> {} record B<T>() implements S<T> {} } class P {}	both-reject	Unknown type: T. Did you mean: Vote? /// JULC0012: Cannot resolve type: type parameter T
+decl	sealed interface S<T> { record A<T>(T v) implements S<T> {} } record H(S<BigInteger> s) {} class P {}	both-reject	Unknown type: T. Did you mean: Vote? /// JULC0012: Cannot resolve type: type parameter T
 decl	sealed interface S permits A, B {} record A() implements S {} record B() implements S {} class P {}	equal	
 decl	sealed interface S permits S.A, B {record A() implements S {}} record B() implements S {} class P {}	equal	
 decl	sealed interface S permits S.B, S.A { record A() implements S {} record B(BigInteger v) implements S {} } class P {}	equal	
@@ -219,7 +219,7 @@ decl	record R(BigInteger a, BigInteger b) { R(BigInteger b, BigInteger a) { this
 decl	record R(BigInteger a) { static BigInteger z = BigInteger.ZERO; } class P {}	equal	
 decl	record R(BigInteger a) { record N(R r) {} } class P {}	equal	
 decl	record R(BigInteger a) implements Comparable<R> { public int compareTo(R o) { return 0; } } class P {}	equal	
-decl	record R(BigInteger... xs) {} class P {}	JAVAC-REJECTS	Arrays are not supported except byte[]. Use List<T> instead. Got: java.math.BigInteger[]
+decl	record R(BigInteger... xs) {} class P {}	JAVAC-REJECTS	JULC0014: arrays are not supported on-chain
 decl	record R(byte... xs) {} class P {}	both-reject	Unsupported primitive type: byte. Supported types: boolean, int, long /// JULC0124: Unsupported primitive type: byte. Supported types: boolean, int, long
 decl	record R(final BigInteger a) {} class P {}	JAVAC-REJECTS	JULC0085: record components cannot have modifiers (compiler.err.record.cant.declare.field.modifiers)
 decl	record R(@Deprecated BigInteger a) {} class P {}	equal	
@@ -265,13 +265,13 @@ decl	class P { static void m() { sealed interface S permits A {} record A() impl
 decl	class Other { interface S {} } sealed interface S { record A() implements Other.S {} record B() implements S {} } class P {}	JAVAC-REJECTS	JULC0092: Sealed interface 'S' has no permits clause, and its permitted subclasses (B) are not exactly the records nested in it
 decl	class P { record R(BigInteger x, byte[] a) { R(byte[] y, byte... z) { this(BigInteger.ONE, z); } } }	equal	
 decl	class P { sealed interface S permits A, B {} record A() implements S {} record B() implements S {} static <T> boolean u(T x) { record S(byte[] b) {} return true; } }	DIFFERENT	record P$1S: null / RecordType[name=S, fields=[Field[name=b, type=ByteStringType[]]]]
-pkg	record R<T>(T v) {} class P {}	both-reject-same	Unknown type: T. Did you mean: Vote? /// Unknown type: T. Did you mean: Vote?
+pkg	record R<T>(T v) {} class P {}	both-reject	Unknown type: T. Did you mean: Vote? /// JULC0012: Cannot resolve type: type parameter T
 pkg	record R<T>(BigInteger v) {} class P {}	equal	
-pkg	record R<T extends BigInteger>(T v) {} class P {}	both-reject-same	Unknown type: T. Did you mean: Vote? /// Unknown type: T. Did you mean: Vote?
-pkg	record Box<T>(T v) {} record H(Box<BigInteger> b) {} class P {}	both-reject-same	Unknown type: T. Did you mean: Vote? /// Unknown type: T. Did you mean: Vote?
+pkg	record R<T extends BigInteger>(T v) {} class P {}	both-reject	Unknown type: T. Did you mean: Vote? /// JULC0012: Cannot resolve type: type parameter T
+pkg	record Box<T>(T v) {} record H(Box<BigInteger> b) {} class P {}	both-reject	Unknown type: T. Did you mean: Vote? /// JULC0012: Cannot resolve type: type parameter T
 pkg	sealed interface S<T> { record A(BigInteger v) implements S<BigInteger> {} record B() implements S<BigInteger> {} } class P {}	equal	
-pkg	sealed interface S<T> { record A<T>(T v) implements S<T> {} record B<T>() implements S<T> {} } class P {}	both-reject-same	Unknown type: T. Did you mean: Vote? /// Unknown type: T. Did you mean: Vote?
-pkg	sealed interface S<T> { record A<T>(T v) implements S<T> {} } record H(S<BigInteger> s) {} class P {}	both-reject-same	Unknown type: T. Did you mean: Vote? /// Unknown type: T. Did you mean: Vote?
+pkg	sealed interface S<T> { record A<T>(T v) implements S<T> {} record B<T>() implements S<T> {} } class P {}	both-reject	Unknown type: T. Did you mean: Vote? /// JULC0012: Cannot resolve type: type parameter T
+pkg	sealed interface S<T> { record A<T>(T v) implements S<T> {} } record H(S<BigInteger> s) {} class P {}	both-reject	Unknown type: T. Did you mean: Vote? /// JULC0012: Cannot resolve type: type parameter T
 pkg	sealed interface S permits A, B {} record A() implements S {} record B() implements S {} class P {}	equal	
 pkg	sealed interface S permits S.A, B {record A() implements S {}} record B() implements S {} class P {}	equal	
 pkg	sealed interface S permits S.B, S.A { record A() implements S {} record B(BigInteger v) implements S {} } class P {}	equal	
@@ -292,7 +292,7 @@ pkg	record R(BigInteger a, BigInteger b) { R(BigInteger b, BigInteger a) { this.
 pkg	record R(BigInteger a) { static BigInteger z = BigInteger.ZERO; } class P {}	equal	
 pkg	record R(BigInteger a) { record N(R r) {} } class P {}	equal	
 pkg	record R(BigInteger a) implements Comparable<R> { public int compareTo(R o) { return 0; } } class P {}	equal	
-pkg	record R(BigInteger... xs) {} class P {}	JAVAC-REJECTS	Arrays are not supported except byte[]. Use List<T> instead. Got: java.math.BigInteger[]
+pkg	record R(BigInteger... xs) {} class P {}	JAVAC-REJECTS	JULC0014: arrays are not supported on-chain
 pkg	record R(byte... xs) {} class P {}	both-reject	Unsupported primitive type: byte. Supported types: boolean, int, long /// JULC0124: Unsupported primitive type: byte. Supported types: boolean, int, long
 pkg	record R(final BigInteger a) {} class P {}	JAVAC-REJECTS	JULC0085: record components cannot have modifiers (compiler.err.record.cant.declare.field.modifiers)
 pkg	record R(@Deprecated BigInteger a) {} class P {}	equal	

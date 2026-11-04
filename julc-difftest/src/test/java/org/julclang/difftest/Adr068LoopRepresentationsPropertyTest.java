@@ -241,7 +241,22 @@ class Adr068LoopRepresentationsPropertyTest {
                 """.formatted(start, sibling, loop.formatted(body), end);
         var one = new PlutusData.IntData(BigInteger.ONE);
         var tags = new TagTable(List.of(new TagTable.Entry("Case$S$A", "Case$S", 0), new TagTable.Entry("Case$S$B", "Case$S", 1)));
-        assertAgrees(new DiffCase("data", source, "Case", "m", List.of(one, new PlutusData.IntData(BigInteger.TWO), integers(1, 2), Adr068LoopRepresentationsTest.MAP,
-                new PlutusData.ListData(List.of(one)), new PlutusData.ConstrData(0, List.of(one)), integers(1, 2), new PlutusData.ConstrData(0, List.of())), tags, null));
+        var diffCase = new DiffCase("data", source, "Case", "m", List.of(one, new PlutusData.IntData(BigInteger.TWO), integers(1, 2), Adr068LoopRepresentationsTest.MAP,
+                new PlutusData.ListData(List.of(one)), new PlutusData.ConstrData(0, List.of(one)), integers(1, 2), new PlutusData.ConstrData(0, List.of())), tags, null);
+        // A conditional or switch of a list view and the PlutusData c is a choice of two types: JULC0012 since M5a review 2, F1,
+        // as one arm can be a builtin's list and the other Data. A list view the lowering types PlutusData (nil(), G, h) keeps one type.
+        boolean choice = update.contains("?") || update.contains("switch");
+        boolean view = !(list.equals("nil()") || list.equals("G"));
+        if (choice && view) {
+            assertMixedChoiceRejected(diffCase);
+        } else {
+            assertAgrees(diffCase);
+        }
+    }
+
+    private static void assertMixedChoiceRejected(DiffCase diffCase) {
+        var report = RUNNER.run(diffCase);
+        assertTrue(report.results().values().stream().allMatch(result -> result.uplc() instanceof Observation.Rejected rejected
+                && rejected.code().equals("JULC0012")), () -> diffCase.source() + "\n" + report.describe());
     }
 }

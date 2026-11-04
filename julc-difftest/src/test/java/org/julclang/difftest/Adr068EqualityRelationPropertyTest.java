@@ -194,8 +194,12 @@ public class Adr068EqualityRelationPropertyTest {
 
     @Property(tries = 20_000, seed = "68", generation = net.jqwik.api.GenerationMode.RANDOMIZED)
     void theVerdictHoldsOnRealValues(@ForAll("indices") int left, @ForAll("indices") int right) {
-        var verdict = RELATION.between(TYPES.get(left), TYPES.get(right)).kind();
-        COUNTS.merge("pairs " + verdict, 1, Integer::sum);
+        var result = RELATION.between(TYPES.get(left), TYPES.get(right));
+        var verdict = result.kind();
+        // Containers of unrelated arguments are undecided only because two empty ones are equal (M5a review 2, F3).
+        boolean empties = RELATION.onlyEmptiesEqual(result);
+        String name = empties ? "EMPTIES" : verdict.name();
+        COUNTS.merge("pairs " + name, 1, Integer::sum);
         assertEquals(verdict, RELATION.between(TYPES.get(right), TYPES.get(left)).kind(), "the relation has no direction");
         boolean arrays = ARRAYS.check(TYPES.get(left)).rejected();
         for (Object x : MODELS.get(left).values()) {
@@ -203,9 +207,9 @@ public class Adr068EqualityRelationPropertyTest {
                 boolean java = x.equals(y);
                 boolean script = data(x).equals(data(y));
                 String pair = MODELS.get(left).type() + " " + x + " / " + MODELS.get(right).type() + " " + y;
-                COUNTS.merge("values java=" + java + " script=" + script + " " + verdict, 1, Integer::sum);
+                COUNTS.merge("values java=" + java + " script=" + script + " " + name, 1, Integer::sum);
                 if (verdict == EqualityRelation.Kind.RELATED && !arrays) assertEquals(java, script, pair);
-                if (verdict == EqualityRelation.Kind.UNRELATED && java) assertTrue(holdsNothing(x) && holdsNothing(y), pair);
+                if ((verdict == EqualityRelation.Kind.UNRELATED || empties) && java) assertTrue(holdsNothing(x) && holdsNothing(y), pair);
             }
         }
     }

@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -367,7 +368,7 @@ class Adr068LoopRepresentationsTest {
             "public static long m(PlutusData c, JulcList<BigInteger> xs, long l) { long n = 0; for (var u : xs) { c = Builtins.tailList(c); n = n + 1; } return n; }",
             "public static long m(PlutusData d, JulcList<BigInteger> xs, long l) { PlutusData c = d; long n = 0; for (var u : xs) { c = Builtins.mkNilData(); n = n + 1; } return n; }",
             "public static long m(PlutusData d, JulcList<BigInteger> xs, long l) { PlutusData c = d; long n = 0; while (n < l) { c = (Builtins.mkNilData()); n = n + 1; } return n; }",
-            "public static long m(PlutusData d, JulcList<BigInteger> xs, long l) { PlutusData c = d; long n = 0; while (n < l) { c = n > 100 ? Builtins.mkNilData() : c; n = n + 1; } return n; }",
+            "static PlutusData nil() { return Builtins.mkNilData(); } public static long m(PlutusData d, JulcList<BigInteger> xs, long l) { PlutusData c = d; long n = 0; while (n < l) { c = n > 100 ? nil() : c; n = n + 1; } return n; }",
             "static PlutusData nil() { return Builtins.mkNilData(); } public static long m(PlutusData d, JulcList<BigInteger> xs, long l) { PlutusData c = d; long n = 0; while (n < l) { if (n > 100) { c = nil(); } n = n + 1; } return n; }",
             "public static long m(PlutusData d, JulcList<BigInteger> xs, long l) { PlutusData c = xs.isEmpty() ? d : d; long n = 0; for (var u : xs) { c = Builtins.mkNilData(); n = n + 1; } return n; }",
     })
@@ -453,10 +454,32 @@ class Adr068LoopRepresentationsTest {
         assertTrue(runs.all(Verdict.Kind.AGREE), runs::describe);
         var fails = BOTH.run(new DiffCase("data", cursors(members), "Case", "m", List.of(LIST, integer(2))));
         assertTrue(fails.results().values().stream().allMatch(result -> result.verdict().kind() == Verdict.Kind.MISMATCH), fails::describe);
-        var data = BOTH.run(new DiffCase("data", cursors(walkerOf("""
-                public static long m(PlutusData d, long l, S e) { PlutusData c = Builtins.iData(BigInteger.ONE); long n = 0; while (n < l) { c = switch (e) { case S.A q -> Builtins.tailList(Builtins.unListData(d)); case S.B q -> c; }; n = n + 1; } return n; }
-                """)), "Case", "m", List.of(LIST, integer(1), constr(1)), TAGS2, null));
-        assertTrue(data.all(Verdict.Kind.AGREE), data::describe);
+    }
+
+    /**
+     * A conditional or a {@code switch} of a list view and the Data variable is a choice of two types, one of which can be a
+     * builtin's list and the other Data: {@code JULC0012} on {@code JAVAC} since the second review of M5a (F1), where the JVM
+     * returns. The reference agrees on these inputs.
+     */
+    @Test
+    void aChoiceOfAListViewAndDataIsRejected() {
+        var cases = List.of(
+                new DiffCase("data", cursors(walkerOf("""
+                        public static long m(PlutusData d, long l, S e) { PlutusData c = Builtins.iData(BigInteger.ONE); long n = 0; while (n < l) { c = switch (e) { case S.A q -> Builtins.tailList(Builtins.unListData(d)); case S.B q -> c; }; n = n + 1; } return n; }
+                        """)), "Case", "m", List.of(LIST, integer(1), constr(1)), TAGS2, null),
+                new DiffCase("data", cursors("public static long m(PlutusData d, JulcList<BigInteger> xs, long l) { PlutusData c = d; long n = 0; while (n < l) { c = n > 100 ? Builtins.mkNilData() : c; n = n + 1; } return n; }"),
+                        "Case", "m", List.of(ONE, EMPTY, integer(0))));
+        for (var diffCase : cases) {
+            var report = BOTH.run(diffCase);
+            assertInstanceOf(Observation.Value.class, report.jvm(), report::describe);
+            report.results().forEach((config, result) -> {
+                if (config.frontend() == CompilerFrontend.JAVAC) {
+                    assertEquals("JULC0012", assertInstanceOf(Observation.Rejected.class, result.uplc(), report::describe).code(), report::describe);
+                } else {
+                    assertEquals(Verdict.Kind.AGREE, result.verdict().kind(), report::describe);
+                }
+            });
+        }
     }
 
     /** Where the reference reads Data, a list and what is not one are Data, so a list start fails on both. */
