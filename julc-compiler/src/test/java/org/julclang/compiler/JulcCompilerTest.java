@@ -8,11 +8,6 @@ class JulcCompilerTest {
 
     private final JulcCompiler compiler = new JulcCompiler();
 
-    /** The JavaParser frontend, which compiles every library unit it is given (ADR-068 D8); selected explicitly from M5. */
-    private static JulcCompiler reference() {
-        return new JulcCompiler(null, new CompilerOptions());
-    }
-
     @Test
     void compilesSimpleValidator() {
         var source = """

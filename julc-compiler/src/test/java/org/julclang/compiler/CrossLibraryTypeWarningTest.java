@@ -14,8 +14,8 @@ import static org.junit.jupiter.api.Assertions.*;
 class CrossLibraryTypeWarningTest {
 
     /**
-     * ADR-068 M1b: the warning reports an argument JuLC encodes implicitly (bytes or an integer passed where a
-     * library takes {@code PlutusData}), which javac rejects; tested on the JavaParser frontend with the gate off.
+     * ADR-068 M1b: the warning reported an argument JuLC encoded implicitly (bytes or an integer passed where a
+     * library takes {@code PlutusData}), which javac rejects.
      */
     private static JulcCompiler dialectCompiler() {
         return new JulcCompiler(null, new CompilerOptions());

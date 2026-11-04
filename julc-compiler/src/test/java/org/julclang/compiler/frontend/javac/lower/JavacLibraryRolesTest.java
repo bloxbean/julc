@@ -11,9 +11,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * ADR-068 D8 (r11) on the default frontend, javac, from M5: a library unit the program references is read and compiled, so a
- * validator annotation on it is rejected, as the JavaParser frontend rejects it on every unit; a unit nothing references is
- * not read. {@code JulcCompilerTest} and {@code MultiFileCompilerTest} hold the JavaParser frontend's side.
+ * ADR-068 D8 (r11): a library unit the program references is read and compiled, so a validator annotation on it is rejected;
+ * a unit nothing references is not read.
  */
 class JavacLibraryRolesTest {
 

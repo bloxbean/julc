@@ -11,8 +11,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The playground's check reports the subset's diagnostics on either reading (ADR-068 M6): JavaParser's frontend's
- * validator, or the javac frontend's subset check, which a compilation applies, with the same code at the same place.
+ * The playground's check reports the subset's diagnostics (ADR-068 M6): javac's subset check, which a compilation applies,
+ * with the same code at the same place.
  */
 class JavaMetadataExtractorReadersTest {
 

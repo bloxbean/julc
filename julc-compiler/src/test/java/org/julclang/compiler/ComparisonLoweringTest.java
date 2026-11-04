@@ -15,7 +15,7 @@ import java.util.regex.Pattern;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * ADR-068 D6 (D4 exception 1) on the JavaParser frontend: the lowering of {@code a.compareTo(b) OP 0} and of the
+ * ADR-068 D6 (D4 exception 1): the lowering of {@code a.compareTo(b) OP 0} and of the
  * relational operators. ComparisonOrderDiffTest (julc-difftest) checks the semantics against the JVM; this test
  * pins the minimal binding, the forms outside the rule, the dialect, and dispatch decisions taken before the rule.
  */

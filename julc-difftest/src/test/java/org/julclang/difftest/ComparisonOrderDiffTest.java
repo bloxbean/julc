@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * ADR-068 D6 and D4 exception 1, on the JavaParser frontend at every optimization level against the JVM: the
+ * ADR-068 D6 and D4 exception 1, at every optimization level against the JVM: the
  * {@code compareTo} rule ({@code a.compareTo(b) OP 0} and {@code 0 OP a.compareTo(b)} evaluate {@code a}, then
  * {@code b}, once each, #146) and left-to-right relational operators (#295). Every expected value, trace and failure
  * is the JVM's.

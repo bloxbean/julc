@@ -17,8 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Comparisons between values Java keeps distinct, on {@code frontend=JAVAC} at every level, with the JVM as the oracle. Each
  * rejected row states the JVM's answer, which the run confirms, so a row is a comparison a script must not answer. Each kept
- * row must truly evaluate and agree: a rejection is no pass there. The JavaParser frontend stays as frozen with the gate off
- * (D4), so these are the required tests of {@code 068-followups.md}'s "Closed by M5" list.
+ * row must truly evaluate and agree: a rejection is no pass there. These are the required tests of {@code 068-followups.md}'s "Closed by M5" list.
  */
 class Adr068EqualityHarnessTest {
 

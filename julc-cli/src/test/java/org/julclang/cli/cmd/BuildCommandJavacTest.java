@@ -19,8 +19,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * ADR-068 D8, M1: the CLI's host adapter. {@code julc build} keeps its pool (the class loader's bundled sources and
- * the project's library sources); with {@code julc.javacGate=enforce} a javac error fails the build. The gate runs before
- * the JavaParser frontend, selected explicitly ({@code --frontend javaparser}) from ADR-068 M5.
+ * the project's library sources); a javac error fails the build.
  */
 class BuildCommandJavacTest {
 

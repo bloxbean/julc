@@ -36,8 +36,7 @@ class VerboseCompilationTest {
     }
 
     /**
-     * ADR-068 M5: the stages above are the JavaParser frontend's log, selected explicitly there. The javac frontend, the
-     * default, logs the target, the version, the optimization level and the result's size.
+     * The compiler logs the target, the version, the optimization level and the result's size.
      */
     @Test
     void testVerboseOnTheDefaultFrontend() {

@@ -22,10 +22,6 @@ class MultiFileCompilerTest {
 
     private final JulcCompiler compiler = new JulcCompiler();
 
-    /** The JavaParser frontend, which compiles every library unit it is given (ADR-068 D8); selected explicitly from M5. */
-    private static JulcCompiler reference() {
-        return new JulcCompiler(null, new CompilerOptions());
-    }
     private final JulcVm vm = CompilerTestVm.pv11();
 
     /** ADR-068 M1b: a dialect construct with no Java form, compiled with the javac gate off (M1b's report). */

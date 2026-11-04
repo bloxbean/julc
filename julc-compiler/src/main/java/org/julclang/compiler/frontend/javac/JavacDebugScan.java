@@ -28,7 +28,7 @@ import java.util.Set;
 
 /**
  * The scan side of debug metadata on javac's trees (ADR-068 I7): the declarations of a unit, their scopes and their ids, as
- * {@code DebugMetadataCollector}'s scan names them on the JavaParser frontend. A declaration is keyed by its javac
+ * {@code DebugMetadataCollector}'s scan named them on the JavaParser frontend. A declaration is keyed by its javac
  * {@link Element}, which the lowering's {@code Terms} hands back with the binder it builds for it, so the association is by
  * identity and nothing is looked up by name afterwards (ADR-060).
  * <p>

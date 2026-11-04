@@ -38,8 +38,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Programs the JavaParser frontend reads by a name, on {@code frontend=JAVAC}, where a name is what javac bound: each one
- * stops at {@code JULC0084}, takes a rule both frontends share, or evaluates to the JVM's answer. It never compiles to
+ * Programs the JavaParser frontend read by a name, where a name is what javac bound: each one takes one of the subset's
+ * rules, or evaluates to the JVM's answer. It never compiles to
  * another answer. The JVM is the oracle: the sources run through javac here and a real class is called, so no expected
  * value in this file is written by hand.
  * <p>

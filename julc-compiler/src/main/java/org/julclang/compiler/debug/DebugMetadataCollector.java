@@ -110,7 +110,7 @@ public final class DebugMetadataCollector {
 
     /**
      * What a scan declares: scopes and bindings, each keyed by the identity of the frontend's own object for it. Ids and
-     * kinds follow the JavaParser scan's scheme, so both frontends name a declaration alike.
+     * kinds follow the scheme the debug metadata has always had, so a declaration keeps its name.
      */
     public final class Declarations {
         private Declarations() {

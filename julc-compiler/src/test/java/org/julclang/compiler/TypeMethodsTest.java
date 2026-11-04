@@ -19,14 +19,6 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class TypeMethodsTest {
 
-    /**
-     * The JavaParser frontend, which lowers {@code ==} on references to value equality (ADR-062 T3, T4). From ADR-068 M5 it
-     * is selected explicitly; it is removed at M6.
-     */
-    private static JulcCompiler javaParser() {
-        return new JulcCompiler(null, new CompilerOptions());
-    }
-
     /** On javac, the default from ADR-068 M5, {@code ==} between references is reference equality: {@code JULC0086} (D6). */
     private static void assertReferenceEqualityRejected(String source) {
         var e = assertThrows(CompilerException.class, () -> new JulcCompiler().compile(source));
@@ -36,7 +28,7 @@ class TypeMethodsTest {
     /**
      * ADR-068 M1b: a JuLC dialect method with no Java equivalent ({@code byte[].length()}, {@code +} on byte arrays,
      * {@code .hash()} on {@code byte[]}, {@code .value()} on {@code byte[]} or {@code BigInteger}): javac rejects
-     * the source, so the frozen JavaParser frontend's behaviour is compiled with the gate off (M1b's report).
+     * the source, so these stop there (M1b's report); what is here compiles as Java.
      */
     static JulcCompiler dialectCompiler() {
         return dialectCompiler(null);

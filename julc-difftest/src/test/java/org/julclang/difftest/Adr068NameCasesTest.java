@@ -15,8 +15,7 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * ADR-068 M2's exit: the saved #284 and #286 cases (ADR-062 T33) under the javac frontend. Each pin's divergence is a
  * name bound to the wrong declaration, so the check is the binding: the user's record is registered with the user's
- * components, and every {@code new} and accessor binds to it. The gate rejects these on the JavaParser frontend, as pinned
- * ({@code RegressionCasesTest}; frozen until M5, D4). What each evaluates to on the javac frontend is
+ * components, and every {@code new} and accessor binds to it. What each evaluates to on the javac frontend is
  * {@code Adr068SavedCasesOnJavacTest}'s.
  */
 class Adr068NameCasesTest {

@@ -723,7 +723,7 @@ public final class DiagnosticCodes {
             CompilerDiagnostic.Level.ERROR,
             "PIR",
             "Failed to parse {0} source: {1}",
-            "Check the file with a Java IDE or `javac` \u2014 the JuLC compiler relies on JavaParser to produce a clean AST.");
+            "Check the file with a Java IDE or `javac` \u2014 the JuLC compiler reads the source with javac.");
 
     public static final DiagnosticInfo STATEMENT_UNSUPPORTED = new DiagnosticInfo(
             "JULC0110",

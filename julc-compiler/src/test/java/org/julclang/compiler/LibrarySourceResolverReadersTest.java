@@ -7,7 +7,7 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** {@link LibrarySourceResolver} reads a source alike on JavaParser's and javac's parser (ADR-068 M6), but for one fix. */
+/** What {@link LibrarySourceResolver} reads off a source with javac's parser (ADR-068 M6). */
 class LibrarySourceResolverReadersTest {
 
     private static final String SOURCE = """

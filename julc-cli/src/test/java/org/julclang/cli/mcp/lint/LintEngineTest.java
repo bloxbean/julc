@@ -10,8 +10,7 @@ class LintEngineTest {
 
     private final LintEngine engine = new LintEngine();
 
-    /** The findings the tests assert on; {@link LintEngineOnJavacTest} reads with javac and requires the same ones. */
-    List<LintFinding> lint(String source) {
+    private List<LintFinding> lint(String source) {
         return engine.lint(source);
     }
 

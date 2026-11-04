@@ -643,4 +643,28 @@ class JulcEvalTest {
             assertFalse(proxy.isAboveThreshold(10));
         }
     }
+
+    /** A hash read from a parameter holds its bytes on-chain, as on the JVM: a parameter is decoded where it is declared (ADR-068). */
+    @Test
+    void aHashReadFromAParameterIsItsBytes() {
+        String source = """
+                import org.julclang.ledger.PubKeyHash;
+                class C { static byte[] m(PubKeyHash p) { return p.hash(); } }
+                """;
+        var bytes = new PlutusData.BytesData(new byte[]{1, 2});
+        assertEquals(bytes, JulcEval.forSource(source).call("m", bytes).asData());
+    }
+
+    /** {@code fromPlutusData} on a hash checks and decodes Data, and what follows meets what Java gives it. */
+    @Test
+    void aHashFromDataIsItsBytes() {
+        String source = """
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.PubKeyHash;
+                import org.julclang.stdlib.Builtins;
+                class C { static long m(PlutusData d) { return Builtins.lengthOfByteString(PubKeyHash.fromPlutusData(d).hash()); } }
+                """;
+        var bytes = new PlutusData.BytesData(new byte[]{1, 2});
+        assertEquals(BigInteger.TWO, JulcEval.forSource(source).call("m", bytes).asInteger());
+    }
 }

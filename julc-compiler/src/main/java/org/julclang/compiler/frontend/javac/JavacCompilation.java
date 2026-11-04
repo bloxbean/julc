@@ -378,7 +378,7 @@ public final class JavacCompilation {
         }
     }
 
-    /** 1b. The subset's rules, first as on the JavaParser frontend, whose compilations get them from the gate. */
+    /** 1b. The subset's rules, before anything is lowered. */
     private void subsetRules(SubsetRules.Compiled compiled) {
         SubsetRules.checkOnJavacFrontend(facts, program.roots(), program.libraries(), compiled);
         SubsetRules.warnings(facts, program.roots()).forEach(context::report);

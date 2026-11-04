@@ -211,8 +211,8 @@ class StdlibCompileEvalTest {
     /**
      * ADR-068 M1b: a JuLC dialect construct that has no Java equivalent with today's API (a for-each over a
      * {@code JulcMap}, which is not {@code Iterable} in Java; a {@code ListsLib} higher-order function whose lambda
-     * JuLC types from a typed list). javac rejects it, so the frozen JavaParser frontend's behaviour is compiled with
-     * the javac gate off until the API changes; ADR-068 M1b's report lists each use.
+     * JuLC types from a typed list). javac rejects it; ADR-068 M1b's report lists each use, and
+     * what is here compiles as Java.
      */
     static Program compileDialectValidator(String source) {
         var compiler = new JulcCompiler(STDLIB, new CompilerOptions());

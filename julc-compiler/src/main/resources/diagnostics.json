@@ -341,7 +341,7 @@
       "severity": "error",
       "template": "Failed to parse {0} source: {1}",
       "summary": "The Java source could not be parsed. Usually a syntax error in the source file.",
-      "fix": "Check the file with a Java IDE or `javac` — the JuLC compiler relies on JavaParser to produce a clean AST."
+      "fix": "Check the file with a Java IDE or `javac` — the JuLC compiler reads the source with javac."
     },
     {
       "code": "JULC0029",

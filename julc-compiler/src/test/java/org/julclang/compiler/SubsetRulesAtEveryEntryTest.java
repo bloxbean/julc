@@ -21,10 +21,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
- * The subset's rules run at the gate, so every way into the compiler on the JavaParser frontend (selected explicitly from
- * ADR-068 M5), at the default gate mode, meets them. A rule that is broken in a validator, in a method's class and in a
- * library unit is rejected at each entry. {@link #aValidatorEntryMeetsTheRulesOnJavac} holds the same entries on javac's
- * frontend, the default, where the rules run from {@code SubsetRules.check} and the lowering.
+ * The subset's rules run from {@code SubsetRules.check} and the lowering, so every way into the compiler meets them. A rule
+ * that is broken in a validator, in a method's class and in a library unit is rejected at each entry.
  */
 class SubsetRulesAtEveryEntryTest {
 
@@ -304,9 +302,7 @@ class SubsetRulesAtEveryEntryTest {
     }
 
     /**
-     * The javac twin (M5 review F9): each validator entry on the default frontend meets the rules that hold on both
-     * frontends, and {@code JULC0127} for a sum with no layout. The name rules ({@code JULC0100}, the gate-only
-     * {@code JULC0101}) describe the JavaParser frontend and have no place here (D15).
+     * M5 review F9: each validator entry meets the rules, and {@code JULC0127} for a sum with no layout.
      */
     @ParameterizedTest(name = "{0}")
     @MethodSource("validatorEntries")

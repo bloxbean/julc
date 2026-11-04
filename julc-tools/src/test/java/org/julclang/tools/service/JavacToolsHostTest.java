@@ -108,8 +108,7 @@ class JavacToolsHostTest {
     @Test
     void theToolsMeetTheCastAndNameRules() {
         var tools = new ToolsService(ToolsService.compilerFor(classpath), classpath, JulcVm::create);
-        // These hosts compile on javac, the default from ADR-068 M5, and have no frontend option: the gate's name rules
-        // (JULC0100, the gate-only JULC0101) are the JavaParser frontend's (D15). javac binds a record named Boolean to
+        // javac binds a record named Boolean to
         // the record, and a record's static method is ADR-067 D9's JULC0080.
         for (String[] rule : List.of(
                 new String[]{"JULC0098", VALIDATOR.replace("Rates.rate().add(Fees.fee()).signum() > 0", "PlutusData.cast(ctx.txInfo().fee(), Boolean.class)")},
@@ -123,8 +122,7 @@ class JavacToolsHostTest {
     }
 
     /**
-     * The review's F9: the {@code record Boolean} shape that is {@code JULC0100} on the JavaParser frontend's gate compiles on
-     * javac, which binds the name to the record, and nothing reads it.
+     * The review's F9: the {@code record Boolean} shape compiles: javac binds the name to the record, and nothing reads it.
      */
     @Test
     void aRecordNamedLikeAJavaTypeCompilesOnJavac() {
