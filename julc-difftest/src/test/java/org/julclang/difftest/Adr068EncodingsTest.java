@@ -46,6 +46,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * With {@code -Padr068.freeze=true} it writes the reference from the JavaParser frontend (the I1 reference): each
  * type's Data comes from a program that frontend compiled and the VM evaluated, so it is not computed by the code
  * under test. Otherwise it reads the frozen files in {@code adr/evidence/068/} and compares.
+ * <p>
+ * Every difference must be listed in {@code m2-accepted-differences.tsv}: an encoding or a blueprint by its layout, and a
+ * conflict (the encoder met a sample the registry cannot hold) by its case key, kind {@code conflict}, with its reason.
  */
 @Tag("adr068-types")
 class Adr068EncodingsTest {
@@ -117,6 +120,7 @@ class Adr068EncodingsTest {
         conflicts.forEach((key, detail) -> differences.add("conflict\t" + key + "\t" + detail));
         var accepted = new TreeMap<>(Adr068Types.acceptedDifferences(REPO, "encoding"));
         accepted.putAll(Adr068Types.acceptedDifferences(REPO, "blueprint"));
+        accepted.putAll(Adr068Types.acceptedDifferences(REPO, "conflict"));
         Files.write(OUT.resolve("encodings-m2-differences.tsv"), differences);
         var summary = new ArrayList<String>();
         totals.forEach((kind, n) -> summary.add(kind + "\t" + n));
@@ -126,8 +130,9 @@ class Adr068EncodingsTest {
         assertTrue(totals.getOrDefault("encoding.equal", 0) > 0, "no encoding was compared");
         assertTrue(totals.getOrDefault("blueprint.equal", 0) > 0, "no blueprint was compared");
         var found = new TreeSet<String>();
-        differences.forEach(line -> found.add(line.split("\t", 2)[1].replaceFirst("\t[^\t]+\t[0-9a-f]{32}$", "")
-                .replace('\t', '|')));
+        // A conflict is listed by its case key alone: its text is the encoder's message.
+        differences.forEach(line -> found.add(line.startsWith("conflict\t") ? line.split("\t", 3)[1]
+                : line.split("\t", 2)[1].replaceFirst("\t[^\t]+\t[0-9a-f]{32}$", "").replace('\t', '|')));
         assertEquals(accepted.keySet(), found, "an unclassified difference (D13), or a stale entry");
     }
 
