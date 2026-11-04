@@ -191,4 +191,14 @@ class ProjectScannerTest {
                 () -> ProjectScanner.resolveScriptType("@MintingPolicy class X {}"));
         assertTrue(ex.getMessage().contains("Use @MintingValidator instead"));
     }
+
+    /** JRL support was removed (ADR-068 M5): a .jrl file is counted, so julc build can warn, and not compiled. */
+    @Test
+    void jrlFilesAreCountedAndIgnored(@TempDir Path tempDir) throws Exception {
+        Files.writeString(tempDir.resolve("Old.jrl"), "contract Old { }");
+        var result = ProjectScanner.scan(tempDir);
+        assertEquals(1, result.ignoredFiles());
+        assertTrue(result.validators().isEmpty());
+        assertTrue(result.libraries().isEmpty());
+    }
 }

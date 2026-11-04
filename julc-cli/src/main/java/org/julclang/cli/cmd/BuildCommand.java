@@ -26,6 +26,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.Callable;
 
@@ -86,7 +87,16 @@ public class BuildCommand implements Callable<Integer> {
                     + " (optimization: " + options.getOptimizationLevel().profileId() + ") ...");
 
             // Scan sources (single walk)
-            var scanResult = ProjectScanner.scan(ProjectLayout.srcDir(root));
+            ProjectScanner.ScanResult scanResult;
+            try {
+                scanResult = ProjectScanner.scan(ProjectLayout.srcDir(root));
+            } catch (ProjectScanner.UnreadableCandidateException e) {
+                return reportUnreadable(e, options);
+            }
+            if (scanResult.ignoredFiles() > 0) {
+                System.err.println(AnsiColors.yellow("JRL support was removed; " + scanResult.ignoredFiles()
+                        + " .jrl file(s) in src/ are ignored. Write the contract in Java."));
+            }
             Path plutusDir = ProjectLayout.plutusDir(root);
             Files.createDirectories(plutusDir);
             if (scanResult.validators().isEmpty()) {
@@ -205,6 +215,22 @@ public class BuildCommand implements Callable<Integer> {
             System.err.println(AnsiColors.red("Build error: " + e.getMessage()));
             return 1;
         }
+    }
+
+    /**
+     * A validator candidate JuLC could not read: javac's diagnostic (JULC0085) with its position, as a compilation gives
+     * it, and exit 1. Should javac read the file after all, the reader's own problem is the error.
+     */
+    private int reportUnreadable(ProjectScanner.UnreadableCandidateException e, CompilerOptions options) {
+        System.err.println(AnsiColors.red("Cannot read " + e.file()));
+        var diagnostics = new JulcCompiler(StdlibRegistry.defaultRegistry(), options).subsetDiagnostics(e.source(), List.of());
+        if (diagnostics.stream().anyMatch(d -> d.isError())) {
+            System.err.println(DiagnosticFormatter.formatAll(diagnostics));
+        } else {
+            System.err.println("  " + e.getMessage());
+        }
+        System.out.println(AnsiColors.red("Build failed: 1 error(s)"));
+        return 1;
     }
 
     private void writeCompiledOutput(String name, CompileResult result, Path plutusDir)
