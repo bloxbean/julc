@@ -51,6 +51,9 @@ public interface CorpusRecorder {
      * @param frontend            the Java frontend that compiled it (ADR-068 M5). Not part of the case's key: a case is
      *                            its inputs, which the I1 tool compiles on both frontends; it is recorded beside the case
      *                            as a {@code frontend-<NAME>} marker, so a later gate can tell which frontend a test used
+     *                            <p>
+     *                            Construct this through {@link #of}: the components are test-recording infrastructure, and
+     *                            their number changed at M5.
      */
     record Options(String targetProfileId, String costProfile, boolean sourceMap, List<String> disabledRules,
                    OptimizationLevel optimizationLevel, CompilerFrontend frontend) {

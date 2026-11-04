@@ -151,6 +151,13 @@ class FrontendOptionTest {
                 ValidatorTest.compileValidatorByName(sample.getName(), root, CompilerFrontend.JAVAPARSER).program()));
         assertArrayEquals(reference, UplcFlatEncoder.encodeProgram(
                 ValidatorTest.compileValidatorByName(sample.getName(), root, CompilerFrontend.JAVAC).program()));
+        var contract = new ContractTest() {
+            byte[] bytes(CompilerFrontend frontend) {
+                return UplcFlatEncoder.encodeProgram(compileValidator(sample, root, frontend).program());
+            }
+        };
+        assertArrayEquals(reference, contract.bytes(CompilerFrontend.JAVAPARSER));
+        assertArrayEquals(reference, contract.bytes(CompilerFrontend.JAVAC));
     }
 
     @Test

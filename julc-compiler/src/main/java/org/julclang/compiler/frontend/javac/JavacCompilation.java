@@ -458,7 +458,7 @@ public final class JavacCompilation {
 
         // 12b. What lowering warned of
         lowering.drainWarnings().forEach(context::report);
-        // 12c. No sum the program declares holds a variant with no layout, wherever it is read (JULC0127, M5's H3)
+        // 12c. No sum holds a variant with no layout, wherever it is declared in a read unit, used or not (JULC0127, M5's H3)
         RecordDeclarations.requirePlainVariants(facts, readUnits());
 
         // 13-22. Everything from here on takes PIR and resolved types (F846).

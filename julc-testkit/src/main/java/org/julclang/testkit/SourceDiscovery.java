@@ -76,6 +76,7 @@ public final class SourceDiscovery {
 
     /**
      * {@link #compile(String, Path)} with custom compiler options, such as the frontend (ADR-068 D4).
+     * This sets the jar library sources it finds on {@code options}, the caller's object.
      *
      * @param fqcn       the fully-qualified class name (e.g., "com.example.MyValidator")
      * @param sourceRoot the root of the source tree
@@ -134,6 +135,7 @@ public final class SourceDiscovery {
     /**
      * Compile a validator class with auto-discovered library dependencies and custom compiler options.
      * This is the primary way to enable source maps for class-based compilation.
+     * This sets the jar library sources it finds on {@code options}, the caller's object.
      *
      * @param validatorClass the validator class to compile
      * @param sourceRoot     the root of the source tree
@@ -245,7 +247,7 @@ public final class SourceDiscovery {
 
     /**
      * {@link #compileMethod(Class, Path, String)} with {@code options}: on the javac frontend the whole pool, which it reads
-     * from (ADR-068 D8).
+     * from (ADR-068 D8). This sets the jar library sources it finds on {@code options}, the caller's object.
      */
     public static CompileResult compileMethod(Class<?> sourceClass, Path sourceRoot, String methodName, CompilerOptions options) {
         Path sourceFile = sourceFileFor(sourceClass, sourceRoot);

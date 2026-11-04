@@ -94,13 +94,32 @@ Each of these compiled on the JavaParser frontend to a script that disagreed wit
 
 The ADR-068 ledger (`adr/evidence/068/lowering-accepted-differences.tsv`) gives each difference its class and test.
 
-### The narrowing cast costs a little
+### The narrowing cast costs only where it can change the value
 
-`(int) x` of a non-constant `long` now computes Java's value, with three builtins at each such cast. Where the value is
-always in range, that is pure cost: in the stdlib's `MerklePatriciaForestry`, whose `nibble` narrows, the script is 26
-bytes larger, and each read costs about 1.05M CPU and 2.4k memory more. Programs that narrow change their bytes and their
-hash. The alternative, keeping the old erasure, would have been a silent difference from Java; rejecting `(int)` of a
-non-constant `long` is the other option the maintainers may take later.
+`(int) x` of a non-constant `long` computes Java's value, with three builtins at the cast: about 527k CPU, 1.2k memory and
+107 lovelace each time it runs, and about 26 bytes in the script. Where the compiler can show the value is already in
+`int`'s range, the cast costs nothing: it has no builtin, and the script is the one the JavaParser frontend gives. The
+compiler shows it for:
+
+- an integer constant, `Builtins.indexByteString` and `ByteStringLib.at` (0 to 255);
+- `x % k` and `a.mod(k)` by a constant `k` from 1 to 2<sup>31</sup>, and a value already narrowed;
+- any of these read through a local, or returned by a method that is not recursive.
+
+Anything else keeps the builtins: a parameter, a length, arithmetic, a choice, a loop's result, or a recursive method. A program
+with such a cast has different bytes and a different hash than on the JavaParser frontend, where the cast was erased and the
+value could differ from Java's. `MerklePatriciaForestry`, whose `nibble` writes `(int) ByteStringLib.at(...)`, keeps its bytes.
+
+### A ledger type's `fromPlutusData` pays for its check
+
+`TxCert.fromPlutusData(d)`, and the same call on the other ledger types, now checks the exact shape of `d` on-chain, as it does on the
+JVM. It used to read `d` as it stood, and so accepted Data the JVM refuses (ADR-068 D6, r15). The check costs +87 to +967 bytes in
+the script, depending on the type, and up to about 28M CPU per call. A program that does not call it pays nothing: none of
+the 43 external example validators does, and their bytes do not change.
+
+- **Use it** where Data comes from outside the script's typed values and a wrong shape must fail the transaction.
+- **Call it once** and keep the result. Do not call it inside a loop or on every path of a helper.
+- **Skip it** where you already hold the value in its type. `PlutusData.cast(d, T.class)` is a view that checks nothing and costs
+  nothing, so a wrong shape is not refused there: it fails or misreads later, where the value is read.
 
 ### Migrating `byte[].equals` (`JULC0087`)
 

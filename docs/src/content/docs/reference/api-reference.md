@@ -455,7 +455,7 @@ MapType variables always hold pair lists internally. `insert` and `delete` retur
 | Method | Return Type | UPLC Translation |
 |--------|------------|-----------------|
 | `.equals(other)` | `boolean` | `EqualsString` |
-| `.length()` | `BigInteger` | UTF-16 code units, counted from `EncodeUtf8(s)` |
+| `.length()` | `int` | UTF-16 code units, counted from `EncodeUtf8(s)` |
 
 ### ByteString (byte[]) Operations
 

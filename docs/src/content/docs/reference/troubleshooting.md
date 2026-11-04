@@ -1609,6 +1609,48 @@ strings built from literals and `+` alone keep their meaning.
 
 **Fix:** Provide a concrete overload-free method for Java callers.
 
+### `JULC0123` `Static call <call> names its class by a qualified name; on-chain code calls a static method through its class's simple name`
+
+**Cause:** On the javac frontend (the default from ADR-068 M5): JuLC resolves a static call through the simple name of its class, as an import or the enclosing class declares it, so a call through a package-qualified class name, such as `java.math.BigInteger.valueOf(1)`, is not resolved. The JavaParser frontend (`frontend=javaparser`, until M6) reports it uncoded, as an undefined name, or as `JULC0062` for `JulcMap.of`. A nested class's qualified name, `Outer.Inner.f(a)`, is `JULC0011`.
+
+**Fix:** Import the class and call the method through its simple name, for example `import java.math.BigInteger;` and `BigInteger.valueOf(1)`.
+
+### `JULC0124` `Unsupported primitive type: <type>. Supported types: boolean, int, long`
+
+**Cause:** On the javac frontend (the default from ADR-068 M5): `byte`, `short`, `char`, `float` and `double` have no on-chain representation, as a variable's, a component's or a cast's type. The one exception is a cast of an integer literal to `byte`, `short` or `char`, perhaps negated, which is its Java value. The JavaParser frontend (`frontend=javaparser`, until M6) reports the same words uncoded. A `char` literal elsewhere is `JULC0125`.
+
+**Fix:** Use `int` or `long` for a number, `BigInteger` for an unbounded integer, `boolean` for a flag, and `String` or `byte[]` for text and bytes.
+
+### `JULC0125` `Unsupported expression: <expression>`
+
+**Cause:** On the javac frontend (the default from ADR-068 M5): an expression form JuLC does not compile on-chain, such as a class literal, a text block, a `char` literal or a function that is not a lambda written at the call. The JavaParser frontend (`frontend=javaparser`, until M6) reports the same family uncoded, in these words, or as an undefined name.
+
+**Fix:** Write the value with a supported form: a string literal for a text block, a lambda at the call for a function, and no class literal outside `PlutusData.cast`.
+
+### `JULC0126` `<pattern> tests a value of type <type>, which is not <interface> or a variant of it; on-chain the test reads a constructor tag, which another type can share`
+
+**Cause:** On the javac frontend (the default from ADR-068 M5): an `instanceof` pattern on a variant reads the value's constructor tag. That answers Java's question only when the value's static type is the variant's sealed interface or the variant itself: a value of another type, through a widening cast to `Object` for one, can carry the same tag. The JavaParser frontend (`frontend=javaparser`, until M6) reads the tag.
+
+**Fix:** Test a value of the sealed interface's type, or `switch` over it.
+
+### `JULC0127` `<variant> is a variant of <interface> that is not a plain record; a variant is a record, not a class or a @NewType, so that it has one constructor tag and its fields`
+
+**Cause:** On the javac frontend (the default from ADR-068 M5): JuLC encodes a sealed interface's value as a constructor whose tag is the variant's place among the permitted records, and whose fields are the record's components. A final class or a `@NewType` has neither. It is reported at a `new`, an `instanceof` or a `case` of such a variant, and otherwise at the variant's declaration wherever its sealed interface is declared in a unit the compilation reads, **whether or not the program uses the sum**: such a sum has no layout, so a value of it would be dropped wherever the sum is read. The JavaParser frontend (`frontend=javaparser`, until M6) reads it as a record of no or one field.
+
+**Fix:** Make the variant a record that is not a `@NewType`.
+
+### `JULC0128` `<operation>: <reason>`
+
+**Cause:** On the javac frontend (the default from ADR-068 M5): the value's on-chain representation is not the one this operation takes, and no conversion keeps Java's value: Data where a builtin takes bytes, a native list where a component holds Data, a ledger type that holds a map, whose Data repeats a key the JVM's map holds once. The JavaParser frontend (`frontend=javaparser`, until M6) reads the representation as it finds it, and fails or misreads.
+
+**Fix:** Convert explicitly: `Builtins.unBData` for bytes, `Builtins.listData` or `Builtins.mapData` for a list or a map, or read the map through the stdlib's `ValuesLib` and `MapLib`.
+
+### `JULC0129` `Cannot construct non-record type: <type>`
+
+**Cause:** On the javac frontend (the default from ADR-068 M5): a `new` of a class that is not a record, a tuple, a sealed variant or a supported API type. On-chain a value is a record's components, and a class's constructor and fields have no on-chain form. The JavaParser frontend (`frontend=javaparser`, until M6) reports it uncoded.
+
+**Fix:** Only record types can be constructed on-chain. Declare the type as a record.
+
 ### Codes the javac frontend gives the reference's uncoded words
 
 On the javac frontend, the default from ADR-068 M5, these rejections carry a code, with the JavaParser frontend's words and position: `JULC0001` (a method
