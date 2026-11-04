@@ -317,7 +317,7 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
         } catch (CompilerException e) {
             processingFailed = true;
             processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
-                    "Plutus compilation error: " + e.getMessage(), element);
+                    "Plutus compilation error: " + e.describe(), element);
         } catch (IOException e) {
             processingFailed = true;
             processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,

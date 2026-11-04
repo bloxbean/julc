@@ -4,7 +4,10 @@ import org.julclang.blueprint.BlueprintConfig;
 import org.julclang.blueprint.BlueprintFileWriter;
 import org.julclang.blueprint.BlueprintGenerator;
 import org.julclang.clientlib.JulcScriptAdapter;
+import org.julclang.compiler.CompileResult;
+import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerOptions;
+import org.julclang.compiler.schema.ContractCompileResult;
 import org.julclang.compiler.CompilerTargetRegistry;
 import org.julclang.compiler.JavaSourceIntrospector;
 import org.julclang.compiler.JulcCompiler;
@@ -155,12 +158,19 @@ public abstract class CompileJulcTask extends DefaultTask {
             String validatorSource = Files.readString(validatorFile.file().toPath());
 
             // Compile with multi-file support
-            var contractResult = blueprintEnabled
-                    ? compiler.compileContract(validatorSource, librarySources)
-                    : null;
-            var result = blueprintEnabled
-                    ? contractResult.compileResult()
-                    : compiler.compile(validatorSource, librarySources);
+            ContractCompileResult contractResult;
+            CompileResult result;
+            try {
+                contractResult = blueprintEnabled
+                        ? compiler.compileContract(validatorSource, librarySources)
+                        : null;
+                result = blueprintEnabled
+                        ? contractResult.compileResult()
+                        : compiler.compile(validatorSource, librarySources);
+            } catch (CompilerException e) {
+                // Each diagnostic with its code, position and fix (ADR-068 M5: javac's rejections carry one diagnostic).
+                throw new GradleException("Compilation failed for " + validatorFile.file().getName() + ": " + e.describe(), e);
+            }
             if (result.hasErrors()) {
                 throw new GradleException("Compilation failed for " + validatorFile.file().getName()
                         + ": " + result.diagnostics());
