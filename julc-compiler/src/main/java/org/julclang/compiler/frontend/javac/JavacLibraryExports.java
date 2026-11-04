@@ -9,6 +9,7 @@ import org.julclang.compiler.backend.LibraryScheme;
 import org.julclang.compiler.backend.LibraryType;
 import org.julclang.compiler.backend.TypeReferences;
 import org.julclang.compiler.frontend.javac.lower.Lowering;
+import org.julclang.compiler.frontend.javac.subset.RecordDeclarations;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.pir.StdlibLookup;
@@ -18,6 +19,7 @@ import javax.lang.model.element.Element;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.Modifier;
 import javax.lang.model.element.TypeElement;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -99,6 +101,10 @@ public final class JavacLibraryExports {
             }
         }
         for (var method : libraries.lower()) registry.register(method.className(), method.methodName(), method.type(), method.body());
+        // No exported sum holds a variant with no layout (JULC0127, M5's H3): its scheme would drop the variant's value.
+        var read = new ArrayList<>(program.roots());
+        read.addAll(program.libraries());
+        RecordDeclarations.requirePlainVariants(facts, read);
         for (var unit : libraries.units()) {
             for (var type : libraries.classes(unit)) describeClass(facts, discovery, types, described, type);
         }

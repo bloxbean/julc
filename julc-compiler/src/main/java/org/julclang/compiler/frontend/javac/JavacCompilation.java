@@ -18,6 +18,7 @@ import org.julclang.compiler.codegen.ValidatorAssembly;
 import org.julclang.compiler.debug.DebugMetadataCollector;
 import org.julclang.compiler.error.CompilerDiagnostic;
 import org.julclang.compiler.frontend.javac.lower.BindingCheck;
+import org.julclang.compiler.frontend.javac.subset.RecordDeclarations;
 import org.julclang.compiler.frontend.javac.lower.Lowering;
 import org.julclang.compiler.frontend.javac.lower.Scope;
 import org.julclang.compiler.frontend.javac.subset.SubsetScan;
@@ -335,6 +336,13 @@ public final class JavacCompilation {
         });
     }
 
+    /** The units javac read for this compilation: the roots, then the libraries (D8). */
+    private List<CompilationUnitTree> readUnits() {
+        var units = new ArrayList<CompilationUnitTree>(program.roots());
+        units.addAll(program.libraries());
+        return units;
+    }
+
     /** What the compilation lowers of the root {@code unit}: {@code type}, and the unit's classes if it is a library too. */
     private Set<Tree> lowered(CompilationUnitTree unit, ClassTree type) {
         var lowered = discovery.lowered(type);
@@ -450,6 +458,8 @@ public final class JavacCompilation {
 
         // 12b. What lowering warned of
         lowering.drainWarnings().forEach(context::report);
+        // 12c. No sum the program declares holds a variant with no layout, wherever it is read (JULC0127, M5's H3)
+        RecordDeclarations.requirePlainVariants(facts, readUnits());
 
         // 13-22. Everything from here on takes PIR and resolved types (F846).
         var validator = new ValidatorAssembly.Validator(purpose, autoDispatch, entries, List.copyOf(helpers.values()),
@@ -577,6 +587,7 @@ public final class JavacCompilation {
         }
 
         lowering.drainWarnings().forEach(context::report);
+        RecordDeclarations.requirePlainVariants(facts, readUnits());
 
         // 11-17. Everything from here on takes PIR and resolved types (F846).
         return ValidatorAssembly.method(new ValidatorAssembly.MethodProgram(parts.binder(target), parts.methodType(target),

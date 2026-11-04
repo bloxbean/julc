@@ -10,6 +10,7 @@ import com.sun.source.util.TreeScanner;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.error.DiagnosticCodes;
 import org.julclang.compiler.frontend.javac.JavacFacts;
+import org.julclang.compiler.frontend.javac.JavacNames;
 
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
@@ -75,6 +76,53 @@ public final class RecordDeclarations {
     public static CompilerException twoSealedParents(JavacFacts facts, Tree where, TypeElement record, List<TypeElement> parents) {
         return facts.rejection(DiagnosticCodes.RECORD_MULTIPLE_SEALED_PARENTS, where, record.getSimpleName(),
                 parents.get(0).getSimpleName(), parents.get(1).getSimpleName());
+    }
+
+    /**
+     * {@code JULC0127} for every sealed interface declared in {@code units}, at any depth, one of whose permitted classes is
+     * not a plain record: a class, or a {@code @NewType} record. Both registries hold such a variant as a constructor with
+     * no fields, so its value is dropped wherever the sum's layout is read: a parameter, a datum's boundary check and its
+     * contract schema, a record component, a library's exports (ADR-068 M5, the integration review's H3). A {@code new}, an
+     * {@code instanceof} or a {@code case} of the variant stops at {@link #notPlainRecord} while the program is lowered;
+     * this runs after the lowering, so it reaches only what those did not, and a program that reaches it compiled before.
+     * The rejection points at the variant's declaration where it is in {@code units}, else at the interface's.
+     *
+     * @throws CompilerException at the first such interface, in source order
+     */
+    public static void requirePlainVariants(JavacFacts facts, List<CompilationUnitTree> units) {
+        for (var unit : units) {
+            new TreeScanner<Void, Void>() {
+                @Override
+                public Void visitClass(ClassTree tree, Void unused) {
+                    if (facts.element(tree) instanceof TypeElement type && type.getKind() == ElementKind.INTERFACE
+                            && type.getModifiers().contains(Modifier.SEALED)) {
+                        for (TypeElement variant : facts.permitted(type)) {
+                            if (variant.getKind() == ElementKind.RECORD && !facts.hasAnnotation(variant, JavacNames.NEW_TYPE)) {
+                                continue;
+                            }
+                            Tree where = declaration(tree, variant, facts);
+                            throw notPlainRecord(facts, where, variant, type);
+                        }
+                    }
+                    return super.visitClass(tree, unused);
+                }
+            }.scan(unit, null);
+        }
+    }
+
+    /** The declaration of {@code variant} in the unit javac read it from, else {@code within}, its interface's. */
+    private static Tree declaration(ClassTree within, TypeElement variant, JavacFacts facts) {
+        var found = new Tree[] {within};
+        var unit = facts.unitOf(variant);
+        if (unit == null) return within;
+        new TreeScanner<Void, Void>() {
+            @Override
+            public Void visitClass(ClassTree tree, Void unused) {
+                if (found[0] == within && variant.equals(facts.element(tree))) found[0] = tree;
+                return super.visitClass(tree, unused);
+            }
+        }.scan(unit, null);
+        return found[0];
     }
 
     /**
