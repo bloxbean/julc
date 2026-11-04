@@ -1,6 +1,5 @@
 package org.julclang.cli.check;
 
-import org.julclang.compiler.frontend.javac.SourceReader;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -41,33 +40,6 @@ class TestDiscoveryTest {
         assertEquals("test_one", tests.get(0).methodName());
         assertEquals("test_two", tests.get(1).methodName());
         assertEquals("MyTest", tests.get(0).className());
-    }
-
-    @Test
-    void discoverSkipsSourcesThatOnlyMentionTestAndJuLCCannotRead(@TempDir Path tempDir) throws IOException {
-        // ADR-062 T24: the Javadoc mention makes it a candidate, and JuLC's strict reading rejects the unpaired
-        // surrogate, but read as javac reads it the source has no Test method, so it is skipped.
-        Files.writeString(tempDir.resolve("Mentions.java"), """
-                import java.util.regex.Pattern;
-
-                /** Not a @Test source. */
-                public class Mentions {
-                    static final Pattern HIGH = Pattern.compile("[\\uD800-\\uDBFF]");
-                }
-                """);
-        assertEquals(0, discover(tempDir).size());
-
-        // With a Test method, JavaParser's strict diagnostic stands (javac's reading finds the test:
-        // TestDiscoveryOnJavacTest).
-        Files.writeString(tempDir.resolve("Mentions.java"), """
-                public class Mentions {
-                    @Test
-                    public static boolean t() { return "\\uD800".isEmpty(); }
-                }
-                """);
-        var error = assertThrows(IllegalArgumentException.class,
-                () -> TestDiscovery.discover(tempDir, SourceReader.JAVAPARSER));
-        assertTrue(error.getMessage().contains("Could not parse @Test candidate"), error.getMessage());
     }
 
     @Test

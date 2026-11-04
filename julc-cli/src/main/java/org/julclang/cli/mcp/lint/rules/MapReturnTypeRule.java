@@ -2,13 +2,10 @@ package org.julclang.cli.mcp.lint.rules;
 
 import org.julclang.cli.mcp.lint.LintFinding;
 import org.julclang.cli.mcp.lint.LintRule;
-import org.julclang.compiler.frontend.javac.SourceReader;
 import org.julclang.cli.mcp.lint.LintTrees;
 import org.julclang.compiler.frontend.javac.JavacSyntax;
 import com.sun.source.util.TreePath;
 import com.sun.source.tree.MethodInvocationTree;
-import com.github.javaparser.ast.CompilationUnit;
-import com.github.javaparser.ast.expr.MethodCallExpr;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -39,37 +36,6 @@ public final class MapReturnTypeRule implements LintRule {
     @Override
     public String description() {
         return "list.map(...).head()/get() returns Data — wrap with Builtins.unIData/unBData if you need a primitive";
-    }
-
-    @Override
-    public List<LintFinding> check(CompilationUnit cu) {
-        var findings = new ArrayList<LintFinding>();
-        cu.findAll(MethodCallExpr.class).forEach(outer -> {
-            if (!ACCESSORS.contains(outer.getNameAsString())) return;
-            var scope = outer.getScope().orElse(null);
-            if (!(scope instanceof MethodCallExpr inner)) return;
-            if (!"map".equals(inner.getNameAsString())) return;
-            int line = outer.getBegin().map(p -> p.line).orElse(0);
-            int col = outer.getBegin().map(p -> p.column).orElse(0);
-            findings.add(new LintFinding(
-                    id(),
-                    null,
-                    "info",
-                    "`.map(...)." + outer.getNameAsString() + "(...)` — `map` always returns " +
-                            "`ListType(DataType)`, so this accessor produces raw Data, not the " +
-                            "lambda's apparent result type.",
-                    line, col,
-                    "If you need an integer: `Builtins.unIData(<expr>)`. " +
-                            "If you need bytes: `Builtins.unBData(<expr>)`. " +
-                            "If you need Data, leave as-is."
-            ));
-        });
-        return findings;
-    }
-
-    @Override
-    public boolean supports(SourceReader reader) {
-        return true;
     }
 
     @Override

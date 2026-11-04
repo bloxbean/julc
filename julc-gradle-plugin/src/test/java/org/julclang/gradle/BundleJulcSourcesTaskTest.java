@@ -116,35 +116,6 @@ class BundleJulcSourcesTaskTest {
                 Files.readAllLines(outputDir.resolve("META-INF/plutus-sources/index.txt")));
     }
 
-    @Test
-    void bundleFailsOnACandidateJuLCCannotRead(@TempDir Path tempDir) throws Exception {
-        Path sourceDir = tempDir.resolve("src/main/java");
-        Path pkg = sourceDir.resolve("com/example");
-        Files.createDirectories(pkg);
-        Files.writeString(pkg.resolve("Bad.java"), """
-                package com.example;
-
-                @OnchainLibrary
-                public final class Bad {
-                    static String s = "\\uD800";
-                }
-                """);
-
-        // JavaParser's strict reading (ADR-068 M6a, difference 1), selected explicitly: javac's reader, the default from M5,
-        // reads the literal, and the compilation rejects it (JULC0093) instead.
-        String before = System.getProperty("julc.tools.reader");
-        System.setProperty("julc.tools.reader", "JAVAPARSER");
-        try {
-            var task = bundleTask(tempDir, sourceDir, tempDir.resolve("build/resources/main"));
-            var error = assertThrows(GradleException.class, task::bundle);
-            assertTrue(error.getMessage().contains("Could not parse @OnchainLibrary candidate"), error.getMessage());
-            assertTrue(error.getMessage().contains("unpaired surrogate U+D800"), error.getMessage());
-        } finally {
-            if (before == null) System.clearProperty("julc.tools.reader");
-            else System.setProperty("julc.tools.reader", before);
-        }
-    }
-
     private static BundleJulcSourcesTask bundleTask(Path projectDir, Path sourceDir, Path outputDir) {
         Project project = ProjectBuilder.builder().withProjectDir(projectDir.toFile()).build();
         BundleJulcSourcesTask task = project.getTasks().create("bundleJulcSources", BundleJulcSourcesTask.class);

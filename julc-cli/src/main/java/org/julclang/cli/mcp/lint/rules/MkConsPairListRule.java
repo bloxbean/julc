@@ -2,14 +2,10 @@ package org.julclang.cli.mcp.lint.rules;
 
 import org.julclang.cli.mcp.lint.LintFinding;
 import org.julclang.cli.mcp.lint.LintRule;
-import org.julclang.compiler.frontend.javac.SourceReader;
 import org.julclang.cli.mcp.lint.LintTrees;
 import org.julclang.compiler.frontend.javac.JavacSyntax;
 import com.sun.source.util.TreePath;
 import com.sun.source.tree.MethodInvocationTree;
-import com.github.javaparser.ast.CompilationUnit;
-import com.github.javaparser.ast.body.MethodDeclaration;
-import com.github.javaparser.ast.expr.MethodCallExpr;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -39,44 +35,6 @@ public final class MkConsPairListRule implements LintRule {
     @Override
     public String description() {
         return "Pair-list seeded with mkNilData() — Scalus VM requires mkNilPairData() for pair-typed lists";
-    }
-
-    @Override
-    public List<LintFinding> check(CompilationUnit cu) {
-        var findings = new ArrayList<LintFinding>();
-        cu.findAll(MethodDeclaration.class).forEach(method -> {
-            MethodCallExpr nilCall = null;
-            boolean usesPairOps = false;
-            for (var call : method.findAll(MethodCallExpr.class)) {
-                String name = call.getNameAsString();
-                var scope = call.getScope().orElse(null);
-                if (scope == null) continue;
-                if (!"Builtins".equals(scope.toString())) continue;
-                if ("mkNilData".equals(name) && nilCall == null) {
-                    nilCall = call;
-                } else if (PAIR_OPS.contains(name)) {
-                    usesPairOps = true;
-                }
-            }
-            if (nilCall == null || !usesPairOps) return;
-            int line = nilCall.getBegin().map(p -> p.line).orElse(0);
-            int col = nilCall.getBegin().map(p -> p.column).orElse(0);
-            findings.add(LintFinding.warning(
-                    id(),
-                    null,
-                    "`Builtins.mkNilData()` seed in a method that also uses pair operations. " +
-                            "Pair lists must use `Builtins.mkNilPairData()` — the Scalus VM rejects " +
-                            "pair elements consed onto a non-pair nil.",
-                    line, col,
-                    "Replace `Builtins.mkNilData()` with `Builtins.mkNilPairData()`."
-            ));
-        });
-        return findings;
-    }
-
-    @Override
-    public boolean supports(SourceReader reader) {
-        return true;
     }
 
     @Override

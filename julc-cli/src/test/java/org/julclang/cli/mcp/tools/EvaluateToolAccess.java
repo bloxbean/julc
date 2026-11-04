@@ -1,6 +1,5 @@
 package org.julclang.cli.mcp.tools;
 
-import org.julclang.compiler.frontend.javac.SourceReader;
 
 import org.julclang.cli.mcp.lint.LintEngine;
 
@@ -10,7 +9,7 @@ public final class EvaluateToolAccess {
     private EvaluateToolAccess() {
     }
 
-    public static int arity(String source, String methodName, SourceReader reader) {
-        return EvaluateTool.expectedMethodArity(source, methodName, reader);
+    public static int arity(String source, String methodName) {
+        return EvaluateTool.expectedMethodArity(source, methodName);
     }
 }

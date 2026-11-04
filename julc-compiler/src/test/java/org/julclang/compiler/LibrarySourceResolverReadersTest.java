@@ -1,6 +1,5 @@
 package org.julclang.compiler;
 
-import org.julclang.compiler.frontend.javac.SourceReader;
 import org.junit.jupiter.api.Test;
 
 import java.util.Optional;
@@ -34,15 +33,12 @@ class LibrarySourceResolverReadersTest {
             """;
 
     @Test
-    void bothReadersListTheSameReferencesInTheSameOrder() {
-        assertEquals(LibrarySourceResolver.describeSourceContext(SOURCE, SourceReader.JAVAPARSER),
-                LibrarySourceResolver.describeSourceContext(SOURCE, SourceReader.JAVAC));
-        assertEquals(Optional.of("Kind"), LibrarySourceResolver.extractTopLevelTypeName(SOURCE, SourceReader.JAVAC));
+    void theTopLevelNameIsTheFirstTypes() {
+        assertEquals(Optional.of("Kind"), LibrarySourceResolver.extractTopLevelTypeName(SOURCE));
     }
 
     /**
-     * JavaParser attaches an end-of-line comment to a node near it and prints the comment into the qualifier's text, so
-     * the reference is lost and the library may not be offered; javac's reading keeps every one.
+     * A comment next to a qualifier is no part of it: javac's reading keeps every reference, so the library is offered.
      */
     @Test
     void aCommentNearAQualifierDoesNotHideTheReference() {
@@ -56,10 +52,7 @@ class LibrarySourceResolverReadersTest {
                     }
                 }
                 """;
-        long onJavaParser = count(LibrarySourceResolver.describeSourceContext(source, SourceReader.JAVAPARSER));
-        long onJavac = count(LibrarySourceResolver.describeSourceContext(source, SourceReader.JAVAC));
-        assertEquals(3, onJavac);
-        assertTrue(onJavaParser < onJavac, onJavaParser + " of " + onJavac);
+        assertEquals(3, count(LibrarySourceResolver.describeSourceContext(source)));
     }
 
     private static long count(String context) {

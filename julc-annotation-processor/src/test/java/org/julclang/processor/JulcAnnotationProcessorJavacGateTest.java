@@ -1,6 +1,5 @@
 package org.julclang.processor;
 
-import org.julclang.compiler.frontend.javac.JavacGate;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -29,8 +28,6 @@ class JulcAnnotationProcessorJavacGateTest {
 
     @TempDir
     Path out;
-    private String saved;
-
     static final String FEES = """
             package com.example;
 
@@ -63,18 +60,6 @@ class JulcAnnotationProcessorJavacGateTest {
                 """.formatted(condition);
     }
 
-    @BeforeEach
-    void enforce() {
-        saved = System.getProperty(JavacGate.MODE_PROPERTY);
-        System.setProperty(JavacGate.MODE_PROPERTY, "enforce");
-    }
-
-    @AfterEach
-    void restore() {
-        if (saved == null) System.clearProperty(JavacGate.MODE_PROPERTY);
-        else System.setProperty(JavacGate.MODE_PROPERTY, saved);
-    }
-
     List<Diagnostic<? extends JavaFileObject>> process(Map<String, String> sources) throws Exception {
         var javac = ToolProvider.getSystemJavaCompiler();
         var diagnostics = new DiagnosticCollector<JavaFileObject>();
@@ -87,9 +72,8 @@ class JulcAnnotationProcessorJavacGateTest {
                     return e.getValue();
                 }
             }).toList();
-            // The gate runs before the JavaParser frontend, which is selected explicitly from ADR-068 M5.
             javac.getTask(null, fileManager, diagnostics, List.of("-proc:only", "-processor",
-                    JulcAnnotationProcessor.class.getName(), "-Ajulc.frontend=javaparser"), null, files).call();
+                    JulcAnnotationProcessor.class.getName()), null, files).call();
         }
         return diagnostics.getDiagnostics();
     }
@@ -105,7 +89,6 @@ class JulcAnnotationProcessorJavacGateTest {
     /** A subset rule reaches the processor at the default mode: no property, and javac itself has nothing to say. */
     @Test
     void aSubsetRuleFailsTheValidator() throws Exception {
-        System.clearProperty(JavacGate.MODE_PROPERTY);
         var diagnostics = process(Map.of("FeeGate", validator("(boolean) (Object) ctx.txInfo().fee()")));
         var errors = diagnostics.stream().filter(d -> d.getKind() == Diagnostic.Kind.ERROR)
                 .map(d -> d.getMessage(null)).toList();
@@ -126,7 +109,6 @@ class JulcAnnotationProcessorJavacGateTest {
 
     @Test
     void aConstructorsStatementFailsTheValidator() throws Exception {
-        System.clearProperty(JavacGate.MODE_PROPERTY);
         for (String member : CONSTRUCTORS) {
             var diagnostics = process(Map.of("FeeGate", withMember(validator("true"), member)));
             var errors = diagnostics.stream().filter(d -> d.getKind() == Diagnostic.Kind.ERROR)
@@ -146,19 +128,14 @@ class JulcAnnotationProcessorJavacGateTest {
 
     @Test
     void theCastAndNameRulesFailTheValidator() throws Exception {
-        System.clearProperty(JavacGate.MODE_PROPERTY);
         assertFails("JULC0098", validator("PlutusData.cast(ctx.txInfo().fee(), Boolean.class)"));
         assertFails("JULC0098", validator("(boolean) (Object) (PlutusData) (Object) ctx.txInfo().fee()"));
-        assertFails("JULC0100", withMember(validator("true"), "record Boolean(java.math.BigInteger a) { }"));
-        assertFails("JULC0100", withMember(validator("true"), "static <Boolean> Boolean bad(long x) { return (Boolean) (Object) x; }"));
-        assertFails("JULC0101", withMember(validator("true"), "record R(long a) { static boolean fromPlutusData(long x) { return false; } }"));
+        assertFails("JULC0080", withMember(validator("true"), "record R(long a) { static boolean fromPlutusData(long x) { return false; } }"));
     }
 
     @Test
-    void anEmptyConstructorCompiles() throws Exception {
-        System.clearProperty(JavacGate.MODE_PROPERTY);
-        var diagnostics = process(Map.of("FeeGate", withMember(validator("true"), "record R(java.math.BigInteger a) { R { } }")));
-        assertTrue(diagnostics.stream().noneMatch(d -> d.getKind() == Diagnostic.Kind.ERROR), diagnostics.toString());
+    void anEmptyCompactConstructorFailsTheValidator() throws Exception {
+        assertFails("JULC0080", withMember(validator("true"), "record R(java.math.BigInteger a) { R { } }"));
     }
 
     @Test

@@ -1,12 +1,6 @@
 package org.julclang.compiler;
 
-import org.julclang.compiler.frontend.javac.SourceReader;
 
-import com.github.javaparser.Position;
-import com.github.javaparser.Problem;
-import com.github.javaparser.ast.CompilationUnit;
-import com.github.javaparser.ast.body.FieldDeclaration;
-import com.github.javaparser.ast.expr.MethodCallExpr;
 import org.julclang.core.Constant;
 import org.julclang.core.PlutusData;
 import org.julclang.core.Term;
@@ -258,31 +252,6 @@ class UnicodeEscapeReadingTest {
     }
 
     @Test
-    void parseProblemsReferToTheSourceAsWritten() {
-        // Escaped line terminators: the problem is on line 4 as written, not line 6 as translated.
-        assertEquals(problemAt("class P {\n  //\n  //\n  int x = ;\n}"),
-                problemAt("class P {\n  // \\u000a\n  // \\u000a\n  int x = ;\n}"));
-        // Escapes earlier on the line: each adds its six characters, less the one it denotes.
-        var plain = problemAt("class P { int abc = ; }");
-        assertEquals(new Position(plain.line, plain.column + 15),
-                problemAt("class P { int \\u0061\\u0062\\u0063 = ; }"));
-        // CR LF counts as one line terminator, as in JavaParser.
-        assertEquals(problemAt("class P {\r\n  //\r\n  int x = ;\r\n}"),
-                problemAt("class P {\r\n  // \\u000a\r\n  int x = ;\r\n}"));
-    }
-
-    @Test
-    void aLexicalErrorNamesThePositionAsWritten() {
-        String plain = lexicalError("class P { int a = 1; # }");
-        String escaped = lexicalError("class P { int \\u0061 = 1; # }");
-        int column = Integer.parseInt(plain.replaceAll("(?s).*column (\\d+).*", "$1"));
-        assertTrue(escaped.contains("line 1, column " + (column + 5)), escaped);
-        // The end of the file just after an escaped line terminator: still line 1 as written, after the escape.
-        String eof = lexicalError("class P { int x; } /* \\u000a");
-        assertTrue(eof.contains("line 1, column 29"), eof);
-    }
-
-    @Test
     void debugBindingRangesReferToTheSourceAsWritten() {
         String template = """
                 import org.julclang.core.PlutusData;
@@ -314,34 +283,6 @@ class UnicodeEscapeReadingTest {
         // Without an escape, a source without the annotation is still filtered out.
         assertFalse(JavaSourceIntrospector.mightContainValidatorAnnotation("class V { }"));
         assertFalse(JavaSourceIntrospector.mightContainOnchainLibraryAnnotation("class V { }"));
-    }
-
-    /** Ways main code could build a JavaParser parser outside {@code JavaSourceParser}. */
-    private static final List<Pattern> PARSER_CONSTRUCTS = List.of(
-            Pattern.compile("\\b(StaticJavaParser|JavaParserAdapter|JavaParserFacade)\\b"),
-            Pattern.compile("\\bnew\\s+(com\\.github\\.javaparser\\.)?(JavaParser|ParserConfiguration)\\s*\\("),
-            Pattern.compile("\\bJavaParser\\s*::\\s*new\\b"));
-
-    private static List<String> parserConstructs(String text) {
-        return PARSER_CONSTRUCTS.stream().map(p -> p.matcher(text)).filter(Matcher::find).map(Matcher::group).toList();
-    }
-
-    private static Position problemAt(String source) {
-        var result = JavaSourceParser.parse(source);
-        assertFalse(result.isSuccessful(), source);
-        return result.getProblems().get(0).getLocation().orElseThrow().getBegin().getRange().orElseThrow().begin;
-    }
-
-    private static String lexicalError(String source) {
-        var result = JavaSourceParser.parse(source);
-        assertFalse(result.isSuccessful(), source);
-        return result.getProblems().stream().map(Problem::getMessage).filter(m -> m.contains("Lexical error"))
-                .findFirst().orElseThrow(() -> new AssertionError("no lexical error: " + result.getProblems()));
-    }
-
-    private static FieldDeclaration field(CompilationUnit unit, String name) {
-        return unit.findAll(FieldDeclaration.class).stream()
-                .filter(f -> f.getVariable(0).getNameAsString().equals(name)).findFirst().orElseThrow();
     }
 
     private static Map<String, DebugMetadata.SourceRange> bindings(String source) {

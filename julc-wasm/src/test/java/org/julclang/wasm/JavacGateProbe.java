@@ -6,7 +6,6 @@ import org.julclang.compiler.LibrarySourceResolver;
 import org.julclang.compiler.frontend.javac.JavacFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.frontend.javac.JavacEnvironment;
-import org.julclang.compiler.frontend.javac.JavacGateMode;
 import org.julclang.core.flat.UplcFlatEncoder;
 import org.julclang.stdlib.StdlibRegistry;
 
@@ -70,7 +69,7 @@ public final class JavacGateProbe {
         lines.add("environment supported=" + env.supported() + " platform=" + env.platformDigest() + " stubs="
                 + env.stubsDigest());
         var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(),
-                new CompilerOptions().setJavacGate(JavacGateMode.ENFORCE));
+                new CompilerOptions());
         var pool = LibrarySourceResolver.scanClasspathSources(JulcCompiler.class.getClassLoader());
         for (String source : new String[]{STDLIB, SIGNER}) {
             var result = compiler.compile(source, LibrarySourceResolver.resolve(source, pool));

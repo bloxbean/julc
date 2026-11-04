@@ -169,8 +169,8 @@ tasks.named('compileJava') {
     options.compilerArgs += ["-Aproject=${project.group}/${project.name}"]
 }
 
-// ADR-068 M6: the tools' equivalence gate, JavaParser's reading against javac's parser, on a corpus:
-//   ./gradlew :julc-cli:adr068Tools -Padr068.tools.sources=<dir>[:<dir>...] [-Padr068.tools.out=<dir>] --offline
+// ADR-068 M6: the equivalence gate, what a tool gives against the frozen baseline of 068/m6-tools-baseline.tsv:
+//   ./gradlew :julc-cli:adr068Tools -Padr068.tools.sources=<dir>[:<dir>...] -Padr068.tools.baseline=<dir> [-Padr068.tools.out=<dir>] --offline
 test {
     useJUnitPlatform {
         excludeTags 'adr068-tools'
@@ -179,7 +179,7 @@ test {
 
 tasks.register('adr068Tools', Test) {
     group = 'verification'
-    description = 'ADR-068 M6: lint, test discovery and MCP arity read alike by JavaParser and javac on a corpus'
+    description = 'ADR-068 M6: lint, test discovery and MCP arity against their frozen baseline on a corpus'
     testClassesDirs = sourceSets.test.output.classesDirs
     classpath = sourceSets.test.runtimeClasspath
     useJUnitPlatform {
@@ -187,6 +187,8 @@ tasks.register('adr068Tools', Test) {
     }
     def sources = providers.gradleProperty('adr068.tools.sources')
     if (sources.present) systemProperty 'adr068.tools.sources', sources.get()
+    def toolsBaseline = providers.gradleProperty('adr068.tools.baseline')
+    if (toolsBaseline.present) systemProperty 'adr068.tools.baseline', toolsBaseline.get()
     systemProperty 'adr068.tools.out', providers.gradleProperty('adr068.tools.out')
             .map { rootProject.file(it).absolutePath }.orElse(layout.buildDirectory.dir('adr068-tools').get().asFile.absolutePath).get()
     outputs.upToDateWhen { false }

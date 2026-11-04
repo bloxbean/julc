@@ -68,8 +68,8 @@ class JulcAnnotationProcessorFrontendTest {
     @Test
     void javacCompilesTheScriptTheReferenceDoes(@TempDir Path reference, @TempDir Path javac) throws Exception {
         String source = validator("return ctx.txInfo().signatories().isEmpty();");
-        assertEquals(List.of(), errors(process(reference, source, "-Ajulc.frontend=javaparser")));
-        assertEquals(List.of(), errors(process(javac, source, "-Ajulc.frontend=javac")));
+        assertEquals(List.of(), errors(process(reference, source)));
+        assertEquals(List.of(), errors(process(javac, source)));
         try (var files = Files.walk(reference)) {
             var output = files.filter(Files::isRegularFile).findFirst().orElseThrow();
             assertEquals(Files.readString(output), Files.readString(javac.resolve(reference.relativize(output))));
@@ -82,8 +82,8 @@ class JulcAnnotationProcessorFrontendTest {
         String source = validator("return MathLib.pow(BigInteger.TWO, BigInteger.TEN).signum() > 0;")
                 .replace("import org.julclang.core.PlutusData;",
                         "import java.math.BigInteger;\nimport org.julclang.core.PlutusData;\nimport org.julclang.stdlib.lib.MathLib;");
-        assertEquals(List.of(), errors(process(reference, source, "-Ajulc.frontend=javaparser")));
-        assertEquals(List.of(), errors(process(javac, source, "-Ajulc.frontend=javac")));
+        assertEquals(List.of(), errors(process(reference, source)));
+        assertEquals(List.of(), errors(process(javac, source)));
         try (var files = Files.walk(reference)) {
             var outputs = files.filter(Files::isRegularFile).toList();
             assertTrue(!outputs.isEmpty());
@@ -104,8 +104,8 @@ class JulcAnnotationProcessorFrontendTest {
     @Test
     void theOptionReachesTheCompilation(@TempDir Path out) throws Exception {
         String source = validator("long fee = (short) ctx.txInfo().fee().longValue(); return fee > 0;");
-        assertEquals(List.of(), errors(process(out, source, "-Ajulc.frontend=javaparser")));
-        var errors = errors(process(out, source, "-Ajulc.frontend=javac"));
+        assertEquals(List.of(), errors(process(out, source)));
+        var errors = errors(process(out, source));
         assertTrue(errors.stream().anyMatch(message -> message.contains("JULC0124")), errors::toString);
         // ADR-068 M5: javac is the default when no frontend is named.
         var byDefault = errors(process(out, source));

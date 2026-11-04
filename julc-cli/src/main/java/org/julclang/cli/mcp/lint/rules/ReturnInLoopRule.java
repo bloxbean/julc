@@ -2,7 +2,6 @@ package org.julclang.cli.mcp.lint.rules;
 
 import org.julclang.cli.mcp.lint.LintFinding;
 import org.julclang.cli.mcp.lint.LintRule;
-import org.julclang.compiler.frontend.javac.SourceReader;
 import org.julclang.cli.mcp.lint.LintTrees;
 import org.julclang.compiler.frontend.javac.JavacSyntax;
 import com.sun.source.util.TreePath;
@@ -10,15 +9,6 @@ import com.sun.source.tree.LambdaExpressionTree;
 import com.sun.source.tree.MethodTree;
 import com.sun.source.tree.ReturnTree;
 import com.sun.source.tree.Tree;
-import com.github.javaparser.ast.CompilationUnit;
-import com.github.javaparser.ast.Node;
-import com.github.javaparser.ast.body.MethodDeclaration;
-import com.github.javaparser.ast.expr.LambdaExpr;
-import com.github.javaparser.ast.stmt.DoStmt;
-import com.github.javaparser.ast.stmt.ForEachStmt;
-import com.github.javaparser.ast.stmt.ForStmt;
-import com.github.javaparser.ast.stmt.ReturnStmt;
-import com.github.javaparser.ast.stmt.WhileStmt;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -44,42 +34,6 @@ public final class ReturnInLoopRule implements LintRule {
     @Override
     public String description() {
         return "Return inside a loop — JuLC rejects this; use an accumulator + post-loop return instead";
-    }
-
-    @Override
-    public List<LintFinding> check(CompilationUnit cu) {
-        var findings = new ArrayList<LintFinding>();
-        cu.findAll(ReturnStmt.class).forEach(ret -> {
-            Node n = ret.getParentNode().orElse(null);
-            while (n != null) {
-                if (n instanceof MethodDeclaration || n instanceof LambdaExpr) {
-                    return; // method or lambda boundary; this return is fine
-                }
-                if (n instanceof WhileStmt
-                        || n instanceof ForStmt
-                        || n instanceof ForEachStmt
-                        || n instanceof DoStmt) {
-                    int line = ret.getBegin().map(p -> p.line).orElse(0);
-                    int col = ret.getBegin().map(p -> p.column).orElse(0);
-                    findings.add(LintFinding.error(
-                            id(),
-                            null,
-                            "`return` inside a loop is not supported in JuLC. The compiler will reject it.",
-                            line, col,
-                            "Introduce a result accumulator (e.g. `var found = false;`), set it " +
-                                    "inside the loop, exit when done, and `return found;` after the loop."
-                    ));
-                    return;
-                }
-                n = n.getParentNode().orElse(null);
-            }
-        });
-        return findings;
-    }
-
-    @Override
-    public boolean supports(SourceReader reader) {
-        return true;
     }
 
     @Override

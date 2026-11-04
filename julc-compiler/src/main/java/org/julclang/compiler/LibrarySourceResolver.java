@@ -3,18 +3,12 @@ package org.julclang.compiler;
 import org.julclang.compiler.error.DiagnosticCollector;
 import org.julclang.compiler.frontend.javac.ExpressionRoles;
 import org.julclang.compiler.frontend.javac.JavacSyntax;
-import org.julclang.compiler.frontend.javac.SourceReader;
 import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.ImportTree;
 import com.sun.source.tree.MemberSelectTree;
 import com.sun.source.tree.MethodInvocationTree;
 import com.sun.source.tree.Tree;
 import org.julclang.compiler.frontend.javac.SourceOrderScanner;
-import com.github.javaparser.ast.CompilationUnit;
-import com.github.javaparser.ast.ImportDeclaration;
-import com.github.javaparser.ast.Node;
-import com.github.javaparser.ast.expr.FieldAccessExpr;
-import com.github.javaparser.ast.expr.MethodCallExpr;
 
 import java.io.File;
 import java.io.IOException;
@@ -372,7 +366,7 @@ public final class LibrarySourceResolver {
                                                    Queue<LibrarySource> toProcess,
                                                    DiagnosticCollector diagnostics) {
         diagnostics.setFileName(fileName);
-        SourceContext context = parseSourceContext(source, packageName, diagnostics);
+        SourceContext context = parseSourceContext(source, packageName);
 
         for (String fqcn : context.importsBySimpleName().values()) {
             enqueue(availableLibraries.get(fqcn), resolved, queued, toProcess);
@@ -450,60 +444,11 @@ public final class LibrarySourceResolver {
         }
         toProcess.add(librarySource);
     }
-    /**
-     * The reader this tool uses (ADR-068 M6), read when it is used: {@link SourceReader#configured()}, which fails with a
-     * message naming the property for a value it does not know.
-     */
-    private static SourceReader defaultReader() {
-        return SourceReader.configured();
-    }
-
-    private static SourceContext parseSourceContext(String source,
-                                                    String packageName,
-                                                    DiagnosticCollector diagnostics) {
-        return parseSourceContext(source, packageName, defaultReader());
-    }
-
-    /** A source's package, imports and class references, as {@code reader} reads them; a regex reading if it cannot. */
-    static SourceContext parseSourceContext(String source, String packageName, SourceReader reader) {
-        if (reader == SourceReader.JAVAC) {
-            var syntax = JavacSyntax.read(source);
-            if (!syntax.hasErrors()) return sourceContext(syntax, packageName);
-            return fallbackSourceContext(source, packageName);
-        }
-        try {
-            var cu = parseCompilationUnit(source);
-            var resolvedPackageName = packageName == null || packageName.isBlank()
-                    ? cu.getPackageDeclaration().map(pd -> pd.getName().asString()).orElse("")
-                    : packageName;
-            var importsBySimpleName = new LinkedHashMap<String, String>();
-            var wildcardPackages = new LinkedHashSet<String>();
-            var staticReferences = new ArrayList<ClassReference>();
-
-            for (ImportDeclaration importDeclaration : cu.getImports()) {
-                if (importDeclaration.isAsterisk()) {
-                    if (!importDeclaration.isStatic()) {
-                        wildcardPackages.add(importDeclaration.getName().asString());
-                    }
-                    continue;
-                }
-                if (importDeclaration.isStatic()) {
-                    continue;
-                }
-                String fqcn = importDeclaration.getName().asString();
-                importsBySimpleName.put(simpleName(fqcn), fqcn);
-            }
-
-            cu.findAll(MethodCallExpr.class).forEach(methodCall -> methodCall.getScope().ifPresent(scope -> {
-                classReferenceFromScope(scope).ifPresent(staticReferences::add);
-            }));
-            cu.findAll(FieldAccessExpr.class).forEach(fieldAccess ->
-                    classReferenceFromScope(fieldAccess.getScope()).ifPresent(staticReferences::add));
-
-            return new SourceContext(resolvedPackageName, importsBySimpleName, wildcardPackages, staticReferences);
-        } catch (RuntimeException e) {
-            return fallbackSourceContext(source, packageName);
-        }
+    /** A source's package, imports and class references, as javac's parser reads them; a regex reading if it cannot. */
+    static SourceContext parseSourceContext(String source, String packageName) {
+        var syntax = JavacSyntax.read(source);
+        if (!syntax.hasErrors()) return sourceContext(syntax, packageName);
+        return fallbackSourceContext(source, packageName);
     }
 
     private static SourceContext fallbackSourceContext(String source, String packageName) {
@@ -564,8 +509,8 @@ public final class LibrarySourceResolver {
      * can resolve, those whose name is a Java identifier. A call chain's qualifier such as {@code f(x).g} yields a "name"
      * that is each parser's printing of it, and no library has such a name.
      */
-    static String describeSourceContext(String source, SourceReader reader) {
-        var context = parseSourceContext(source, null, reader);
+    static String describeSourceContext(String source) {
+        var context = parseSourceContext(source, null);
         var references = context.staticReferences().stream()
                 .filter(reference -> javax.lang.model.SourceVersion.isIdentifier(reference.simpleName()))
                 .toList();
@@ -626,40 +571,14 @@ public final class LibrarySourceResolver {
     }
 
     public static Optional<String> extractTopLevelTypeName(String source) {
-        return extractTopLevelTypeName(source, defaultReader());
-    }
-
-    /** {@link #extractTopLevelTypeName(String)} with the source read by {@code reader}. */
-    static Optional<String> extractTopLevelTypeName(String source, SourceReader reader) {
-        if (reader == SourceReader.JAVAC) {
-            var syntax = JavacSyntax.read(source);
-            if (!syntax.hasErrors()) {
-                for (Tree declaration : syntax.unit().getTypeDecls()) {
-                    if (declaration instanceof ClassTree type) return Optional.of(type.getSimpleName().toString());
-                }
+        var syntax = JavacSyntax.read(source);
+        if (!syntax.hasErrors()) {
+            for (Tree declaration : syntax.unit().getTypeDecls()) {
+                if (declaration instanceof ClassTree type) return Optional.of(type.getSimpleName().toString());
             }
-            Matcher matcher = TYPE_PATTERN.matcher(source);
-            return matcher.find() ? Optional.of(matcher.group(1)) : Optional.empty();
-        }
-        try {
-            var cu = parseCompilationUnit(source);
-            if (!cu.getTypes().isEmpty()) {
-                return Optional.of(cu.getTypes().get(0).getNameAsString());
-            }
-        } catch (RuntimeException ignored) {
-            // Fall through to regex extraction for partial or otherwise unparsable source.
         }
         Matcher matcher = TYPE_PATTERN.matcher(source);
         return matcher.find() ? Optional.of(matcher.group(1)) : Optional.empty();
-    }
-
-    private static CompilationUnit parseCompilationUnit(String source) {
-        var result = JavaSourceParser.parse(source);
-        if (!result.isSuccessful()) {
-            throw new IllegalArgumentException("Could not parse Java source: " + result.getProblems());
-        }
-        return result.getResult().orElseThrow(() ->
-                new IllegalArgumentException("Could not parse Java source: " + result.getProblems()));
     }
 
     private static String simpleName(String fqcn) {
@@ -674,12 +593,6 @@ public final class LibrarySourceResolver {
 
     private static boolean looksLikeClassName(String name) {
         return !name.isBlank() && Character.isUpperCase(name.charAt(0));
-    }
-
-    private static Optional<ClassReference> classReferenceFromScope(Node scope) {
-        String scopeText = scope.toString();
-        var begin = scope.getBegin();
-        return classReferenceFromText(scopeText, begin.map(b -> b.line).orElse(0), begin.map(b -> b.column).orElse(0));
     }
 
     private static List<ClassReference> extractFallbackClassReferences(String source) {

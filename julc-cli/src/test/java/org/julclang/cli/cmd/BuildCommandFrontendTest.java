@@ -85,8 +85,8 @@ class BuildCommandFrontendTest {
                     }
                     """);
         }
-        assertEquals(0, build(reference, "--frontend", "javaparser"));
-        assertEquals(0, build(javac, "--frontend", "javac"));
+        assertEquals(0, build(reference));
+        assertEquals(0, build(javac));
         assertFalse(artifacts(reference).isEmpty());
         assertEquals(artifacts(reference), artifacts(javac));
     }
@@ -96,8 +96,8 @@ class BuildCommandFrontendTest {
         String body = "return ctx.txInfo().fee().compareTo(BigInteger.TWO) > 0;";
         Path reference = project(dir, "reference", body);
         Path javac = project(dir, "javac", body);
-        assertEquals(0, build(reference, "--frontend", "javaparser"));
-        assertEquals(0, build(javac, "--frontend", "javac"));
+        assertEquals(0, build(reference));
+        assertEquals(0, build(javac));
         assertFalse(artifacts(reference).isEmpty());
         assertEquals(artifacts(reference), artifacts(javac));
     }
@@ -105,8 +105,8 @@ class BuildCommandFrontendTest {
     @Test
     void theOptionReachesTheCompilation(@TempDir Path dir) throws Exception {
         String body = "long fee = (short) ctx.txInfo().fee().longValue(); return fee > 0;";
-        assertEquals(0, build(project(dir, "reference", body), "--frontend", "javaparser"));
-        assertEquals(1, build(project(dir, "javac", body), "--frontend", "javac"));
+        assertEquals(0, build(project(dir, "reference", body)));
+        assertEquals(1, build(project(dir, "javac", body)));
         // ADR-068 M5: javac is the default when no frontend is named.
         assertEquals(1, build(project(dir, "default", body)));
     }
@@ -118,7 +118,7 @@ class BuildCommandFrontendTest {
         // One project name, so the blueprints' titles agree.
         Path reference = project(dir.resolve("reference"), "blueprint", body);
         Path javac = project(dir.resolve("javac"), "blueprint", body);
-        assertEquals(0, new CommandLine(new BuildCommand()).execute(reference.toString(), "--frontend", "javaparser"));
+        assertEquals(0, new CommandLine(new BuildCommand()).execute(reference.toString()));
         assertEquals(0, new CommandLine(new BuildCommand()).execute(javac.toString()));
         var artifacts = artifacts(javac);
         assertTrue(artifacts.containsKey("plutus.json"), artifacts.keySet()::toString);

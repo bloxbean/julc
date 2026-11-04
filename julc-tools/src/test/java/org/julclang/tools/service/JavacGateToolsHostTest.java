@@ -3,7 +3,6 @@ package org.julclang.tools.service;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.LibrarySource;
 import org.julclang.compiler.LibrarySourceResolver;
-import org.julclang.compiler.frontend.javac.JavacGate;
 import org.julclang.stdlib.StdlibRegistry;
 import org.julclang.tools.debug.SourceDebugService;
 import org.julclang.tools.model.CompileRequest;
@@ -63,21 +62,12 @@ class JavacGateToolsHostTest {
             }
             """;
 
-    private String saved;
     private Map<String, LibrarySource> classpath;
 
     @BeforeEach
-    void enforce() {
-        saved = System.getProperty(JavacGate.MODE_PROPERTY);
-        System.setProperty(JavacGate.MODE_PROPERTY, "enforce");
+    void scanTheClassPath() {
         classpath = new LinkedHashMap<>(LibrarySourceResolver.scanClasspathSources(JulcCompiler.class.getClassLoader()));
         classpath.put("com.example.Fees", LibrarySourceResolver.librarySource(JAR_FEES));
-    }
-
-    @AfterEach
-    void restore() {
-        if (saved == null) System.clearProperty(JavacGate.MODE_PROPERTY);
-        else System.setProperty(JavacGate.MODE_PROPERTY, saved);
     }
 
     static boolean equalStanding(Object body) {
@@ -103,7 +93,6 @@ class JavacGateToolsHostTest {
     /** A subset rule reaches the tools at the default mode, with nothing set. */
     @Test
     void compileMeetsTheSubsetsRules() {
-        System.clearProperty(JavacGate.MODE_PROPERTY);
         var tools = new ToolsService(ToolsService.compilerFor(classpath), classpath, JulcVm::create);
         var compiled = tools.compile(new CompileRequest(CAST, "java", EDITOR_LIBRARY)).body();
         assertTrue(String.valueOf(compiled).contains("JULC0098"), String.valueOf(compiled));
@@ -111,7 +100,6 @@ class JavacGateToolsHostTest {
 
     @Test
     void sourceDebugMeetsTheSubsetsRules() {
-        System.clearProperty(JavacGate.MODE_PROPERTY);
         var opened = new SourceDebugService(classpath).open(new OpenRequest(CAST, EDITOR_LIBRARY, List.of(),
                 spendTransaction(), 11, null, null, null, null, false)).body();
         assertTrue(String.valueOf(opened).contains("JULC0098"), String.valueOf(opened));
@@ -119,7 +107,6 @@ class JavacGateToolsHostTest {
 
     @Test
     void theToolsMeetTheCastAndNameRules() {
-        System.clearProperty(JavacGate.MODE_PROPERTY);
         var tools = new ToolsService(ToolsService.compilerFor(classpath), classpath, JulcVm::create);
         // These hosts compile on javac, the default from ADR-068 M5, and have no frontend option: the gate's name rules
         // (JULC0100, the gate-only JULC0101) are the JavaParser frontend's (D15). javac binds a record named Boolean to
@@ -141,7 +128,6 @@ class JavacGateToolsHostTest {
      */
     @Test
     void aRecordNamedLikeAJavaTypeCompilesOnJavac() {
-        System.clearProperty(JavacGate.MODE_PROPERTY);
         var tools = new ToolsService(ToolsService.compilerFor(classpath), classpath, JulcVm::create);
         var source = VALIDATOR.replace("    @Entrypoint", "    record Boolean(BigInteger a) { }\n    @Entrypoint");
         var compiled = tools.compile(new CompileRequest(source, "java", EDITOR_LIBRARY)).body();
@@ -151,7 +137,6 @@ class JavacGateToolsHostTest {
 
     @Test
     void theToolsMeetTheConstructorRule() {
-        System.clearProperty(JavacGate.MODE_PROPERTY);
         var tools = new ToolsService(ToolsService.compilerFor(classpath), classpath, JulcVm::create);
         for (String member : List.of(
                 "record R(BigInteger a) { R { a = a.abs(); } }",

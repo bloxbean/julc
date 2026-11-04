@@ -1,13 +1,5 @@
 package org.julclang.verification;
 
-import com.github.javaparser.ast.CompilationUnit;
-import com.github.javaparser.ast.expr.AnnotationExpr;
-import com.github.javaparser.ast.expr.Expression;
-import com.github.javaparser.ast.expr.IntegerLiteralExpr;
-import com.github.javaparser.ast.expr.LongLiteralExpr;
-import com.github.javaparser.ast.expr.NormalAnnotationExpr;
-import com.github.javaparser.ast.expr.SingleMemberAnnotationExpr;
-import com.github.javaparser.ast.expr.StringLiteralExpr;
 import com.sun.source.tree.AnnotationTree;
 import com.sun.source.tree.AssignmentTree;
 import com.sun.source.tree.ClassTree;
@@ -17,9 +9,7 @@ import com.sun.source.tree.ImportTree;
 import com.sun.source.tree.LiteralTree;
 import com.sun.source.tree.MemberSelectTree;
 import com.sun.source.tree.Tree;
-import org.julclang.compiler.JavaSourceParser;
 import org.julclang.compiler.frontend.javac.JavacSyntax;
-import org.julclang.compiler.frontend.javac.SourceReader;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -33,14 +23,6 @@ import java.util.List;
  * each value as written, since it is the property's source fragment.
  */
 final class SourceAnnotations {
-    /**
-     * The reader this tool uses (ADR-068 M6), read when it is used: {@link SourceReader#configured()}, which fails with a
-     * message naming the property for a value it does not know.
-     */
-    static SourceReader defaultReader() {
-        return SourceReader.configured();
-    }
-
     /** A source: its package name ({@code ""} for none), its imports and its top-level types, in source order. */
     record Unit(String packageName, List<Import> imports, List<Type> types) {
     }
@@ -90,60 +72,9 @@ final class SourceAnnotations {
     private SourceAnnotations() {
     }
 
-    /** {@code source} read by {@link #defaultReader()}. */
+    /** {@code source}, read by javac's parser; a source it cannot read throws, as the resolvers did. */
     static Unit read(String source) {
-        return read(source, defaultReader());
-    }
-
-    /** {@code source} read by {@code reader}; a source it cannot read throws, as the resolvers did. */
-    static Unit read(String source, SourceReader reader) {
-        return switch (reader) {
-            case JAVAPARSER -> readWithJavaParser(source);
-            case JAVAC -> readWithJavac(source);
-        };
-    }
-
-    // --- JavaParser ---
-
-    private static Unit readWithJavaParser(String source) {
-        CompilationUnit unit = JavaSourceParser.parseCompilationUnit(source);
-        String packageName = unit.getPackageDeclaration().map(d -> d.getNameAsString()).orElse("");
-        var imports = unit.getImports().stream()
-                .map(i -> new Import(i.getNameAsString(), i.isStatic(), i.isAsterisk())).toList();
-        var types = unit.getTypes().stream()
-                .map(t -> new Type(t.getNameAsString(),
-                        t.getAnnotations().stream().map(SourceAnnotations::annotation).toList()))
-                .toList();
-        return new Unit(packageName, imports, types);
-    }
-
-    private static Annotation annotation(AnnotationExpr annotation) {
-        var members = new ArrayList<Member>();
-        Value single = null;
-        boolean normal = annotation instanceof NormalAnnotationExpr;
-        if (annotation instanceof NormalAnnotationExpr n) {
-            n.getPairs().forEach(pair -> members.add(new Member(pair.getNameAsString(), value(pair.getValue()))));
-        } else if (annotation instanceof SingleMemberAnnotationExpr s) {
-            single = value(s.getMemberValue());
-        }
-        var begin = annotation.getBegin().orElse(null);
-        return new Annotation(annotation.getNameAsString(), normal, List.copyOf(members), single,
-                begin == null ? 1 : begin.line, begin == null ? 1 : begin.column, annotation.toString());
-    }
-
-    private static Value value(Expression expression) {
-        String string = expression instanceof StringLiteralExpr literal ? literal.asString() : null;
-        Long integer = null;
-        if (expression instanceof LongLiteralExpr literal) {
-            try {
-                integer = literal.asNumber().longValue();
-            } catch (RuntimeException ignored) { }
-        } else if (expression instanceof IntegerLiteralExpr literal) {
-            try {
-                integer = literal.asNumber().longValue();
-            } catch (RuntimeException ignored) { }
-        }
-        return new Value(string, integer, expression.toString());
+        return readWithJavac(source);
     }
 
     // --- javac ---

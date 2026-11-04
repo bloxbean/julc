@@ -1,9 +1,5 @@
 package org.julclang.verification;
 
-import org.julclang.compiler.frontend.javac.SourceReader;
-
-import org.julclang.compiler.JavaSourceParser;
-import org.julclang.compiler.frontend.javac.JavacSyntax;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -17,36 +13,21 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.TreeMap;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
- * ADR-068 M6's equivalence gate for the verification resolvers: on every corpus file, javac's parser and JavaParser
- * read the same {@link SourceAnnotations.Unit} (package, imports, every top-level type's annotations with their members,
- * values, positions and printed text), which is all the resolvers read of a source. Run by
- * {@code :julc-verification:adr068Tools -Padr068.tools.sources=...}.
+ * ADR-068 M6's equivalence gate for the verification resolvers: on every {@code .java} file of the corpus, what it gives equals what it gave at
+ * M6's start, when javac's reading had been compared with JavaParser's ({@code adr/evidence/068-m6a-tools.md}, and the
+ * baseline's digests in {@code adr/evidence/068/m6-tools-baseline.tsv}). Run by
+ * {@code :julc-verification:adr068Tools -Padr068.tools.sources=<dir>[:<dir>...] -Padr068.tools.baseline=<dir> [-Padr068.tools.out=<dir>]}.
  */
 @Tag("adr068-tools")
 class Adr068AnnotationsCorpusTest {
 
-    /** The annotations the resolvers read; a printed text may differ only on others, where nothing reads it. */
-    private static final Set<String> RESOLVED = Set.of("RequiresSigner", "ControlledMint", "Monotonic", "PreservesValue");
-
-    private static final Map<String, String> ALLOWED = Map.of(
-            "annotations:javac-rejects", "javac's parser rejects the source: both readings throw, in their own words",
-            "annotations:reader-rejects", "JuLC's strict reader (JavaSourceParser, ADR-062 T24) rejects a source"
-                    + " javac's parser reads; ADR-068 keeps javac's reading (D5)",
-            "annotations:javaparser-comment-in-value", "JavaParser prints a comment written before a value into the"
-                    + " value's text, which only an enum member's reading uses, and then wrongly; the fragments agree",
-            "annotations:text-of-unresolved",
-            "the printed text of an annotation no resolver reads, for a value JavaParser prints in its own layout");
-
     @Test
-    void javacReadsTheAnnotationsJavaParserReads() throws IOException {
+    void theAnnotationsAreTheBaselines() throws IOException {
         String sources = System.getProperty("adr068.tools.sources");
         Assumptions.assumeTrue(sources != null && !sources.isBlank(), "-Padr068.tools.sources is not set");
         Path out = Path.of(System.getProperty("adr068.tools.out", "build/adr068-tools"));
@@ -57,8 +38,6 @@ class Adr068AnnotationsCorpusTest {
                 walk.filter(p -> p.toString().endsWith(".java") && Files.isRegularFile(p)).sorted().forEach(files::add);
             }
         }
-        var counts = new TreeMap<String, Integer>();
-        var differences = new ArrayList<String>();
         var outputs = new ArrayList<String>();
         for (Path file : files) {
             String text;
@@ -67,41 +46,21 @@ class Adr068AnnotationsCorpusTest {
             } catch (CharacterCodingException e) {
                 continue;
             }
-            count(counts, "files");
-            String expected = read(text, SourceReader.JAVAPARSER);
-            String actual = read(text, SourceReader.JAVAC);
-            outputs.add(output("annotations", sources, file, actual));
-            String kind;
-            if (expected.equals(actual)) {
-                kind = "annotations:same";
-            } else if (JavacSyntax.read(text).hasErrors()) {
-                kind = "annotations:javac-rejects";
-            } else if (expected.equals("ERROR") && !JavaSourceParser.parse(text).isSuccessful()) {
-                kind = "annotations:reader-rejects";
-            } else if (withoutValueComments(expected).equals(actual)) {
-                kind = "annotations:javaparser-comment-in-value";
-            } else if (withoutUnresolvedText(text, SourceReader.JAVAPARSER)
-                    .equals(withoutUnresolvedText(text, SourceReader.JAVAC))) {
-                kind = "annotations:text-of-unresolved";
-            } else {
-                kind = "annotations:DIFFERENT";
-            }
-            count(counts, kind);
-            if (!expected.equals(actual)) differences.add(kind + "\t" + file + "\t" + clip(expected) + "\t" + clip(actual));
-            if (expected.contains("RequiresSigner") || expected.contains("ControlledMint")) count(counts, "files-with-verification-annotations");
+            outputs.add(output("annotations", sources, file, read(text)));
         }
-        var summary = new ArrayList<String>();
-        counts.forEach((k, v) -> summary.add(k + "\t" + v));
-        Files.write(out.resolve("annotations-summary.tsv"), summary);
-        Files.write(out.resolve("annotations-differences.tsv"), differences);
         Files.write(out.resolve("annotations-outputs.tsv"), outputs);
-        var unexplained = counts.keySet().stream()
-                .filter(k -> k.startsWith("annotations:") && !k.equals("annotations:same") && !ALLOWED.containsKey(k))
-                .toList();
-        assertEquals(List.of(), unexplained, () -> String.join("\n", differences.stream().limit(30).toList()));
+        assertBaseline("annotations-outputs.tsv", outputs);
     }
 
-    /** What this reading gives for a corpus file, one line: ADR-068 M6's frozen baseline. */
+    private static String read(String text) {
+        try {
+            return SourceAnnotations.read(text).toString();
+        } catch (RuntimeException e) {
+            return "ERROR";
+        }
+    }
+
+    /** What the tool gives for a corpus file, one line. */
     private static String output(String tool, String sources, Path file, Object value) {
         String key = file.toString();
         for (String dir : sources.split(File.pathSeparator)) {
@@ -110,41 +69,18 @@ class Adr068AnnotationsCorpusTest {
         return tool + "\t" + key + "\t" + String.valueOf(value).replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
     }
 
-    private static String read(String text, SourceReader reader) {
-        try {
-            return SourceAnnotations.read(text, reader).toString();
-        } catch (RuntimeException e) {
-            return "ERROR";
+    /** ADR-068 M6's gate: this run's lines against the frozen baseline {@code adr068.tools.baseline}, if one is named; they must be equal. */
+    private static void assertBaseline(String file, List<String> lines) throws IOException {
+        String baseline = System.getProperty("adr068.tools.baseline");
+        if (baseline == null) return;
+        var frozen = Files.readAllLines(Path.of(baseline).resolve(file));
+        var moved = new ArrayList<String>();
+        for (int i = 0; i < Math.max(frozen.size(), lines.size()) && moved.size() < 20; i++) {
+            String was = i < frozen.size() ? frozen.get(i) : "(none)";
+            String is = i < lines.size() ? lines.get(i) : "(none)";
+            if (!was.equals(is)) moved.add(was + "  ->  " + is);
         }
-    }
-
-    /** JavaParser's reading with the comment it prints before a value's text taken out. */
-    private static String withoutValueComments(String unit) {
-        return unit.replaceAll("text=/\\*.*?\\*/\\s*", "text=");
-    }
-
-    private static String withoutUnresolvedText(String text, SourceReader reader) {
-        try {
-            var unit = SourceAnnotations.read(text, reader);
-            var types = unit.types().stream().map(t -> new SourceAnnotations.Type(t.name(), t.annotations().stream()
-                    .map(a -> RESOLVED.contains(a.identifier()) ? a : new SourceAnnotations.Annotation(a.name(), a.normal(),
-                            a.members().stream().map(m -> new SourceAnnotations.Member(m.name(),
-                                    new SourceAnnotations.Value(m.value().string(), m.value().integer(), ""))).toList(),
-                            a.single() == null ? null : new SourceAnnotations.Value(a.single().string(), a.single().integer(), ""),
-                            a.line(), a.column(), ""))
-                    .toList())).toList();
-            return new SourceAnnotations.Unit(unit.packageName(), unit.imports(), types).toString();
-        } catch (RuntimeException e) {
-            return "ERROR";
-        }
-    }
-
-    private static void count(Map<String, Integer> counts, String key) {
-        counts.merge(key, 1, Integer::sum);
-    }
-
-    private static String clip(String s) {
-        s = s.replace('\t', ' ').replace('\n', ' ');
-        return s.length() > 600 ? s.substring(0, 600) + "..." : s;
+        assertEquals(List.of(), moved, file + " moved");
+        assertEquals(frozen.size(), lines.size());
     }
 }

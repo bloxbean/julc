@@ -1,15 +1,15 @@
 package org.julclang.verification;
 
-import org.julclang.compiler.frontend.javac.SourceReader;
 
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
- * The resolvers' reading of a source is the same on JavaParser's and javac's parser (ADR-068 M6), including the shapes
+ * The resolvers' reading of a source, on javac's parser (ADR-068 M6), including the shapes
  * the two trees hold differently: a minus folded into a literal, a text block, empty parentheses, a single member.
  */
 class SourceAnnotationsTest {
@@ -35,15 +35,13 @@ class SourceAnnotationsTest {
             """;
 
     @Test
-    void bothReadersReadTheSameUnit() {
-        var javaParser = SourceAnnotations.read(SOURCE, SourceReader.JAVAPARSER);
-        var javac = SourceAnnotations.read(SOURCE, SourceReader.JAVAC);
-        assertEquals(javaParser, javac);
+    void theUnitIsRead() {
+        var javac = SourceAnnotations.read(SOURCE);
     }
 
     @Test
-    void theValuesAreJavaParsersReading() {
-        var unit = SourceAnnotations.read(SOURCE, SourceReader.JAVAC);
+    void theValuesAreRead() {
+        var unit = SourceAnnotations.read(SOURCE);
         assertEquals("com.example", unit.packageName());
         assertEquals(3, unit.imports().size());
         var type = unit.types().getFirst();
@@ -65,15 +63,13 @@ class SourceAnnotationsTest {
     }
 
     @Test
-    void anUnreadableSourceThrowsOnBoth() {
+    void anUnreadableSourceThrows() {
         assertThrows(RuntimeException.class,
-                () -> SourceAnnotations.read("class {", SourceReader.JAVAPARSER));
-        assertThrows(RuntimeException.class,
-                () -> SourceAnnotations.read("class {", SourceReader.JAVAC));
+                () -> SourceAnnotations.read("class {"));
     }
 
     @Test
-    void aCommentBeforeAValueAndASpacedMinusPrintAsJavaParserPrintsThem() {
+    void aCommentBeforeAValueAndASpacedMinusPrintInTheirFormat() {
         String source = """
                 package p;
                 import org.julclang.verification.annotation.*;
@@ -81,12 +77,9 @@ class SourceAnnotationsTest {
                 @ControlledMint(policy = "abcd", tokenName = /* name */ "ab", amount = - 5)
                 class V1 {}
                 """;
-        var javaParser = SourceAnnotations.read(source, SourceReader.JAVAPARSER);
-        var javac = SourceAnnotations.read(source, SourceReader.JAVAC);
-        for (int i = 0; i < 2; i++) {
-            assertEquals(javaParser.types().getFirst().annotations().get(i).text(),
-                    javac.types().getFirst().annotations().get(i).text());
-        }
+        var javac = SourceAnnotations.read(source);
+        assertTrue(javac.types().getFirst().annotations().get(0).text().contains("\"datum.owner\""));
+        assertTrue(javac.types().getFirst().annotations().get(1).text().contains("-5"));
         assertEquals("datum.owner", javac.types().getFirst().annotations().getFirst().single().string());
     }
 }

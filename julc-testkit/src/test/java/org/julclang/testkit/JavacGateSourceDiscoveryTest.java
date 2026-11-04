@@ -2,7 +2,6 @@ package org.julclang.testkit;
 
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerFrontend;
-import org.julclang.compiler.frontend.javac.JavacGate;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -23,20 +22,6 @@ class JavacGateSourceDiscoveryTest {
 
     @TempDir
     Path root;
-    private String saved;
-
-    @BeforeEach
-    void enforce() {
-        saved = System.getProperty(JavacGate.MODE_PROPERTY);
-        System.setProperty(JavacGate.MODE_PROPERTY, "enforce");
-    }
-
-    @AfterEach
-    void restore() {
-        if (saved == null) System.clearProperty(JavacGate.MODE_PROPERTY);
-        else System.setProperty(JavacGate.MODE_PROPERTY, saved);
-    }
-
     void write(String library) throws Exception {
         Files.createDirectories(root.resolve("com/example"));
         Files.writeString(root.resolve("com/example/Fees.java"), library);
@@ -79,7 +64,6 @@ class JavacGateSourceDiscoveryTest {
     /** A pool library the program reads meets the subset's rules at the default mode, with nothing set. */
     @Test
     void aSubsetRuleInAPoolLibraryRejects() throws Exception {
-        System.clearProperty(JavacGate.MODE_PROPERTY);
         write("""
                 package com.example;
 
@@ -113,7 +97,6 @@ class JavacGateSourceDiscoveryTest {
 
     @Test
     void theHostsMeetTheCastAndNameRules() {
-        System.clearProperty(JavacGate.MODE_PROPERTY);
         for (String[] rule : List.of(
                 new String[]{"JULC0098", CAST.replace("(boolean) (Object) redeemer", "org.julclang.core.PlutusData.cast(redeemer, Boolean.class)")},
                 new String[]{"JULC0100", CAST.replace("    @Entrypoint", "    record Boolean(BigInteger a) { }\n    @Entrypoint").replace("(boolean) (Object) redeemer", "true")},
@@ -134,14 +117,12 @@ class JavacGateSourceDiscoveryTest {
 
     @Test
     void validatorTestMeetsTheSubsetsRules() {
-        System.clearProperty(JavacGate.MODE_PROPERTY);
         var e = assertThrows(CompilerException.class, () -> ValidatorTest.compile(CAST));
         assertEquals("JULC0098", e.diagnostics().getFirst().code(), e.diagnostics().toString());
     }
 
     @Test
     void methodEvaluatorMeetsTheSubsetsRules() {
-        System.clearProperty(JavacGate.MODE_PROPERTY);
         var e = assertThrows(CompilerException.class,
                 () -> MethodEvaluator.evaluateBoolean("""
                         class P {
@@ -161,7 +142,6 @@ class JavacGateSourceDiscoveryTest {
 
     @Test
     void aConstructorsStatementRejectsAtEveryHostEntry() throws Exception {
-        System.clearProperty(JavacGate.MODE_PROPERTY);
         for (String member : CONSTRUCTORS) {
             write("""
                     package com.example;

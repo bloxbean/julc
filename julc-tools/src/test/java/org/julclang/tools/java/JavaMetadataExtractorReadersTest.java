@@ -1,7 +1,6 @@
 package org.julclang.tools.java;
 
 import org.julclang.compiler.JulcCompiler;
-import org.julclang.compiler.frontend.javac.SourceReader;
 import org.julclang.tools.model.DiagnosticDto;
 import org.junit.jupiter.api.Test;
 
@@ -9,6 +8,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * The playground's check reports the subset's diagnostics on either reading (ADR-068 M6): JavaParser's frontend's
@@ -43,27 +43,19 @@ class JavaMetadataExtractorReadersTest {
             """;
 
     @Test
-    void aTryCatchIsJulc0015OnBothReadings() {
-        var javaParser = JavaMetadataExtractor.extract(TRY_CATCH, SourceReader.JAVAPARSER, COMPILER, List.of());
-        var javac = JavaMetadataExtractor.extract(TRY_CATCH, SourceReader.JAVAC, COMPILER, List.of());
-        assertFalse(javaParser.valid());
+    void aTryCatchIsJulc0015() {
+        var javac = JavaMetadataExtractor.extract(TRY_CATCH, COMPILER, List.of());
         assertFalse(javac.valid());
-        assertEquals(site(javaParser.diagnostics().getFirst()), site(javac.diagnostics().getFirst()));
         assertEquals("JULC0015", javac.diagnostics().getFirst().code());
-        assertEquals(javaParser.contractName(), javac.contractName());
-        assertEquals(javaParser.redeemerFields(), javac.redeemerFields());
     }
 
     @Test
-    void aValidatorKeepingToTheSubsetIsValidOnBoth() {
-        String valid = TRY_CATCH.replace("""
-                        try {
-                            return r.n().signum() > 0;
-                        } catch (RuntimeException e) {
-                            return false;
-                        }""", "return r.n().signum() > 0;");
-        assertEquals(JavaMetadataExtractor.extract(valid, SourceReader.JAVAPARSER, COMPILER, List.of()),
-                JavaMetadataExtractor.extract(valid, SourceReader.JAVAC, COMPILER, List.of()));
+    void aValidatorKeepingToTheSubsetIsValid() {
+        String valid = TRY_CATCH.substring(0, TRY_CATCH.indexOf("try {")) + "return r.n().signum() > 0;\n"
+                + TRY_CATCH.substring(TRY_CATCH.indexOf("return false;") + "return false;".length()).replaceFirst("\\}", "");
+        assertFalse(valid.contains("try {"), valid);
+        var response = JavaMetadataExtractor.extract(valid, COMPILER, List.of());
+        assertTrue(response.valid(), response::toString);
     }
 
     private static String site(DiagnosticDto d) {

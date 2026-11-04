@@ -1,6 +1,5 @@
 package org.julclang.compiler;
 
-import org.julclang.compiler.frontend.javac.SourceReader;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -11,25 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class SourceReadersTest {
 
     @Test
-    void anUnknownReaderFailsWhenUsedNamingTheProperty() {
-        String before = System.getProperty(SourceReader.PROPERTY);
-        try {
-            System.setProperty(SourceReader.PROPERTY, "javac2");
-            var error = assertThrows(IllegalArgumentException.class, () -> JavaSourceIntrospector.inspect("class A { }"));
-            assertTrue(error.getMessage().contains(SourceReader.PROPERTY), error.getMessage());
-            System.setProperty(SourceReader.PROPERTY, "javac");
-            assertEquals(SourceReader.JAVAC, SourceReader.configured());
-            // The class is still usable: nothing was cached from the bad value.
-            System.clearProperty(SourceReader.PROPERTY);
-            assertEquals("", JavaSourceIntrospector.inspect("class A { }").packageName());
-        } finally {
-            if (before == null) System.clearProperty(SourceReader.PROPERTY);
-            else System.setProperty(SourceReader.PROPERTY, before);
-        }
-    }
-
-    @Test
-    void anEnumsNestedTypesComeInJavaParsersOrder() {
+    void anEnumsMembersComeBeforeItsConstants() {
         String source = """
                 package p;
                 import org.julclang.stdlib.annotation.OnchainLibrary;
@@ -38,9 +19,7 @@ class SourceReadersTest {
                     @OnchainLibrary static class InEnum { }
                 }
                 """;
-        var javaParser = JavaSourceIntrospector.inspect(source, SourceReader.JAVAPARSER);
-        var javac = JavaSourceIntrospector.inspect(source, SourceReader.JAVAC);
-        assertEquals(javaParser, javac);
+        var javac = JavaSourceIntrospector.inspect(source);
         assertEquals("p.E.InEnum", javac.nestedOnchainLibraries().getFirst().fqcn());
     }
 }

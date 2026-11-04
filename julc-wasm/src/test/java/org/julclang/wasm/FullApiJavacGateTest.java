@@ -1,6 +1,5 @@
 package org.julclang.wasm;
 
-import org.julclang.compiler.frontend.javac.JavacGate;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -14,20 +13,6 @@ import static org.junit.jupiter.api.Assertions.*;
  * its image smoke is separate). The editor source is the root and the engine's class-path scan is the pool.
  */
 class FullApiJavacGateTest {
-
-    private String saved;
-
-    @BeforeEach
-    void enforce() {
-        saved = System.getProperty(JavacGate.MODE_PROPERTY);
-        System.setProperty(JavacGate.MODE_PROPERTY, "enforce");
-    }
-
-    @AfterEach
-    void restore() {
-        if (saved == null) System.clearProperty(JavacGate.MODE_PROPERTY);
-        else System.setProperty(JavacGate.MODE_PROPERTY, saved);
-    }
 
     static String compile(String condition) throws Exception {
         String source = """

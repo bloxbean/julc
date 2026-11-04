@@ -1,6 +1,5 @@
 package org.julclang.cli.mcp.lint;
 
-import org.julclang.compiler.JavaSourceParser;
 import org.julclang.compiler.frontend.javac.JavacSyntax;
 import org.julclang.cli.mcp.lint.rules.BannedParamTypesRule;
 import org.julclang.cli.mcp.lint.rules.ByteStringLibOffChainRule;
@@ -17,12 +16,10 @@ import org.julclang.cli.mcp.lint.rules.ReturnInLoopRule;
 import org.julclang.cli.mcp.lint.rules.SwitchFieldShadowRule;
 import org.julclang.cli.mcp.lint.rules.Tuple2SwitchRule;
 import org.julclang.cli.mcp.lint.rules.UninitializedVarRule;
-import org.julclang.compiler.frontend.javac.SourceReader;
 
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.function.Function;
 
 /**
  * Drives all registered lint rules against a single JuLC source string
@@ -55,29 +52,14 @@ public final class LintEngine {
             new MapReturnTypeRule(),
             new IncrementDecrementRule()
     );
-    /**
-     * The reader this tool uses (ADR-068 M6), read when it is used: {@link SourceReader#configured()}, which fails with a
-     * message naming the property for a value it does not know.
-     */
-    private static SourceReader defaultReader() {
-        return SourceReader.configured();
-    }
-
     private final List<LintRule> rules;
-    private final SourceReader reader;
 
     public LintEngine() {
         this(DEFAULT_RULES);
     }
 
     public LintEngine(List<LintRule> rules) {
-        this(rules, defaultReader());
-    }
-
-    /** <b>Internal</b> (ADR-068 M6): the reader is chosen here for the equivalence gates; this constructor goes at M6. */
-    public LintEngine(List<LintRule> rules, SourceReader reader) {
         this.rules = List.copyOf(rules);
-        this.reader = reader;
     }
 
     public List<LintRule> rules() {
@@ -91,25 +73,6 @@ public final class LintEngine {
      * surface the parse error). Lint is best-effort.
      */
     public List<LintFinding> lint(String source) {
-        return switch (reader) {
-            case JAVAPARSER -> lintWithJavaParser(source);
-            case JAVAC -> lintWithJavac(source);
-        };
-    }
-
-    private List<LintFinding> lintWithJavaParser(String source) {
-        // JavaParser 3.26.3 maxes out at JAVA_21; JuLC source uses sealed
-        // interfaces + records (Java 21 features) so this is sufficient.
-        var parseResult = JavaSourceParser.parse(source);
-        if (parseResult.getResult().isEmpty()) {
-            return List.of();
-        }
-        var cu = parseResult.getResult().get();
-        return run(rule -> rule.check(cu));
-    }
-
-    /** javac's parser reads the source; a source it rejects has no findings, as an unreadable one has above. */
-    private List<LintFinding> lintWithJavac(String source) {
         JavacSyntax syntax;
         try {
             syntax = JavacSyntax.read(source);
@@ -120,20 +83,14 @@ public final class LintEngine {
         if (syntax.hasErrors()) {
             return List.of();
         }
-        return run(rule -> rule.check(syntax));
+        return run(syntax);
     }
 
-    private List<LintFinding> run(Function<LintRule, List<LintFinding>> check) {
+    private List<LintFinding> run(JavacSyntax syntax) {
         var all = new ArrayList<LintFinding>();
         for (var rule : rules) {
-            if (!rule.supports(reader)) {
-                all.add(new LintFinding(rule.id(), null, "info",
-                        "Lint rule " + rule.id() + " does not run on the " + reader + " reading of the source",
-                        0, 0, null));
-                continue;
-            }
             try {
-                all.addAll(check.apply(rule));
+                all.addAll(rule.check(syntax));
             } catch (Exception e) {
                 // A buggy lint rule must not crash the whole linter — surface as
                 // an info-level finding so the maintainer notices but the agent

@@ -1,6 +1,5 @@
 package org.julclang.cli.check;
 
-import org.julclang.compiler.frontend.javac.SourceReader;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -15,38 +14,20 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Every {@link TestDiscoveryTest} case read by javac's parser (ADR-068 M6): the same methods, or the same failure, as
- * JavaParser's reading. The one case where they differ is overridden, with the reason.
+ * What javac's parser reads of a test source: a literal with an unpaired surrogate is valid Java, later Java is read, and
+ * nested types come in source order (ADR-068 M6).
  */
-class TestDiscoveryOnJavacTest extends TestDiscoveryTest {
+class TestDiscoveryOnJavacTest {
 
-    @Override
-    List<TestDiscovery.TestMethod> discover(Path dir) throws IOException {
-        List<TestDiscovery.TestMethod> expected;
-        try {
-            expected = TestDiscovery.discover(dir, SourceReader.JAVAPARSER);
-        } catch (IllegalArgumentException e) {
-            var actual = assertThrows(IllegalArgumentException.class,
-                    () -> TestDiscovery.discover(dir, SourceReader.JAVAC));
-            assertEquals(prefix(e.getMessage()), prefix(actual.getMessage()));
-            throw actual;
-        }
-        var actual = TestDiscovery.discover(dir, SourceReader.JAVAC);
-        assertEquals(expected, actual);
-        return actual;
-    }
-
-    /** The message up to the problems, which are each parser's own words. */
-    private static String prefix(String message) {
-        return message.substring(0, message.indexOf(": "));
+    private static List<TestDiscovery.TestMethod> discover(Path dir) throws IOException {
+        return TestDiscovery.discover(dir);
     }
 
     /**
      * javac reads a literal with an unpaired surrogate: it is valid Java. JuLC rejects it when it compiles the test
      * ({@code JULC0093} on the javac frontend, the reader's error on the JavaParser one), so the test is found, and then
-     * fails with that diagnostic, where JavaParser's strict reading stopped {@code julc check} before any test ran.
+     * fails with that diagnostic, before any test ran.
      */
-    @Override
     @Test
     void discoverSkipsSourcesThatOnlyMentionTestAndJuLCCannotRead(@TempDir Path tempDir) throws IOException {
         Files.writeString(tempDir.resolve("Mentions.java"), """
@@ -65,9 +46,7 @@ class TestDiscoveryOnJavacTest extends TestDiscoveryTest {
                     public static boolean t() { return "\\uD800".isEmpty(); }
                 }
                 """);
-        assertThrows(IllegalArgumentException.class,
-                () -> TestDiscovery.discover(tempDir, SourceReader.JAVAPARSER));
-        var found = TestDiscovery.discover(tempDir, SourceReader.JAVAC);
+        var found = TestDiscovery.discover(tempDir);
         assertEquals(1, found.size());
         assertEquals("t", found.getFirst().methodName());
     }
@@ -120,14 +99,14 @@ class TestDiscoveryOnJavacTest extends TestDiscoveryTest {
                     static void f(Object o) { if (o instanceof String _) {} }
                 }
                 """);
-        assertEquals(List.of(), TestDiscovery.discover(tempDir, SourceReader.JAVAC));
+        assertEquals(List.of(), TestDiscovery.discover(tempDir));
         Files.writeString(tempDir.resolve("LaterJavaTest.java"), """
                 class LaterJavaTest {
                     @Test public static boolean t() { Object o = ""; return o instanceof String _; }
                 }
                 """);
-        assertThrows(IllegalArgumentException.class, () -> TestDiscovery.discover(tempDir, SourceReader.JAVAC));
+        assertThrows(IllegalArgumentException.class, () -> TestDiscovery.discover(tempDir));
         Files.writeString(tempDir.resolve("LaterJavaTest.java"), "// @Test\nclass LaterJavaTest {\n");
-        assertThrows(IllegalArgumentException.class, () -> TestDiscovery.discover(tempDir, SourceReader.JAVAC));
+        assertThrows(IllegalArgumentException.class, () -> TestDiscovery.discover(tempDir));
     }
 }

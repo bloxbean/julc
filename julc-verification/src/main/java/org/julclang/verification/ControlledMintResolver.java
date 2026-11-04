@@ -1,6 +1,5 @@
 package org.julclang.verification;
 
-import org.julclang.compiler.frontend.javac.SourceReader;
 
 import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.schema.ContractSchema;
@@ -24,14 +23,7 @@ public final class ControlledMintResolver {
 
     public static Optional<ControlledMintProperty> resolve(
             String source, String fileName, String validatorTitle, ContractSchema schema) {
-        return resolve(source, fileName, validatorTitle, schema, SourceAnnotations.defaultReader());
-    }
-
-    /** {@link #resolve(String, String, String, ContractSchema)} with the source read by {@code reader} (ADR-068 M6). */
-    static Optional<ControlledMintProperty> resolve(
-            String source, String fileName, String validatorTitle, ContractSchema schema,
-            SourceReader reader) {
-        SourceAnnotations.Unit unit = SourceAnnotations.read(source, reader);
+        SourceAnnotations.Unit unit = SourceAnnotations.read(source);
         SourceAnnotations.Type type = exactType(unit, validatorTitle, fileName);
         List<Annotation> matches = annotations(type, unit);
         if (matches.isEmpty()) return Optional.empty();

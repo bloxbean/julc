@@ -27,13 +27,11 @@ class JulcPluginJavacGateTest {
     @BeforeEach
     void setUp() throws IOException {
         Files.writeString(project.resolve("settings.gradle"), "rootProject.name = 'gate-project'\n");
-        // The gate runs before the JavaParser frontend, which is selected explicitly from ADR-068 M5.
         Files.writeString(project.resolve("build.gradle"), """
                 plugins {
                     id 'org.julclang.julc'
                 }
                 julc {
-                    frontend = 'javaparser'
                 }
                 """);
         sources = project.resolve("src/main/plutus/com/example");
@@ -73,7 +71,7 @@ class JulcPluginJavacGateTest {
 
     GradleRunner runner() {
         return GradleRunner.create().withProjectDir(project.toFile()).withPluginClasspath()
-                .withArguments("compileJulc", "-Djulc.javacGate=enforce", "--stacktrace");
+                .withArguments("compileJulc", "--stacktrace");
     }
 
     @Test
@@ -120,8 +118,7 @@ class JulcPluginJavacGateTest {
     void theCastAndNameRulesFailTheBuild() throws IOException {
         writeValidator("PlutusData.cast(ctx.txInfo().fee(), Boolean.class)");
         assertBuildFails("JULC0098");
-        for (String[] rule : List.of(new String[]{"JULC0100", "record Boolean(java.math.BigInteger a) { }"},
-                new String[]{"JULC0101", "record R(long a) { static boolean fromPlutusData(long x) { return false; } }"})) {
+        for (String[] rule : List.<String[]>of(new String[]{"JULC0080", "record R(long a) { static boolean fromPlutusData(long x) { return false; } }"})) {
             writeValidator("true");
             Path validator = sources.resolve("FeeGate.java");
             Files.writeString(validator, Files.readString(validator).replace("    @Entrypoint", "    " + rule[1] + "\n    @Entrypoint"));

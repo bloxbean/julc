@@ -5,7 +5,6 @@ import io.javalin.Javalin;
 import io.javalin.testtools.JavalinTest;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.LibrarySourceResolver;
-import org.julclang.compiler.frontend.javac.JavacGate;
 import org.julclang.playground.sandbox.CompilationSandbox;
 import org.julclang.stdlib.StdlibRegistry;
 import org.julclang.tools.model.CompileRequest;
@@ -22,21 +21,16 @@ import static org.junit.jupiter.api.Assertions.*;
 class CompileControllerJavacGateTest {
 
     static final ObjectMapper JSON = new ObjectMapper();
-    private String saved;
     private CompilationSandbox sandbox;
 
-    @BeforeEach
-    void enforce() {
-        saved = System.getProperty(JavacGate.MODE_PROPERTY);
-        System.setProperty(JavacGate.MODE_PROPERTY, "enforce");
+    @org.junit.jupiter.api.BeforeEach
+    void startTheSandbox() {
         sandbox = new CompilationSandbox(1, 30);
     }
 
-    @AfterEach
-    void restore() {
+    @org.junit.jupiter.api.AfterEach
+    void stopTheSandbox() {
         sandbox.shutdown();
-        if (saved == null) System.clearProperty(JavacGate.MODE_PROPERTY);
-        else System.setProperty(JavacGate.MODE_PROPERTY, saved);
     }
 
     Javalin app() {

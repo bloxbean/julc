@@ -1,6 +1,5 @@
 package org.julclang.verification;
 
-import org.julclang.compiler.frontend.javac.SourceReader;
 
 import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.schema.ContractSchema;
@@ -27,14 +26,7 @@ public final class RequiresSignerResolver {
 
     public static Optional<RequiresSignerProperty> resolve(
             String source, String fileName, String validatorTitle, ContractSchema schema) {
-        return resolve(source, fileName, validatorTitle, schema, SourceAnnotations.defaultReader());
-    }
-
-    /** {@link #resolve(String, String, String, ContractSchema)} with the source read by {@code reader} (ADR-068 M6). */
-    static Optional<RequiresSignerProperty> resolve(
-            String source, String fileName, String validatorTitle, ContractSchema schema,
-            SourceReader reader) {
-        var unit = SourceAnnotations.read(source, reader);
+        var unit = SourceAnnotations.read(source);
         List<SourceAnnotations.Type> matches = new ArrayList<>();
         for (var type : unit.types()) {
             if (type.name().equals(validatorTitle)) matches.add(type);

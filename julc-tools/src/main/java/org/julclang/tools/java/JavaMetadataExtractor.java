@@ -1,15 +1,8 @@
 package org.julclang.tools.java;
 
-import org.julclang.compiler.JavaSourceParser;
 import org.julclang.compiler.JavaSourceIntrospector;
 import org.julclang.compiler.JulcCompiler;
-import org.julclang.compiler.validate.SubsetValidator;
 import org.julclang.tools.model.*;
-import com.github.javaparser.ast.CompilationUnit;
-import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
-import com.github.javaparser.ast.body.MethodDeclaration;
-import com.github.javaparser.ast.body.RecordDeclaration;
-import org.julclang.compiler.frontend.javac.SourceReader;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -63,247 +56,21 @@ public final class JavaMetadataExtractor {
      * Returns a CheckResponse with the same structure the frontend expects.
      */
     public static CheckResponse extract(String source) {
-        return extract(source, defaultReader(), new JulcCompiler(), List.of());
+        return extract(source, new JulcCompiler(), List.of());
     }
 
     /**
-     * {@link #extract(String)} for a source {@code compiler} compiles with {@code librarySources}: javac's reading checks
-     * the subset as that compilation does ({@link JulcCompiler#subsetDiagnostics}), with its libraries ranked as it ranks
-     * them; JavaParser's reading uses neither.
+     * {@link #extract(String)} for a source {@code compiler} compiles with {@code librarySources}: the subset is checked as
+     * that compilation checks it ({@link JulcCompiler#subsetDiagnostics}), with its libraries ranked as it ranks them.
      */
     public static CheckResponse extract(String source, JulcCompiler compiler, List<String> librarySources) {
-        return extract(source, defaultReader(), compiler, librarySources);
-    }
-    /**
-     * The reader this tool uses (ADR-068 M6), read when it is used: {@link SourceReader#configured()}, which fails with a
-     * message naming the property for a value it does not know.
-     */
-    private static SourceReader defaultReader() {
-        return SourceReader.configured();
-    }
-
-    /**
-     * {@link #extract(String, JulcCompiler, List)} with the source read by {@code reader}. Each reading reports its frontend's subset
-     * diagnostics: JavaParser's frontend's validator, or the javac frontend's subset check, which a compilation applies.
-     */
-    static CheckResponse extract(String source, SourceReader reader, JulcCompiler compiler, List<String> librarySources) {
-        if (reader == SourceReader.JAVAC) {
-            return JavacMetadataReading.extract(source, VALIDATOR_ANNOTATIONS, compiler, librarySources);
-        }
-        CompilationUnit cu;
-        var parseResult = JavaSourceParser.parse(source);
-        if (!parseResult.isSuccessful() || parseResult.getResult().isEmpty()) {
-            var diagnostics = new ArrayList<DiagnosticDto>();
-            for (var problem : parseResult.getProblems()) {
-                String msg = problem.getMessage();
-                // Extract just the first line (before "Problem stacktrace")
-                int stackIdx = msg.indexOf("Problem stacktrace");
-                if (stackIdx > 0) msg = msg.substring(0, stackIdx).trim();
-                var loc = problem.getLocation().orElse(null);
-                Integer line = loc != null ? loc.getBegin().getRange().map(r -> r.begin.line).orElse(null) : null;
-                Integer col = loc != null ? loc.getBegin().getRange().map(r -> r.begin.column).orElse(null) : null;
-                diagnostics.add(new DiagnosticDto("ERROR", null, msg, line, col, null, null, null));
-            }
-            if (diagnostics.isEmpty()) {
-                diagnostics.add(new DiagnosticDto("ERROR", null, "Parse error", null, null, null, null, null));
-            }
-            return new CheckResponse(false, null, null, List.of(), null, List.of(), List.of(), List.of(), diagnostics);
-        }
-        cu = parseResult.getResult().get();
-
-        // Run subset validation
-        var subsetValidator = new SubsetValidator();
-        var compilerDiags = subsetValidator.validate(cu);
-        var diagnostics = new ArrayList<>(compilerDiags.stream().map(DiagnosticDto::from).toList());
-
-        // Find the validator class
-        ClassOrInterfaceDeclaration validatorClass = null;
-        String annotationName = null;
-        for (var type : cu.findAll(ClassOrInterfaceDeclaration.class)) {
-            var roleConflict = JavaSourceIntrospector.roleConflictOn(type);
-            if (roleConflict.isPresent()) {
-                diagnostics.add(new DiagnosticDto("ERROR", null,
-                        roleConflict.get().message(),
-                        null, null, null, null, null));
-                return new CheckResponse(false, null, null, List.of(), null,
-                        List.of(), List.of(), List.of(), diagnostics);
-            }
-            if (JavaSourceIntrospector.hasLegacyValidatorAnnotation(type)) {
-                var legacy = JavaSourceIntrospector.legacyValidatorAnnotationsOn(type).get(0);
-                diagnostics.add(new DiagnosticDto("ERROR", null,
-                        JavaSourceIntrospector.legacyAnnotationMigrationMessage(legacy, type.getNameAsString()),
-                        null, null, null, null, null));
-                return new CheckResponse(false, null, null, List.of(), null,
-                        List.of(), List.of(), List.of(), diagnostics);
-            }
-            for (var ann : VALIDATOR_ANNOTATIONS) {
-                if (JavaSourceIntrospector.hasAnnotation(type, ann)) {
-                    validatorClass = type;
-                    annotationName = ann;
-                    break;
-                }
-            }
-            if (validatorClass != null) break;
-        }
-
-        if (validatorClass == null) {
-            diagnostics.add(new DiagnosticDto("ERROR", null,
-                    "No validator annotation found. Add @SpendingValidator, @MintingValidator, etc.",
-                    null, null, null, null, null));
-            return new CheckResponse(false, null, null, List.of(), null, List.of(), List.of(), List.of(), diagnostics);
-        }
-
-        String contractName = validatorClass.getNameAsString();
-        String purpose = determinePurpose(annotationName, validatorClass);
-
-        // Extract @Param fields
-        List<FieldDto> params = extractParams(validatorClass);
-
-        // Find @Entrypoint method
-        MethodDeclaration entrypoint = findEntrypoint(validatorClass);
-        if (entrypoint == null) {
-            diagnostics.add(new DiagnosticDto("WARNING", null,
-                    "No @Entrypoint method found",
-                    null, null, null, null, null));
-            boolean hasErrors = diagnostics.stream().anyMatch(d -> "ERROR".equals(d.level()));
-            return new CheckResponse(!hasErrors, contractName, purpose, params, null,
-                    List.of(), List.of(), List.of(), diagnostics);
-        }
-
-        // Extract datum and redeemer metadata from entrypoint params
-        String datumName = null;
-        List<FieldDto> datumFields = List.of();
-        List<VariantDto> redeemerVariants = List.of();
-        List<FieldDto> redeemerFields = List.of();
-
-        var entrypointParams = entrypoint.getParameters();
-        boolean isSpending = "SPENDING".equals(purpose);
-
-        if (isSpending && entrypointParams.size() >= 3) {
-            // 3-param spending: (datum, redeemer, ctx)
-            String datumType = entrypointParams.get(0).getTypeAsString();
-            datumName = datumType;
-            datumFields = extractRecordFields(validatorClass, datumType);
-
-            String redeemerType = entrypointParams.get(1).getTypeAsString();
-            var redeemerInfo = extractRedeemerInfo(validatorClass, redeemerType);
-            redeemerVariants = redeemerInfo.variants();
-            redeemerFields = redeemerInfo.fields();
-        } else if (isSpending && entrypointParams.size() == 2) {
-            // 2-param spending: (redeemer, ctx)
-            String redeemerType = entrypointParams.get(0).getTypeAsString();
-            var redeemerInfo = extractRedeemerInfo(validatorClass, redeemerType);
-            redeemerVariants = redeemerInfo.variants();
-            redeemerFields = redeemerInfo.fields();
-        } else if (!isSpending && entrypointParams.size() >= 2) {
-            // Non-spending: (redeemer, ctx)
-            String redeemerType = entrypointParams.get(0).getTypeAsString();
-            var redeemerInfo = extractRedeemerInfo(validatorClass, redeemerType);
-            redeemerVariants = redeemerInfo.variants();
-            redeemerFields = redeemerInfo.fields();
-        }
-
-        boolean hasErrors = diagnostics.stream().anyMatch(d -> "ERROR".equals(d.level()));
-        return new CheckResponse(!hasErrors, contractName, purpose, params, datumName,
-                datumFields, redeemerVariants, redeemerFields, diagnostics);
+        return JavacMetadataReading.extract(source, VALIDATOR_ANNOTATIONS, compiler, librarySources);
     }
 
     /** The purpose a validator annotation names; every supported annotation names one. */
     static String purposeOf(String annotationName) {
         String mapped = ANNOTATION_TO_PURPOSE.get(annotationName);
         return mapped != null ? mapped : "SPENDING";
-    }
-
-    private static String determinePurpose(String annotationName, ClassOrInterfaceDeclaration cls) {
-        String mapped = ANNOTATION_TO_PURPOSE.get(annotationName);
-        if (mapped != null) return mapped;
-
-        // @SpendingValidator — determine from entrypoint param count
-        var entrypoint = findEntrypoint(cls);
-        if (entrypoint != null && entrypoint.getParameters().size() >= 3) {
-            return "SPENDING";
-        }
-        // Default to SPENDING for spending validators with unknown param count
-        return "SPENDING";
-    }
-
-    private static List<FieldDto> extractParams(ClassOrInterfaceDeclaration cls) {
-        var params = new ArrayList<FieldDto>();
-        for (var field : cls.getFields()) {
-            if (field.getAnnotationByName("Param").isPresent()) {
-                for (var var_ : field.getVariables()) {
-                    String type = mapDisplayType(var_.getTypeAsString());
-                    params.add(new FieldDto(var_.getNameAsString(), type));
-                }
-            }
-        }
-        return params;
-    }
-
-    private static MethodDeclaration findEntrypoint(ClassOrInterfaceDeclaration cls) {
-        for (var method : cls.getMethods()) {
-            if (method.getAnnotationByName("Entrypoint").isPresent()) {
-                return method;
-            }
-        }
-        return null;
-    }
-
-    /**
-     * Extract fields from a record type defined within the validator class.
-     */
-    private static List<FieldDto> extractRecordFields(ClassOrInterfaceDeclaration cls, String typeName) {
-        // Look for record declaration with matching name
-        for (var record : cls.findAll(RecordDeclaration.class)) {
-            if (record.getNameAsString().equals(typeName)) {
-                return record.getParameters().stream()
-                        .map(p -> new FieldDto(p.getNameAsString(),
-                                mapDisplayType(p.getTypeAsString(), p.getNameAsString())))
-                        .toList();
-            }
-        }
-        return List.of();
-    }
-
-    /**
-     * Extract redeemer info: either variants (from sealed interface) or fields (from record).
-     */
-    private static RedeemerInfo extractRedeemerInfo(ClassOrInterfaceDeclaration cls, String typeName) {
-        // Check for sealed interface first
-        for (var inner : cls.findAll(ClassOrInterfaceDeclaration.class)) {
-            if (inner.getNameAsString().equals(typeName) && inner.isInterface()) {
-                // Sealed interface — extract variant records
-                var variants = new ArrayList<VariantDto>();
-                int tag = 0;
-                for (var member : inner.getMembers()) {
-                    if (member instanceof RecordDeclaration record) {
-                        var fields = record.getParameters().stream()
-                                .map(p -> new FieldDto(p.getNameAsString(),
-                                        mapDisplayType(p.getTypeAsString(), p.getNameAsString())))
-                                .toList();
-                        variants.add(new VariantDto(record.getNameAsString(), tag, fields));
-                        tag++;
-                    }
-                }
-                if (!variants.isEmpty()) {
-                    return new RedeemerInfo(variants, List.of());
-                }
-            }
-        }
-
-        // Check for record type
-        for (var record : cls.findAll(RecordDeclaration.class)) {
-            if (record.getNameAsString().equals(typeName)) {
-                var fields = record.getParameters().stream()
-                        .map(p -> new FieldDto(p.getNameAsString(),
-                                mapDisplayType(p.getTypeAsString(), p.getNameAsString())))
-                        .toList();
-                return new RedeemerInfo(List.of(), fields);
-            }
-        }
-
-        // Primitive type (BigInteger, PlutusData, etc.) — no structured redeemer
-        return new RedeemerInfo(List.of(), List.of());
     }
 
     static String mapDisplayType(String javaType) {
@@ -371,11 +138,4 @@ public final class JavaMetadataExtractor {
         }
         return null;
     }
-
-    private static CheckResponse errorResponse(String message) {
-        return new CheckResponse(false, null, null, List.of(), null, List.of(), List.of(), List.of(),
-                List.of(new DiagnosticDto("ERROR", null, message, null, null, null, null, null)));
-    }
-
-    private record RedeemerInfo(List<VariantDto> variants, List<FieldDto> fields) {}
 }
