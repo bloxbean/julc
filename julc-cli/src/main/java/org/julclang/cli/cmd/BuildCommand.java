@@ -159,7 +159,10 @@ public class BuildCommand implements Callable<Integer> {
             }
 
             // Compile JRL files
-            var jrlCompiler = new JrlCompiler(stdlib, options);
+            // JRL's generated Java compiles on the JavaParser frontend until its transpiler writes typed equality (M6)
+            var jrlCompiler = new JrlCompiler(stdlib, OptimizationConfiguration.apply(
+                    JrlCompiler.generatedJavaOptions().setTarget(compilerTarget).setVerbose(verbose),
+                    optimizationProfile, costProfile));
             for (var entry : scanResult.jrlFiles().entrySet()) {
                 String name = entry.getKey();
                 String jrlSource = entry.getValue();

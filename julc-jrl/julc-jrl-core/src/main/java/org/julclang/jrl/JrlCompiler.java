@@ -2,6 +2,7 @@ package org.julclang.jrl;
 
 import org.julclang.compiler.CompileResult;
 import org.julclang.compiler.CompilerException;
+import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.jrl.ast.ContractNode;
@@ -28,14 +29,27 @@ public class JrlCompiler {
     private final CompilerOptions compilerOptions;
 
     public JrlCompiler() {
-        this(StdlibRegistry.defaultRegistry(), new CompilerOptions());
+        this(StdlibRegistry.defaultRegistry(), generatedJavaOptions());
     }
 
     public JrlCompiler(StdlibRegistry stdlib) {
-        this(stdlib, new CompilerOptions());
+        this(stdlib, generatedJavaOptions());
     }
 
-    /** Create a JRL compiler using the same explicit target/options as Java compilation. */
+    /**
+     * The options the generated Java compiles with by default: the JavaParser frontend. The transpiler writes JRL's
+     * {@code ==} as Java's {@code ==}, also between references ({@code BigInteger}, {@code byte[]}, {@code String}), which
+     * that frontend lowers to value equality and javac's, the default from ADR-068 M5, rejects ({@code JULC0086}). Until
+     * the transpiler writes typed equality (before ADR-068 M6 removes the JavaParser frontend), JRL selects it explicitly.
+     */
+    public static CompilerOptions generatedJavaOptions() {
+        return new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER);
+    }
+
+    /**
+     * Create a JRL compiler using the same explicit target/options as Java compilation. Select the frontend as
+     * {@link #generatedJavaOptions()} does: on javac's frontend a JRL {@code ==} between references is {@code JULC0086}.
+     */
     public JrlCompiler(StdlibRegistry stdlib, CompilerOptions compilerOptions) {
         this.stdlib = Objects.requireNonNull(stdlib, "stdlib");
         this.compilerOptions = Objects.requireNonNull(compilerOptions, "compilerOptions");
