@@ -1,8 +1,8 @@
 # ADR-068 M0 totals. Generated; do not edit.
-cases	11460
+cases	11464
 cases.blaster	7
 cases.c7	6
-cases.diffcase	236
+cases.diffcase	240
 cases.elci	4
 cases.external	102
 cases.g0	376
@@ -16,23 +16,23 @@ g1.tries	150
 g1.cases.also-recorded	123/123
 g0.cases.also-recorded	376/376
 excluded.nondeterministic	org.julclang.compiler.IntegerLiteralTest#generatedLiteralsHaveJavacsValue	300
-ledger.NONE	accepted 9705	rejected 1745	unreplayable 10
-ledger.BASELINE	accepted 9705	rejected 1745	unreplayable 10
-ledger.PV11_SAFE	accepted 9705	rejected 1745	unreplayable 10
-ledger.PV11_COSTED	accepted 9705	rejected 1745	unreplayable 10
+ledger.NONE	accepted 9708	rejected 1746	unreplayable 10
+ledger.BASELINE	accepted 9708	rejected 1746	unreplayable 10
+ledger.PV11_SAFE	accepted 9708	rejected 1746	unreplayable 10
+ledger.PV11_COSTED	accepted 9708	rejected 1746	unreplayable 10
 instantiations.NONE	accepted 33	rejected 14	unreplayable 0
 instantiations.BASELINE	accepted 33	rejected 14	unreplayable 0
 instantiations.PV11_SAFE	accepted 33	rejected 14	unreplayable 0
 instantiations.PV11_COSTED	accepted 33	rejected 14	unreplayable 0
-inventory.rows	permanent 1813	scheduled 29
-inventory.cases	1755
-coverage	sites 193	covered 117	not-source 76	uncovered 0	uncatalogued 0	contradicted 0
-runs	1908
+inventory.rows	permanent 1814	scheduled 29
+inventory.cases	1756
+coverage	sites 200	covered 117	not-source 83	uncovered 0	uncatalogued 0	contradicted 0
+runs	1912
 runs.verdicts.AGREE	7144
 runs.verdicts.CRASH	4
 runs.verdicts.INCONCLUSIVE	8
-runs.verdicts.MISMATCH	224
-runs.verdicts.REJECTED	252
+runs.verdicts.MISMATCH	236
+runs.verdicts.REJECTED	256
 evaluations	22997
 evaluations.external.excluded.nondeterministic-tests	170
 evaluations.external.replay.matched-not-replayed	119
