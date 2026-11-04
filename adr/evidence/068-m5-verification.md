@@ -11,9 +11,9 @@ external corpus that is the 11 `MpfRegistryValidator` rows, which return to the 
 
 | Host | Result |
 |---|---|
-| Native CLI against the JVM CLI | `julc build` on three projects, the 43 external validators (44 files), a project with a library and a project with the stdlib: every `.uplc` and `plutus.json` is byte-identical. Exit 0 on all. `julc check` on a scaffolded project passes on both |
+| Native CLI against the JVM CLI | `julc build` on three projects: the 43 external validators (44 files), a project with a library and a project with the stdlib (2 files each). Every `.uplc` and `plutus.json` is byte-identical, and each build exits 0. `julc check` on a scaffolded project reports the same tests on both |
 | Wasm image | `wasmSmokeFull` passes (`BUILD SUCCESSFUL`, the VM parity rows `ok`). A separate run of 15 requests, the external validators among them, against `ParityFixtures`' JVM answers: 15 of 15 equal |
-| External `julc-examples` (`d415b1d`, the migrated sources) | 43 validators: every hash equal between the M5 integration head, this default-flip head and this cost report's build. `clean test` on the plugin's default frontend: 446 tests, 0 failures, 0 errors, 11 skipped. DevKit: 53 transactions accepted (as the verification run reported; its log does not print one line per transaction) |
+| External `julc-examples` (`d415b1d`, the migrated sources) | 43 validators: every hash is equal across the M5 integration head, the default-flip head and the cost report's build. `clean test` on the plugin's default frontend: 446 tests, 0 failures, 0 errors, 11 skipped. DevKit: 53 transactions accepted (as the verification run reported; its log does not print one line per transaction) |
 | `julc-helloworld` | Migrated mechanically (`<M0>/work/m5x/helloworld-migration.diff`): 4 of 4 tests pass, and the script is equal on both frontends |
 | Elci's release smoke against a local snapshot | Identical to M0: 2, 12 and 6 tests passing, and 42 |
 
