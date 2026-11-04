@@ -2,7 +2,7 @@
 
 **Status:** Accepted (2026-10-31): approved by the review comment at `0e8bb3c1` and by Codex at `0e8bb3c1`, with
 the post-approval P3 edits at `3ba3ea03`. The implementation follows in this PR, milestone by milestone (M0–M6)
-**Date:** 2026-10-30 (r1); revised 2026-10-31 (r2–r9), 2026-11-01 (r10, r11), 2026-11-02 (r12, r13) and 2026-11-03 (r14 to r16)
+**Date:** 2026-10-30 (r1); revised 2026-10-31 (r2–r9), 2026-11-01 (r10, r11), 2026-11-02 (r12, r13), 2026-11-03 (r14 to r16) and 2026-11-04 (r17)
 **Label:** `semantic-consistency`
 **Risk class:** correctness-sensitive, **high**. The frontend decides what every validator means; a wrong
 binding, type or literal is a silent miscompile.
@@ -663,13 +663,35 @@ exceptions D11 lists.
     |---|---|
     | A collection operation between unrelated types | `JULC0078` |
     | `.equals` of unrelated type arguments | `JULC0078` |
-    | `.equals` between types with no class in common | `JULC0084`, `an equals between unrelated types`. It stays a stop until M5, because of an external validator (`UVerifyProxy.java:70`, `txId.equals(utxoRefTxId)` with `byte[]`) |
+    | `.equals` between two types no class can share | `JULC0078` (r17, the maintainer's delegation of 2026-11-03): Java answers `false` for every such pair, and on-chain the reference answered `true`, `false` or failed (ADR-062 T29, T34). Two types are such a pair when neither is a subtype of the other and no class can be both: two classes, a final class against a type it is not, or sealed types whose permitted classes cannot meet. Until r17 it was `JULC0084`, a stop, because of an external validator (`UVerifyProxy.java:70`, `txId.equals(utxoRefTxId)` with `byte[]`) |
+    | `.equals` where a class could be both types, an intersection, or a choice of operands of which one is related | `JULC0087`: the answer is not constant (r17) |
+    | `.equals` between two containers (`Optional`, a list, a map) of unrelated arguments | `JULC0087`, "which Java keeps distinct, though two empty containers of them are equal": two empty ones are equal in Java (r17). A record (`Tuple2`, `Tuple3`) is never empty, and keeps `JULC0078` |
     | A raw `JulcList` or `JulcMap` receiver | `JULC0087`, as "any type the check cannot resolve" |
     | A raw receiver that is a cast | Stops at `TYPE_CAST`, where `ValuesLib.java:43` holds one |
     | An operand the check cannot read | `JULC0087` |
 
     **The cost.** An empty `Optional` or collection equals an empty one of any argument, so two such values are unrelated
-    although Java can answer true. The rule stays on the types, and those programs fail closed.
+    although Java can answer true. The rule stays on the types, and those programs fail closed: an `equals` between two
+    such containers is `JULC0087` (r17).
+  - **A choice of values of two forms (r17).** On `frontend=JAVAC` a choice is held to one representation, with `JULC0012`
+    at the choice otherwise, wherever it stands. A choice is a conditional or a `switch` expression, the `return`s of a
+    lambda's block, and the `return`s of a method (a return is not converted to the declared type). Two rules hold it, both
+    at the choice:
+    1. by Java's type, a conditional's or a `switch`'s arms have one type after boxing, except where javac types the
+       expression primitive (numeric or boolean promotion) or the arms are a sealed interface of records and its records
+       (the expression is that interface, or an intersection whose one sealed bound it is). `PlutusData` is not such an
+       interface;
+    2. by the lowered terms, every value of the choice is held one way on-chain: an integer, a byte string, a string, a
+       boolean, a builtin list, a builtin list of pairs, or Data (records, sums, `Optional` and `PlutusData` are Data). A
+       `PlutusData` whose term is neither a Data-making builtin (`iData`, `bData`, `constrData`, `listData`, `mapData`)
+       nor a record is not decided by its term, as it may hold a builtin's list (r14), and it differs from no other value.
+       Java's type does not tell the form: `ListData` is a builtin list from `unListData` and Data from `toPlutusData()`,
+       and nothing encodes a choice's value by itself.
+
+    Rows that move from identical to rejected are Policy rejections, naming the reference's reading where it applies.
+  - **A narrowing of a literal (r17).** `(char)`, `(short)` or `(byte)` of an integer literal, perhaps negated, is its Java
+    value on `frontend=JAVAC`, as the reference's is where the value is in range (`(char) 97` is 97); any other such cast is
+    `JULC0124`.
   - These are policy rejections in D13, with their rejection tests; ADR-062 T3, T4 and T5 are updated in M3.
 
 ### D7. Types from javac
@@ -828,12 +850,13 @@ Each milestone appends the javac frontend's row and, for every difference, one c
 | **Semantic fix** | Semantic observations differ, and the javac frontend agrees with the JVM where the reference did not | An issue; a saved `.diffcase` on which the javac frontend agrees and the reference diverges |
 | **UPLC-only semantic fix** | Semantic observations differ on a case with no JVM counterpart (malformed Data, ADR-067's UPLC-only checks) | The decision that defines the outcome; the UPLC-only test asserting it |
 | **Policy rejection** | The javac frontend rejects a case the reference accepted, by a decision of this ADR (D6, D11, D14, D15, I2d, I11) | The decision; a rejection test with the code; docs and release notes |
+| **Policy rejection at run time** (r17) | The javac frontend's script fails where the JVM returns, by a decision of this ADR that fails closed; a `DIFFERENT-bytes` row only, bounded as below | The decision's id, from a closed list; a control test per row |
 | **javac rejection** | javac rejects a migration case (dialect, D6) | The rewritten Java source, which gets its own row; a case D6 removes keeps its rejection row and has none |
 | **Accepted by decision** | The javac frontend accepts a case the reference rejected (escape shapes, javac 25's switch shapes, ADR-067 M2a/M2b record patterns) | The decision; a `.diffcase` per shape on which the javac frontend agrees with the JVM |
 | **Diagnostic change** | Both reject, with a different code, message or position | For a coded JuLC rejection, only a decision this ADR names or I2b's javac-first rejection; for an uncoded one, its new code (I2a) A row that differs only in its diagnostics, such as a warning one frontend reports with the gate off, is `DIFFERENT-diagnostics`, and this class explains it; a row that also differs in bytes or params stays `DIFFERENT-bytes`. |
 | **Provenance change** | Only source locations differ (I7) | The location pairs, and the rule that explains them |
 | **Schema name change** | A blueprint names a type differently, and its encoding is equal, because D8 reads only the units a program references | The two names, and the unit D8 does not read |
-| **Representation only** | Bytes differ; semantic observations and budgets equal | The PIR diff |
+| **Representation only** | Bytes differ, or (a `DIFFERENT-pir` row both frontends accept, r17) only a method's PIR; semantic observations and budgets equal | The PIR diff |
 | **Cost change** | Semantic observations equal; budgets differ | The budget delta; a review decision if any budget grows |
 | **Reference change** | The reference itself changed (D4's exceptions) | The new frozen base, and every reference row re-run |
 
@@ -862,6 +885,39 @@ Each milestone appends the javac frontend's row and, for every difference, one c
 - **A row that differs in its PIR (r13).** `DIFFERENT-pir` is a method whose bytes and budgets may agree while its terms do
   not. "Semantic fix" and "Cost change" explain it, with the evidence of the class. The row's text ends in a digest of the
   type and term of every method that differs, so another difference moves the row.
+- **Script size in the budgets (r17).** "Cost change" and "Representation only" compare CPU, memory *and* script size, with
+  and without a source map; a row whose size differs is a Cost change, and a growth in any of the three is the review's
+  decision.
+- **A `DIFFERENT-pir` row that changes nothing observable (r17, the maintainer's decision on O9, narrowed).** "Representation
+  only" explains a `DIFFERENT-pir` row only where both frontends accept: there the I1 tool found every level's FLAT bytes,
+  size, diagnostics and params equal (with and without a map), so values and budgets are equal by construction, and the PIR
+  diff is its evidence. A method PIR that differs where a frontend rejects the program is its own row class,
+  `DIFFERENT-pir-unaccepted`, which Representation only cannot explain. It is classed by the side that rejects, as the row
+  class of that outcome is: "Accepted by decision" where only the javac frontend accepts (as `DIFFERENT-javac-accepts`), and
+  "Policy rejection" where only it rejects (as `DIFFERENT-javac-rejects`). "Semantic fix" explains neither, since the side
+  that rejects has no semantic observation, and a row both frontends reject has no class without a decision of its own
+  (`Adr068Lowering.explainsUnaccepted`; the M5a re-confirmation's G1). The three head rows of `(var x) -> x.signum() > 0`
+  (r13's widening) are Accepted by decision, with `reject-068-var-lambda-parameter.diffcase`.
+- **A script that fails where the JVM returns, by decision (r17, the maintainer's decision on O7, narrowed).** "Policy
+  rejection at run time (`<decision id>`)" explains a `DIFFERENT-bytes` row in which the javac frontend's script fails where
+  the JVM returns, by a decision of this ADR that fails closed. It is bounded four ways:
+  1. *A closed list.* The decision id is one of `Adr068Lowering.RUN_TIME_DECISIONS`, which today holds one: M3f decision 1
+     (a `find` that finds nothing fails where any read of it is computed). A new id needs an ADR revision. The I1 tool
+     refuses the class with any other id, or none.
+  2. *A control per row.* The entry cites a control test (`control <Class>#<method>`, checked to exist by
+     `Adr068LoweringToolTest.theM5aTablesCiteControlsThatExist`): the row's shape where the trigger cannot fire (for `find`,
+     a hit the program guarantees), which agrees with the JVM at four levels on both frontends, and with a trigger that can
+     fire, where the javac frontend fails only when it fires, at the decision's site (the miss's `HeadList`).
+  3. *Never a value.* The class explains only a failure where the JVM returns. A `JAVAC` value other than the JVM's stays a
+     finding; the recheck tool calls a row `FAILS-CLOSED` only when the javac frontend's every departure is such a failure
+     and the reference gives the JVM's answer there.
+  4. *Its liveness cost, stated.* In a validator, failing closed is a denial, not a theft: a transaction that JVM-tested
+     logic accepts is refused on-chain. Where the trigger is visible at compile time (a `find` bound and never read, a cast
+     of one to `PlutusData` never read), a warning or rejection is a follow-up (O10), so that the run-time class covers only
+     what cannot be seen before the script runs.
+
+  Five head rows take it (four `Adr068LambdasHarnessTest` miss rows and `1e25a82a5e`, a switch-predicate `find` bound and
+  never read), each citing its control.
 - A case may move between classes only by a new row; rows are never edited. The one exception is a **tool
   correction**: when a frozen value is shown to be an artifact of the ledger tool itself (not of the compiler,
   for example a class-loader identity hash in a JVM failure message), the frozen file may be regenerated at its
@@ -907,7 +963,17 @@ A rule that depends on what javac resolved runs on javac's trees after `analyze(
 | `JULC0101` | A record's generated accessor does not implement `ToPlutusData.toPlutusData`: `SpelledMethods.checkRecordMembers` reads that element, because javac gives the accessor no tree. A generated accessor of any other method lowers | `frontend=JAVAC` (r12) |
 | `JULC0101` | The rest: a method does not take a name that frontend reads in place of the method's body, and a call on a `@NewType` or on what lowers to bytes is its accessor | The gate only |
 | `JULC0103` | An entry point's last parameter is `ScriptContext` or `PlutusData`, by identity; an entry point with a count its purpose does not take keeps the count's rejection | Both, by the maintainer's decision (r16); the gate's modes apply on the default frontend |
-| `JULC0078` | D6's related types: a collection operation between unrelated types, and `.equals` of unrelated type arguments | `frontend=JAVAC`, from M3 (r12) |
+| `JULC0078` | D6's related types: a collection operation between unrelated types, and `.equals` of unrelated type arguments; and a plain `equals` between two types no class can share | `frontend=JAVAC`, from M3 (r12); the plain `equals` from r17 |
+| `JULC0012` | A choice of arms of two types, or of values held two ways on-chain (D6, r17) | `frontend=JAVAC` (r17) |
+| `JULC0123` | A static call through a package-qualified class name (I2a) | `frontend=JAVAC` (r17); a Policy rejection where the reference accepted |
+| `JULC0124` | A `byte`, `short`, `char`, `float` or `double` type, or a cast to one, but D6's narrowing of a literal (I2a) | `frontend=JAVAC` (r17); a Policy rejection where the reference accepted |
+| `JULC0125` | An expression the reference names unsupported, in its words (a `char` literal, a text block; I2a) | `frontend=JAVAC` (r17); a Policy rejection where the reference accepted |
+| `JULC0126` | An `instanceof` of a value whose type is not the variant's interface | `frontend=JAVAC` (r17); a Policy rejection where the reference accepted |
+| `JULC0127` | A variant that is not a plain record | `frontend=JAVAC` (r17); a Policy rejection where the reference accepted |
+| `JULC0128` | A value whose on-chain form is not the one the operation reads | `frontend=JAVAC` (r17); a Policy rejection where the reference accepted |
+| `JULC0129` | A `new` of a class that is not a record: "Cannot construct non-record type", the reference's words, which it gives uncoded (I2a) | `frontend=JAVAC` (r17) |
+| `JULC0012` | A type parameter no call specializes: the reference's "Unknown type", which it gives uncoded (I2a) | `frontend=JAVAC` (r17) |
+| `JULC0014` | An array type the javac frontend reads, a varargs record component included (the reference reads `BigInteger...` as its element type) | `frontend=JAVAC` (r17) |
 | `JULC0092` | Existing (I11). The gate also applies it where a sealed interface's variants, read as `TypeRegistrar` reads them, differ from javac's list | Both |
 
 - **Modes.** A rule follows the gate's mode on the default frontend: `enforce`, the default, rejects; `report` writes it
@@ -930,8 +996,15 @@ A rule that depends on what javac resolved runs on javac's trees after `analyze(
   takes every class offered to a compilation, annotated or not, at any depth, as `LibraryCompiler` compiles it. A
   variable does not take the name of one, and a type of the unnamed package does not take the name of another type
   or of a package of the compilation.
+- **A varargs record component (r17, the maintainer's decision on O6).** `record R(BigInteger... a)` keeps `JULC0014`, the
+  arrays rule, on `frontend=JAVAC`. The reference accepts the form only because JavaParser reads `BigInteger...` as its
+  element type, an accident rather than a feature: as soon as the record is built its script fails where the JVM returns,
+  `r.a().length` is rejected, and `record R(BigInteger[] a)` is rejected ("Arrays are not supported except byte[]").
+  Accepting it where nothing builds it would add a reachability rule for a declaration with no working use, and such a
+  record can still enter a schema or blueprint as a type. The one head row is a Policy rejection, pinned by
+  `JavacRecordsTest#aVarargsComponentIsAnArray`.
 - **Evidence.** The ten policy rows are in [M3a's evidence](evidence/068-m3a-lowering-foundation.md), and the rules, their
-  migration notes and the release notes name each remedy.
+  migration notes and the release notes name each remedy. r17's rows are in [M5a's evidence](evidence/068-m5a.md).
 
 ## Options and alternatives
 
@@ -1025,7 +1098,7 @@ milestone's evidence; a skipped check fails the gate.
 | **M2** | D7 behind `frontend=JAVAC`; `JavacFacts`; the stub generator's attribute check | M1 | I11's registry equality and independent encoding tests on the whole corpus; #284 and #286 cases bind to the user's type (their values agree in M3, when they can run); `LedgerTypeProvider` equal | I3, I11, I5 (Elci types) |
 | **M3** | Port the non-loop lowering, in order: literals, names, static constants (with D14) (**ported**, M3a); calls (stdlib, instance dispatch, D6's comparison rules) (**ported**, Group 1; a library call waits for whole-library lowering); records, fields, object creation (**ported**, Group 1); locals, `if`/`else`, `return` (**ported**, Group 1); `instanceof` (**ported**, Group 1); `switch` with ADR-067 M1 guards and the ported `JavaConstants` (**ported**, Group 2); lambdas (**ported**, Group 2); whole-library lowering and Elci's specialization (D8) (**ported**, Group 3); entry points and `@Param`; debug metadata (**ported**, Group 3; contract schemas too). Then the subset validator on javac trees, with D6's equality rules and D11's ADR-067 milestones (**ported**, Group 4) | M2 | Per construct: I1b ledger rows for every covered method, I1a for fully covered programs, all classified; the harness gate on covered programs; I13's binding check over the corpus; the rejection inventory passes for ported constructs; ADR-067 and ADR-062 revisions | I1, I2a, I3, I7, I9, I12, I13 |
 | **M4** | (**ported**, r14) Port loop lowering: for-each, `while`, `break`, accumulators, from B0's lowering (which includes the loop-break continuation fix). A loop that calls a library gets its I1 row when libraries are lowered | M3's Group 2, by the maintainer's decision of r13 | I1 ledger rows for every loop method; the loop regression tests, including the loop-break continuation suite; T21 and T23 cases agree; the harness gate including G0's loop shapes | I1, I3, I13 |
-| **M5** | Default `frontend=JAVAC` | M4; **zero `JULC0084` on the corpus; I1 ledger complete** (every case has a javac row) | Full `./gradlew build`; external `julc-examples` and `julc-helloworld`; Elci's release smoke against a local snapshot; native and Wasm smokes; a cost and size report against M0; docs and release notes | All |
+| **M5** | Default `frontend=JAVAC` | M4; **zero `JULC0084` on the corpus; I1 ledger complete** (every case has a javac row). **Met** (r17), on `m5-corpus-head-3`: [M5a](evidence/068-m5a.md), [the integration's freeze and gates](evidence/068-m5-integration.md) | Full `./gradlew build`; external `julc-examples` and `julc-helloworld`; Elci's release smoke against a local snapshot; native and Wasm smokes; a cost and size report against M0; docs and release notes | All |
 | **M6** | Delete JavaParser (D12) | M5 | No `com.github.javaparser` on any class path; equivalence gates for the lint rules and MCP output, `TestDiscovery` (`julc check`), `JavaMetadataExtractor` and the `julc-verification` resolvers, against M5's outputs on the corpus; `JULC0100` and the gate-only rows of `JULC0101` removed, with a release note (D15); full build; harness gate; Elci coordinated | I8 |
 
 ## Verification strategy
@@ -1522,3 +1595,25 @@ rest on the rule's own tests and on V146 showing it is the only byte change. Dev
     its confirmation found a program dearer on every path, a fold that grew a script, a new dependency of the compiler on
     `julc-vm-java` that changes which VM a user's tests run on, and compile-time BLS evaluation that may differ by host
     (I4). Open question 5 stands as at B4; the trial's findings are a follow-up for the optimization work after M6.
+- **r17** (2026-11-04, M5's entry gate, on repository evidence, the maintainer's delegation of 2026-11-03, the maintainer's
+  decisions on O6, O7 and O9, and independent reviews and confirmation rounds, `068-m5a.md`, `068-m5-integration.md`):
+  - D6: `.equals` between two types no class can share is `JULC0078` on `frontend=JAVAC`, a Policy rejection, under the
+    maintainer's delegation: Java answers `false` for every such pair, and on-chain the reference answered `true`, `false` or
+    failed (ADR-062 T29, T34). Where a class could be both, an intersection, or a choice of operands of which one is related,
+    the answer is not constant: `JULC0087`. It was `JULC0084`, a stop until M5.
+  - D6: a choice (a conditional, a `switch` expression, the `return`s of a lambda's block or of a method) is held to one
+    representation, by Java's type and by the lowered terms, with `JULC0012` at the choice otherwise; two containers of
+    unrelated arguments are `JULC0087`, as two empty ones are equal in Java; `(char)`, `(short)` or `(byte)` of an integer
+    literal is its Java value. The follow-ups' O1 and O2 keep these rules open to the maintainer's confirmation.
+  - D15's table gains `JULC0078`'s plain `equals`, `JULC0012` for a choice, the I2a codes `JULC0123` to `JULC0129`,
+    `JULC0012` for a type parameter no call specializes, and `JULC0014` for an array type the javac frontend reads. A varargs
+    record component keeps `JULC0014` (O6).
+  - D13: "Policy rejection at run time" (O7, narrowed): a closed list of decisions (`RUN_TIME_DECISIONS`, M3f decision 1),
+    a control test per row, never a value, its liveness cost stated, with O10 as the follow-up. "Representation only"
+    explains a `DIFFERENT-pir` row both frontends accept (O9, narrowed); a PIR that differs where a frontend rejects is the
+    row class `DIFFERENT-pir-unaccepted`, which "Accepted by decision" (only `JAVAC` accepts) or "Policy rejection" (only
+    `JAVAC` rejects) explains, never "Semantic fix" (the M5a re-confirmation's G1). Script size is part of the budgets of
+    "Cost change" and "Representation only".
+  - M5's entry gate is met, on `m5-corpus-head-3`, a recording of the head at `8875e6a9` that replaces `m2-corpus-head` in
+    the gate: no `JULC0084` on the corpus, every case has a javac row, and every `DIFFERENT` row is classified with none
+    owed. The tables are frozen at the integration with M6a's tool readings, which moved no row.
