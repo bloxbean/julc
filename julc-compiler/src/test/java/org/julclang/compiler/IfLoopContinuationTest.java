@@ -395,8 +395,11 @@ class IfLoopContinuationTest {
                 if (declaration.equals("BigInteger t;")) {
                     // javac's frontend, the default from ADR-068 M5, gives JULC0002 the words without the reference's full stop.
                     assertTrue(error.getMessage().contains("Variable must be initialized: t"), error.getMessage());
-                    // The catalog's fix, which shows the form with a placeholder name; the reference wrote `var t = ...`.
-                    assertTrue(error.getMessage().contains("Initialize at declaration"), error.getMessage());
+                    // javac's JULC0002 carries the catalog's fix, which shows the form with a placeholder name; the reference
+                    // wrote `var t = BigInteger.ZERO;` (068-followups.md: a follow-up to name the variable)
+                    assertTrue(error.getMessage().contains("ERROR[JULC0002]"), error.getMessage());
+                    assertTrue(error.getMessage().contains("(suggestion: Initialize at declaration, e.g. `var x = BigInteger.ZERO;`."),
+                            error.getMessage());
                 } else {
                     // javac rejects the G1 element where a BigInteger is declared first (ADR-068 I2b).
                     assertTrue(error.getMessage().contains("JULC0085")

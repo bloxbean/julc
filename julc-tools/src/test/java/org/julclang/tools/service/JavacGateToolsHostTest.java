@@ -7,6 +7,7 @@ import org.julclang.compiler.frontend.javac.JavacGate;
 import org.julclang.stdlib.StdlibRegistry;
 import org.julclang.tools.debug.SourceDebugService;
 import org.julclang.tools.model.CompileRequest;
+import org.julclang.tools.model.CompileResponse;
 import org.julclang.tools.model.EvaluateRequest;
 import org.julclang.tools.model.MockTransaction;
 import org.julclang.tools.model.MockTransaction.DataInput;
@@ -132,6 +133,20 @@ class JavacGateToolsHostTest {
                     spendTransaction(), 11, null, null, null, null, false)).body();
             assertTrue(String.valueOf(opened).contains(rule[0]), String.valueOf(opened));
         }
+    }
+
+    /**
+     * The review's F9: the {@code record Boolean} shape that is {@code JULC0100} on the JavaParser frontend's gate compiles on
+     * javac, which binds the name to the record, and nothing reads it.
+     */
+    @Test
+    void aRecordNamedLikeAJavaTypeCompilesOnJavac() {
+        System.clearProperty(JavacGate.MODE_PROPERTY);
+        var tools = new ToolsService(ToolsService.compilerFor(classpath), classpath, JulcVm::create);
+        var source = VALIDATOR.replace("    @Entrypoint", "    record Boolean(BigInteger a) { }\n    @Entrypoint");
+        var compiled = tools.compile(new CompileRequest(source, "java", EDITOR_LIBRARY)).body();
+        assertTrue(compiled instanceof CompileResponse response && response.uplcText() != null
+                && !String.valueOf(compiled).contains("JULC0100"), String.valueOf(compiled));
     }
 
     @Test

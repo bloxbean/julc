@@ -19,7 +19,8 @@ import java.util.Locale;
  *   <li>{@code sourceMap} — enable source map generation for debugging (default: {@code false})</li>
  *   <li>{@code blueprint} — generate strict CIP-57 metadata (default: {@code true})</li>
  *   <li>{@code target} — exact compiler target profile ID (default: PV11)</li>
- *   <li>{@code frontend} — experimental (ADR-068 D4): {@code javaparser} or {@code javac} (default: {@code javaparser})</li>
+ *   <li>{@code frontend} — experimental (ADR-068 D4): {@code javac} or {@code javaparser} (default: {@code javac};
+ *       {@code javaparser} stays selectable until ADR-068 M6)</li>
  * </ul>
  * <p>
  * Example:

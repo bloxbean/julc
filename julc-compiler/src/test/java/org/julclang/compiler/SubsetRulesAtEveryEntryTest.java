@@ -23,8 +23,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
- * The subset's rules run at the gate, so every way into the compiler on the default frontend, at the default gate mode, meets
- * them. A rule that is broken in a validator, in a method's class and in a library unit is rejected at each entry.
+ * The subset's rules run at the gate, so every way into the compiler on the JavaParser frontend (selected explicitly from
+ * ADR-068 M5), at the default gate mode, meets them. A rule that is broken in a validator, in a method's class and in a
+ * library unit is rejected at each entry. {@link #aValidatorEntryMeetsTheRulesOnJavac} holds the same entries on javac's
+ * frontend, the default, where the rules run from {@code SubsetRules.check} and the lowering.
  */
 class SubsetRulesAtEveryEntryTest {
 
@@ -298,6 +300,39 @@ class SubsetRulesAtEveryEntryTest {
         for (var body : CAST_BODIES) assertRejected("JULC0098", entry, casting(body));
         for (var member : SPELLED_TYPES) assertRejected("JULC0100", entry, declaring(member));
         for (var member : SPELLED_METHODS) assertRejected("JULC0101", entry, declaring(member));
+    }
+
+    private static final String DATUM_OF_A_SUM_WITH_A_NEWTYPE_VARIANT = IMPORTS + """
+            @SpendingValidator
+            public class V {
+                sealed interface W permits X { }
+                @NewType record X(BigInteger value) implements W { }
+                @Entrypoint
+                public static boolean validate(W datum, PlutusData redeemer, ScriptContext ctx) { return true; }
+            }
+            """;
+
+    private static void assertRejectedOnJavac(String code, Entry entry, String source) {
+        var javac = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setSourceMapEnabled(true));
+        var thrown = assertThrows(CompilerException.class, () -> entry.compile(javac, source), code);
+        assertEquals(List.of(code), thrown.diagnostics().stream().filter(CompilerDiagnostic::isError).map(CompilerDiagnostic::code).toList());
+    }
+
+    /**
+     * The javac twin (M5 review F9): each validator entry on the default frontend meets the rules that hold on both
+     * frontends, and {@code JULC0127} for a sum with no layout. The name rules ({@code JULC0100}, the gate-only
+     * {@code JULC0101}) describe the JavaParser frontend and have no place here (D15).
+     */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("validatorEntries")
+    void aValidatorEntryMeetsTheRulesOnJavac(String name, Entry entry) {
+        assertRejectedOnJavac("JULC0094", entry, RETURNS_A_NUMBER);
+        assertRejectedOnJavac("JULC0095", entry, HOLDS_A_DIVISION);
+        assertRejectedOnJavac("JULC0095", entry, RUNS_A_BLOCK);
+        assertRejectedOnJavac("JULC0098", entry, CASTS_A_NUMBER);
+        for (var constructor : CONSTRUCTORS) assertRejectedOnJavac("JULC0099", entry, constructor.validator());
+        for (var body : CAST_BODIES) assertRejectedOnJavac("JULC0098", entry, casting(body));
+        assertRejectedOnJavac("JULC0127", entry, DATUM_OF_A_SUM_WITH_A_NEWTYPE_VARIANT);
     }
 
     /** A carrier's read of a boolean is a decode, which {@code BooleanCarriersTest} evaluates: every entry compiles it. */
