@@ -228,6 +228,12 @@ Users pay these at run time, so they come before other optimization work.
 | Decode on demand (**cost priority**) | M5's cost report, sections 2 and 3 | A binder is decoded to its Java type when it is bound, not where a read needs that form: `xs.any(c ? x -> true : x -> false)`, an identity `map`, an unread loop variable, a list given to a helper that does not read it. This is most of the growth of 34 accepted Cost change rows (12 of O8's 17, 18 F1042, 3 "D13, grows, accepted", `ee920e1e80`), up to +341 lovelace per run in the corpus, and probably part of the 100 lambda-pipeline Semantic fix rows | One representation-aware optimisation: decode a value to its Java type only where it is read in that form. Either an `UnIData` or `UnListData` that only flows back into `IData` or `ListData`, or into nothing, folds away; or a binder keeps its Data form until its first typed read. A decode that can fail must keep failing where Java's does (F1042), so an unread decode is removed only where the value is shown to have the shape or where the ledger's encoding is proven. It takes over the two "A decode no read needs" rows above. Do it before any release that advertises cost parity |
 | A `(int)` wrap that stays | M5d, r18 | `NarrowingElisionPass` removes only what it can show. A parameter, arithmetic, a branch or a recursive method keeps the wrap: about 527k CPU, 1.2k memory and 107 lovelace at each cast. For example `(int) (at(a, 0) * 256 + at(a, 1))` keeps it | Widen with evidence of a validator that pays: add, subtract and multiply over ranges, a choice as the union of its arms, a parameter whose every caller is known. Each rule needs its boundary tests, and the pass must stay simple. Nothing external pays today |
 
+## A flaky test seen at M5d
+
+| ID | Found in | Problem | Plan |
+|---|---|---|---|
+| A playground test's empty response | M5d's gates | `CompileControllerJavacGateTest.javacErrorIsReported` failed once at `6420db53` in `test --rerun`, after 19 ms and with an empty response body, and passed in the same head's full build and in 6 of 6 reruns of `:julc-playground:test`. The cause is not found. The compile path always answers with JSON, so the empty body may come from the server or client under load, not from the compiler; nothing in r18 is on that path | The assertion now reports the status. If it comes back, read the status first |
+
 ## Codex read owed
 
 If Codex cannot run, a milestone closes on independent Claude reviewers, and its head is listed here for a later Codex pass (maintainer decision, 2026-11-01).

@@ -1270,8 +1270,8 @@ and [the verification](evidence/068-m5-verification.md).
 
 | Exit criterion | Result |
 |---|---|
-| Full `./gradlew build` | GATE_BUILD |
-| I1 and the gates at this head | GATE_I1 |
+| Full `./gradlew build` | Passes on this head, `pairCaseTest` and `onChainHarnessTest` included: 19,061 tests in `test` (530 skipped), 71 and 16 |
+| I1 and the gates at this head | I1: 24,167 cases, moved 0, shrunk 0. `adr068Baseline`, `adr068Types`, `Javac21ParityTest`, `pairCaseTest`, `onChainHarnessTest` and Blaster pass. Five rediscovery profiles pass, and `REDISCOVER_162` ends in #162's rejection, as ADR-066 designs it |
 | External `julc-examples` | 43 hashes equal; 446 tests, 0 failed, 11 skipped; 53 DevKit transactions accepted |
 | `julc-helloworld` | Migrated mechanically: 4 of 4 tests pass, the script equal on both frontends |
 | Elci's release smoke | Identical to M0: 2, 12 and 6 tests passing, and 42 |
@@ -1279,7 +1279,7 @@ and [the verification](evidence/068-m5-verification.md).
 | Cost and size against M0 | External: 70,902 bytes against 71,627 at M0 (−1.01%), and equal to JavaParser's on all 43. I1: +10,903 bytes of 7,813,516 (+0.14%). Every growing Cost change row is decided (r18). The largest cost left is the "Decode on demand" follow-up |
 | Docs and release notes | The release notes state the change's effect, the narrowing's cost and `fromPlutusData`'s; troubleshooting has `JULC0123` to `JULC0129` |
 
-M5 closed on independent Claude reviews with no P0 or P1 open. Codex reads are owed at the heads in `068-followups.md`.
+M5b closed on independent Claude reviews with no P0 or P1 open. r18's narrowing closed on the gates above, and its review is owed. Codex reads are owed at the heads in `068-followups.md`.
 
 ### M5: entry gate met (2026-11-04)
 

@@ -82,7 +82,8 @@ class CompileControllerJavacGateTest {
             var res = client.post("/api/compile", JSON.writeValueAsString(new CompileRequest(
                     validator("ctx.txInfo().fee() > 1"))));
             String body = res.body().string();
-            assertTrue(body.contains("JULC0085"), body);
+            // The status too: one run under a loaded machine got an empty body here (the follow-ups' "A playground test's empty response").
+            assertTrue(body.contains("JULC0085"), () -> "status " + res.code() + ": " + body);
             assertTrue(body.contains("compiler.err.operator.cant.be.applied.1"), body);
         });
     }
