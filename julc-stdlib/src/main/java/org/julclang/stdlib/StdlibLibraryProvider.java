@@ -61,7 +61,8 @@ public final class StdlibLibraryProvider implements LibraryProvider {
      */
     public StdlibLibraryProvider(CompilerOptions options, Map<String, LibraryType> types) {
         context = CompilationContext.resolve(options);
-        this.types.putAll(new LedgerTypeProvider().types());
+        // The ledger as the caller's frontend reads it; both frontends' descriptions are equal (ADR-068 M2)
+        this.types.putAll(new LedgerTypeProvider(options).types());
         this.types.putAll(types);
         define("map", List.of("a", "b"), List.of(list(A), function(A, B)), list(B), t -> {
             var element = t.get(0);
