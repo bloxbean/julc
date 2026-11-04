@@ -106,6 +106,7 @@ class JulcPluginFrontendTest {
         assertEquals(reference, script());
     }
 
+    /** A cast to {@code short} has no representation on {@code JAVAC}: {@code JULC0124} (until ADR-068 M5 a stop, {@code JULC0084}). */
     @Test
     void theOptionReachesTheCompilation() throws IOException {
         write("long fee = (short) ctx.txInfo().fee().longValue(); return fee > 0;");
@@ -113,7 +114,7 @@ class JulcPluginFrontendTest {
         assertEquals(TaskOutcome.SUCCESS, runner().build().task(":compileJulc").getOutcome());
         configure("javac");
         var result = runner().buildAndFail();
-        assertTrue(result.getOutput().contains("JULC0084"), result.getOutput());
+        assertTrue(result.getOutput().contains("JULC0124"), result.getOutput());
     }
 
     /** Validators under src/main/java go through the processor, which must compile on the frontend the project chose. */

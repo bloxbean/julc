@@ -91,11 +91,12 @@ class JulcAnnotationProcessorFrontendTest {
         }
     }
 
+    /** A cast to {@code short} has no representation on {@code JAVAC}: {@code JULC0124} (until ADR-068 M5 a stop, {@code JULC0084}). */
     @Test
     void theOptionReachesTheCompilation(@TempDir Path out) throws Exception {
         String source = validator("long fee = (short) ctx.txInfo().fee().longValue(); return fee > 0;");
         assertEquals(List.of(), errors(process(out, source, "-Ajulc.frontend=javaparser")));
         var errors = errors(process(out, source, "-Ajulc.frontend=javac"));
-        assertTrue(errors.stream().anyMatch(message -> message.contains("JULC0084")), errors::toString);
+        assertTrue(errors.stream().anyMatch(message -> message.contains("JULC0124")), errors::toString);
     }
 }
