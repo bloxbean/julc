@@ -157,6 +157,9 @@ replacements, and how to select the JavaParser frontend until M6.
 - **`LedgerTypeProvider()`** and `JavaLibraryProvider(..., new CompilerOptions())` describe the ledger and libraries as
   javac reads them; their types and named definitions are equal to the JavaParser frontend's (ADR-068 M2).
 - `CompilerFrontend.DEFAULT` names the default.
+- **JRL** compiles the Java it generates on the JavaParser frontend (`JrlCompiler.generatedJavaOptions()`): its `==`
+  becomes Java's `==`, also between references, which javac's frontend rejects. This lasts until the transpiler writes
+  typed equality, before ADR-068 M6.
 - The annotation processor and the Gradle plugin's `compileJulc` print each diagnostic with its code, position and fix
   (`CompilerException.describe()`); before, a rejection made of one diagnostic showed its words alone.
 - A sealed interface whose permitted class is a class or a `@NewType` record is `JULC0127` wherever it is read (a
