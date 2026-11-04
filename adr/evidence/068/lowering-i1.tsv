@@ -3497,7 +3497,7 @@
 24bba27e43373fd1d7a21028b6452f9ec2c21c7eb26e10a0f33994c8da633884	i1a-identical	28/28	-	same	-	
 24be3aa2eb13d6ac3669c56064f35b1e200f1e02cbf7879ac6703c98bf8b845c	both-reject-javac-first	0/1	-	-	ec25a4b9c858eb60	JULC0085@17:18 this case label is dominated by a preceding case label (compiler.err.pattern.dominated)
 24c3285f9b86850704d2969ce7e269067ac7adb4a487f187c016cba5e450df03	i1a-identical	2/2	-	same	-	
-24cde5cef26c6660ff24568d1b21ed09fb119b0b74d4485923c949cf806db297	DIFFERENT-bytes	58/59	-	-	c62cbdcf6079e0c3	NONE A:1a5595660a6387118b72154178e76405:3117 / A:4d0ab205fc94f1f1c939b2b6392e827f:3143; NONE with a map A:1a5595660a6387118b72154178e76405:3117 / A:4d0ab205fc94...
+24cde5cef26c6660ff24568d1b21ed09fb119b0b74d4485923c949cf806db297	DIFFERENT-pir	58/59	-	-	219af210ab45f08f	com.example.mpf.MerklePatriciaForestry.nibble differs from the reference: 154a343c4d34d35e
 24ce3aea21bf5d89f95f6ede9727dc0dd864fe3544cb3a95f91e1633d1bde381	i1a-identical	3/3	-	fragment	-	
 24ceb3194255619df63678bb6a766ecea88d9507474d412904840cffd21fe976	i1a-identical	18/18	-	fragment	-	
 24cf89b850c308d9e62d620d016e354c265d76377618b6318729b3a92296d09d	i1a-identical	5/5	-	fragment	-	
@@ -8278,7 +8278,7 @@
 565cd782cc9b56efd6d39ce88da523ddd20ac51901e53ea49024282e7a7c81c4	DIFFERENT-javac-rejects	1/1	-	-	617a78880361943b	JULC0103@8:44 Entrypoint validate of V takes org.julclang.core.PlutusData.MapData as its last parameter; the last parameter is the script context, ScriptContext...
 565d25d8aa935e49b0a8cc31ba338b785fded26fa05e17fd8f99eb4b613cacf5	i1a-identical	2/2	-	fragment	-	
 565ec710dd2fb20617d3177688e2e1f4f930bbdb2fdcba4719bafab956bfde3a	i1a-identical	6/6	-	fragment	-	
-565f5c3070fe8f9de1ef01a010f98e17f4037959c4d79ed788250dab3de994b7	DIFFERENT-bytes	58/59	-	-	49f2c1ee79c7fdca	NONE A:edb029ac8bffffaa87caaef5bf0d391e:3110 / A:88a26bb8d5f439ea0a46b1b28accb023:3136; NONE with a map A:edb029ac8bffffaa87caaef5bf0d391e:3110 / A:88a26bb8d5f4...
+565f5c3070fe8f9de1ef01a010f98e17f4037959c4d79ed788250dab3de994b7	DIFFERENT-pir	58/59	-	-	219af210ab45f08f	com.example.mpf.MerklePatriciaForestry.nibble differs from the reference: 154a343c4d34d35e
 56609c4abd7b93b2290ec03397485fc5958c4e677ec3285bd51a48d39b7cca63	i1a-identical	1/1	-	fragment	-	
 5663db2279e94884f7bfe710c144241f5e8e7ccc163857355d58a786c8b5f64b	both-reject	1/2	(rejected)	-	0e85dd4f7b05a345	JULC0061@15:64 Reassigning 'a' is not supported outside a loop
 56664226dabad9d68dd6194112ca1420a8da017eebabd09c5baa46055ae462cb	i1a-identical	1/1	-	fragment	-	
@@ -9041,7 +9041,7 @@
 5ebc1ebec77371b6a11d043a6133db1888a5aabad3a85e1bf98a8813cf03b383	i1a-identical	2/2	-	fragment	-	
 5ebe984176af992c0347774eba46df5e52bb7cc710a75eae033f8b9e318fb4f8	javac-rejects	0/1	-	-	355a68c59652ee79	JULC0085@3:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
 5ec570598f84c363d6779f3c4c215822bdd2144110a0624cfc015f3cf21b62ec	i1a-identical	29/29	-	fragment	-	
-5ec9100b4103bf2bfbfb512bd42e63c09f06357eae5233ec04c99c0d32fe90ea	DIFFERENT-bytes	59/60	-	-	b187c9be5fbdc52f	NONE A:945ca28ae6df434e4762f6029e22eb66:4149 / A:621f46d63af4693ae7b32130fdc3f537:4175; BASELINE A:f2bde6c2f9723d0fc982881f497ab10f:3638 / A:f2258720523adbef923...
+5ec9100b4103bf2bfbfb512bd42e63c09f06357eae5233ec04c99c0d32fe90ea	DIFFERENT-pir	59/60	-	-	219af210ab45f08f	com.example.mpf.MerklePatriciaForestry.nibble differs from the reference: 154a343c4d34d35e
 5ecbf7077d5da34cec93480bb901a7d18c8e706c5ec3992759bc814ce792e5ba	both-reject-javac-first	0/1	-	-	1943970b85f1e127	JULC0085@16:18 this case label is dominated by a preceding case label (compiler.err.pattern.dominated)
 5ed27686a56beff4e9975ec683f37cca17d414c112dcee7c116d42cf483ac863	i1a-identical	1/1	-	fragment	-	
 5ed55085d16a4ba7c3ff6440f3ab941f8646a3d63dae85702eeefdb2cbb97c47	i1a-identical	18/18	-	fragment	-	
@@ -9369,7 +9369,7 @@
 625dd17504a1c490e3715d6c035a3a87faabf2bb2b50a1ecbad9c4fc8d59cc29	i1a-identical	18/18	-	fragment	-	
 625e38daf6c2459113804c5fb23b679bc6c9afa38fab2f7d7bd2485038b13a71	i1a-identical	3/3	-	fragment	-	
 62617d26dc64e5c2848a64c88d2f76d34158ff0602f409100cb681e14d6d9b5f	i1a-identical	1/1	-	fragment	-	
-6261d5fa3b389cf35649401b32121a82271dbf5afa6b30f6594312d1d6cb4670	DIFFERENT-bytes	58/59	-	-	47cf91f512c6180f	NONE A:04899dc44420f2bc5b8b0d59140a1ad0:3117 / A:48753b428c003be6eea42d74c78e9eb4:3143; BASELINE A:5af511d89dbf93e25e9fe810e8ebbe9c:760 / A:26182ea721ba605f41b4...
+6261d5fa3b389cf35649401b32121a82271dbf5afa6b30f6594312d1d6cb4670	DIFFERENT-pir	58/59	-	-	219af210ab45f08f	com.example.mpf.MerklePatriciaForestry.nibble differs from the reference: 154a343c4d34d35e
 6264264aedbd75f3acc72205603f0af8765d511549ad2f3a7196c156d7936ade	DIFFERENT-rejection	0/0	-	-	7969919f146fa9a9	null@0:0 C.java:11:85: Compound assignment += to 'x' of type Data is not supported   Hint: Compound assignment is supported on integer variables, and += on Stri...
 6265a5fcccd1a634ede0d9f3f8e24cf8db5b3316b65c8b146d2842cfa4b5b703	i1a-identical	3/3	-	fragment	-	
 626aa7162b57e30a0dca390e0950375117c3f681d8f294fb803021e458139a9a	javac-rejects	0/2	-	-	c0bf07c6f3e56c41	JULC0085@2:2 cannot find symbol   symbol: class MintingValidator (compiler.err.cant.resolve)
@@ -12894,7 +12894,7 @@
 880e7da5ab44ac7f69dc74ef9620a33eb55596eada954692e4c23ad92271dd3c	i1a-identical	1/1	-	fragment	-	
 880f27b1f14a33cb4090836bdad3ae86fc22efc04bf5201ca9fad1413efe16c6	i1a-identical	5/5	-	fragment	-	
 8811ac6534fd6a7e654c57b9f441bb3041ab2546ac415a6e6f907058487fe5a9	i1a-identical	2/2	-	same	-	
-8817f132fa8a31912b5fcf30597b39c53b784452fa7725ac02cb344db6211db3	DIFFERENT-bytes	58/59	-	-	395638d5a81e1703	NONE A:8d234c5ee9e59c93dd139151447d9698:3117 / A:9e7299a34445610f071382fe17b7d0a9:3143; BASELINE A:d5319b476677866c94216a10c9aaef93:2235 / A:9ac55fc89305a9721c7...
+8817f132fa8a31912b5fcf30597b39c53b784452fa7725ac02cb344db6211db3	DIFFERENT-pir	58/59	-	-	219af210ab45f08f	com.example.mpf.MerklePatriciaForestry.nibble differs from the reference: 154a343c4d34d35e
 881c455e1c9c7bc2814ece3c7b2ce79d37abfa8f5c259ee31605a1e903aea12c	i1a-identical	6/6	-	fragment	-	
 8820510ff662dd86b292de806eb6380b9b010ac889bcb2499fbf524198fb1d35	both-reject-javac-first	0/1	-	-	ec25a4b9c858eb60	JULC0085@17:18 this case label is dominated by a preceding case label (compiler.err.pattern.dominated)
 882194617bc7db313794620a1eb2583d55d3bf566ab0c92eef2236a00a735173	DIFFERENT-javac-rejects	0/1	(rejected)	-	c066283538c3842e	JULC0012@14:78 Cannot resolve type: the type of a conditional whose arms have different types, org.julclang.core.PlutusData.IntData and org.julclang.core.Plutus...
@@ -15299,7 +15299,7 @@ a0c2ebeb1231bc80b0ea8ea083f0ee59f4defda93d330a68125611f92b44e956	i1a-identical	1
 a0c3a887063c38ed3fe2620fe26a69d25075247e6709e73225cbb24604eefb63	javac-rejects	0/2	-	-	bf46149addcc837f	JULC0085@8:31 cannot find symbol   symbol:   class PlutusData   location: class Multi (compiler.err.cant.resolve.location)
 a0c9cf954427dca09036d02c4e8317eadb218d38d9098dc1b4825d71e039858b	i1a-identical	1/1	-	same	-	
 a0d14d8f3394493764c4855bce5e44eeead223da087fa985434161f00004718e	i1a-identical	1/1	-	fragment	-	
-a0d4b315876f00ddf8718c71255c675b45f5d69043b949f3ccc4d702958ef9c5	DIFFERENT-bytes	59/60	-	-	b187c9be5fbdc52f	NONE A:945ca28ae6df434e4762f6029e22eb66:4149 / A:621f46d63af4693ae7b32130fdc3f537:4175; BASELINE A:f2bde6c2f9723d0fc982881f497ab10f:3638 / A:f2258720523adbef923...
+a0d4b315876f00ddf8718c71255c675b45f5d69043b949f3ccc4d702958ef9c5	DIFFERENT-pir	59/60	-	-	219af210ab45f08f	com.example.mpf.MerklePatriciaForestry.nibble differs from the reference: 154a343c4d34d35e
 a0d6413ce540cf1a2ea240be9231f9a0ae2113f4917776c7b01c2317120f7916	DIFFERENT-bytes	29/30	-	-	2bd2f0c111f772ae	NONE A:c8ae8f7e99071f1a5f96189811647946:2555 / A:408aac456e3ae589e156cd1565aad1dc:2559; BASELINE A:d7122f1fe6ed9ac2af51e63b8edfbf8b:360 / A:d549f335fa51373b5d7c...
 a0dcc16fa79aa5dc0d2d5d84c9fe49c06be8847257df81dad6d39d129c4d9b30	DIFFERENT-javac-rejects	0/1	(rejected)	-	fae4f3694e97dcbe	JULC0055@16:62 Cannot resolve equals: the receivers type does not declare it as a record field, accessor or supported method
 a0e97ee976bd42c3cdbeca9c7dd6954ed4e459ffe40cd824f7efe98bab2e97ed	i1a-identical	1/1	-	fragment	-	
@@ -17929,7 +17929,7 @@ bde0bf4acbb9858db9dec5eacd1e1978f48213c2a389594a172296d12b5f40d0	i1a-identical	4
 bde6aa360ae81fec04d446538f70688151bcc119d055c60e762de7c6899549e8	i1a-identical	1/1	-	same	-	
 bded1ec6339abb0d3481665584020a14699cd75e5c1759e7397c7631ea0527f5	i1a-identical	2/2	-	same	-	
 bded425f41af9a33e550cf4dc6445bb9548f45c7c375ea4b28a74cb19a23be64	javac-rejects	0/3	-	-	355a68c59652ee79	JULC0085@3:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
-bdeddfe1030e218004308954b3f29f5c526e9d57f62d63b603db019e08f80bed	DIFFERENT-bytes	58/59	-	-	64259c1d359bdf94	NONE A:9b8d8cf9acd7c81db04213728f6a2b7b:3096 / A:6912c2b15ffe19ac26eb8cf61c4d161d:3122; NONE with a map A:9b8d8cf9acd7c81db04213728f6a2b7b:3096 / A:6912c2b15ffe...
+bdeddfe1030e218004308954b3f29f5c526e9d57f62d63b603db019e08f80bed	DIFFERENT-pir	58/59	-	-	219af210ab45f08f	com.example.mpf.MerklePatriciaForestry.nibble differs from the reference: 154a343c4d34d35e
 bdee1529760436901f704c43e791ff9a0f3aa02ddba282e393718eb7d286a40a	i1a-identical	18/18	-	fragment	-	
 bdf06a7bde04b701a68cee5834898162070aeb23d6725b2667a0815839e34abe	both-reject	0/0	-	-	718cd09ad97120dc	JULC0008@7:5 @SpendingValidator entrypoint must have 2 or 3 parameters (datum, redeemer, scriptContext), found 4 in V.validate()
 bdf153dcc743f577f702721d254d424e7cfd02f7f78ef9fd5be2e1e089040171	i1a-identical	1/1	-	same	-	
@@ -18196,7 +18196,7 @@ c0591fb8f57735c861537c9d22295d010beb0ea52c70d6017ab551941de50cde	i1a-identical	6
 c05d2c699fc9204f4c8be5bab5da215c31e4d1062762d0c78f5424f955be0760	i1a-identical	1/1	-	fragment	-	
 c05ebba3e615908a73a5b875cc8f49c964ea07a4f7acfe6de2190c510094cab6	i1a-identical	1/1	-	fragment	-	
 c05eebdba29fd9c0097e98b59438a0c667a88cf4cea97f4e1d4c68e280615da8	both-reject	0/0	-	-	c3d339c0f1afc928	JULC0007@10:16 switch expression requires a sealed interface type, got: G, a sealed interface with type parameters; JuLC drops type arguments, so it cannot deci...
-c06251f0eb7af5167c7086ecff2760610cbd29808f11c968009744ec2048745d	DIFFERENT-bytes	58/59	-	-	e290022ba45ee7e5	NONE A:49514015af47722927ba7fdce01f88c5:3117 / A:5f731802ce72f1816ae85b1ef835ec0d:3143; BASELINE A:3f6e7b17fb526e3028d63fbfa01f18e2:1338 / A:832c2736bba9c28a2b3...
+c06251f0eb7af5167c7086ecff2760610cbd29808f11c968009744ec2048745d	DIFFERENT-pir	58/59	-	-	219af210ab45f08f	com.example.mpf.MerklePatriciaForestry.nibble differs from the reference: 154a343c4d34d35e
 c0637ff7699f99bce54e1ecf095d5a3661a5a40f84d9e65fea3379a521130d93	i1a-identical	29/29	-	fragment	-	
 c0638cd1294370ed3fa454ea9d331530eddd4d16c5356511800a28bbb82d7626	i1a-identical	2/2	-	fragment	-	
 c0653270b50db3c472860ec59bc9c1cb28e304bdbbd39d199d45923f4818805c	both-reject-javac-first	0/0	-	-	b10696f4eeec7bbb	JULC0085@1:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
@@ -19550,7 +19550,7 @@ cea00be7962b2c5d00fdd6bade1aa30aeb25546a9ace286108821311b3a65d63	i1a-identical	3
 cea10d7eb79ae8305a34987bdd9be0327eca64aaca4f685c533ca0e2197e99d7	i1a-identical	1/1	-	fragment	-	
 cea3081e7b4d845cba3db1856ba16fda3685fc44485c9b9dfedebc85bec1660e	i1a-identical	5/5	-	fragment	-	
 cea3d2998442241bd3d4adee7acb3d44a844868df0b1b6836904f4f21ec869c6	i1a-identical	29/29	-	fragment	-	
-cea42dc2ef9cf4725b11f4c3ecc7c5f223ef1a941938c2ef2f8cea70251cdde5	DIFFERENT-bytes	58/59	-	-	2abdb6dd87df6568	NONE A:0c9f5bb53c3cbadc85881b08c4af8569:3124 / A:bd9ce09316eb26ee0845f883a8a81779:3150; BASELINE A:b34ec5fc067f91982e07a2a0426b3e9a:2016 / A:57dc873667582a6f3f4...
+cea42dc2ef9cf4725b11f4c3ecc7c5f223ef1a941938c2ef2f8cea70251cdde5	DIFFERENT-pir	58/59	-	-	219af210ab45f08f	com.example.mpf.MerklePatriciaForestry.nibble differs from the reference: 154a343c4d34d35e
 cea77f9df6d8c2b397f8d45f4260b8965023f1e5aeb1f9a7b8bbfb5dc39c3ea2	i1a-identical	6/6	-	fragment	-	
 cea7a6b45c6a805d4f5c30dce9bc7afbf83e320ea9cce74d88fba77936b7a6cf	DIFFERENT-bytes	1/2	-	-	1feea8461938250d	NONE A:95844f7b86e6e2d6f3f8a2194f807973:808 / A:4209969820adff7a282c249683ec41e5:812; BASELINE A:0bcb8c9ecc70f8876f97723c272d763b:755 / A:6f957ffd3d88ddb058a68d...
 cea83b60d1151241185a69fda7d2b98275ea0cd962b18266973c3150e51e3164	i1a-identical	1/1	-	fragment	-	
@@ -20369,7 +20369,7 @@ d75a8f8054e0caa7adfc68530d75b341b325b00fd1c532f88c6fe1fb4434b5d7	DIFFERENT-javac
 d75af6c5b0e6b50cae1421572d44de655e1a0a0f20b600a431c52bf0befc58fe	i1a-identical	18/18	-	fragment	-	
 d75b66942b507e803ccfef5b7d2b957777d8edde2100442dc8141b2af6af238d	i1a-identical	29/29	-	fragment	-	
 d75de83498ac97e6c085512b57ffcfd58db311a70112a6d6283bd9104ed253d9	javac-rejects	0/3	-	-	355a68c59652ee79	JULC0085@3:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
-d75e4c7a4140b761643065c0d9d146d27d09bda8da0531a51a59426c1b1046be	DIFFERENT-bytes	58/59	-	-	cf13a2b7dbf026a2	NONE A:779a3e9d7ac6f8c357a9a383c18606c0:3117 / A:803f63516d92e37e47eee97f80d4e3f2:3143; BASELINE A:04961dc941c6b2f6f9544f45d55b0bea:165 / A:63bc64cc6104864ce563...
+d75e4c7a4140b761643065c0d9d146d27d09bda8da0531a51a59426c1b1046be	DIFFERENT-pir	58/59	-	-	219af210ab45f08f	com.example.mpf.MerklePatriciaForestry.nibble differs from the reference: 154a343c4d34d35e
 d75e96df1b9f50cd7af0593fb1dd429b6c173fc89a67e9192a5a170c69683443	i1a-identical	3/3	-	fragment	-	
 d760f019520ba64056a57faf0ea81f3caf390c9a304b5d9ebc2b2c227efd3df7	i1a-identical	1/1	-	fragment	-	
 d764250bdd15bfb142b7e92a95c31baac4611f409c565980201f3b4f28e67b63	i1a-identical	7/7	-	fragment	-	
@@ -20870,7 +20870,7 @@ dcf8b32e07416bce7d5f3852b51c18b31d2855466d8cf6f4fafd2171334bab5d	javac-rejects	0
 dcf8bb4f03095c729f8263faa9b5b7b0d8d411f0f29eed8b4175f425ed2c57e3	javac-rejects	0/2	-	-	6f389537aeaf230d	JULC0085@8:30 cannot find symbol   symbol:   class PlutusData   location: class Multi (compiler.err.cant.resolve.location)
 dcffbc6e0e651dadfb72ac146d7846bf2c39e57696e9472bada19c049db21660	i1a-identical	3/3	-	fragment	-	
 dd03f688ccd5c849fdbfa6f52d2e841ba73a684542d03fd9af6f87114b16ee8a	i1a-identical	18/18	-	fragment	-	
-dd080b56e453ae78c10c3ccd041bae7313f1042b37369a1514bcc779b5da7fda	DIFFERENT-bytes	58/59	-	-	fc2fe966c55a8bec	NONE A:85af4b44331377b9c06948c53f2082b2:3110 / A:58b7f6bf92ed25374371271e6761dd53:3136; BASELINE A:27e35eef797c3c3354462a705957cd09:101 / A:32f4d39bab1dc6e9992f...
+dd080b56e453ae78c10c3ccd041bae7313f1042b37369a1514bcc779b5da7fda	DIFFERENT-pir	58/59	-	-	219af210ab45f08f	com.example.mpf.MerklePatriciaForestry.nibble differs from the reference: 154a343c4d34d35e
 dd0b885f367bb5c594cb4a319f6c35d4d6ee8d87a88647ddccf58cda5b0c80c3	javac-rejects	0/18	-	-	98f2dbdb0b99b621	JULC0085@24:61 cannot find symbol   symbol:   method isPresent()   location: class java.math.BigInteger (compiler.err.cant.resolve.location.args)
 dd0c5d4db425c450de6d1380e34fc6b7ce0bb32dda637cc4b6871b5a19310125	i1a-identical	1/1	-	same	-	
 dd0f56e5cd0dc0e2773d1d23d45f6a892fdd6aba247d6244fc84900d8fb038ae	i1a-identical	26/26	-	fragment	-	

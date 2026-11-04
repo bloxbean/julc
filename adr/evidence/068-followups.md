@@ -242,6 +242,8 @@ If Codex cannot run, a milestone closes on independent Claude reviewers, and its
 | `638d23ad`, M5a's head | The corpus's last `JULC0084`s: `JULC0078` for unrelated `equals`, one representation per choice (`JULC0012`), the I2a codes `JULC0123`–`JULC0129`; the hardened recheck tool; the run-time policy class and the PIR row split | M5a closed on independent Claude reviews and two confirmation rounds (`m5a-confirmation.md`, `m5a-confirmation2.md`) |
 | `dbc506bd`, M6a's head | The tools' javac readings (`SourceReader`, `SourceAnnotations`, the lint and discovery ports), `JulcCompiler.subsetDiagnostics` | Closed on an independent Claude review (`m6a-review.md`) |
 | M5 integration head (`wip/068-m5-integ`; `068-m5-integration.md`) | The merge of M6a onto M5a, the freeze with `m5-corpus-head-3`, the I1 tool's classes for `DIFFERENT-pir-unaccepted`, r17's ADR text | Integration; Codex to read with the heads above |
+| `91ab9f47`, M5b's review fixes (`wip/068-m5c`) | The default flip on every host, the testkit's and `JulcEval`'s frontend routes, `JULC0127` at the declaration, the corpus recorder on either frontend | Closed on an independent Claude review and its re-review (no P0, P1 or P2), with the maintainer's choice to run Codex later |
+| `wip/068-m5d` head | `NarrowingElisionPass`: its rules, its scoping over every binder form and its place in `PirBackend`; the 11 moved rows; the O8 decision as recorded in r18 | Closed on the gates here. Codex is to read it with the heads above |
 
 ## Future stdlib enhancements (after ADR-068 is complete)
 

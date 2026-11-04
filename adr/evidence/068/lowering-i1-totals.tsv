@@ -1,9 +1,9 @@
 cases	24167
-DIFFERENT-bytes	396
+DIFFERENT-bytes	385
 DIFFERENT-diagnostics	78
 DIFFERENT-javac-accepts	89
 DIFFERENT-javac-rejects	1075
-DIFFERENT-pir	1
+DIFFERENT-pir	12
 DIFFERENT-pir-unaccepted	3
 DIFFERENT-provenance	52
 DIFFERENT-rejection	570
@@ -13,7 +13,7 @@ i1a-identical	14405
 javac-rejects	5366
 ledger-source	38
 unreplayable	17
-coverage	programs	14405	21372
+coverage	programs	14405	21361
 coverage	distinct programs	5880
 coverage	programs of more than one method	9284
 coverage	methods	135129	194999
@@ -34,8 +34,8 @@ part	diffcase	both-reject	43
 part	diffcase	both-reject-javac-first	1
 part	diffcase	i1a-identical	114
 part	elci	i1a-identical	4
-part	external	DIFFERENT-bytes	11
 part	external	DIFFERENT-javac-rejects	46
+part	external	DIFFERENT-pir	11
 part	external	i1a-identical	43
 part	external	javac-rejects	2
 part	g0	i1a-identical	376

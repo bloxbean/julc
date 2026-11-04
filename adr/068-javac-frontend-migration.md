@@ -2,7 +2,7 @@
 
 **Status:** Accepted (2026-10-31): approved by the review comment at `0e8bb3c1` and by Codex at `0e8bb3c1`, with
 the post-approval P3 edits at `3ba3ea03`. The implementation follows in this PR, milestone by milestone (M0–M6)
-**Date:** 2026-10-30 (r1); revised 2026-10-31 (r2–r9), 2026-11-01 (r10, r11), 2026-11-02 (r12, r13), 2026-11-03 (r14 to r16) and 2026-11-04 (r17)
+**Date:** 2026-10-30 (r1); revised 2026-10-31 (r2–r9), 2026-11-01 (r10, r11), 2026-11-02 (r12, r13), 2026-11-03 (r14 to r16) and 2026-11-04 (r17, r18)
 **Label:** `semantic-consistency`
 **Risk class:** correctness-sensitive, **high**. The frontend decides what every validator means; a wrong
 binding, type or literal is a silent miscompile.
@@ -696,6 +696,14 @@ exceptions D11 lists.
   - **A narrowing of a literal (r17).** `(char)`, `(short)` or `(byte)` of an integer literal, perhaps negated, is its Java
     value on `frontend=JAVAC`, as the reference's is where the value is in range (`(char) 97` is 97); any other such cast is
     `JULC0124`.
+  - **A narrowing in range (r18).** `(int)` of a `long` has Java's value on `frontend=JAVAC`: a wrap to the low 32 bits. The
+    invariant is **the same value as Java, with the wrap omitted only where it is provably a no-op**. `NarrowingElisionPass`
+    removes a wrap, on the assembled term and at every level, exactly where its operand's value is shown to lie in `int`'s range:
+    an integer constant; `indexByteString` (0 to 255); `modInteger` or `remainderInteger` by a known positive divisor up
+    to 2^31; a wrap; a `let`'s body; a variable a `let` binds; a saturated call of a function a `let` binds, with nothing
+    known of its parameters. Anything else is unknown and keeps the wrap, a length and a recursive method among them. The
+    operand runs once and first in both forms, and the three builtins of the wrap cannot fail on an integer, so no value,
+    trace or failure changes.
   - These are policy rejections in D13, with their rejection tests; ADR-062 T3, T4 and T5 are updated in M3.
 
 ### D7. Types from javac
@@ -902,6 +910,12 @@ Each milestone appends the javac frontend's row and, for every difference, one c
   that rejects has no semantic observation, and a row both frontends reject has no class without a decision of its own
   (`Adr068Lowering.explainsUnaccepted`; the M5a re-confirmation's G1). The three head rows of `(var x) -> x.signum() > 0`
   (r13's widening) are Accepted by decision, with `reject-068-var-lambda-parameter.diffcase`.
+- **A Cost change from a wrap removed (r18).** Where `NarrowingElisionPass` removes an `(int)` wrap (D6), a row's budgets and script size
+  only fall, and its value does not change. A row whose every level then equals the reference's stays a `DIFFERENT-pir` row, since the tool
+  reads a method's PIR before that pass, and "Representation only" explains it. Against its earlier row, it is a Cost change that shrinks.
+  The 11 external `MerklePatriciaForestry` rows are these; they were the "casts, grows" Cost change rows. A growth is still the review's
+  decision, and a row that grew or changed its value here would be a finding. Since a move to a lower class counts as a loss to the tool, the
+  freeze took `allowShrink`, as the evidence says.
 - **A script that fails where the JVM returns, by decision (r17, the maintainer's decision on O7, narrowed).** "Policy
   rejection at run time (`<decision id>`)" explains a `DIFFERENT-bytes` row in which the javac frontend's script fails where
   the JVM returns, by a decision of this ADR that fails closed. It is bounded four ways:
@@ -1106,7 +1120,7 @@ milestone's evidence; a skipped check fails the gate.
 | **M2** | D7 behind `frontend=JAVAC`; `JavacFacts`; the stub generator's attribute check | M1 | I11's registry equality and independent encoding tests on the whole corpus; #284 and #286 cases bind to the user's type (their values agree in M3, when they can run); `LedgerTypeProvider` equal | I3, I11, I5 (Elci types) |
 | **M3** | Port the non-loop lowering, in order: literals, names, static constants (with D14) (**ported**, M3a); calls (stdlib, instance dispatch, D6's comparison rules) (**ported**, Group 1; a library call waits for whole-library lowering); records, fields, object creation (**ported**, Group 1); locals, `if`/`else`, `return` (**ported**, Group 1); `instanceof` (**ported**, Group 1); `switch` with ADR-067 M1 guards and the ported `JavaConstants` (**ported**, Group 2); lambdas (**ported**, Group 2); whole-library lowering and Elci's specialization (D8) (**ported**, Group 3); entry points and `@Param`; debug metadata (**ported**, Group 3; contract schemas too). Then the subset validator on javac trees, with D6's equality rules and D11's ADR-067 milestones (**ported**, Group 4) | M2 | Per construct: I1b ledger rows for every covered method, I1a for fully covered programs, all classified; the harness gate on covered programs; I13's binding check over the corpus; the rejection inventory passes for ported constructs; ADR-067 and ADR-062 revisions | I1, I2a, I3, I7, I9, I12, I13 |
 | **M4** | (**ported**, r14) Port loop lowering: for-each, `while`, `break`, accumulators, from B0's lowering (which includes the loop-break continuation fix). A loop that calls a library gets its I1 row when libraries are lowered | M3's Group 2, by the maintainer's decision of r13 | I1 ledger rows for every loop method; the loop regression tests, including the loop-break continuation suite; T21 and T23 cases agree; the harness gate including G0's loop shapes | I1, I3, I13 |
-| **M5** | Default `frontend=JAVAC` | M4; **zero `JULC0084` on the corpus; I1 ledger complete** (every case has a javac row). **Met** (r17), on `m5-corpus-head-3`: [M5a](evidence/068-m5a.md), [the integration's freeze and gates](evidence/068-m5-integration.md) | Full `./gradlew build`; external `julc-examples` and `julc-helloworld`; Elci's release smoke against a local snapshot; native and Wasm smokes; a cost and size report against M0; docs and release notes | All |
+| **M5** | Default `frontend=JAVAC` | M4; **zero `JULC0084` on the corpus; I1 ledger complete** (every case has a javac row). **Met** (r17), on `m5-corpus-head-3`: [M5a](evidence/068-m5a.md), [the integration's freeze and gates](evidence/068-m5-integration.md) | Full `./gradlew build`; external `julc-examples` and `julc-helloworld`; Elci's release smoke against a local snapshot; native and Wasm smokes; a cost and size report against M0; docs and release notes. **Closed** (r18): [the default flip and its review fixes](evidence/068-m5b.md), [the cost and size report](evidence/068-m5-cost-size.md), [the verification](evidence/068-m5-verification.md) | All |
 | **M6** | Delete JavaParser (D12) | M5 | No `com.github.javaparser` on any class path; equivalence gates for the lint rules and MCP output, `TestDiscovery` (`julc check`), `JavaMetadataExtractor` and the `julc-verification` resolvers, against M5's outputs on the corpus; `JULC0100` and the gate-only rows of `JULC0101` removed, with a release note (D15); full build; harness gate; Elci coordinated | I8 |
 
 ## Verification strategy
@@ -1247,6 +1261,26 @@ Decisions recorded from the M1a reviews:
 - **Secondary top-level types** of pool units are indexed under every top-level name (javac's own source path
   finds only the primary one).
 
+### M5: closed (2026-11-04)
+
+javac is the default frontend on every host; JavaParser stays selectable explicitly until M6. The steps:
+[M5a](evidence/068-m5a.md), which brought the corpus to no `JULC0084`; [the integration](evidence/068-m5-integration.md), with M6a's tool
+readings; [M5b](evidence/068-m5b.md), the default flip, and its review fixes; [the cost and size report](evidence/068-m5-cost-size.md);
+and [the verification](evidence/068-m5-verification.md).
+
+| Exit criterion | Result |
+|---|---|
+| Full `./gradlew build` | GATE_BUILD |
+| I1 and the gates at this head | GATE_I1 |
+| External `julc-examples` | 43 hashes equal; 446 tests, 0 failed, 11 skipped; 53 DevKit transactions accepted |
+| `julc-helloworld` | Migrated mechanically: 4 of 4 tests pass, the script equal on both frontends |
+| Elci's release smoke | Identical to M0: 2, 12 and 6 tests passing, and 42 |
+| Native and Wasm smokes | The native CLI's output equals the JVM's byte for byte; the Wasm smoke passes, with 15 of 15 parity requests equal |
+| Cost and size against M0 | External: 70,902 bytes against 71,627 at M0 (−1.01%), and equal to JavaParser's on all 43. I1: +10,903 bytes of 7,813,516 (+0.14%). Every growing Cost change row is decided (r18). The largest cost left is the "Decode on demand" follow-up |
+| Docs and release notes | The release notes state the change's effect, the narrowing's cost and `fromPlutusData`'s; troubleshooting has `JULC0123` to `JULC0129` |
+
+M5 closed on independent Claude reviews with no P0 or P1 open. Codex reads are owed at the heads in `068-followups.md`.
+
 ### M5: entry gate met (2026-11-04)
 
 [M5a](evidence/068-m5a.md) and [the integration](evidence/068-m5-integration.md), with M6a's tool readings merged
@@ -1263,7 +1297,7 @@ row changed. `JAVAPARSER` stays the default.
 | `Javac21ParityTest` (javac 21.0.3 required), `pairCaseTest`, `onChainHarnessTest` (offline), Blaster | Pass |
 | Rediscovery | Five profiles pass; `REDISCOVER_162` ends in #162's rejection, as ADR-066 designs it |
 
-M5's exit criteria (the default flip and its gates) remain. Codex reads are owed at M5a's, M6a's and this head.
+M5's exit criteria (the default flip and its gates) were closed above. Codex reads are owed at M5a's, M6a's and this head.
 
 ### M3a: closed (2026-11-01)
 
@@ -1649,3 +1683,14 @@ rest on the rule's own tests and on V146 showing it is the only byte change. Dev
   - M5's entry gate is met, on `m5-corpus-head-3`, a recording of the head at `8875e6a9` that replaces `m2-corpus-head` in
     the gate: no `JULC0084` on the corpus, every case has a javac row, and every `DIFFERENT` row is classified with none
     owed. The tables are frozen at the integration with M6a's tool readings, which moved no row.
+- **r18** (2026-11-04, M5's close, on repository evidence, the maintainer's delegation of 2026-11-04 and the cost report,
+  `068-m5-cost-size.md`):
+  - D6: an `(int)` of a `long` keeps Java's value, with the wrap omitted only where it is provably a no-op. `NarrowingElisionPass`, in
+    `PirBackend`, removes a wrap on the assembled term, at every level, where the operand's value is shown to lie in `int`'s range; anything
+    else keeps it. `MpfRegistryValidator` returns to 2,975 bytes, equal to JavaParser's at every level, and one nibble read saves
+    526,757 CPU, 1,205 memory and 107 lovelace at `PV11_SAFE`. `(short)`, `(char)` and `(byte)` are unchanged: only a literal has a
+    lowering, and any other is `JULC0124`.
+  - D13: the removal's rows, Representation only against the reference and a Cost change that shrinks against r17's rows.
+  - D13, O8: the 17 growing M5a Cost change rows, the 18 F1042 rows and `ee920e1e80` are accepted, under the maintainer's delegation.
+    Values equal the reference's, or depart from the JVM as the reference does. Decode on demand is a cost-priority follow-up.
+  - M5 is closed.
