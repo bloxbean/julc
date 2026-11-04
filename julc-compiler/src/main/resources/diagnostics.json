@@ -1536,7 +1536,7 @@
       "category": "TYPE",
       "severity": "error",
       "template": "{0} is a variant of {1} that is not a plain record; a variant is a record, not a class or a @NewType, so that it has one constructor tag and its fields",
-      "summary": "JuLC encodes a sealed interface's value as a constructor whose tag is the variant's place among the permitted records, and whose fields are the record's components. A final class or a @NewType has neither. Emitted by the javac frontend at a new, an instanceof or a case of such a variant, and, for a program that has none, at the variant's declaration wherever the sum is read: a parameter, a datum and its schema, a record component, a library's exports (ADR-068 M5); the reference frontend reads it as a record of no or one field.",
+      "summary": "JuLC encodes a sealed interface's value as a constructor whose tag is the variant's place among the permitted records, and whose fields are the record's components. A final class or a @NewType has neither. Emitted by the javac frontend at a new, an instanceof or a case of such a variant, and otherwise at the variant's declaration wherever its sealed interface is declared in a unit the compilation reads, whether or not the program reads the sum: such a sum has no layout (ADR-068 M5). The reference frontend reads it as a record of no or one field.",
       "fix": "Make the variant a record that is not a @NewType."
     },
     {

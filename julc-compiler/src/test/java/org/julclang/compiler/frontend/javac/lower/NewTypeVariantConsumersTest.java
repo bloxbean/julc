@@ -7,6 +7,7 @@ import org.julclang.compiler.JavaLibraryProvider;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.error.DiagnosticCodes;
 import org.julclang.stdlib.StdlibRegistry;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -111,5 +112,56 @@ class NewTypeVariantConsumersTest {
                 """.formatted(family(variant).replace("sealed interface", "public sealed interface")
                 .replace("@NewType record", "@NewType public record").replace("static final class", "public static final class"));
         assertRefused(() -> new JavaLibraryProvider(List.of(library), StdlibRegistry.defaultRegistry(), JAVAC));
+    }
+
+    /**
+     * The breadth the maintainer chose (M5 review F4): the rule holds wherever the sum is declared in a unit the
+     * compilation reads, used or not, since such a sum has no correct use.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {"newtype", "class"})
+    void anUnusedDeclarationIsRefused(String variant) {
+        String source = IMPORTS + "class C { " + family(variant) + " static BigInteger m(BigInteger x) { return x; } }";
+        assertRefused(() -> compiler(JAVAC).compileMethod(source, "m"));
+    }
+
+    /** A library the program reads declares the sum; the method compiled never reaches it. */
+    @Test
+    void aSumInALibraryTheProgramReadsIsRefusedEvenUncalled() {
+        String library = "package lib;\n" + IMPORTS + """
+                @OnchainLibrary
+                public class L {
+                    public sealed interface W permits V { }
+                    @NewType public record V(BigInteger value) implements W { }
+                    public static boolean f(W w) { return true; }
+                    public static BigInteger g(BigInteger x) { return x; }
+                }
+                """;
+        String source = IMPORTS + """
+                import lib.L;
+                class C {
+                    static BigInteger m(BigInteger x) { return x; }
+                    static BigInteger other(BigInteger x) { return L.g(x); }
+                }
+                """;
+        assertRefused(() -> compiler(JAVAC).compileMethod(source, "m", List.of(library)));
+    }
+
+    /** The negative control: a sum of plain records compiles, used as a parameter, by instanceof and by a switch. */
+    @Test
+    void aSumOfPlainRecordsCompiles() {
+        String source = IMPORTS + """
+                class C {
+                    sealed interface W permits A, B { }
+                    record A(BigInteger value) implements W { }
+                    record B() implements W { }
+                    static boolean m(W w) {
+                        if (w instanceof A a) return a.value().signum() > 0;
+                        return switch (w) { case A a -> true; case B b -> false; };
+                    }
+                }
+                """;
+        var result = compiler(JAVAC).compileMethod(source, "m");
+        org.junit.jupiter.api.Assertions.assertFalse(result.hasErrors(), result.diagnostics()::toString);
     }
 }
