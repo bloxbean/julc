@@ -25,15 +25,16 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
  * digest per question. A row was written at M6 from a head where those comparisons passed, so it holds both frontends'
  * answer. A question with no row fails: a new test states what it expects.
  * <p>
- * A change that moves an answer on purpose, in a later reference change, regenerates the table with
- * {@code -Pjulc.frozenReference.record=<file>}, and the diff shows every answer it moved.
+ * A change that moves an answer on purpose regenerates the table with {@code -Pjulc.frozenReference.record=<file>}. The rows
+ * are digests, so the recording also writes {@code <file>.moved}: for each answer that moved or is new, the question and the
+ * answer as text, which is what a review reads before the table is replaced.
  */
 public final class FrozenReference {
 
     /** Set by the build to write the rows instead of comparing with them. */
     private static final String RECORD = System.getProperty("julc.frozenReference.record");
 
-    private static final Map<String, String> ROWS = RECORD != null ? Map.of() : load();
+    private static final Map<String, String> ROWS = load();
 
     private FrozenReference() {
     }
@@ -42,7 +43,7 @@ public final class FrozenReference {
     public static void assertSame(String what, String actual) {
         String key = digest(what);
         if (RECORD != null) {
-            record(key, digest(actual));
+            record(key, digest(actual), what, actual);
             return;
         }
         String row = ROWS.get(key);
@@ -55,12 +56,21 @@ public final class FrozenReference {
         assertSame(what, HexFormat.of().formatHex(UplcFlatEncoder.encodeProgram(program)));
     }
 
-    private static synchronized void record(String key, String value) {
+    private static synchronized void record(String key, String value, String what, String actual) {
         try {
             Files.writeString(Path.of(RECORD), key + "\t" + value + "\n", StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+            String row = ROWS.get(key);
+            if (!value.equals(row)) {
+                Files.writeString(Path.of(RECORD + ".moved"), (row == null ? "new" : "moved") + "\t" + oneLine(what) + "\t" + oneLine(actual) + "\n",
+                        StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+            }
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
+    }
+
+    private static String oneLine(String text) {
+        return text.replace("\\", "\\\\").replace("\n", "\\n").replace("\t", "\\t");
     }
 
     private static Map<String, String> load() {

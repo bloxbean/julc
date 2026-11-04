@@ -1,5 +1,6 @@
 // entry: method m
-// expect-message: Ambiguous type '
+// expect: JULC0085
+// expect-message: (?s)cannot find symbol.*class P.*compiler\.err\.cant\.resolve
 import java.math.BigInteger;
 class F { static BigInteger m(P p) { return BigInteger.ONE; } }
 //// library

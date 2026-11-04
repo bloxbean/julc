@@ -22,9 +22,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 /**
- * ADR-068 I2a's rejection fixtures (F301): one small source per rejection site of the reference frontend that the
- * rest of the suite does not already compile through an entry point, each compiled through a public entry point
- * (so the corpus recorder records it) and checked for its expected diagnostics.
+ * ADR-068 I2a's rejection fixtures (F301): one small source per rejection site that the rest of the suite does not already
+ * compile through an entry point, each compiled through a public entry point and checked for its expected diagnostics.
+ * Since M6 the expectations are what javac's frontend says of the source, which for some is javac's own rejection.
  * <p>
  * A fixture under {@code src/test/resources/adr068/rejections} starts with header comments:
  * {@code // entry: method <name>} ({@code compileMethod}), {@code // entry: validator} ({@code compile}) or
@@ -68,12 +68,16 @@ class Adr068RejectionFixturesTest {
         } catch (CompilerException e) {
             for (var d : e.diagnostics()) found.add(d.code() + " " + d.message());
             if (e.diagnostics().isEmpty()) found.add("null " + e.getMessage());
-        } catch (RuntimeException e) {
+        } catch (IllegalArgumentException e) {
+            // Only these are rejections: the backend's, which is one of these, and an export the provider reports. Anything else is a crash, and fails.
             found.add(codeOf(e) + " " + e.getMessage());
         }
-        // ADR-068 M6: the fixture is rejected. Its expected words were the reference's site; what javac says of it is in
-        // lowering-javac.tsv, where a change of code or message moves a row.
-        assertFalse(found.isEmpty(), file.getFileName().toString());
+        for (String code : codes) {
+            assertTrue(found.stream().anyMatch(f -> f.startsWith(code + " ")), file.getFileName() + ": " + code + " in " + found);
+        }
+        for (Pattern message : messages) {
+            assertTrue(found.stream().anyMatch(f -> message.matcher(f).find()), file.getFileName() + ": " + message + " in " + found);
+        }
     }
 
     private static String codeOf(RuntimeException e) {

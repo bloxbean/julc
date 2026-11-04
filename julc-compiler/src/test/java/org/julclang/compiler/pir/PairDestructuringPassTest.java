@@ -96,6 +96,32 @@ class PairDestructuringPassTest {
     }
 
     @Test
+    void pairMatchBindersTypeAndSourcePositionsArePreserved() {
+        var fst = first(P);
+        var body = new PirTerm.Let("fields", second(P), fst);
+        var term = binding(data(), body);
+        var locations = new IdentityHashMap<PirTerm, SourceLocation>();
+        var rootLocation = new SourceLocation("Pair.java", 10, 1, "pair binding");
+        var projectionLocation = new SourceLocation("Pair.java", 12, 3, "first projection");
+        locations.put(term, rootLocation);
+        locations.put(fst, projectionLocation);
+        var result = new PairDestructuringPass(context(OptimizationLevel.PV11_SAFE), locations).lower(term);
+        var match = assertInstanceOf(PirTerm.PairMatch.class, result.term());
+        assertEquals(rootLocation, result.positions().get(match));
+        assertEquals(projectionLocation, result.positions().get(((PirTerm.Let) match.body()).body()));
+        var generator = new UplcGenerator(context(OptimizationLevel.PV11_SAFE), result.positions());
+        var uplc = generator.generate(match);
+        assertEquals(rootLocation, generator.getUplcPositions().get(uplc));
+        assertTrue(generator.getUplcPositions().containsValue(projectionLocation));
+        var open = new PirTerm.PairMatch(new PirTerm.Var("outside", PAIR), PAIR, "a", "b",
+                add(new PirTerm.Var("a", INT), new PirTerm.Var("free", INT)));
+        assertEquals(Set.of("outside", "free"), PirSubstitution.collectFreeVarNames(open));
+        var substituted = PirSubstitution.substitute(open, "a", integer(999));
+        assertEquals(open, substituted);
+        assertFalse(PirSubstitution.collectFreeVarNames(PirSubstitution.substitute(open, "free", integer(7))).contains("free"));
+    }
+
+    @Test
     void baselineIsIdentityAndPairMatchFailsClosedOutsideSafeProfile() {
         var term = binding(data(), new PirTerm.Let("fields", second(P), first(P)));
         for (var level : List.of(OptimizationLevel.NONE, OptimizationLevel.BASELINE)) {

@@ -80,7 +80,9 @@ final class CampaignVerifier {
 
     private static final List<PolicyRejection> POLICY_REJECTIONS = List.of(
             new PolicyRejection("JULC0078", "", "D6: equals between types Java keeps distinct"),
-            new PolicyRejection("JULC0012", "whose arms have different types", "D6 (r17): a choice of arms of two types"));
+            // ArmTypes' own words, which name the choice. The lowering's loss of a type, CompilerTypeDiagnostics.UNKNOWN_TYPE_ENCODED, stays a failure.
+            new PolicyRejection("JULC0012", "the type of a switch expression whose arms have different types, ", "D6 (r17): a choice of arms of two types"),
+            new PolicyRejection("JULC0012", "the type of a conditional whose arms have different types, ", "D6 (r17): a choice of arms of two types"));
 
     /** The decision that rejects this, or null. */
     static String policyDecision(String code, String message) {

@@ -43,6 +43,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Predicate;
 
 /**
  * A compilation on the javac frontend (ADR-068 D2): the coordinator, which finds a program's parts, has {@link Lowering}
@@ -308,6 +309,16 @@ public final class JavacCompilation {
     /** ADR-060 G2, enabled in tests: the binders of this compilation are reserved names or names the sources declare. */
     private void verifyBinderNamespace(CompilationUnitTree unit) {
         if (!Boolean.getBoolean(JulcCompiler.VERIFY_BINDER_NAMESPACE)) return;
+        var units = new ArrayList<CompilationUnitTree>(libraries.units());
+        units.add(unit);
+        context.verifyBinderNames(binderNamespace(units));
+    }
+
+    /**
+     * ADR-060 G2's namespace: a reserved name, a name {@code units} declare (a block-local rename counts as its name) or
+     * a qualified name of a method they declare. Type names and names that only appear in calls do not count.
+     */
+    static Predicate<String> binderNamespace(List<? extends CompilationUnitTree> units) {
         var declared = new HashSet<String>();
         var methods = new HashSet<String>();
         var scanner = new TreeScanner<Void, Void>() {
@@ -323,15 +334,14 @@ public final class JavacCompilation {
                 return super.visitMethod(tree, null);
             }
         };
-        scanner.scan(unit, null);
-        for (var library : libraries.units()) scanner.scan(library, null);
-        context.verifyBinderNames(name -> {
+        for (var unit : units) scanner.scan(unit, null);
+        return name -> {
             if (PirHelpers.isGeneratedName(name)) return true;
             int mark = name.indexOf(Scope.MARK);
             if (declared.contains(mark < 0 ? name : name.substring(0, mark))) return true;
             int dot = name.lastIndexOf('.');
             return dot > 0 && methods.contains(name.substring(dot + 1));
-        });
+        };
     }
 
     /** The units javac read for this compilation: the roots, then the libraries (D8). */

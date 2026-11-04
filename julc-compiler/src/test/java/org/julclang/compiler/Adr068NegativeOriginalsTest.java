@@ -16,7 +16,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.stream.Stream;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
@@ -26,9 +26,8 @@ import static org.junit.jupiter.api.Assertions.fail;
  * each test names is what rejects them; those tests keep their rewritten sources, and this test keeps the frozen
  * originals, each recorded through the entry point and with the options of its B0 row, so its row stays a rejection.
  * <p>
- * Each original in {@code src/test/resources/adr068/negative-originals} is compiled twice: with the gate off, it gets
- * B0's rejection (the reference frontend's code, or {@code uncoded/<exception>}); with the default gate, it gets
- * javac's keys (I2b), or, where javac accepts it, the same JuLC rejection.
+ * Each original in {@code src/test/resources/adr068/negative-originals} gets javac's keys (I2b), or, where javac accepts it,
+ * a JuLC rejection. The column of B0's rejection stays as history of what the removed frontend reported.
  */
 class Adr068NegativeOriginalsTest {
 
@@ -55,8 +54,18 @@ class Adr068NegativeOriginalsTest {
         var libraries = new ArrayList<String>();
         for (String library : row.libraries()) libraries.add(text(dir, library));
 
-        // ADR-068 M6: a negative fixture stays a rejection on the only frontend. Its code is in lowering-javac.tsv, which holds it.
-        assertTrue(rejection(row, source, libraries) != null, row.origin());
+        // ADR-068 M6: a negative fixture stays a rejection on the only frontend, by the keys javac gave it at M0 (I2b).
+        var rejection = rejection(row, source, libraries);
+        assertTrue(rejection instanceof CompilerException || rejection instanceof BackendException
+                || (rejection instanceof IllegalArgumentException && row.entry().equals("JavaLibraryProvider")), () -> row.origin() + ": " + rejection);
+        // Where javac accepted the source, JuLC rejects it by a rule of its own; a provider reports a duplicate source before javac reads it.
+        if (row.javac().equals("accepted") || rejection.getClass() == IllegalArgumentException.class) return;
+        assertInstanceOf(CompilerException.class, rejection, row.origin());
+        var messages = ((CompilerException) rejection).diagnostics().stream().map(d -> String.valueOf(d.message())).toList();
+        for (String key : row.javac().split(",")) {
+            if (key.equals("JULC0085")) continue;
+            assertTrue(messages.stream().anyMatch(message -> message.contains("(" + key + ")")), row.origin() + ": " + key + " in " + messages);
+        }
     }
 
     private static String text(Path dir, String digest) throws IOException {

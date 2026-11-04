@@ -1,5 +1,6 @@
 // entry: method m
-// expect-message: Ambiguous type '
+// expect: JULC0085
+// expect-message: reference to Q is ambiguous
 import java.math.BigInteger;
 import a.*;
 import b.*;

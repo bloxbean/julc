@@ -1,5 +1,6 @@
 // entry: method m
-// expect-message: Illegal character '\\'
+// expect: JULC0085
+// expect-message: illegal character:.*compiler\.err\.illegal\.char
 import java.math.BigInteger;
 public class P {
     static final BigInteger a = BigInteger.ONE;

@@ -1,5 +1,6 @@
 // entry: method m
-// expect-message: Ambiguous library class '
+// expect: JULC0085
+// expect-message: (?s)cannot find symbol.*variable Util.*compiler\.err\.cant\.resolve
 import java.math.BigInteger;
 class F { static BigInteger m(BigInteger a) { return Util.twice(a); } }
 //// library

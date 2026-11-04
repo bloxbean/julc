@@ -18,6 +18,8 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.concurrent.Future;
+import java.util.concurrent.Executors;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
@@ -460,5 +462,23 @@ class JavacFrontendTest {
         assertEquals(file.toString(), d.fileName());
         assertEquals(1, d.line());
         assertEquals(text.indexOf("\"x\"") + 1, d.column());
+    }
+
+    /** F402 and F406: the metadata-only task is built once per process, and locks itself: concurrent queries need no caller lock. */
+    @Test
+    void metadataTaskIsCachedPerProcessAndLocksItself() throws Exception {
+        var first = JavacLibraryTypes.metadata();
+        assertSame(first, JavacLibraryTypes.metadata());
+        var pool = Executors.newFixedThreadPool(8);
+        try {
+            var futures = new ArrayList<Future<Integer>>();
+            for (int i = 0; i < 64; i++) {
+                futures.add(pool.submit(() -> first.read((elements, types) ->
+                        elements.getTypeElement("org.julclang.ledger.TxInfo").getRecordComponents().size())));
+            }
+            for (var future : futures) assertEquals(16, future.get());
+        } finally {
+            pool.shutdown();
+        }
     }
 }

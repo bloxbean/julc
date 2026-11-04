@@ -53,7 +53,7 @@ public final class JavacLibraryTypes {
      * The empty {@code JavaLibraryProvider}'s metadata-only task (D8): built over the shipped stubs, which must define the
      * ledger's {@code ScriptContext}, once per process. The instance synchronizes its own queries ({@link JavacMetadata#read}).
      */
-    private static JavacMetadata metadata() {
+    static JavacMetadata metadata() {
         JavacMetadata cached = metadata;
         if (cached != null) return cached;
         var support = JavacFrontend.shared().supported();

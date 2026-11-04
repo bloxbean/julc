@@ -1,5 +1,6 @@
 // entry: method m
-// expect-message: Duplicate sealed interface 'a.H.S' found across compilation units
+// expect: JULC0085
+// expect-message: duplicate class: a\.H
 import java.math.BigInteger;
 class F { static BigInteger m(BigInteger a) { return a; } }
 //// library
