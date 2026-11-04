@@ -821,7 +821,7 @@ by name, and the gate rejects that shape on the default frontend.
 
 **After M6 (r20).** One frontend is left, so the harness compares the JVM with javac: `DiffConfig` has no frontend, and a
 case has a verdict per level. The rest of the set stands: every saved `.diffcase`, G0, the G1 fixed-seed campaign, ADR-066's
-rediscovery checks, `Javac21ParityTest` until D11 retires it, and I1, on `frontend=JAVAC` against a frozen table
+rediscovery checks, `Javac21ParityTest` until D11 retires it, and until M6's merge (r21) I1, on `frontend=JAVAC` against a frozen table
 (`lowering-javac.tsv`, D13). A saved case's `expect` is its answer on javac, and its note says what the JavaParser frontend
 answered; 72 moved, none to a mismatch (`068-m6.md`). G1 passes over a rejection only for one `CampaignVerifier` lists with its
 decision (`JULC0078`, D6; `JULC0012` for arms of two types, r17); any other rejection stays a failure. `REDISCOVER_162` is ADR-066's must-reject
@@ -1700,7 +1700,7 @@ rest on the rule's own tests and on V146 showing it is the only byte change. Dev
     reuse and generates no constant. D4's option and the gate go on every host; a host that still names another frontend stops, saying so.
   - The table moved 23 rows, one column each, a contract's rejection text: `JULC0087`'s fix no longer names the way back. No byte moved.
   - G1 on javac passes over `JULC0078` and `JULC0012`'s arms of two types by their decisions; any other rejection fails. Elci's exit criterion is
-    closed on its API read as source-compatible, with its pin and metadata listed for its own change. Image sizes: full Wasm 33.1 MB, native CLI 97.8 MB.
+    closed on its API read as source-compatible, with its pin and metadata listed for its own change. Image sizes: full Wasm 33.1 MB, native CLI 101.8 MB on GraalVM 25.0.2, as at M5.
 - **r19** (2026-11-05, on the review of r18 and the maintainer's decision): `JULC0130` rejects a compound assignment of a `long` to an `int` on `frontend=JAVAC`, whose JVM and on-chain values differ past 32 bits. The fix text leads with declaring a `long`. Plain `int` arithmetic keeps its documented rule: an on-chain integer has no width, and values that can get large belong in a `long` or a `BigInteger`.
 - **r18** (2026-11-04, M5's close, on repository evidence, the maintainer's delegation of 2026-11-04 and the cost report,
   `068-m5-cost-size.md`):
