@@ -244,9 +244,11 @@ class Adr068LoopRepresentationsPropertyTest {
         var diffCase = new DiffCase("data", source, "Case", "m", List.of(one, new PlutusData.IntData(BigInteger.TWO), integers(1, 2), Adr068LoopRepresentationsTest.MAP,
                 new PlutusData.ListData(List.of(one)), new PlutusData.ConstrData(0, List.of(one)), integers(1, 2), new PlutusData.ConstrData(0, List.of())), tags, null);
         // A conditional or switch of a list view and the PlutusData c is a choice of two types: JULC0012 since M5a review 2, F1,
-        // as one arm can be a builtin's list and the other Data. A list view the lowering types PlutusData (nil(), G, h) keeps one type.
+        // as one arm can be a builtin's list and the other Data. A list view the lowering types PlutusData (nil(), G, h) keeps one type,
+        // and so does tailList(c) of the variable itself: both arms hold c's form, and the program is the reference's, which fails
+        // where Java's tailList of a ListData returns.
         boolean choice = update.contains("?") || update.contains("switch");
-        boolean view = !(list.equals("nil()") || list.equals("G"));
+        boolean view = !(list.equals("nil()") || list.equals("G") || list.equals("Builtins.tailList(c)"));
         if (choice && view) {
             assertMixedChoiceRejected(diffCase);
         } else {
