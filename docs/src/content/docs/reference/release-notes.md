@@ -64,6 +64,7 @@ where the Java code returns. Each now stops with a code and a fix:
 | `JULC0127` | A variant of a sealed interface that is a class or a `@NewType` record | Make the variant a plain record |
 | `JULC0128` | A value whose on-chain form is not the one the operation reads (Data where a builtin takes bytes, a native list in a Data component, a `new Value(...)` of a map) | Convert explicitly (`Builtins.unBData`, `listData`, `mapData`) or use `ValuesLib` and `MapLib` |
 | `JULC0129` | `new` of a class that is not a record | Declare a record |
+| `JULC0130` | `int x; x += someLong` (any compound assignment of a `long` to an `int`): Java narrows it without saying so, and the on-chain integer does not | Declare `x` as `long`, or write `x = (int) (x + y)` for Java's 32-bit result |
 | `JULC0079`, `JULC0080` | A record with two sealed parents; a record member other than a nested type (ADR-067) | One sealed parent; move logic to a static method |
 | `JULC0088` | A `@Param` field that is a Java constant variable (`static final boolean P = true`) | Drop `final`, or `Boolean.valueOf(true)` |
 | `JULC0092` | A sealed interface with no `permits` clause whose permitted classes are not exactly its nested records | Add a `permits` clause in tag order |

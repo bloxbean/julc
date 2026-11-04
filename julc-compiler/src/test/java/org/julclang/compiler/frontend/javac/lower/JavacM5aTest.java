@@ -4,19 +4,29 @@ import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JulcCompiler;
+import org.julclang.compiler.OptimizationLevel;
 import org.julclang.compiler.error.CompilerDiagnostic;
 import org.julclang.compiler.frontend.javac.NotPorted;
+import org.julclang.core.Constant;
+import org.julclang.core.PlutusData;
+import org.julclang.core.Term;
 import org.julclang.core.flat.UplcFlatEncoder;
 import org.julclang.stdlib.StdlibRegistry;
+import org.julclang.vm.EvalResult;
+import org.julclang.vm.JulcVm;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import java.math.BigInteger;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -240,5 +250,54 @@ class JavacM5aTest {
         var diagnostic = rejected("static boolean m(BigInteger a, boolean c) { PlutusData x = c ? Builtins.iData(a) : Builtins.constrData(0, Builtins.mkNilData()); return Builtins.equalsData(x, Builtins.iData(a)); }");
         assertEquals("JULC0012", diagnostic.code(), diagnostic::message);
         assertTrue(diagnostic.message().contains("arms have different types"), diagnostic.message());
+    }
+
+    /** ADR-068 r19: Java narrows {@code int += long} without saying so and the on-chain integer does not, so the form is rejected, and the fix names {@code long}. */
+    @ParameterizedTest
+    @ValueSource(strings = {"+=", "-=", "*=", "/=", "%="})
+    void aCompoundAssignmentOfALongToAnIntIsRejected(String operator) {
+        var diagnostic = rejected("static long m(JulcList<BigInteger> xs) { int x = 5; for (var y : xs) { x " + operator + " y.longValue(); } return x; }");
+        assertEquals("JULC0130", diagnostic.code());
+        assertTrue(diagnostic.suggestion().contains("long total = 0"), diagnostic.suggestion());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "static long m(JulcList<BigInteger> xs) { int x = 5; for (var y : xs) { x += 1L; } return x; }",
+            // The review's shape: the update gives 5 on the JVM and 4294967301 on-chain at y = 2^32.
+            "static long m(long y) { int x = 5; for (long z : JulcList.of(y)) { x += z; } return x; }",
+            "static long m(JulcList<BigInteger> xs, boolean c) { int x = 5; for (var y : xs) { if (c) { x += y.longValue(); } } return x; }",
+            "static long m(JulcList<BigInteger> xs) { int x = 5; long n = 2; while (n > 0) { x += n; n = n - 1; } return x; }",
+    })
+    void everyShapeOfTheNarrowingIsRejected(String members) {
+        assertEquals("JULC0130", rejected(members).code());
+    }
+
+    /** Nothing narrows in these, or the program says so; each gives the JVM's value past 32 bits. */
+    @ParameterizedTest
+    @CsvSource(delimiter = '|', value = {
+            "long x = 5; for (var y : xs) { x += y.longValue(); } return x; | 4294967301",
+            "BigInteger x = BigInteger.valueOf(5); for (var y : xs) { x = x.add(y); } return x.longValue(); | 4294967301",
+            "int x = 5; for (var y : xs) { x = (int) (x + y.longValue()); } return x; | 5",
+            "int x = 5; for (var y : xs) { x += (int) y.longValue(); } return x; | 5",
+    })
+    void whatDoesNotHideANarrowingCompiles(String body, long java) {
+        var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAC).setOptimizationLevel(OptimizationLevel.BASELINE);
+        var program = new JulcCompiler(StdlibRegistry.defaultRegistry(), options)
+                .compileMethod(source("static long m(JulcList<BigInteger> xs) { " + body + " }"), "m").program();
+        var argument = PlutusData.list(PlutusData.integer(4294967296L));
+        var result = JulcVm.create().evaluateWithArgs(program, List.of(argument));
+        assertEquals(new Term.Const(Constant.integer(BigInteger.valueOf(java))),
+                assertInstanceOf(EvalResult.Success.class, result, result::toString).resultTerm(), body);
+    }
+
+    /** An update that does not narrow stays as it was. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "static long m(JulcList<BigInteger> xs) { long x = 5; for (var y : xs) { x *= 2; } return x; }",
+            "static long m(JulcList<BigInteger> xs, int k) { int x = 5; for (var y : xs) { x += k; } return x; }",
+    })
+    void anUpdateThatDoesNotNarrowCompiles(String members) {
+        assertNotNull(compiler(CompilerFrontend.JAVAC).compileMethod(source(members), "m").program());
     }
 }

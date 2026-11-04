@@ -990,6 +990,7 @@ A rule that depends on what javac resolved runs on javac's trees after `analyze(
 | `JULC0126` | An `instanceof` of a value whose type is not the variant's interface | `frontend=JAVAC` (r17); a Policy rejection where the reference accepted |
 | `JULC0127` | A variant that is not a plain record: at a `new`, an `instanceof` or a `case` of it, and (M5) at its declaration wherever its sealed interface is declared in a unit the compilation reads, used or not, since such a sum has no layout | `frontend=JAVAC` (r17); a Policy rejection where the reference accepted |
 | `JULC0128` | A value whose on-chain form is not the one the operation reads | `frontend=JAVAC` (r17); a Policy rejection where the reference accepted |
+| `JULC0130` | A compound assignment of a `long` to an `int`: Java narrows the result without saying so and the on-chain integer does not. An explicit `(int)` follows Java (D6) and a `long` needs no cast, so the form is rejected (the maintainer's decision, r19) | `frontend=JAVAC` (r19); a Policy rejection where the reference accepted |
 | `JULC0129` | A `new` of a class that is not a record: "Cannot construct non-record type", the reference's words, which it gives uncoded (I2a) | `frontend=JAVAC` (r17) |
 | `JULC0012` | A type parameter no call specializes: the reference's "Unknown type", which it gives uncoded (I2a) | `frontend=JAVAC` (r17) |
 | `JULC0014` | An array type the javac frontend reads, a varargs record component included (the reference reads `BigInteger...` as its element type) | `frontend=JAVAC` (r17) |
@@ -1684,6 +1685,7 @@ rest on the rule's own tests and on V146 showing it is the only byte change. Dev
   - M5's entry gate is met, on `m5-corpus-head-3`, a recording of the head at `8875e6a9` that replaces `m2-corpus-head` in
     the gate: no `JULC0084` on the corpus, every case has a javac row, and every `DIFFERENT` row is classified with none
     owed. The tables are frozen at the integration with M6a's tool readings, which moved no row.
+- **r19** (2026-11-05, on the review of r18 and the maintainer's decision): `JULC0130` rejects a compound assignment of a `long` to an `int` on `frontend=JAVAC`, whose JVM and on-chain values differ past 32 bits. The fix text leads with declaring a `long`. Plain `int` arithmetic keeps its documented rule: an on-chain integer has no width, and values that can get large belong in a `long` or a `BigInteger`.
 - **r18** (2026-11-04, M5's close, on repository evidence, the maintainer's delegation of 2026-11-04 and the cost report,
   `068-m5-cost-size.md`):
   - D6: an `(int)` of a `long` keeps Java's value, with the wrap omitted only where it is provably a no-op. `NarrowingElisionPass`, in

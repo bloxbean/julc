@@ -10,7 +10,7 @@ This document covers all supported Java operations in the JuLC compiler, the sta
 
 | Java Type | UPLC Representation | Notes |
 |-----------|-------------------|-------|
-| `int`, `long`, `BigInteger` | Integer | All mapped to arbitrary-precision integers |
+| `int`, `long`, `BigInteger` | Integer | All mapped to arbitrary-precision integers. Use `long` or `BigInteger` for values that can get large (see the note below) |
 | `boolean` | Bool (Constr 0/1) | `false` = Constr(0,[]), `true` = Constr(1,[]) |
 | `byte[]` | ByteString | Raw bytes |
 | `String` | String (UTF-8) | Converted via EncodeUtf8/DecodeUtf8 |
@@ -26,6 +26,8 @@ This document covers all supported Java operations in the JuLC compiler, the sta
 | `PubKeyHash`, `PolicyId`, `TokenName`, `TxId`, `ScriptHash`, `ValidatorHash`, `DatumHash` | ByteString | Ledger hash types |
 | `Value` | Map(Pair) | Named RecordType with instance methods |
 | `JulcArray<T>` *(PV11)* | BuiltinArray | O(1) random access array (CIP-138). PV11+ only |
+
+**An on-chain integer has no width.** In Java an `int` wraps past 32 bits and a `long` past 64; on-chain neither wraps. A value that stays in range is the same in both, and one that overflows in a JVM test keeps growing in the script. So use `long` for amounts, counters and anything computed from them, and `BigInteger` for values that can pass 64 bits, such as lovelace products. An explicit `(int)` cast follows Java and keeps the low 32 bits. `int x; x += someLong;` is rejected (`JULC0130`), because Java narrows it without saying so: declare `x` as `long`.
 
 ### JulcList and JulcMap
 

@@ -85,6 +85,7 @@ final class Operators {
             throw facts.rejection(DiagnosticCodes.COMPOUND_ASSIGNMENT_TYPE_UNSUPPORTED, assignment, operator, name,
                     "of type " + LibraryMethodRegistry.pirTypeName(target.seen()) + " is not supported");
         }
+        requireNoHiddenNarrowing(compound, operator, name);
         var current = lowering.expr(compound.getVariable(), frame);
         var operand = lowering.expr(compound.getExpression(), frame);
         var operandType = typing.of(compound.getExpression(), operand);
@@ -102,6 +103,17 @@ final class Operators {
             case REMAINDER_ASSIGNMENT -> DefaultFun.RemainderInteger;
             default -> throw facts.rejection(DiagnosticCodes.COMPOUND_ASSIGNMENT_UNSUPPORTED, compound, compound.getKind().name());
         }, current, operand);
+    }
+
+    /**
+     * Java's {@code int += long} casts the result back to {@code int} without saying so, while on-chain the integer keeps its value:
+     * the JVM and the script would differ past 32 bits. An explicit {@code (int)} follows Java (D6), and a {@code long} needs no
+     * cast, so this form is rejected rather than given a wrap the program did not write and pays for.
+     */
+    private void requireNoHiddenNarrowing(CompoundAssignmentTree compound, String operator, String name) {
+        if (facts.type(compound.getVariable()).getKind() == TypeKind.INT && facts.type(compound.getExpression()).getKind() == TypeKind.LONG) {
+            throw facts.rejection(DiagnosticCodes.COMPOUND_ASSIGNMENT_NARROWS, compound, operator, name);
+        }
     }
 
     private static String compoundOperator(CompoundAssignmentTree tree) {

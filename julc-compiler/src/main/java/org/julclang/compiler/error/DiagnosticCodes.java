@@ -165,6 +165,14 @@ public final class DiagnosticCodes {
             "Compiler stage {0} emitted target-illegal feature {1} for {2}",
             "Report this as a JuLC compiler bug. Include the named compiler stage/pass, selected target, and a minimal reproducer.");
 
+    public static final DiagnosticInfo COMPOUND_ASSIGNMENT_NARROWS = new DiagnosticInfo(
+            "JULC0130",
+            "COMPOUND_ASSIGNMENT_NARROWS",
+            CompilerDiagnostic.Level.ERROR,
+            "TYPE",
+            "Compound assignment {0} to the int ''{1}'' takes a long: Java narrows the result to 32 bits and the on-chain integer does not, so a JVM test and the script could differ",
+            "Declare the variable as long, e.g. long total = 0; total += amount; (BigInteger for values that can pass 64 bits). If you do want Java's 32-bit result, write the cast: x = (int) (x + y);");
+
     public static final DiagnosticInfo COMPOUND_ASSIGNMENT_TYPE_UNSUPPORTED = new DiagnosticInfo(
             "JULC0117",
             "COMPOUND_ASSIGNMENT_TYPE_UNSUPPORTED",
@@ -1035,6 +1043,7 @@ public final class DiagnosticCodes {
             COMPILER_FEATURE_UNAVAILABLE,
             COMPILER_PROGRAM_VERSION_MISMATCH,
             COMPILER_TARGET_INVARIANT_VIOLATION,
+            COMPOUND_ASSIGNMENT_NARROWS,
             COMPOUND_ASSIGNMENT_TYPE_UNSUPPORTED,
             COMPOUND_ASSIGNMENT_UNSUPPORTED,
             CONSTANT_STRING_JOIN,

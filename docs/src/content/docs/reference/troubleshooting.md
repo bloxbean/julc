@@ -1651,6 +1651,12 @@ strings built from literals and `+` alone keep their meaning.
 
 **Fix:** Only record types can be constructed on-chain. Declare the type as a record.
 
+### `JULC0130` `Compound assignment <op> to the int '<name>' takes a long`
+
+**Cause:** Java's `int x; x += someLong;` casts the result back to `int` without saying so. An on-chain integer has no width, so past 32 bits a JVM test and the script would give different values.
+
+**Fix:** Declare the variable as `long`, which is what most code means: `long total = 0; total += amount;`. Use `BigInteger` for values that can pass 64 bits. If you do want Java's 32-bit result, write the cast: `x = (int) (x + y);`.
+
 ### Codes the javac frontend gives the reference's uncoded words
 
 On the javac frontend, the default from ADR-068 M5, these rejections carry a code, with the JavaParser frontend's words and position: `JULC0001` (a method
