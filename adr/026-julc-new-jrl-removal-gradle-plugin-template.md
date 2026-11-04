@@ -6,6 +6,8 @@ Date: 2026-06-08
 
 Accepted and implemented.
 
+JRL removed in ADR-068 M5 (2026-11-04).
+
 ## Goal
 
 Two scaffolding (`julc new`) improvements:

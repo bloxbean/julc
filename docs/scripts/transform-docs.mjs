@@ -28,7 +28,6 @@ const FILE_MAP = {
   'troubleshooting.md':          'reference/troubleshooting.md',
   'compiler-design.md':          'internals/compiler-design.md',
   'compiler-developer-guide.md': 'internals/compiler-developer-guide.md',
-  'jrl-guide.md':                'experimental/jrl-guide.md',
 }
 
 // Link rewrite map: old filename (without .md) -> new Starlight path
@@ -44,7 +43,6 @@ const LINK_MAP = {
   'troubleshooting':          '/reference/troubleshooting/',
   'compiler-design':          '/internals/compiler-design/',
   'compiler-developer-guide': '/internals/compiler-developer-guide/',
-  'jrl-guide':                '/experimental/jrl-guide/',
 }
 
 for (const [oldFile, newPath] of Object.entries(FILE_MAP)) {

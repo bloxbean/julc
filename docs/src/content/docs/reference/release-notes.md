@@ -157,9 +157,11 @@ replacements, and how to select the JavaParser frontend until M6.
 - **`LedgerTypeProvider()`** and `JavaLibraryProvider(..., new CompilerOptions())` describe the ledger and libraries as
   javac reads them; their types and named definitions are equal to the JavaParser frontend's (ADR-068 M2).
 - `CompilerFrontend.DEFAULT` names the default.
-- **JRL** compiles the Java it generates on the JavaParser frontend (`JrlCompiler.generatedJavaOptions()`): its `==`
-  becomes Java's `==`, also between references, which javac's frontend rejects. This lasts until the transpiler writes
-  typed equality, before ADR-068 M6.
+- **JRL support has been removed.** The experimental JRL rule language, its transpiler, `julc build`'s compilation of
+  `.jrl` files and the JRL guide are gone; `julc build` no longer reads `.jrl` files. Write the contract in Java, as
+  the [first contract](/first-contract/) guide shows. JRL was never published, so no Maven artifact disappears. The
+  playground reads only `JULC_PLAYGROUND_PORT`, `JULC_MAX_COMPILE_THREADS` and `JULC_COMPILE_TIMEOUT_SECONDS`; the older
+  names starting with `JRL_` are no longer read.
 - The annotation processor and the Gradle plugin's `compileJulc` print each diagnostic with its code, position and fix
   (`CompilerException.describe()`); before, a rejection made of one diagnostic showed its words alone.
 - A sealed interface whose permitted class is a class or a `@NewType` record is `JULC0127` wherever it is read (a
@@ -456,8 +458,6 @@ and the verification resolvers.
   mentions one (in a Javadoc, an import or a link) and cannot be read strictly is read again
   leniently, and skipped if it declares none. It still fails with its diagnostic if it
   declares one, or if javac could read it differently from the lenient reading.
-- **JRL:** rule names and trace messages go into comments in the generated Java. Their
-  backslashes are now doubled there, so an escape in one cannot end the comment.
 
 ## Upcoming preview: string literals are decoded as Java decodes them (#256)
 
@@ -485,8 +485,6 @@ escapes) and Unicode escapes (`\u00e9`) are decoded. The same applies to the arg
 - **Still rejected**, as before, although javac accepts them: `\u005c` before a raw `"`, and
   a Unicode escape whose digits are not ASCII hex digits. A Unicode escape with more than
   one `u` (`\uuu0041`) is now accepted (#268, above).
-- **JRL** string literals keep their value. They have no escapes, so the transpiler now
-  doubles each backslash in the Java it generates.
 
 ## Upcoming preview: coded diagnostics for rejected loop and statement forms (#257)
 
@@ -1362,7 +1360,7 @@ The Java VM supports both forms, although the raw `Program` form cannot carry
 compiler-target provenance. See
 [ADR-033's certification evidence](https://github.com/bloxbean/julc/blob/main/adr/033-scalus-protocol-aware-ledger-target-evaluation.md#certification-evidence).
 
-The CLI, Gradle plugin, annotation processor, JRL compiler, and MCP tools accept
+The CLI, Gradle plugin, annotation processor and MCP tools accept
 and report the same stable profile ID. Supporting a later protocol version will
 add and verify a separate pinned profile; it will not silently change the PV11
 default.
