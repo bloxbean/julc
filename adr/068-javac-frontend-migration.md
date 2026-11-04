@@ -910,8 +910,9 @@ Each milestone appends the javac frontend's row and, for every difference, one c
   that rejects has no semantic observation, and a row both frontends reject has no class without a decision of its own
   (`Adr068Lowering.explainsUnaccepted`; the M5a re-confirmation's G1). The three head rows of `(var x) -> x.signum() > 0`
   (r13's widening) are Accepted by decision, with `reject-068-var-lambda-parameter.diffcase`.
-- **A Cost change from a wrap removed (r18).** Where `NarrowingElisionPass` removes an `(int)` wrap (D6), a row's budgets and script size
-  only fall, and its value does not change. A row whose every level then equals the reference's stays a `DIFFERENT-pir` row, since the tool
+- **A Cost change from a wrap removed (r18).** Where `NarrowingElisionPass` removes an `(int)` wrap (D6), the script is smaller and a path
+  that runs the wrap costs less, and the value does not change. A path that evaluates the method without calling it can cost a few machine
+  steps more, from a partial application (32,000 CPU and 200 memory in the review's probe); no row of the corpus does. A row whose every level then equals the reference's stays a `DIFFERENT-pir` row, since the tool
   reads a method's PIR before that pass, and "Representation only" explains it. Against its earlier row, it is a Cost change that shrinks.
   The 11 external `MerklePatriciaForestry` rows are these; they were the "casts, grows" Cost change rows. A growth is still the review's
   decision, and a row that grew or changed its value here would be a finding. Since a move to a lower class counts as a loss to the tool, the

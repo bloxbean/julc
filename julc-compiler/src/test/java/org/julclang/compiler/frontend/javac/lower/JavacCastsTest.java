@@ -28,6 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Casts on {@code frontend=JAVAC}: a cast to a reference type is the reference's view, to its bytes; {@code int} and
@@ -164,6 +165,39 @@ class JavacCastsTest {
             assertNotEquals(HexFormat.of().formatHex(bytesOf(members, CompilerFrontend.JAVAPARSER, level)),
                     HexFormat.of().formatHex(bytesOf(members, CompilerFrontend.JAVAC, level)), level + " " + members);
         }
+    }
+
+    /**
+     * The pass matches a term's shape, so a wrap written out by hand goes too, on both frontends and at every level, where its operand is shown
+     * in range; it stays where the operand is not. Each is Java's value at the boundaries.
+     */
+    @Test
+    void aWrapWrittenByHandIsRemovedOnBothFrontends() {
+        var template = "static BigInteger m(BigInteger x) { BigInteger y = x.mod(BigInteger.valueOf(%sL)); "
+                + "return y.add(BigInteger.valueOf(2147483648L)).mod(BigInteger.valueOf(4294967296L)).subtract(BigInteger.valueOf(2147483648L)); }";
+        var inRange = template.formatted("16");
+        var outOfRange = template.formatted("8589934592");
+        for (var frontend : CompilerFrontend.values()) {
+            for (var level : OptimizationLevel.values()) {
+                assertTrue(bytesOf(inRange, frontend, level).length < bytesOf(outOfRange, frontend, level).length, frontend + " " + level);
+                for (long x : new long[]{-1, 0, 15, 16, 2147483647L, 2147483648L, 4294967296L, -2147483649L, 8589934591L}) {
+                    var in = BigInteger.valueOf(x).mod(BigInteger.valueOf(16));
+                    var out = BigInteger.valueOf(x).mod(BigInteger.valueOf(8589934592L));
+                    assertEquals(wrapOf(in), evaluatedInteger(compiledWithLibrary(inRange, frontend, level), x), frontend + " " + level + " in " + x);
+                    assertEquals(wrapOf(out), evaluatedInteger(compiledWithLibrary(outOfRange, frontend, level), x), frontend + " " + level + " out " + x);
+                }
+            }
+        }
+    }
+
+    private static Term evaluatedInteger(Program compiled, long x) {
+        var result = JulcVm.create().evaluateWithArgs(compiled, List.of(PlutusData.integer(x)));
+        return assertInstanceOf(EvalResult.Success.class, result).resultTerm();
+    }
+
+    private static Term wrapOf(BigInteger y) {
+        var half = BigInteger.valueOf(2147483648L);
+        return new Term.Const(Constant.integer(y.add(half).mod(half.shiftLeft(1)).subtract(half)));
     }
 
     /** A byte with its wrap removed is the JVM's unsigned value, 0 to 255, at every level, and past the end it still fails. */

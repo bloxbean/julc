@@ -19,7 +19,8 @@ import java.util.Map;
  * <p>
  * <b>Why this runs on the assembled term.</b> A cast's operand is often a call, and a call site can come before the
  * called method's body is lowered, as for {@link DelayedMethodPass}. By assembly every body exists. It runs at every level,
- * as that pass does: it finishes how a cast lowers, and rewrites nothing the program wrote.
+ * as that pass does: it finishes how a cast lowers. The match is on the term's shape, so a wrap the program wrote out by hand, on
+ * either frontend, is removed under the same proof, and the removal is as correct there.
  * <p>
  * <b>Why removing a wrap keeps the program's meaning.</b>
  * <ul>
@@ -28,7 +29,9 @@ import java.util.Map;
  *   <li>Failure and traces: {@code x} is evaluated once and first in both forms. The three builtins cannot fail on an integer
  *       (the modulus is a non-zero constant) and do not trace, and {@link #rangeOf} knows a range only of a term that leaves an
  *       integer, so nothing else that could fail or trace is removed.</li>
- *   <li>Cost: a removed wrap runs three builtins fewer and holds three constants fewer. The I1 gate holds the result: a row this moves shrinks.</li>
+ *   <li>Cost: a removed wrap runs three builtins fewer and holds three constants fewer where it runs, and the script is smaller. On a
+ *       path that evaluates a method but does not call it, {@code \i. f(B, i)} can reduce to a partial application that costs a few
+ *       machine steps more (32,000 CPU and 200 memory in the review's probe). The I1 gate holds the corpus's rows: each one this moves shrinks.</li>
  * </ul>
  * <b>What is known ({@link #rangeOf}), and it is conservative:</b> an integer constant; {@code indexByteString} is
  * {@code 0..255}; {@code modInteger} by a known positive {@code k} is {@code 0..k-1}, and {@code remainderInteger} by one is

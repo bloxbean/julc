@@ -272,8 +272,13 @@ one `doFork`, which reads two. At NONE, `doFork` is back to the 21,294,630 CPU t
 params now equal the reference's, with and without a map, so values and budgets are the reference's. Only `nibble`'s PIR differs,
 one digest in all 11 rows, because the tool observes a method before the pass runs. They are "Representation only" in the table, and
 against r17's rows they are a Cost change that shrinks. None grew and no value changed. The table froze with `allowShrink`, since D13's
-tool counts a move to a lower class as a loss. No reference row moved: the JavaParser frontend never builds the wrap, and a term with
-no wrap comes back as the same object.
+tool counts a move to a lower class as a loss. No reference row moved: the JavaParser frontend builds no wrap for a cast, and a term with
+no wrap comes back as the same object. The pass matches the term's shape, so a wrap a program writes by hand is removed on either
+frontend, under the same proof (`JavacCastsTest.aWrapWrittenByHandIsRemovedOnBothFrontends`); no corpus case writes one, since no reference row moved.
+
+**What the I1 tool checked on these 11 rows.** A `DIFFERENT-pir` row returns before the tool's source-map comparison, and it compares diagnostics at the
+default level only. So the statement above for bytes and sizes holds at every level with and without a map, by the tool; source-map locations and diagnostics
+at every level were compared by hand on `MpfRegistryValidator` alone (the review of r18), and match there.
 
 **Tests.** `NarrowingElisionPassTest` (each rule at its boundaries; every binder form's scope; identity, positions and debug
 binders), `JavacCastsTest` (a removed wrap gives the reference's bytes at every level, a kept one does not, each form against
