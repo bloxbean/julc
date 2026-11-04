@@ -143,7 +143,8 @@ public final class ReplEngine {
             String pir = result.pirFormatted();
             return new ReplResult.Success("(compiled)", ExBudget.ZERO, List.of(), uplc, pir);
         } catch (CompilerException e) {
-            return new ReplResult.Error(e.getMessage());
+            // Each diagnostic's code and fix, as the evaluation path prints them (ADR-068 M5)
+            return new ReplResult.Error(e.diagnostics().isEmpty() ? e.getMessage() : formatDiagnostics(e.diagnostics()));
         }
     }
 

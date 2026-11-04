@@ -5,6 +5,8 @@ import org.julclang.compiler.LibrarySourceResolver;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import java.util.LinkedHashMap;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -346,5 +348,16 @@ class ReplEngineTest {
     @Test
     void formatValue_string() {
         assertEquals("\"hello\"", ReplEngine.formatValue("hello"));
+    }
+
+    /** ADR-068 M5 (review F5): the compile-only commands report a rejection's code and fix. */
+    @Test
+    void compileOnlyCommandsShowTheCodeAndFix() {
+        for (String command : List.of(":type", ":uplc", ":pir")) {
+            var result = engine.evaluate(command + " new byte[]{1}.equals(new byte[]{1})");
+            assertTrue(result instanceof ReplResult.Error, command + ": " + result);
+            String message = ((ReplResult.Error) result).message();
+            assertTrue(message.contains("JULC0087") && message.contains("Builtins.equalsByteString(a, b)"), command + ": " + message);
+        }
     }
 }
