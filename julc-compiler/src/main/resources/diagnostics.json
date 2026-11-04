@@ -1019,8 +1019,8 @@
       "category": "FRONTEND",
       "severity": "error",
       "template": "The javac frontend does not compile {0} yet",
-      "summary": "Reserved by ADR-068 (D4): during milestones M2-M4 the experimental javac frontend (CompilerOptions.frontend = JAVAC) rejects a construct it has not ported yet, naming it, and never falls back to the JavaParser frontend (I8). The default frontend is unaffected.",
-      "fix": "The default frontend may compile it until it is ported; if that frontend rejects it too, it is outside the subset."
+      "summary": "Reserved by ADR-068 (D4): the javac frontend (CompilerOptions.frontend = JAVAC, the default from ADR-068 M5) rejects a construct it has not ported, naming it, and never falls back to the JavaParser frontend (I8). No program of the ADR-068 corpus reaches it at M5.",
+      "fix": "Write the construct another way within the subset, or report it. Until ADR-068 M6 the JavaParser frontend may compile it: julc build --frontend javaparser, julc { frontend = 'javaparser' } in Gradle, or CompilerOptions.setFrontend(CompilerFrontend.JAVAPARSER). If that frontend rejects it too, it is outside the subset."
     },
     {
       "code": "JULC0085",
@@ -1030,7 +1030,7 @@
       "category": "FRONTEND",
       "severity": "error",
       "template": "{0} ({1})",
-      "summary": "Source that is not valid Java is rejected with javac's own diagnostic: its message, its key (such as compiler.err.cant.resolve.location) and its position, with the column counted in characters from the line start. JuLC's closed environment (ADR-068 I10) adds a hint where a name is missing because JuLC does not provide it: a JDK type or package outside JuLC's platform, or an annotation from outside the on-chain API. Emitted by the javac gate in enforce mode, the default (ADR-068 D5, M1).",
+      "summary": "Source that is not valid Java is rejected with javac's own diagnostic: its message, its key (such as compiler.err.cant.resolve.location) and its position, with the column counted in characters from the line start. JuLC's closed environment (ADR-068 I10) adds a hint where a name is missing because JuLC does not provide it: a JDK type or package outside JuLC's platform, or an annotation from outside the on-chain API. Emitted by the javac frontend, the default from ADR-068 M5, and by the javac gate in enforce mode ahead of the JavaParser frontend (ADR-068 D5, M1).",
       "fix": "Fix the Java error javac reports; where the hint names a JDK type, use JuLC's on-chain equivalent.",
       "example": {
         "bad": "BigInteger total = a + b;",
@@ -1046,7 +1046,7 @@
       "severity": "error",
       "template": "{0} compares {1} by reference; use equals",
       "summary": "== and != on BigInteger, byte[], String, boxed values or records is reference equality in Java (JLS 15.21.3), but value equality on-chain (ADR-068 D6). Constant String operands built from literals and string + alone keep their meaning, and any other constant comparison stops too, in a guard unless the guard is constant as a whole. Emitted by the javac frontend.",
-      "fix": "Use a.equals(b), or ByteStringLib.equals(a, b) for bytes."
+      "fix": "Use a.equals(b), or Builtins.equalsByteString(a, b) for bytes (ByteStringLib.equals(a, b) is equivalent)."
     },
     {
       "code": "JULC0087",
@@ -1057,7 +1057,7 @@
       "severity": "error",
       "template": "{0} compares {1}, whose equality on the JVM {2}",
       "summary": "An equals call or collection operation whose JVM implementation compares elements or keys with equals, at a static type through which an array is compared by identity (directly, or through record components, sealed variants or type arguments), is true on-chain for equal bytes but false on the JVM (ADR-068 D6). A type the check cannot read (a raw collection, Object, a type variable, an operand of no readable type) is rejected the same way, because it cannot be shown to compare by value. Emitted by the javac frontend.",
-      "fix": "Compare the bytes: ByteStringLib.equals(a, b), or ByteStringLib.equals(a.hash(), b.hash()) for a @NewType byte wrapper. Where the type cannot be read, compare at the value's own declared type."
+      "fix": "Compare the bytes: Builtins.equalsByteString(a, b) for byte[], which keeps the script the JavaParser frontend made for a.equals(b) (ByteStringLib.equals(a, b) is equivalent, a few bytes larger), and Builtins.equalsByteString(a.value(), b.value()) on the component accessors of a @NewType byte wrapper. Where the type cannot be read, compare at the value's own declared type. Until ADR-068 M6 the JavaParser frontend, which compares the bytes on-chain but by identity on the JVM, stays selectable: julc build --frontend javaparser, julc { frontend = 'javaparser' } in Gradle, or CompilerOptions.setFrontend(CompilerFrontend.JAVAPARSER)."
     },
     {
       "code": "JULC0088",
@@ -1078,7 +1078,7 @@
       "category": "FRONTEND",
       "severity": "error",
       "template": "javac on Java {0} is not supported: {1}",
-      "summary": "JuLC reads Java with the host's javac (ToolProvider.getSystemJavaCompiler), against a platform built for javac feature release 25. A runtime without the jdk.compiler module, or a javac whose highest source version is not RELEASE_25, is rejected (ADR-068 D3, I6). Emitted by the javac gate in enforce mode, the default (ADR-068 M1).",
+      "summary": "JuLC reads Java with the host's javac (ToolProvider.getSystemJavaCompiler), against a platform built for javac feature release 25. A runtime without the jdk.compiler module, or a javac whose highest source version is not RELEASE_25, is rejected (ADR-068 D3, I6). Emitted by the javac frontend, the default from ADR-068 M5, and by the javac gate in enforce mode ahead of the JavaParser frontend (ADR-068 M1).",
       "fix": "Run JuLC on a JDK 25 runtime that includes jdk.compiler."
     },
     {

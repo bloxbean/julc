@@ -545,8 +545,8 @@ exceptions D11 lists.
     substitutes only `int` and `long`, `PirGenerator.java:2890`) and is `JULC0090`. Regressions cover both, and a
     short-circuit case.
   - Other reference equality (§15.21.3: `BigInteger`, `byte[]`, `String`, boxed values, records) is rejected with
-    `JULC0086` (`REFERENCE_EQUALITY_UNSUPPORTED`); the fix is `.equals`, or `ByteStringLib.equals(a, b)` for
-    bytes. On `frontend=JAVAC` `==` between native values reaches this rule first, so `JULC0041` stands behind `JULC0086`.
+    `JULC0086` (`REFERENCE_EQUALITY_UNSUPPORTED`); the fix is `.equals`, or for bytes `Builtins.equalsByteString(a, b)`
+    (`ByteStringLib.equals(a, b)` is equivalent; r17, below). On `frontend=JAVAC` `==` between native values reaches this rule first, so `JULC0041` stands behind `JULC0086`.
   - **Equality that would compare an array by identity** is rejected with `JULC0087`
     (`ARRAY_EQUALS_UNSUPPORTED`; T4, T5). The check applies to **every operation whose JVM implementation compares
     elements or keys**, and M3 derives the table from that rule over the supported signatures. Today that is:
@@ -602,8 +602,12 @@ exceptions D11 lists.
 
     The recursion follows finite paths only: a type reaches an array if some finite component path does, so
     recursive types (`PlutusData.ListData`, user recursive sealed types) terminate. The fix is to compare the
-    bytes: `ByteStringLib.equals(a, b)`, or for a `@NewType` byte wrapper (which cannot declare `equals`,
-    ADR-067 M3b) `ByteStringLib.equals(a.hash(), b.hash())`. M0 scans the corpus and the external examples for
+    bytes: `Builtins.equalsByteString(a, b)`, or for a `@NewType` byte wrapper (which cannot declare `equals`,
+    ADR-067 M3b) the same call on its component accessors, `Builtins.equalsByteString(a.value(), b.value())`.
+    `ByteStringLib.equals(a, b)` is equivalent, and the same on the JVM, but not the same bytes: it is let-bound as an alias
+    of the builtin and called through a variable, so a script that used `a.equals(b)` grows by a few bytes with it, where
+    `Builtins.equalsByteString` keeps the builtin inline, as the JavaParser frontend lowered `a.equals(b)`, and keeps the
+    script's bytes and hash (r17 clarification, M5; the external examples' migration). M0 scans the corpus and the external examples for
     affected call sites (as ADR-067 M4 did; `CfPaymentSplitterValidator.java:51,83,94` calls `.equals` on `byte[]`)
     and lists them. Tests cover direct, nested record, sealed-component, container, `java.util`, type-argument and
     recursive-type paths.
@@ -1632,6 +1636,9 @@ rest on the rule's own tests and on V146 showing it is the only byte change. Dev
     row class `DIFFERENT-pir-unaccepted`, which "Accepted by decision" (only `JAVAC` accepts) or "Policy rejection" (only
     `JAVAC` rejects) explains, never "Semantic fix" (the M5a re-confirmation's G1). Script size is part of the budgets of
     "Cost change" and "Representation only".
+  - D6's remedy for `JULC0086` and `JULC0087` on bytes (clarification, M5): `Builtins.equalsByteString(a, b)`, which keeps
+    a script's bytes where it replaces `a.equals(b)`; `ByteStringLib.equals(a, b)` is equivalent but let-bound, a few
+    bytes larger (`068-m5b.md`).
   - M5's entry gate is met, on `m5-corpus-head-3`, a recording of the head at `8875e6a9` that replaces `m2-corpus-head` in
     the gate: no `JULC0084` on the corpus, every case has a javac row, and every `DIFFERENT` row is classified with none
     owed. The tables are frozen at the integration with M6a's tool readings, which moved no row.

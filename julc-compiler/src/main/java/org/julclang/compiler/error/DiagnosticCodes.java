@@ -19,7 +19,7 @@ public final class DiagnosticCodes {
             CompilerDiagnostic.Level.ERROR,
             "TYPE",
             "{0} compares {1}, whose equality on the JVM {2}",
-            "Compare the bytes: ByteStringLib.equals(a, b), or ByteStringLib.equals(a.hash(), b.hash()) for a @NewType byte wrapper. Where the type cannot be read, compare at the value's own declared type.");
+            "Compare the bytes: Builtins.equalsByteString(a, b) for byte[], which keeps the script the JavaParser frontend made for a.equals(b) (ByteStringLib.equals(a, b) is equivalent, a few bytes larger), and Builtins.equalsByteString(a.value(), b.value()) on the component accessors of a @NewType byte wrapper. Where the type cannot be read, compare at the value's own declared type. Until ADR-068 M6 the JavaParser frontend, which compares the bytes on-chain but by identity on the JVM, stays selectable: julc build --frontend javaparser, julc { frontend = 'javaparser' } in Gradle, or CompilerOptions.setFrontend(CompilerFrontend.JAVAPARSER).");
 
     public static final DiagnosticInfo ARRAY_UNSUPPORTED = new DiagnosticInfo(
             "JULC0014",
@@ -323,7 +323,7 @@ public final class DiagnosticCodes {
             CompilerDiagnostic.Level.ERROR,
             "FRONTEND",
             "The javac frontend does not compile {0} yet",
-            "The default frontend may compile it until it is ported; if that frontend rejects it too, it is outside the subset.");
+            "Write the construct another way within the subset, or report it. Until ADR-068 M6 the JavaParser frontend may compile it: julc build --frontend javaparser, julc { frontend = 'javaparser' } in Gradle, or CompilerOptions.setFrontend(CompilerFrontend.JAVAPARSER). If that frontend rejects it too, it is outside the subset.");
 
     public static final DiagnosticInfo FUNCTIONAL_INTERFACE_CALL_UNSUPPORTED = new DiagnosticInfo(
             "JULC0106",
@@ -691,7 +691,7 @@ public final class DiagnosticCodes {
             CompilerDiagnostic.Level.ERROR,
             "TYPE",
             "{0} compares {1} by reference; use equals",
-            "Use a.equals(b), or ByteStringLib.equals(a, b) for bytes.");
+            "Use a.equals(b), or Builtins.equalsByteString(a, b) for bytes (ByteStringLib.equals(a, b) is equivalent).");
 
     public static final DiagnosticInfo RETURN_INSIDE_FOR_EACH = new DiagnosticInfo(
             "JULC0111",
