@@ -1,6 +1,15 @@
 package org.julclang.compiler;
 
 import org.julclang.compiler.error.DiagnosticCollector;
+import org.julclang.compiler.frontend.javac.ExpressionRoles;
+import org.julclang.compiler.frontend.javac.JavacSyntax;
+import org.julclang.compiler.frontend.javac.SourceReader;
+import com.sun.source.tree.ClassTree;
+import com.sun.source.tree.ImportTree;
+import com.sun.source.tree.MemberSelectTree;
+import com.sun.source.tree.MethodInvocationTree;
+import com.sun.source.tree.Tree;
+import org.julclang.compiler.frontend.javac.SourceOrderScanner;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.ImportDeclaration;
 import com.github.javaparser.ast.Node;
@@ -408,7 +417,7 @@ public final class LibrarySourceResolver {
             return wildcardCandidates.get(0);
         }
         if (wildcardCandidates.size() > 1) {
-            diagnostics.error(reference.node(),
+            diagnostics.error(reference.line(), reference.column(),
                     "Ambiguous on-chain library reference '" + reference.simpleName() + "'",
                     "Add an explicit import for one of: " + wildcardCandidates.stream()
                             .map(LibrarySource::fqcn)
@@ -422,7 +431,7 @@ public final class LibrarySourceResolver {
             return candidates.get(0);
         }
         if (candidates.size() > 1) {
-            diagnostics.error(reference.node(),
+            diagnostics.error(reference.line(), reference.column(),
                     "Ambiguous on-chain library reference '" + reference.simpleName() + "'",
                     "Add an explicit import for one of: " + candidates.stream()
                             .map(LibrarySource::fqcn)
@@ -441,10 +450,27 @@ public final class LibrarySourceResolver {
         }
         toProcess.add(librarySource);
     }
+    /**
+     * The reader this tool uses (ADR-068 M6), read when it is used: {@link SourceReader#configured()}, which fails with a
+     * message naming the property for a value it does not know.
+     */
+    private static SourceReader defaultReader() {
+        return SourceReader.configured();
+    }
 
     private static SourceContext parseSourceContext(String source,
                                                     String packageName,
                                                     DiagnosticCollector diagnostics) {
+        return parseSourceContext(source, packageName, defaultReader());
+    }
+
+    /** A source's package, imports and class references, as {@code reader} reads them; a regex reading if it cannot. */
+    static SourceContext parseSourceContext(String source, String packageName, SourceReader reader) {
+        if (reader == SourceReader.JAVAC) {
+            var syntax = JavacSyntax.read(source);
+            if (!syntax.hasErrors()) return sourceContext(syntax, packageName);
+            return fallbackSourceContext(source, packageName);
+        }
         try {
             var cu = parseCompilationUnit(source);
             var resolvedPackageName = packageName == null || packageName.isBlank()
@@ -476,11 +502,75 @@ public final class LibrarySourceResolver {
 
             return new SourceContext(resolvedPackageName, importsBySimpleName, wildcardPackages, staticReferences);
         } catch (RuntimeException e) {
-            var fallbackPackageName = packageName == null ? extractPackageName(source) : packageName;
-            var staticReferences = extractFallbackClassReferences(source);
-            return new SourceContext(fallbackPackageName, extractImportPaths(source),
-                    extractWildcardImportPackages(source), staticReferences);
+            return fallbackSourceContext(source, packageName);
         }
+    }
+
+    private static SourceContext fallbackSourceContext(String source, String packageName) {
+        var fallbackPackageName = packageName == null ? extractPackageName(source) : packageName;
+        var staticReferences = extractFallbackClassReferences(source);
+        return new SourceContext(fallbackPackageName, extractImportPaths(source),
+                extractWildcardImportPackages(source), staticReferences);
+    }
+
+    /**
+     * javac's reading: the imports, then every call's qualifier, then every field access's qualifier, each in pre-order,
+     * as JavaParser's reading lists them.
+     */
+    private static SourceContext sourceContext(JavacSyntax syntax, String packageName) {
+        var unit = syntax.unit();
+        var resolvedPackageName = packageName == null || packageName.isBlank()
+                ? (unit.getPackageName() == null ? "" : unit.getPackageName().toString())
+                : packageName;
+        var importsBySimpleName = new LinkedHashMap<String, String>();
+        var wildcardPackages = new LinkedHashSet<String>();
+        for (ImportTree importTree : unit.getImports()) {
+            var name = (MemberSelectTree) importTree.getQualifiedIdentifier();
+            if (name.getIdentifier().contentEquals("*")) {
+                if (!importTree.isStatic()) wildcardPackages.add(name.getExpression().toString());
+                continue;
+            }
+            if (importTree.isStatic()) continue;
+            String fqcn = name.toString();
+            importsBySimpleName.put(simpleName(fqcn), fqcn);
+        }
+        var staticReferences = new ArrayList<ClassReference>();
+        var calls = new ArrayList<Tree>();
+        var fieldAccesses = new ArrayList<Tree>();
+        new SourceOrderScanner<Void, Void>() {
+            @Override
+            public Void visitMethodInvocation(MethodInvocationTree call, Void unused) {
+                if (call.getMethodSelect() instanceof MemberSelectTree select) calls.add(select.getExpression());
+                return super.visitMethodInvocation(call, unused);
+            }
+
+            @Override
+            public Void visitMemberSelect(MemberSelectTree select, Void unused) {
+                if (ExpressionRoles.isFieldAccess(getCurrentPath())) fieldAccesses.add(select.getExpression());
+                return super.visitMemberSelect(select, unused);
+            }
+        }.scan(unit, null);
+        for (Tree scope : calls) javacReference(syntax, scope).ifPresent(staticReferences::add);
+        for (Tree scope : fieldAccesses) javacReference(syntax, scope).ifPresent(staticReferences::add);
+        return new SourceContext(resolvedPackageName, importsBySimpleName, wildcardPackages, staticReferences);
+    }
+
+    private static Optional<ClassReference> javacReference(JavacSyntax syntax, Tree scope) {
+        return classReferenceFromText(scope.toString(), syntax.line(scope), syntax.column(scope));
+    }
+
+    /**
+     * {@link #parseSourceContext} for the ADR-068 tools gate: what each reader reads, as text, with the references that
+     * can resolve, those whose name is a Java identifier. A call chain's qualifier such as {@code f(x).g} yields a "name"
+     * that is each parser's printing of it, and no library has such a name.
+     */
+    static String describeSourceContext(String source, SourceReader reader) {
+        var context = parseSourceContext(source, null, reader);
+        var references = context.staticReferences().stream()
+                .filter(reference -> javax.lang.model.SourceVersion.isIdentifier(reference.simpleName()))
+                .toList();
+        return new SourceContext(context.packageName(), context.importsBySimpleName(), context.wildcardPackages(),
+                references).toString();
     }
 
     private static Map<String, LibrarySource> normalizeLibrarySources(Map<String, ?> availableLibraries) {
@@ -536,6 +626,21 @@ public final class LibrarySourceResolver {
     }
 
     public static Optional<String> extractTopLevelTypeName(String source) {
+        return extractTopLevelTypeName(source, defaultReader());
+    }
+
+    /** {@link #extractTopLevelTypeName(String)} with the source read by {@code reader}. */
+    static Optional<String> extractTopLevelTypeName(String source, SourceReader reader) {
+        if (reader == SourceReader.JAVAC) {
+            var syntax = JavacSyntax.read(source);
+            if (!syntax.hasErrors()) {
+                for (Tree declaration : syntax.unit().getTypeDecls()) {
+                    if (declaration instanceof ClassTree type) return Optional.of(type.getSimpleName().toString());
+                }
+            }
+            Matcher matcher = TYPE_PATTERN.matcher(source);
+            return matcher.find() ? Optional.of(matcher.group(1)) : Optional.empty();
+        }
         try {
             var cu = parseCompilationUnit(source);
             if (!cu.getTypes().isEmpty()) {
@@ -573,19 +678,20 @@ public final class LibrarySourceResolver {
 
     private static Optional<ClassReference> classReferenceFromScope(Node scope) {
         String scopeText = scope.toString();
-        return classReferenceFromText(scopeText, scope);
+        var begin = scope.getBegin();
+        return classReferenceFromText(scopeText, begin.map(b -> b.line).orElse(0), begin.map(b -> b.column).orElse(0));
     }
 
     private static List<ClassReference> extractFallbackClassReferences(String source) {
         var result = new ArrayList<ClassReference>();
         Matcher matcher = STATIC_REFERENCE_PATTERN.matcher(source);
         while (matcher.find()) {
-            classReferenceFromText(matcher.group(1), null).ifPresent(result::add);
+            classReferenceFromText(matcher.group(1), 0, 0).ifPresent(result::add);
         }
         return result;
     }
 
-    private static Optional<ClassReference> classReferenceFromText(String scopeText, Node node) {
+    private static Optional<ClassReference> classReferenceFromText(String scopeText, int line, int column) {
         String className = simpleName(scopeText);
         if (!looksLikeClassName(className)) {
             return Optional.empty();
@@ -593,7 +699,7 @@ public final class LibrarySourceResolver {
         String fqcn = scopeText.contains(".") && Character.isLowerCase(scopeText.charAt(0))
                 ? scopeText
                 : null;
-        return Optional.of(new ClassReference(className, fqcn, node));
+        return Optional.of(new ClassReference(className, fqcn, line, column));
     }
 
     private static String normalizeResourcePath(String resourcePath) {
@@ -606,6 +712,7 @@ public final class LibrarySourceResolver {
                                  List<ClassReference> staticReferences) {
     }
 
-    private record ClassReference(String simpleName, String fqcn, Node node) {
+    /** A class a source names as a call's or a field access's qualifier, and where (0, 0 when unknown). */
+    private record ClassReference(String simpleName, String fqcn, int line, int column) {
     }
 }

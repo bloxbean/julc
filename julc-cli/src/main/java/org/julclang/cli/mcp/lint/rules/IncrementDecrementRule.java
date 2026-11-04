@@ -2,6 +2,12 @@ package org.julclang.cli.mcp.lint.rules;
 
 import org.julclang.cli.mcp.lint.LintFinding;
 import org.julclang.cli.mcp.lint.LintRule;
+import org.julclang.compiler.frontend.javac.SourceReader;
+import org.julclang.cli.mcp.lint.LintTrees;
+import org.julclang.compiler.frontend.javac.JavacSyntax;
+import com.sun.source.util.TreePath;
+import com.sun.source.tree.Tree;
+import com.sun.source.tree.UnaryTree;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.expr.UnaryExpr;
 
@@ -52,6 +58,37 @@ public final class IncrementDecrementRule implements LintRule {
                             "while-loop accumulator pattern."
             ));
         });
+        return findings;
+    }
+
+    private static final Set<Tree.Kind> MUTATING_KINDS = Set.of(
+            Tree.Kind.PREFIX_INCREMENT,
+            Tree.Kind.POSTFIX_INCREMENT,
+            Tree.Kind.PREFIX_DECREMENT,
+            Tree.Kind.POSTFIX_DECREMENT
+    );
+
+    @Override
+    public boolean supports(SourceReader reader) {
+        return true;
+    }
+
+    @Override
+    public List<LintFinding> check(JavacSyntax syntax) {
+        var findings = new ArrayList<LintFinding>();
+        for (TreePath path : LintTrees.findAll(syntax, UnaryTree.class)) {
+            var u = (UnaryTree) path.getLeaf();
+            if (!MUTATING_KINDS.contains(u.getKind())) continue;
+            findings.add(LintFinding.error(
+                    id(),
+                    null,
+                    "`" + u + "` mutates an existing variable. JuLC is single-assignment.",
+                    syntax.line(u), syntax.column(u),
+                    "Introduce a new binding: `var i2 = i.add(BigInteger.ONE);`. " +
+                            "For loop counters use `var i = i.add(BigInteger.ONE);` inside the " +
+                            "while-loop accumulator pattern."
+            ));
+        }
         return findings;
     }
 }

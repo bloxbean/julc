@@ -2,6 +2,8 @@ package org.julclang.cli.mcp.lint.rules;
 
 import org.julclang.cli.mcp.lint.LintFinding;
 import org.julclang.cli.mcp.lint.LintRule;
+import org.julclang.compiler.frontend.javac.SourceReader;
+import org.julclang.compiler.frontend.javac.JavacSyntax;
 import com.github.javaparser.ast.CompilationUnit;
 import java.util.List;
 
@@ -27,6 +29,16 @@ public final class BigIntegerParamRule implements LintRule {
 
     @Override
     public List<LintFinding> check(CompilationUnit cu) {
+        return List.of();
+    }
+
+    @Override
+    public boolean supports(SourceReader reader) {
+        return true;
+    }
+
+    @Override
+    public List<LintFinding> check(JavacSyntax syntax) {
         return List.of();
     }
 }

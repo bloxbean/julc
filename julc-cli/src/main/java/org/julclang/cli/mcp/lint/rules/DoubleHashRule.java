@@ -2,6 +2,13 @@ package org.julclang.cli.mcp.lint.rules;
 
 import org.julclang.cli.mcp.lint.LintFinding;
 import org.julclang.cli.mcp.lint.LintRule;
+import org.julclang.compiler.frontend.javac.SourceReader;
+import org.julclang.cli.mcp.lint.LintTrees;
+import org.julclang.compiler.frontend.javac.JavacSyntax;
+import com.sun.source.util.TreePath;
+import com.sun.source.tree.MethodInvocationTree;
+import com.sun.source.tree.ParenthesizedTree;
+import com.sun.source.tree.Tree;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.expr.EnclosedExpr;
 import com.github.javaparser.ast.expr.Expression;
@@ -57,6 +64,35 @@ public final class DoubleHashRule implements LintRule {
                     "Drop one `.hash()`. E.g. replace `pkh.hash().hash()` with `pkh.hash()`."
             ));
         });
+        return findings;
+    }
+
+    @Override
+    public boolean supports(SourceReader reader) {
+        return true;
+    }
+
+    @Override
+    public List<LintFinding> check(JavacSyntax syntax) {
+        var findings = new ArrayList<LintFinding>();
+        for (TreePath path : LintTrees.findAll(syntax, MethodInvocationTree.class)) {
+            var outer = (MethodInvocationTree) path.getLeaf();
+            if (!"hash".equals(LintTrees.methodName(outer))) continue;
+            Tree scope = LintTrees.receiver(outer);
+            while (scope instanceof ParenthesizedTree parens) {
+                scope = parens.getExpression();
+            }
+            if (!(scope instanceof MethodInvocationTree inner)) continue;
+            if (!"hash".equals(LintTrees.methodName(inner))) continue;
+            findings.add(LintFinding.warning(
+                    id(),
+                    null,
+                    "Double `.hash()` call. The first `.hash()` already returns the underlying " +
+                            "byte[]; the second call is either a no-op or a type error.",
+                    syntax.line(outer), syntax.column(outer),
+                    "Drop one `.hash()`. E.g. replace `pkh.hash().hash()` with `pkh.hash()`."
+            ));
+        }
         return findings;
     }
 }

@@ -2,6 +2,14 @@ package org.julclang.cli.mcp.lint.rules;
 
 import org.julclang.cli.mcp.lint.LintFinding;
 import org.julclang.cli.mcp.lint.LintRule;
+import org.julclang.compiler.frontend.javac.SourceReader;
+import org.julclang.cli.mcp.lint.LintTrees;
+import org.julclang.compiler.frontend.javac.JavacSyntax;
+import com.sun.source.util.TreePath;
+import com.sun.source.tree.IdentifierTree;
+import com.sun.source.tree.LambdaExpressionTree;
+import com.sun.source.tree.MethodInvocationTree;
+import com.sun.source.tree.VariableTree;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.body.VariableDeclarator;
@@ -71,6 +79,44 @@ public final class LambdaApplyRule implements LintRule {
                 ));
             });
         });
+        return findings;
+    }
+
+    @Override
+    public boolean supports(SourceReader reader) {
+        return true;
+    }
+
+    @Override
+    public List<LintFinding> check(JavacSyntax syntax) {
+        var findings = new ArrayList<LintFinding>();
+        for (TreePath method : LintTrees.methods(syntax)) {
+            Set<String> lambdaLocals = new HashSet<>();
+            for (TreePath path : LintTrees.findAll(method, VariableTree.class)) {
+                if (LintTrees.isDeclarator(path)
+                        && ((VariableTree) path.getLeaf()).getInitializer() instanceof LambdaExpressionTree) {
+                    lambdaLocals.add(((VariableTree) path.getLeaf()).getName().toString());
+                }
+            }
+            if (lambdaLocals.isEmpty()) continue;
+
+            for (TreePath path : LintTrees.findAll(method, MethodInvocationTree.class)) {
+                var call = (MethodInvocationTree) path.getLeaf();
+                if (!"apply".equals(LintTrees.methodName(call))) continue;
+                if (!(LintTrees.receiver(call) instanceof IdentifierTree ne)) continue;
+                if (!lambdaLocals.contains(ne.getName().toString())) continue;
+                findings.add(LintFinding.error(
+                        id(),
+                        null,
+                        "`" + ne.getName() + ".apply(...)` invokes a stored lambda — " +
+                                "JuLC does not support first-class lambda values.",
+                        syntax.line(call), syntax.column(call),
+                        "Inline the lambda at the call site of the higher-order function. " +
+                                "E.g. instead of `var f = x -> x.add(ONE); list.map(f);` write " +
+                                "`list.map(x -> x.add(ONE));`."
+                ));
+            }
+        }
         return findings;
     }
 }

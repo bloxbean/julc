@@ -33,7 +33,7 @@ dependencies {
 // Keep Truffle's higher-priority provider off the existing compiler-test classpath.
 // These tests deliberately compare Java, Truffle and Scalus with explicit selection.
 tasks.named('test') {
-    useJUnitPlatform { excludeTags 'pair-case-backends' }
+    useJUnitPlatform { excludeTags 'pair-case-backends', 'adr068-tools' }
 }
 
 tasks.register('pairCaseTest', Test) {
@@ -457,3 +457,19 @@ tasks.register('dialectCompare', JavaExec) {
     argumentProviders.add({ ['compare'] + providers.gradleProperty('codemod.args').get().split(',').toList() } as CommandLineArgumentProvider)
     outputs.upToDateWhen { false }
 }
+
+// ADR-068 M6: the library resolver's and introspector's equivalence gate, JavaParser's reading against javac's parser:
+//   ./gradlew :julc-compiler:adr068Tools -Padr068.tools.sources=<dir>[:<dir>...] [-Padr068.tools.out=<dir>] --offline
+tasks.register('adr068Tools', Test) {
+    group = 'verification'
+    description = 'ADR-068 M6: library references read alike by JavaParser and javac on a corpus'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform { includeTags 'adr068-tools' }
+    def sources = providers.gradleProperty('adr068.tools.sources')
+    if (sources.present) systemProperty 'adr068.tools.sources', sources.get()
+    systemProperty 'adr068.tools.out', providers.gradleProperty('adr068.tools.out')
+            .map { rootProject.file(it).absolutePath }.orElse(layout.buildDirectory.dir('adr068-tools').get().asFile.absolutePath).get()
+    outputs.upToDateWhen { false }
+}
+tasks.named('adr068Tools').configure { maxHeapSize = '3g' }

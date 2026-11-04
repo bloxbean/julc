@@ -1,6 +1,7 @@
 package org.julclang.compiler;
 
 import com.github.javaparser.ast.CompilationUnit;
+import org.julclang.compiler.frontend.javac.SourceReader;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.body.TypeDeclaration;
 import com.github.javaparser.ast.expr.AnnotationExpr;
@@ -94,7 +95,7 @@ public final class JavaSourceIntrospector {
     public static final class SourceParseException extends IllegalArgumentException {
         private final List<String> problems;
 
-        private SourceParseException(List<String> problems) {
+        SourceParseException(List<String> problems) {
             super("Could not parse Java source: " + problems);
             this.problems = List.copyOf(problems);
         }
@@ -104,7 +105,24 @@ public final class JavaSourceIntrospector {
         }
     }
 
+    /**
+     * The reader this tool uses (ADR-068 M6), read when it is used: {@link SourceReader#configured()}, which fails with a
+     * message naming the property for a value it does not know.
+     */
+    private static SourceReader defaultReader() {
+        return SourceReader.configured();
+    }
+
     public static SourceInfo inspect(String source) {
+        return inspect(source, defaultReader());
+    }
+
+    /**
+     * {@link #inspect(String)} with the source read by {@code reader}.
+     * <b>Internal</b> (ADR-068 M6): the reader is chosen here for the equivalence gates; this overload goes at M6.
+     */
+    public static SourceInfo inspect(String source, SourceReader reader) {
+        if (reader == SourceReader.JAVAC) return JavacSourceIntrospection.inspect(source);
         var result = JavaSourceParser.parse(source);
         if (!result.isSuccessful() || result.getResult().isEmpty()) {
             var problems = result.getProblems().stream()
@@ -177,6 +195,16 @@ public final class JavaSourceIntrospector {
      * False when that cannot be decided, so that the caller keeps the strict diagnostic and fails closed.
      */
     public static boolean declaresNoJulcRole(String source) {
+        return declaresNoJulcRole(source, defaultReader());
+    }
+
+    /**
+     * {@link #declaresNoJulcRole(String)} for a source {@code reader} rejected. javac's reading is the lenient one, so a
+     * source it rejects declares no role only when its sole errors are of language level and no type carries one.
+     * <b>Internal</b> (ADR-068 M6): the reader is chosen here for the equivalence gates; this overload goes at M6.
+     */
+    public static boolean declaresNoJulcRole(String source, SourceReader reader) {
+        if (reader == SourceReader.JAVAC) return JavacSourceIntrospection.declaresNoJulcRole(source);
         return JavaSourceParser.parseLeniently(source)
                 .map(unit -> unit.findAll(TypeDeclaration.class).stream()
                         .flatMap(type -> annotationNames((TypeDeclaration<?>) type).stream())

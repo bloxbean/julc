@@ -1,6 +1,7 @@
 package org.julclang.verification;
 
-import org.julclang.compiler.JavaSourceParser;
+import org.julclang.compiler.frontend.javac.SourceReader;
+
 import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.schema.ContractSchema;
 import org.julclang.verification.dsl.PropertyIrCodec;
@@ -8,11 +9,7 @@ import org.julclang.verification.dsl.RequiresSignerDslLowering;
 import org.julclang.verification.dsl.type.ContractTypeProjection;
 import org.julclang.verification.dsl.DslPropertyValidator;
 import org.julclang.core.source.SourceLocation;
-import com.github.javaparser.ast.body.TypeDeclaration;
-import com.github.javaparser.ast.expr.AnnotationExpr;
-import com.github.javaparser.ast.expr.NormalAnnotationExpr;
-import com.github.javaparser.ast.expr.SingleMemberAnnotationExpr;
-import com.github.javaparser.ast.expr.StringLiteralExpr;
+import org.julclang.verification.SourceAnnotations.Annotation;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -30,10 +27,17 @@ public final class RequiresSignerResolver {
 
     public static Optional<RequiresSignerProperty> resolve(
             String source, String fileName, String validatorTitle, ContractSchema schema) {
-        var unit = JavaSourceParser.parseCompilationUnit(source);
-        List<TypeDeclaration<?>> matches = new ArrayList<>();
-        for (TypeDeclaration<?> type : unit.getTypes()) {
-            if (type.getNameAsString().equals(validatorTitle)) matches.add(type);
+        return resolve(source, fileName, validatorTitle, schema, SourceAnnotations.defaultReader());
+    }
+
+    /** {@link #resolve(String, String, String, ContractSchema)} with the source read by {@code reader} (ADR-068 M6). */
+    static Optional<RequiresSignerProperty> resolve(
+            String source, String fileName, String validatorTitle, ContractSchema schema,
+            SourceReader reader) {
+        var unit = SourceAnnotations.read(source, reader);
+        List<SourceAnnotations.Type> matches = new ArrayList<>();
+        for (var type : unit.types()) {
+            if (type.name().equals(validatorTitle)) matches.add(type);
         }
         if (matches.size() != 1) {
             throw new VerificationPropertyException(
@@ -41,14 +45,14 @@ public final class RequiresSignerResolver {
                             + matches.size(), new SourceLocation(fileName, 1, 1, validatorTitle));
         }
         var type = matches.getFirst();
-        List<AnnotationExpr> annotations = type.getAnnotations().stream()
+        List<Annotation> annotations = type.annotations().stream()
                 .filter(annotation -> isRequiresSigner(annotation, unit))
                 .toList();
         if (annotations.isEmpty()) return Optional.empty();
         if (annotations.size() != 1) {
             throw error("@RequiresSigner may appear only once", annotations.getFirst(), fileName);
         }
-        AnnotationExpr annotation = annotations.getFirst();
+        Annotation annotation = annotations.getFirst();
         String path = annotationValue(annotation, fileName);
         String[] segments = path.split("\\.", -1);
         if (segments.length != 2 || !segments[0].equals("datum")
@@ -119,25 +123,24 @@ public final class RequiresSignerResolver {
                 false));
     }
 
-    private static String annotationValue(AnnotationExpr annotation, String fileName) {
-        if (annotation instanceof SingleMemberAnnotationExpr single
-                && single.getMemberValue() instanceof StringLiteralExpr literal) {
-            return literal.asString();
+    private static String annotationValue(Annotation annotation, String fileName) {
+        if (annotation.single() != null && annotation.single().string() != null) {
+            return annotation.single().string();
         }
-        if (annotation instanceof NormalAnnotationExpr normal) {
-            var values = normal.getPairs().stream()
-                    .filter(pair -> pair.getNameAsString().equals("value"))
-                    .map(pair -> pair.getValue())
+        if (annotation.normal()) {
+            var values = annotation.members().stream()
+                    .filter(member -> member.name().equals("value"))
+                    .map(SourceAnnotations.Member::value)
                     .toList();
-            if (values.size() == 1 && values.getFirst() instanceof StringLiteralExpr literal) {
-                return literal.asString();
+            if (values.size() == 1 && values.getFirst().string() != null) {
+                return values.getFirst().string();
             }
         }
         throw error("@RequiresSigner requires one string-literal value", annotation, fileName);
     }
 
     private static PirType dereference(
-            PirType type, ContractSchema schema, AnnotationExpr annotation, String fileName) {
+            PirType type, ContractSchema schema, Annotation annotation, String fileName) {
         var seen = new ArrayList<String>();
         PirType current = type;
         while (current instanceof PirType.NamedTypeRef ref) {
@@ -158,33 +161,25 @@ public final class RequiresSignerResolver {
         return type == null ? "missing type" : type.getClass().getSimpleName();
     }
 
-    private static boolean isRequiresSigner(
-            AnnotationExpr annotation,
-            com.github.javaparser.ast.CompilationUnit unit) {
-        String name = annotation.getNameAsString();
+    private static boolean isRequiresSigner(Annotation annotation, SourceAnnotations.Unit unit) {
+        String name = annotation.name();
         if (ANNOTATION_NAME.equals(name)) return true;
         if (!"RequiresSigner".equals(name)) return false;
-        boolean samePackage = unit.getPackageDeclaration()
-                .map(declaration -> declaration.getNameAsString().equals(ANNOTATION_PACKAGE))
-                .orElse(false);
+        boolean samePackage = unit.packageName().equals(ANNOTATION_PACKAGE);
         if (samePackage) return true;
-        return unit.getImports().stream()
+        return unit.imports().stream()
                 .filter(importDeclaration -> !importDeclaration.isStatic())
                 .anyMatch(importDeclaration -> importDeclaration.isAsterisk()
-                        ? importDeclaration.getNameAsString().equals(ANNOTATION_PACKAGE)
-                        : importDeclaration.getNameAsString().equals(ANNOTATION_NAME));
+                        ? importDeclaration.name().equals(ANNOTATION_PACKAGE)
+                        : importDeclaration.name().equals(ANNOTATION_NAME));
     }
 
     private static VerificationPropertyException error(
-            String message, AnnotationExpr annotation, String fileName) {
+            String message, Annotation annotation, String fileName) {
         return new VerificationPropertyException(message, location(annotation, fileName));
     }
 
-    private static SourceLocation location(AnnotationExpr annotation, String fileName) {
-        var begin = annotation.getBegin().orElse(null);
-        return new SourceLocation(fileName,
-                begin == null ? 1 : begin.line,
-                begin == null ? 1 : begin.column,
-                annotation.toString());
+    private static SourceLocation location(Annotation annotation, String fileName) {
+        return new SourceLocation(fileName, annotation.line(), annotation.column(), annotation.text());
     }
 }

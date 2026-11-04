@@ -2,12 +2,14 @@ package org.julclang.tools.java;
 
 import org.julclang.compiler.JavaSourceParser;
 import org.julclang.compiler.JavaSourceIntrospector;
+import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.validate.SubsetValidator;
 import org.julclang.tools.model.*;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.body.RecordDeclaration;
+import org.julclang.compiler.frontend.javac.SourceReader;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -61,6 +63,33 @@ public final class JavaMetadataExtractor {
      * Returns a CheckResponse with the same structure the frontend expects.
      */
     public static CheckResponse extract(String source) {
+        return extract(source, defaultReader(), new JulcCompiler(), List.of());
+    }
+
+    /**
+     * {@link #extract(String)} for a source {@code compiler} compiles with {@code librarySources}: javac's reading checks
+     * the subset as that compilation does ({@link JulcCompiler#subsetDiagnostics}), with its libraries ranked as it ranks
+     * them; JavaParser's reading uses neither.
+     */
+    public static CheckResponse extract(String source, JulcCompiler compiler, List<String> librarySources) {
+        return extract(source, defaultReader(), compiler, librarySources);
+    }
+    /**
+     * The reader this tool uses (ADR-068 M6), read when it is used: {@link SourceReader#configured()}, which fails with a
+     * message naming the property for a value it does not know.
+     */
+    private static SourceReader defaultReader() {
+        return SourceReader.configured();
+    }
+
+    /**
+     * {@link #extract(String, JulcCompiler, List)} with the source read by {@code reader}. Each reading reports its frontend's subset
+     * diagnostics: JavaParser's frontend's validator, or the javac frontend's subset check, which a compilation applies.
+     */
+    static CheckResponse extract(String source, SourceReader reader, JulcCompiler compiler, List<String> librarySources) {
+        if (reader == SourceReader.JAVAC) {
+            return JavacMetadataReading.extract(source, VALIDATOR_ANNOTATIONS, compiler, librarySources);
+        }
         CompilationUnit cu;
         var parseResult = JavaSourceParser.parse(source);
         if (!parseResult.isSuccessful() || parseResult.getResult().isEmpty()) {
@@ -177,6 +206,12 @@ public final class JavaMetadataExtractor {
         boolean hasErrors = diagnostics.stream().anyMatch(d -> "ERROR".equals(d.level()));
         return new CheckResponse(!hasErrors, contractName, purpose, params, datumName,
                 datumFields, redeemerVariants, redeemerFields, diagnostics);
+    }
+
+    /** The purpose a validator annotation names; every supported annotation names one. */
+    static String purposeOf(String annotationName) {
+        String mapped = ANNOTATION_TO_PURPOSE.get(annotationName);
+        return mapped != null ? mapped : "SPENDING";
     }
 
     private static String determinePurpose(String annotationName, ClassOrInterfaceDeclaration cls) {

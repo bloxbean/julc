@@ -2,6 +2,14 @@ package org.julclang.cli.mcp.lint.rules;
 
 import org.julclang.cli.mcp.lint.LintFinding;
 import org.julclang.cli.mcp.lint.LintRule;
+import org.julclang.compiler.frontend.javac.SourceReader;
+import org.julclang.cli.mcp.lint.LintTrees;
+import org.julclang.compiler.frontend.javac.JavacSyntax;
+import com.sun.source.util.TreePath;
+import com.sun.source.tree.ArrayTypeTree;
+import com.sun.source.tree.MethodTree;
+import com.sun.source.tree.Tree;
+import com.sun.source.tree.VariableTree;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.body.MethodDeclaration;
 
@@ -58,5 +66,44 @@ public final class EntrypointBigIntegerParamRule implements LintRule {
             }
         });
         return findings;
+    }
+
+    @Override
+    public boolean supports(SourceReader reader) {
+        return true;
+    }
+
+    @Override
+    public List<LintFinding> check(JavacSyntax syntax) {
+        var findings = new ArrayList<LintFinding>();
+        for (TreePath path : LintTrees.methods(syntax)) {
+            var method = (MethodTree) path.getLeaf();
+            boolean hasEntrypoint = method.getModifiers().getAnnotations().stream()
+                    .anyMatch(a -> "Entrypoint".equals(LintTrees.annotationName(a)));
+            if (!hasEntrypoint) continue;
+            for (VariableTree param : method.getParameters()) {
+                String t = declaredType(syntax, param).toString();
+                if (!"BigInteger".equals(t) && !"java.math.BigInteger".equals(t)) continue;
+                findings.add(LintFinding.warning(
+                        id(),
+                        null,
+                        "@Entrypoint parameter `" + param.getName() + "` is BigInteger. " +
+                                "It is typed as IntegerType in the symbol table but holds raw Data " +
+                                "at runtime — arithmetic operations will fail.",
+                        syntax.line(param), syntax.column(param),
+                        "Wrap the integer in a datum/redeemer record: " +
+                                "`record D(BigInteger " + param.getName() + ") {}` and accept " +
+                                "the record as the entrypoint parameter."
+                ));
+            }
+        }
+        return findings;
+    }
+
+    /** The parameter's type as JavaParser gives it: a variable-arity parameter's element type. */
+    private static Tree declaredType(JavacSyntax syntax, VariableTree param) {
+        Tree type = param.getType();
+        if (type instanceof ArrayTypeTree array && syntax.isVarargs(param)) return array.getType();
+        return type;
     }
 }

@@ -88,6 +88,12 @@ public class DiagnosticCollector {
     /**
      * Record an error without a source node (structural errors).
      */
+    /** An error at a 1-based line and column (0 when unknown), as {@link #error(Node, String, String)} records it. */
+    public void error(int line, int column, String message, String suggestion) {
+        diagnostics.add(new CompilerDiagnostic(
+                CompilerDiagnostic.Level.ERROR, message, fileName, line, column, suggestion, null));
+    }
+
     public void error(String message) {
         error(message, (String) null);
     }

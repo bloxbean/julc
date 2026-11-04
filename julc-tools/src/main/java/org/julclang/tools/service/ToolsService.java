@@ -166,15 +166,16 @@ public final class ToolsService {
         if (invalid != null) return invalid;
 
         try {
-            // 1. Extract metadata for context building
-            var metadata = JavaMetadataExtractor.extract(req.source());
+            // 1. Extract metadata for context building, with the libraries the compilation reads
+            var libraries = resolveLibraries(req.source(), req.librarySource());
+            var metadata = JavaMetadataExtractor.extract(req.source(), julcCompiler, libraries);
             if (!metadata.valid()) {
                 return ServiceResult.ok(new EvaluateResponse(false, 0, 0, List.of(), "Check failed",
                         metadata.diagnostics()));
             }
 
             // 2. Compile Java -> UPLC
-            var cr = julcCompiler.compile(req.source(), resolveLibraries(req.source(), req.librarySource()));
+            var cr = julcCompiler.compile(req.source(), libraries);
             if (cr.hasErrors() || cr.program() == null) {
                 var diagnostics = cr.diagnostics().stream().map(DiagnosticDto::from).toList();
                 return ServiceResult.ok(new EvaluateResponse(false, 0, 0, List.of(), "Compilation failed",

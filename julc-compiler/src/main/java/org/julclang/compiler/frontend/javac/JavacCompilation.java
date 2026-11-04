@@ -344,11 +344,49 @@ public final class JavacCompilation {
 
     // --- Validators ---
 
+    /**
+     * What a compilation of {@code root} reports of the subset before it lowers anything, in its order: javac's rejection of
+     * the source, or the subset's rules, then its scan, with their warnings. A source with a validator is checked as its
+     * validator's compilation checks it, any other as {@code compileMethod} checks it. JuLC's tools check a source with it
+     * without compiling (the playground's check, ADR-068 M6), so a check and a compilation give the same codes at the
+     * same positions. Empty when the source keeps to the subset.
+     */
+    public static List<CompilerDiagnostic> subset(JavacFrontend.Unit root, List<JavacFrontend.Unit> pool,
+                                                  CompilationContext context) {
+        try {
+            var program = attributed(root, pool, context);
+            program.read(facts -> {
+                var compilation = new JavacCompilation(program, facts, context, null);
+                var unit = program.roots().getFirst();
+                var validator = compilation.discovery.validatorClassOrNull(unit);
+                var compiled = validator != null ? JavacGate.Compiled.VALIDATOR : JavacGate.Compiled.METHOD;
+                compilation.subsetRules(compiled);
+                compilation.subsetScan(unit, validator != null ? validator : compilation.discovery.firstClassOrNull(unit));
+                return null;
+            });
+            return context.diagnostics();
+        } catch (CompilerException rejection) {
+            var diagnostics = new ArrayList<>(context.diagnostics());
+            diagnostics.addAll(rejection.diagnostics());
+            return List.copyOf(diagnostics);
+        }
+    }
+
+    /** 1b. The subset's rules, first as on the JavaParser frontend, whose compilations get them from the gate. */
+    private void subsetRules(JavacGate.Compiled compiled) {
+        SubsetRules.checkOnJavacFrontend(facts, program.roots(), program.libraries(), compiled);
+        SubsetRules.warnings(facts, program.roots()).forEach(context::report);
+    }
+
+    /** 2. The subset's scan of the root, {@code type} being what the compilation lowers of it, and of the libraries. */
+    private void subsetScan(CompilationUnitTree unit, ClassTree type) {
+        SubsetScan.check(facts, unit, lowered(unit, type)).forEach(context::report);
+        libraries.scan().forEach(context::report);
+    }
+
     private Compiled validator(Request request) {
         var unit = program.roots().getFirst();
-        // 1b. The subset's rules, first as on the JavaParser frontend, whose compilations get them from the gate
-        SubsetRules.checkOnJavacFrontend(facts, program.roots(), program.libraries(), JavacGate.Compiled.VALIDATOR);
-        SubsetRules.warnings(facts, program.roots()).forEach(context::report);
+        subsetRules(JavacGate.Compiled.VALIDATOR);
         // 1c. Debug metadata's declarations, scanned before the subset is validated, as in the reference
         DebugMetadataCollector debug = null;
         if (request.debugLibraries() != null) {
@@ -357,8 +395,7 @@ public final class JavacCompilation {
             lowering.terms().collectDebugMetadata(debug);
         }
         // 2. Validate subset
-        SubsetScan.check(facts, unit, lowered(unit, discovery.validatorClassOrNull(unit))).forEach(context::report);
-        libraries.scan().forEach(context::report);
+        subsetScan(unit, discovery.validatorClassOrNull(unit));
         verifyBinderNamespace(unit);
         // 3. Validate: library units hold no validator annotation
         libraries.requireNoValidators();
@@ -490,12 +527,9 @@ public final class JavacCompilation {
 
     private CompileResult method(String methodName) {
         var unit = program.roots().getFirst();
-        // 1b. The subset's rules, first as on the JavaParser frontend, whose compilations get them from the gate
-        SubsetRules.checkOnJavacFrontend(facts, program.roots(), program.libraries(), JavacGate.Compiled.METHOD);
-        SubsetRules.warnings(facts, program.roots()).forEach(context::report);
+        subsetRules(JavacGate.Compiled.METHOD);
         // 2. Validate subset
-        SubsetScan.check(facts, unit, lowered(unit, discovery.firstClassOrNull(unit))).forEach(context::report);
-        libraries.scan().forEach(context::report);
+        subsetScan(unit, discovery.firstClassOrNull(unit));
         verifyBinderNamespace(unit);
         // 3. Find the target class (first non-interface class)
         var type = discovery.firstClass(unit);

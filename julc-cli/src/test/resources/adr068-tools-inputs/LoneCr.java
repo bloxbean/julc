@@ -1,0 +1,1 @@
+package p;class LoneCr {  static void f() {    int i = 0;    i++;    String t = """      a      """; i--;  }}

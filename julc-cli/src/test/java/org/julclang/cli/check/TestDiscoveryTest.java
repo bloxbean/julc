@@ -1,15 +1,23 @@
 package org.julclang.cli.check;
 
+import org.julclang.compiler.frontend.javac.SourceReader;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class TestDiscoveryTest {
+
+    /** The discovery the tests assert on; {@link TestDiscoveryOnJavacTest} reads with javac and requires the same. */
+    List<TestDiscovery.TestMethod> discover(Path dir) throws IOException {
+        return TestDiscovery.discover(dir);
+    }
 
     @Test
     void discoverFindsTestMethods(@TempDir Path tempDir) throws IOException {
@@ -28,7 +36,7 @@ class TestDiscoveryTest {
                 }
                 """);
 
-        var tests = TestDiscovery.discover(tempDir);
+        var tests = discover(tempDir);
         assertEquals(2, tests.size());
         assertEquals("test_one", tests.get(0).methodName());
         assertEquals("test_two", tests.get(1).methodName());
@@ -47,16 +55,18 @@ class TestDiscoveryTest {
                     static final Pattern HIGH = Pattern.compile("[\\uD800-\\uDBFF]");
                 }
                 """);
-        assertEquals(0, TestDiscovery.discover(tempDir).size());
+        assertEquals(0, discover(tempDir).size());
 
-        // With a Test method, the strict diagnostic stands.
+        // With a Test method, JavaParser's strict diagnostic stands (javac's reading finds the test:
+        // TestDiscoveryOnJavacTest).
         Files.writeString(tempDir.resolve("Mentions.java"), """
                 public class Mentions {
                     @Test
                     public static boolean t() { return "\\uD800".isEmpty(); }
                 }
                 """);
-        var error = assertThrows(IllegalArgumentException.class, () -> TestDiscovery.discover(tempDir));
+        var error = assertThrows(IllegalArgumentException.class,
+                () -> TestDiscovery.discover(tempDir, SourceReader.JAVAPARSER));
         assertTrue(error.getMessage().contains("Could not parse @Test candidate"), error.getMessage());
     }
 
@@ -68,7 +78,7 @@ class TestDiscoveryTest {
                 }
                 """);
 
-        var tests = TestDiscovery.discover(tempDir);
+        var tests = discover(tempDir);
         assertTrue(tests.isEmpty());
     }
 
@@ -82,7 +92,7 @@ class TestDiscoveryTest {
                 }
                 """);
 
-        var tests = TestDiscovery.discover(tempDir);
+        var tests = discover(tempDir);
 
         assertTrue(tests.isEmpty());
     }
@@ -94,7 +104,7 @@ class TestDiscoveryTest {
                 class BrokenTest {
                 """);
 
-        var ex = assertThrows(IllegalArgumentException.class, () -> TestDiscovery.discover(tempDir));
+        var ex = assertThrows(IllegalArgumentException.class, () -> discover(tempDir));
 
         assertTrue(ex.getMessage().contains("Could not parse @Test candidate"));
         assertTrue(ex.getMessage().contains("BrokenTest.java"));
@@ -102,13 +112,13 @@ class TestDiscoveryTest {
 
     @Test
     void discoverEmptyDirectory(@TempDir Path tempDir) throws IOException {
-        var tests = TestDiscovery.discover(tempDir);
+        var tests = discover(tempDir);
         assertTrue(tests.isEmpty());
     }
 
     @Test
     void discoverNonexistentDirectory() throws IOException {
-        var tests = TestDiscovery.discover(Path.of("/nonexistent/dir"));
+        var tests = discover(Path.of("/nonexistent/dir"));
         assertTrue(tests.isEmpty());
     }
 }

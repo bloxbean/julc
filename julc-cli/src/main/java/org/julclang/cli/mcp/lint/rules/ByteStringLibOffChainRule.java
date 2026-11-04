@@ -2,6 +2,11 @@ package org.julclang.cli.mcp.lint.rules;
 
 import org.julclang.cli.mcp.lint.LintFinding;
 import org.julclang.cli.mcp.lint.LintRule;
+import org.julclang.compiler.frontend.javac.SourceReader;
+import org.julclang.cli.mcp.lint.LintTrees;
+import org.julclang.compiler.frontend.javac.JavacSyntax;
+import com.sun.source.util.TreePath;
+import com.sun.source.tree.MethodInvocationTree;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 
@@ -62,6 +67,38 @@ public final class ByteStringLibOffChainRule implements LintRule {
                     "On-chain code: leave it. JVM/test code: call " + builtinSuggestion + " directly."
             ));
         });
+        return findings;
+    }
+
+    @Override
+    public boolean supports(SourceReader reader) {
+        return true;
+    }
+
+    @Override
+    public List<LintFinding> check(JavacSyntax syntax) {
+        var findings = new ArrayList<LintFinding>();
+        for (TreePath path : LintTrees.findAll(syntax, MethodInvocationTree.class)) {
+            var call = (MethodInvocationTree) path.getLeaf();
+            String name = LintTrees.methodName(call);
+            if (!OFFCHAIN_BROKEN.contains(name)) continue;
+            if (!"ByteStringLib".equals(LintTrees.dottedName(LintTrees.receiver(call)))) continue;
+            String builtinSuggestion = switch (name) {
+                case "zeros" -> "`Builtins.replicateByte(n, (byte) 0)`";
+                case "empty" -> "`new byte[0]`";
+                case "integerToByteString" -> "`Builtins.integerToByteString(...)`";
+                case "serialiseData" -> "`Builtins.serialiseData(...)`";
+                default -> "the corresponding `Builtins.*` call";
+            };
+            findings.add(LintFinding.warning(
+                    id(),
+                    null,
+                    "`ByteStringLib." + name + "(...)` uses an on-chain-only cast and throws " +
+                            "`ClassCastException` when called from JVM (tests/REPL).",
+                    syntax.line(call), syntax.column(call),
+                    "On-chain code: leave it. JVM/test code: call " + builtinSuggestion + " directly."
+            ));
+        }
         return findings;
     }
 }
