@@ -38,7 +38,7 @@ class VerboseCompilationTest {
     @Test
     void testVerboseLogsAllStages() {
         var logs = new ArrayList<String>();
-        var opts = new CompilerOptions().setVerbose(true).setLogger(logs::add);
+        var opts = new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setVerbose(true).setLogger(logs::add);
         var compiler = new JulcCompiler(null, opts);
         compiler.compile(SIMPLE_VALIDATOR);
 
@@ -51,6 +51,21 @@ class VerboseCompilationTest {
         assertTrue(joined.contains("PIR generation complete"), "Should log PIR generation");
         assertTrue(joined.contains("UPLC optimization complete"), "Should log UPLC optimization");
         assertTrue(joined.contains("Compilation complete"), "Should log completion with size");
+    }
+
+    /**
+     * ADR-068 M5: the stages above are the JavaParser frontend's log, selected explicitly there. The javac frontend, the
+     * default, logs the target, the version, the optimization level and the result's size.
+     */
+    @Test
+    void testVerboseOnTheDefaultFrontend() {
+        var logs = new ArrayList<String>();
+        var compiler = new JulcCompiler(null, new CompilerOptions().setVerbose(true).setLogger(logs::add));
+        compiler.compile(SIMPLE_VALIDATOR);
+        String joined = String.join("\n", logs);
+        assertTrue(joined.contains("Compiler target"), joined);
+        assertTrue(joined.contains("Optimization level"), joined);
+        assertTrue(joined.contains("Compilation complete (javac frontend)"), joined);
     }
 
     @Test
@@ -69,7 +84,7 @@ class VerboseCompilationTest {
     @Test
     void testVerboseWithLibraries() {
         var logs = new ArrayList<String>();
-        var opts = new CompilerOptions().setVerbose(true).setLogger(logs::add);
+        var opts = new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setVerbose(true).setLogger(logs::add);
         var compiler = new JulcCompiler(null, opts);
 
         var libSource = """
@@ -104,7 +119,7 @@ class VerboseCompilationTest {
     @Test
     void testVerboseWithParams() {
         var logs = new ArrayList<String>();
-        var opts = new CompilerOptions().setVerbose(true).setLogger(logs::add);
+        var opts = new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setVerbose(true).setLogger(logs::add);
         var compiler = new JulcCompiler(null, opts);
 
         var source = """

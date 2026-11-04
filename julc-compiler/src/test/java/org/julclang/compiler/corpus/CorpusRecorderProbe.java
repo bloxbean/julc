@@ -1,5 +1,6 @@
 package org.julclang.compiler.corpus;
 
+import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompileResult;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerOptions;
@@ -96,10 +97,10 @@ public final class CorpusRecorderProbe {
         Path libraryFile = dir.resolve("Twice.java");
         Files.writeString(libraryFile, LIBRARY);
         for (var level : OptimizationLevel.values()) {
-            var options = new CompilerOptions().setOptimizationLevel(level);
+            var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setOptimizationLevel(level);
             var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), options);
             var debug = new JulcCompiler(StdlibRegistry.defaultRegistry(),
-                    new CompilerOptions().setOptimizationLevel(level).setSourceMapEnabled(true));
+                    new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setOptimizationLevel(level).setSourceMapEnabled(true));
             line(out, level + " compile", () -> compiler.compile(VALIDATOR));
             line(out, level + " compile+libs", () -> compiler.compile(VALIDATOR, List.of()));
             line(out, level + " compileWithDetails", () -> compiler.compileWithDetails(VALIDATOR));

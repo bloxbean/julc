@@ -34,7 +34,7 @@ class PlutusDataConversionTest {
      * with no Java declaration; javac rejects it, so it is compiled with the gate off (M1b's report).
      */
     static Program compileDialectValidator(String source) {
-        var compiler = new JulcCompiler(STDLIB, new CompilerOptions().setJavacGate(JavacGateMode.OFF));
+        var compiler = new JulcCompiler(STDLIB, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.OFF));
         var result = compiler.compile(source);
         assertFalse(result.hasErrors(), "Compilation failed: " + result);
         assertNotNull(result.program(), "Program should not be null");
@@ -42,7 +42,7 @@ class PlutusDataConversionTest {
     }
 
     static Program compileValidator(String source) {
-        var compiler = new JulcCompiler(STDLIB);
+        var compiler = new JulcCompiler(STDLIB, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER));
         var result = compiler.compile(source);
         assertFalse(result.hasErrors(), "Compilation failed: " + result);
         assertNotNull(result.program(), "Program should not be null");

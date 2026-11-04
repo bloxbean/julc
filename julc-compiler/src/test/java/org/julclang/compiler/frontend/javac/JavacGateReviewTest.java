@@ -1,5 +1,6 @@
 package org.julclang.compiler.frontend.javac;
 
+import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JavaLibraryProvider;
@@ -36,8 +37,8 @@ import static org.junit.jupiter.api.Assertions.*;
 /** Regressions for the M1a review findings F500-F505 (Codex) and F402-F403 (Claude reviewer). */
 class JavacGateReviewTest {
 
-    static final CompilerOptions ENFORCE = new CompilerOptions().setJavacGate(JavacGateMode.ENFORCE);
-    static final CompilerOptions REPORT = new CompilerOptions().setJavacGate(JavacGateMode.REPORT);
+    static final CompilerOptions ENFORCE = new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.ENFORCE);
+    static final CompilerOptions REPORT = new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.REPORT);
 
     static JavacResult analyze(String root, String... pool) {
         return JavacFrontend.shared().analyze(List.of(JavacFrontend.Unit.of(root)),
@@ -269,7 +270,7 @@ class JavacGateReviewTest {
     }
 
     static CompilerOptions tagged(JavacGateMode mode) {
-        return new CompilerOptions().setJavacGate(mode).setJarLibrarySources(List.of(JAR_SHARED));
+        return new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(mode).setJarLibrarySources(List.of(JAR_SHARED));
     }
 
     @Test
@@ -402,7 +403,7 @@ class JavacGateReviewTest {
                 class M { static int f(Second s) { return s.x(); } }
                 """;
         var off = new JulcCompiler(StdlibRegistry.defaultRegistry(),
-                new CompilerOptions().setJavacGate(JavacGateMode.OFF)).compileMethod(root, "f", List.of(SECONDARIES));
+                new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.OFF)).compileMethod(root, "f", List.of(SECONDARIES));
         assertFalse(off.hasErrors(), off.diagnostics().toString());
         var enforced = new JulcCompiler(StdlibRegistry.defaultRegistry(), ENFORCE)
                 .compileMethod(root, "f", List.of(SECONDARIES));
@@ -576,7 +577,7 @@ class JavacGateReviewTest {
         // Tagging the JAR copy's own text never tags the project's equal text: they are different sources.
         for (var tags : List.of(LibrarySourceResolver.jarSourceTexts(pool, jar), List.of(one))) {
             var e = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(),
-                    new CompilerOptions().setJavacGate(JavacGateMode.ENFORCE).setJarLibrarySources(tags))
+                    new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.ENFORCE).setJarLibrarySources(tags))
                     .compileMethod(root, "g", List.of(projectOne, two)));
             assertTrue(e.diagnostics().getFirst().message().contains("two library sources of equal standing"),
                     e.diagnostics().toString());

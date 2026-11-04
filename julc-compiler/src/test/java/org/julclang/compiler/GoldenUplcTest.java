@@ -50,7 +50,7 @@ class GoldenUplcTest {
                 @Entrypoint
                 static boolean validate(BigInteger datum, BigInteger redeemer, PlutusData ctx) {
                     var sum = datum.add(redeemer);
-                    return sum == BigInteger.valueOf(100);
+                    return sum.equals(BigInteger.valueOf(100));
                 }
             }
             """;
@@ -141,7 +141,7 @@ class GoldenUplcTest {
                         }
                         i = i.add(BigInteger.ONE);
                     }
-                    return sum == BigInteger.valueOf(99);
+                    return sum.equals(BigInteger.valueOf(99));
                 }
             }
             """;

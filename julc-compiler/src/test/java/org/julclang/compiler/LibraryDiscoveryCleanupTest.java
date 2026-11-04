@@ -201,7 +201,7 @@ class LibraryDiscoveryCleanupTest {
                 "example.registry.RegistryOnly", "org.julclang.stdlib.Builtins")));
         for (StdlibLookup lookup : List.of(registry, composite)) {
             // ADR-068 M1b: a name only a custom registry defines has no Java declaration javac could see.
-            var compiler = new JulcCompiler(lookup, new CompilerOptions().setJavacGate(JavacGateMode.OFF));
+            var compiler = new JulcCompiler(lookup, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.OFF));
             String imports = "import example.registry.RegistryOnly;\n";
             var method = compiler.compileMethod(imports
                     + "class Sample { static boolean run() { return RegistryOnly.accept(); } }", "run", List.of());
@@ -280,7 +280,7 @@ class LibraryDiscoveryCleanupTest {
         }
     }
 
-    private static JulcCompiler compiler() { return new JulcCompiler(StdlibRegistry.defaultRegistry()); }
+    private static JulcCompiler compiler() { return new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)); }
 
     private static void assertCompiled(CompileResult result) {
         assertFalse(result.hasErrors(), result.diagnostics().toString());

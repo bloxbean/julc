@@ -746,7 +746,7 @@ class LedgerTypeAccessTest {
                     public class TestOutputLib {
                         public static boolean matchesAddress(TxOut txOut, Address expected) {
                             Address addr = txOut.address();
-                            return addr == expected;
+                            return addr.equals(expected);
                         }
                     }
                     """;

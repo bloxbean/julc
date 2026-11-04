@@ -35,7 +35,7 @@ class ComparisonLoweringTest {
 
     private static String pir(String body) {
         return new JulcCompiler(StdlibRegistry.defaultRegistry(),
-                new CompilerOptions().setOptimizationLevel(OptimizationLevel.NONE)).compileMethod(source(body), "m")
+                new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setOptimizationLevel(OptimizationLevel.NONE)).compileMethod(source(body), "m")
                 .pirFormatted();
     }
 
@@ -114,7 +114,7 @@ class ComparisonLoweringTest {
         for (String op : List.of("<", "<=", ">", ">=")) {
             for (var level : OptimizationLevel.values()) {
                 var program = new JulcCompiler(StdlibRegistry.defaultRegistry(),
-                        new CompilerOptions().setOptimizationLevel(level).setJavacGate(JavacGateMode.OFF))
+                        new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setOptimizationLevel(level).setJavacGate(JavacGateMode.OFF))
                         .compileMethod(source("return t(\"X\", a) " + op + " t(\"Y\", b);"), "m").program();
                 var vm = CompilerTestVm.pv11("Java");
                 var result = vm.evaluateWithArgs(program, CompilerTarget.PLUTUS_V3_PV11.ledgerTarget(),
@@ -143,11 +143,11 @@ class ComparisonLoweringTest {
                 }
                 """;
         String body = "BigInteger Shadow = a; return Shadow.compareTo(b) > 0;";
-        var rejected = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry())
+        var rejected = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER))
                 .compileMethod(source(body), "m", List.of(library)));
         assertEquals("JULC0100", rejected.diagnostics().getFirst().code());
         var result = new JulcCompiler(StdlibRegistry.defaultRegistry(),
-                new CompilerOptions().setOptimizationLevel(OptimizationLevel.NONE).setJavacGate(JavacGateMode.OFF))
+                new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setOptimizationLevel(OptimizationLevel.NONE).setJavacGate(JavacGateMode.OFF))
                 .compileMethod(source(body), "m", List.of(library));
         String pir = result.pirFormatted();
         assertTrue(pir.contains("Shadow.compareTo"), pir);

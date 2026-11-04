@@ -138,7 +138,7 @@ class SpelledBindingsTest {
     }
 
     private static JavacResult gate(String source, List<JavacFrontend.Unit> pool) {
-        return JavacGate.check("compileMethod", List.of(JavacFrontend.Unit.of(source)), pool, new CompilerOptions()
+        return JavacGate.check("compileMethod", List.of(JavacFrontend.Unit.of(source)), pool, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)
                 .setJavacGate(org.julclang.compiler.frontend.javac.JavacGateMode.REPORT));
     }
 
@@ -586,7 +586,7 @@ class SpelledBindingsTest {
     void aVariableDoesNotTakeTheNameOfAClassOfAnUnreadLibraryUnit(String library) {
         var pool = List.of(JavacFrontend.Unit.of(library));
         String source = TWO_READINGS.formatted("Helper");
-        var options = new CompilerOptions().setJavacGate(org.julclang.compiler.frontend.javac.JavacGateMode.OFF);
+        var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(org.julclang.compiler.frontend.javac.JavacGateMode.OFF);
         assertFalse(new JulcCompiler(StdlibRegistry.defaultRegistry(), options).compileMethod(source, "m", List.of(library)).hasErrors());
         assertTrue(code(source, pool).startsWith("JULC0100 "), () -> code(source, pool));
     }
@@ -687,7 +687,7 @@ class SpelledBindingsTest {
                 }
                 """;
         var result = JavacGate.check("JavaLibraryProvider", List.of(JavacFrontend.Unit.of(source)), List.of(),
-                new CompilerOptions().setJavacGate(org.julclang.compiler.frontend.javac.JavacGateMode.REPORT));
+                new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(org.julclang.compiler.frontend.javac.JavacGateMode.REPORT));
         assertTrue(result.isAccepted(), () -> result.compilerDiagnostics().toString());
     }
 
@@ -911,7 +911,7 @@ class SpelledBindingsTest {
 
     private static JavacResult validator(String datum) {
         return JavacGate.check("compile", List.of(JavacFrontend.Unit.of("import java.util.Optional;\n" + VALIDATOR.formatted(datum))),
-                List.of(), new CompilerOptions().setJavacGate(org.julclang.compiler.frontend.javac.JavacGateMode.REPORT));
+                List.of(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(org.julclang.compiler.frontend.javac.JavacGateMode.REPORT));
     }
 
     @ParameterizedTest
@@ -970,12 +970,12 @@ class SpelledBindingsTest {
     // --- Whole compilations, each of which reaches a lowering of the name's spelling with the gate off ---
 
     private static String rejection(String source) {
-        var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry()).compileMethod(source, "m"));
+        var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod(source, "m"));
         return thrown.diagnostics().getFirst().code();
     }
 
     private static boolean compilesWithTheGateOff(String source) {
-        return !new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()
+        return !new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)
                 .setJavacGate(org.julclang.compiler.frontend.javac.JavacGateMode.OFF)).compileMethod(source, "m").hasErrors();
     }
 
@@ -1034,7 +1034,7 @@ class SpelledBindingsTest {
         } catch (CompilerException e) {
             assertNotEquals("JULC0100", e.diagnostics().getFirst().code(), e.getMessage());
         }
-        var wrong = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry()).compileMethod(source, "m"));
+        var wrong = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod(source, "m"));
         assertEquals("JULC0100", wrong.diagnostics().getFirst().code());
     }
 
@@ -1052,7 +1052,7 @@ class SpelledBindingsTest {
                 }
                 """;
         var result = JavacGate.check("JavaLibraryProvider", List.of(JavacFrontend.Unit.of(source)), List.of(),
-                new CompilerOptions().setJavacGate(org.julclang.compiler.frontend.javac.JavacGateMode.REPORT));
+                new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(org.julclang.compiler.frontend.javac.JavacGateMode.REPORT));
         assertEquals("JULC0100", result.compilerDiagnostics().getFirst().code());
     }
 
@@ -1201,7 +1201,7 @@ class SpelledBindingsTest {
         String library = "package lib; public class Helper { public static long f(long x) { return 7; } }";
         String source = TWO_READINGS.formatted("Helper");
         var wrong = assertThrows(CompilerException.class,
-                () -> new JulcCompiler(StdlibRegistry.defaultRegistry()).compileMethod(source, "m", List.of(library)));
+                () -> new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod(source, "m", List.of(library)));
         assertEquals("JULC0100", wrong.diagnostics().getFirst().code());
     }
 

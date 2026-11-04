@@ -294,7 +294,7 @@ class JavacOperatorsTest {
         String members = "static class N { static String f() { String s = \"\\uD800\"; return s; } }\nstatic boolean m() { return true; }";
         assertEquals("JULC0093", javac(members).diagnostics().getFirst().code());
         // The reference rejects it as it reads the source, uncoded.
-        assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions()).compileMethod(source(members), "m", List.of()));
+        assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod(source(members), "m", List.of()));
     }
 
     /** What the reference rejects wherever it stands is rejected in code nothing lowers, with its code. */

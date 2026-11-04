@@ -202,6 +202,10 @@ class UnicodeEscapeReadingTest {
         assertTrue(problems.isEmpty(), String.join("\n", problems));
     }
 
+    /**
+     * The JavaParser frontend's readers (JavaSourceParser, UnicodeEscapes) reject each source, whatever javac does. From
+     * ADR-068 M5 that frontend is selected explicitly; {@link #onTheDefaultFrontendJavacDecides} holds javac's frontend.
+     */
     @Test
     void everyRejectedSourceIsRejectedWhateverJavacDoes() throws Exception {
         var problems = new ArrayList<String>();
@@ -210,12 +214,41 @@ class UnicodeEscapeReadingTest {
             if (javacAccepts != row[2].equals("javac accepts")) problems.add(row[0] + ": expected " + row[2]);
             for (var level : OptimizationLevel.values()) {
                 try {
-                    new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setOptimizationLevel(level))
+                    new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()
+                            .setFrontend(CompilerFrontend.JAVAPARSER).setOptimizationLevel(level))
                             .compileMethod(row[1], "m");
                     problems.add(row[0] + " at " + level + ": JuLC compiles it");
                 } catch (CompilerException rejected) {
                     if (!rejected.getMessage().contains(row[3])) {
                         problems.add(row[0] + ": message lacks '" + row[3] + "': " + rejected.getMessage());
+                    }
+                }
+            }
+        }
+        assertTrue(problems.isEmpty(), String.join("\n", problems));
+    }
+
+    /**
+     * ADR-068 M5: on javac's frontend, the default, javac decides. A source javac rejects is {@code JULC0085}; a source javac
+     * accepts compiles, as the ADR's Compatibility section and r11 decide: the escape shapes JuLC's readers rejected
+     * (scheduled for acceptance), and a lone surrogate in a comment, which cannot reach a script (accepted by decision).
+     */
+    @Test
+    void onTheDefaultFrontendJavacDecides() throws Exception {
+        var problems = new ArrayList<String>();
+        for (var row : REJECTED) {
+            for (var level : OptimizationLevel.values()) {
+                var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setOptimizationLevel(level));
+                if (row[2].equals("javac accepts")) {
+                    try {
+                        compiler.compileMethod(row[1], "m");
+                    } catch (CompilerException rejected) {
+                        problems.add(row[0] + " at " + level + ": javac accepts it, JuLC rejects it: " + rejected.getMessage());
+                    }
+                } else {
+                    var rejected = assertThrows(CompilerException.class, () -> compiler.compileMethod(row[1], "m"), row[0]);
+                    if (!rejected.getMessage().contains("JULC0085") || !rejected.getMessage().contains(row[3])) {
+                        problems.add(row[0] + ": not javac's " + row[3] + ": " + rejected.getMessage());
                     }
                 }
             }

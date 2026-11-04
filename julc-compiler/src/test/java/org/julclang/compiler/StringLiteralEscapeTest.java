@@ -29,7 +29,8 @@ import static org.junit.jupiter.api.Assertions.*;
  * the literal's source text, escapes included, so {@code "a\nb"} held a backslash and an {@code n}
  * on-chain. javac is the oracle: each literal is compiled and run by javac, and JuLC must produce the
  * same string at every optimization level, both as compiled and after a FLAT round trip, or reject the
- * literal where javac does. {@link #FAILS_CLOSED} lists the literals JuLC rejects although javac accepts them.
+ * literal where javac does. {@link #FAILS_CLOSED} lists the literals JuLC rejects although javac accepts them, on the
+ * default frontend, javac's, from ADR-068 M5.
  */
 class StringLiteralEscapeTest {
 
@@ -56,13 +57,20 @@ class StringLiteralEscapeTest {
             "\\u١٢٣٤", "\\u００４１");
 
     /**
-     * Literals javac accepts and JuLC rejects, so they fail closed. Each is in {@link #LITERALS}: the
-     * backslash parity above and digits other than ASCII hex digits ({@code JavaSourceParser} rejects both),
-     * and unpaired surrogates ({@code StringLiterals}).
+     * Literals javac accepts and JuLC rejects, so they fail closed. Each is in {@link #LITERALS}: the unpaired
+     * surrogates, which a UPLC string cannot hold ({@code JULC0093} on javac's frontend).
      */
-    private static final Set<String> FAILS_CLOSED = Set.of(
+    private static final Set<String> FAILS_CLOSED = Set.of("\\uD800", "\\uDC00", "\\uDE00\\uD83D");
+
+    /**
+     * Literals the JavaParser frontend's reader rejects and javac accepts: the backslash parity and digits other than ASCII
+     * hex digits. On javac's frontend, the default from ADR-068 M5, each has javac's string (ADR-068 Compatibility,
+     * "Source that starts compiling"), which {@link #everyLiteralCompilesToJavacsString} checks; on the JavaParser
+     * frontend each still fails closed.
+     */
+    private static final Set<String> READER_FAILS_CLOSED = Set.of(
             "\\u005c\\\\\\u0030", "\\u005c\\\\\\u005cn", "\\u005c\\\\\\u006e", "\\u005c\\\\\\\\\\u0030",
-            "\\uD800", "\\uDC00", "\\uDE00\\uD83D", "\\u١٢٣٤", "\\u００４１");
+            "\\u١٢٣٤", "\\u００４１");
 
     private static String source(String literal) {
         return "public class Lit { public static String m() { return \"" + literal + "\"; } }";
@@ -159,6 +167,15 @@ class StringLiteralEscapeTest {
             }
         }
         assertTrue(problems.isEmpty(), String.join("\n", problems));
+    }
+
+    @Test
+    void theJavaParserReaderStillFailsClosed() {
+        assertTrue(LITERALS.containsAll(READER_FAILS_CLOSED));
+        for (String literal : READER_FAILS_CLOSED) {
+            assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(),
+                    new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod(source(literal), "m"), literal);
+        }
     }
 
     @Test

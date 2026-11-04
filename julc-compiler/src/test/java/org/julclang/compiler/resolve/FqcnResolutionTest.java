@@ -1,5 +1,6 @@
 package org.julclang.compiler.resolve;
 
+import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JavaSourceParser;
@@ -46,7 +47,7 @@ class FqcnResolutionTest {
                         }
                     }
                     """;
-            var result = new JulcCompiler(STDLIB).compile(source);
+            var result = new JulcCompiler(STDLIB, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compile(source);
             assertFalse(result.hasErrors(), "Inline code should compile. Errors: " + result);
             assertNotNull(result.program());
         }
@@ -68,7 +69,7 @@ class FqcnResolutionTest {
                         }
                     }
                     """;
-            var result = new JulcCompiler(STDLIB).compile(source);
+            var result = new JulcCompiler(STDLIB, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compile(source);
             assertFalse(result.hasErrors(), "Inline code with user record should compile. Errors: " + result);
         }
 
@@ -91,7 +92,7 @@ class FqcnResolutionTest {
                         }
                     }
                     """;
-            var result = new JulcCompiler(STDLIB).compile(source);
+            var result = new JulcCompiler(STDLIB, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compile(source);
             assertFalse(result.hasErrors(), "Ledger types should resolve via implicit import. Errors: " + result);
         }
     }
@@ -116,7 +117,7 @@ class FqcnResolutionTest {
                         }
                     }
                     """;
-            var result = new JulcCompiler(STDLIB).compile(source);
+            var result = new JulcCompiler(STDLIB, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compile(source);
             assertFalse(result.hasErrors(), "Packaged validator should compile. Errors: " + result);
         }
 
@@ -144,7 +145,7 @@ class FqcnResolutionTest {
                         }
                     }
                     """;
-            var result = new JulcCompiler(STDLIB).compile(validator, List.of(lib));
+            var result = new JulcCompiler(STDLIB, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compile(validator, List.of(lib));
             assertFalse(result.hasErrors(), "Packaged validator with library should compile. Errors: " + result);
         }
     }
@@ -181,7 +182,7 @@ class FqcnResolutionTest {
                         }
                     }
                     """;
-            var result = new JulcCompiler(STDLIB).compile(validator, List.of(lib));
+            var result = new JulcCompiler(STDLIB, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compile(validator, List.of(lib));
             assertFalse(result.hasErrors(), "Same record name in different packages should compile. Errors: " + result);
         }
 
@@ -219,7 +220,7 @@ class FqcnResolutionTest {
                         }
                     }
                     """;
-            var result = new JulcCompiler(STDLIB).compile(validator, List.of(lib1, lib2));
+            var result = new JulcCompiler(STDLIB, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compile(validator, List.of(lib1, lib2));
             assertFalse(result.hasErrors(), "Same library class name with explicit import should compile. Errors: " + result);
         }
     }
@@ -249,13 +250,13 @@ class FqcnResolutionTest {
                     record Bid(byte[] hash) {}
                     """;
             // JuLC's own rule, as a host without the gate sees it.
-            var off = new CompilerOptions().setJavacGate(JavacGateMode.OFF);
+            var off = new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.OFF);
             var ex = assertThrows(CompilerException.class,
                     () -> new JulcCompiler(STDLIB, off).compile(source1, List.of(source2)));
             assertTrue(ex.getMessage().contains("Duplicate record type"),
                     "Should detect duplicate FQCN. Got: " + ex.getMessage());
             // With the gate, ADR-068 D8 gives the root's com.myapp.Bid precedence and leaves the library unit out.
-            var enforced = new JulcCompiler(STDLIB).compileWithDetails(source1, List.of(source2));
+            var enforced = new JulcCompiler(STDLIB, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileWithDetails(source1, List.of(source2));
             assertFalse(enforced.hasErrors(), enforced.diagnostics().toString());
             // Two library units of equal standing that declare com.myapp.Bid are rejected before javac runs.
             var source3 = """
@@ -264,7 +265,7 @@ class FqcnResolutionTest {
                     """;
             var noBid = source1.replace("record Bid(java.math.BigInteger amount) {}\n", "");
             var twice = assertThrows(CompilerException.class,
-                    () -> new JulcCompiler(STDLIB).compile(noBid, List.of(source2, source3)));
+                    () -> new JulcCompiler(STDLIB, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compile(noBid, List.of(source2, source3)));
             assertTrue(twice.getMessage().contains("(compiler.err.duplicate.class)"), twice.getMessage());
         }
 
@@ -294,7 +295,7 @@ class FqcnResolutionTest {
                     }
                     """;
             // With FQCN-based resolution, different packages → no collision
-            var result = new JulcCompiler(STDLIB).compile(validator, List.of(lib));
+            var result = new JulcCompiler(STDLIB, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compile(validator, List.of(lib));
             assertFalse(result.hasErrors(), "Different FQCN should not collide: " + result);
         }
     }

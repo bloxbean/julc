@@ -1,5 +1,6 @@
 package org.julclang.compiler.frontend.javac;
 
+import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerOptions;
 
@@ -28,7 +29,7 @@ public final class JavacEnvironmentProbe {
     static String outcome(String source) {
         try {
             var result = JavacGate.check("probe", List.of(JavacFrontend.Unit.of(source)), List.of(),
-                    new CompilerOptions().setJavacGate(JavacGateMode.ENFORCE));
+                    new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.ENFORCE));
             return result.isAccepted() ? "accepted" : "rejected?";
         } catch (CompilerException e) {
             var d = e.diagnostics().getFirst();

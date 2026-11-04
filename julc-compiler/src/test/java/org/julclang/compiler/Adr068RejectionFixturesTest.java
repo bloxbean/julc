@@ -89,7 +89,7 @@ class Adr068RejectionFixturesTest {
      * sources first, stays off.
      */
     private static CompilerOptions reference() {
-        return new CompilerOptions().setJavacGate(JavacGateMode.OFF);
+        return new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.OFF);
     }
 
     private static void compile(String entry, String source, List<String> libraries) {

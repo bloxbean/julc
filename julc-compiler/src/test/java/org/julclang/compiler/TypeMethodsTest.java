@@ -21,6 +21,20 @@ import static org.junit.jupiter.api.Assertions.*;
 class TypeMethodsTest {
 
     /**
+     * The JavaParser frontend, which lowers {@code ==} on references to value equality (ADR-062 T3, T4). From ADR-068 M5 it
+     * is selected explicitly; it is removed at M6.
+     */
+    private static JulcCompiler javaParser() {
+        return new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER));
+    }
+
+    /** On javac, the default from ADR-068 M5, {@code ==} between references is reference equality: {@code JULC0086} (D6). */
+    private static void assertReferenceEqualityRejected(String source) {
+        var e = assertThrows(CompilerException.class, () -> new JulcCompiler().compile(source));
+        assertEquals("JULC0086", e.diagnostics().getFirst().code(), e.getMessage());
+    }
+
+    /**
      * ADR-068 M1b: a JuLC dialect method with no Java equivalent ({@code byte[].length()}, {@code +} on byte arrays,
      * {@code .hash()} on {@code byte[]}, {@code .value()} on {@code byte[]} or {@code BigInteger}): javac rejects
      * the source, so the frozen JavaParser frontend's behaviour is compiled with the gate off (M1b's report).
@@ -30,7 +44,7 @@ class TypeMethodsTest {
     }
 
     static JulcCompiler dialectCompiler(StdlibLookup stdlib) {
-        return new JulcCompiler(stdlib, new CompilerOptions().setJavacGate(JavacGateMode.OFF));
+        return new JulcCompiler(stdlib, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.OFF));
     }
 
     static JulcVm vm;
@@ -101,7 +115,8 @@ class TypeMethodsTest {
                         }
                     }
                     """;
-            var program = new JulcCompiler().compile(source).program();
+            assertReferenceEqualityRejected(source);
+            var program = javaParser().compile(source).program();
             var result = vm.evaluateWithArgs(program, List.of(simpleCtx()));
             assertTrue(result.isSuccess(), "String == should use EqualsString. Got: " + result);
         }
@@ -123,7 +138,8 @@ class TypeMethodsTest {
                         }
                     }
                     """;
-            var program = new JulcCompiler().compile(source).program();
+            assertReferenceEqualityRejected(source);
+            var program = javaParser().compile(source).program();
             var result = vm.evaluateWithArgs(program, List.of(simpleCtx()));
             assertTrue(result.isSuccess(), "String != should work. Got: " + result);
         }
@@ -167,7 +183,7 @@ class TypeMethodsTest {
                             String a = "hel";
                             String b = "lo";
                             String c = a + b;
-                            return c == "hello";
+                            return c.equals("hello");
                         }
                     }
                     """;
@@ -196,7 +212,8 @@ class TypeMethodsTest {
                         }
                     }
                     """;
-            var compiler = new JulcCompiler();
+            assertReferenceEqualityRejected(source);
+            var compiler = javaParser();
             var program = compiler.compile(source).program();
 
             var pkh = new byte[]{1, 2, 3};
@@ -227,7 +244,8 @@ class TypeMethodsTest {
                         }
                     }
                     """;
-            var compiler = new JulcCompiler();
+            assertReferenceEqualityRejected(source);
+            var compiler = javaParser();
             var program = compiler.compile(source).program();
 
             var datum = PlutusData.constr(0, PlutusData.bytes(new byte[]{1}), PlutusData.bytes(new byte[]{2}));
@@ -832,7 +850,8 @@ class TypeMethodsTest {
                         }
                     }
                     """;
-            var program = new JulcCompiler().compile(source).program();
+            assertReferenceEqualityRejected(source);
+            var program = javaParser().compile(source).program();
             var result = vm.evaluateWithArgs(program, List.of(simpleCtx()));
             assertTrue(result.isSuccess(), "Data == Data should use EqualsData. Got: " + result);
         }
@@ -1334,7 +1353,7 @@ class TypeMethodsTest {
                             TxInfo txInfo = ctx.txInfo();
                             var sigs = txInfo.signatories();
                             var second = sigs.tail().head();
-                            return second == second;
+                            return second.equals(second);
                         }
                     }
                     """;

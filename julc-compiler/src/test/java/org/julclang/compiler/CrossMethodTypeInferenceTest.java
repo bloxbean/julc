@@ -12,6 +12,20 @@ import static org.junit.jupiter.api.Assertions.*;
 class CrossMethodTypeInferenceTest {
 
     /**
+     * The JavaParser frontend, which lowers {@code ==} on references to value equality (ADR-062 T3, T4). From ADR-068 M5 it
+     * is selected explicitly; it is removed at M6.
+     */
+    private static JulcCompiler javaParser() {
+        return new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER));
+    }
+
+    /** On javac, the default from ADR-068 M5, {@code ==} between references is reference equality: {@code JULC0086} (D6). */
+    private static void assertReferenceEqualityRejected(String source) {
+        var e = assertThrows(CompilerException.class, () -> new JulcCompiler().compile(source));
+        assertEquals("JULC0086", e.diagnostics().getFirst().code(), e.getMessage());
+    }
+
+    /**
      * Helper with long param + == comparison should use EqualsInteger.
      */
     @Test
@@ -67,7 +81,10 @@ class CrossMethodTypeInferenceTest {
                     }
                 }
                 """;
-        var result = new JulcCompiler().compileWithDetails(source);
+        assertReferenceEqualityRejected(source);
+        // javac compiles the Java form, a.equals(b), to the same builtin.
+        assertTrue(new JulcCompiler().compileWithDetails(source.replace("a == b", "a.equals(b)")).pirFormatted().contains("equalsInteger"));
+        var result = javaParser().compileWithDetails(source);
         assertNotNull(result.program());
         assertFalse(result.hasErrors());
         var pir = result.pirFormatted();
@@ -98,7 +115,8 @@ class CrossMethodTypeInferenceTest {
                     }
                 }
                 """;
-        var result = new JulcCompiler().compileWithDetails(source);
+        assertReferenceEqualityRejected(source);
+        var result = javaParser().compileWithDetails(source);
         assertNotNull(result.program());
         assertFalse(result.hasErrors());
         var pir = result.pirFormatted();
@@ -258,7 +276,10 @@ class CrossMethodTypeInferenceTest {
                     }
                 }
                 """;
-        var result = new JulcCompiler().compileWithDetails(source);
+        assertReferenceEqualityRejected(source);
+        // javac compiles the Java form, datum.equals(redeemer), to the same builtin.
+        assertTrue(new JulcCompiler().compileWithDetails(source.replace("datum == redeemer", "datum.equals(redeemer)")).pirFormatted().contains("equalsInteger"));
+        var result = javaParser().compileWithDetails(source);
         assertNotNull(result.program());
         assertFalse(result.hasErrors());
     }
@@ -285,7 +306,10 @@ class CrossMethodTypeInferenceTest {
                     }
                 }
                 """;
-        var result = new JulcCompiler().compileWithDetails(source);
+        assertReferenceEqualityRejected(source);
+        // javac compiles the Java form, a.equals(b), to the same builtin.
+        assertTrue(new JulcCompiler().compileWithDetails(source.replace("a == b", "a.equals(b)")).pirFormatted().contains("equalsString"));
+        var result = javaParser().compileWithDetails(source);
         assertNotNull(result.program());
         assertFalse(result.hasErrors());
         var pir = result.pirFormatted();

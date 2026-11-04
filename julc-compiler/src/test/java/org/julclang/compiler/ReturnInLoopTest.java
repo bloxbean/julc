@@ -277,7 +277,7 @@ class ReturnInLoopTest {
                         JulcList<PlutusData> items = (JulcList<PlutusData>) (Object) redeemer;
                         boolean found = false;
                         for (var item : items) {
-                            if (item == redeemer) {
+                            if (item.equals(redeemer)) {
                                 return true;
                             }
                             found = true;
@@ -308,7 +308,7 @@ class ReturnInLoopTest {
                         JulcList<PlutusData> items = (JulcList<PlutusData>) (Object) redeemer;
                         boolean found = false;
                         for (var item : items) {
-                            if (item == redeemer) {
+                            if (item.equals(redeemer)) {
                                 found = true;
                                 break;
                             }

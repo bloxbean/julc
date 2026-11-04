@@ -82,7 +82,7 @@ class HelperMethodTest {
 
                 @Entrypoint
                 static boolean validate(BigInteger datum, BigInteger redeemer, PlutusData ctx) {
-                    return add(datum, redeemer) == sub(datum, redeemer);
+                    return add(datum, redeemer).equals(sub(datum, redeemer));
                 }
             }
             """;
@@ -186,7 +186,7 @@ class HelperMethodTest {
 
                 @Entrypoint
                 static boolean validate(BigInteger datum, BigInteger redeemer, PlutusData ctx) {
-                    return abs(datum) == abs(redeemer);
+                    return abs(datum).equals(abs(redeemer));
                 }
             }
             """;
@@ -235,7 +235,7 @@ class HelperMethodTest {
 
                 @Entrypoint
                 static boolean validate(BigInteger redeemer, PlutusData ctx) {
-                    return redeemer == magicNumber();
+                    return redeemer.equals(magicNumber());
                 }
             }
             """;
@@ -259,7 +259,7 @@ class HelperMethodTest {
 
                 @Entrypoint
                 static boolean validate(BigInteger datum, BigInteger redeemer, PlutusData ctx) {
-                    return datum.compareTo(BigInteger.ZERO) > 0 ? double_(datum) == redeemer : false;
+                    return datum.compareTo(BigInteger.ZERO) > 0 ? double_(datum).equals(redeemer) : false;
                 }
             }
             """;
@@ -280,7 +280,7 @@ class HelperMethodTest {
             class MyValidator {
                 @Entrypoint
                 static boolean validate(BigInteger datum, BigInteger redeemer, PlutusData ctx) {
-                    return datum == redeemer;
+                    return datum.equals(redeemer);
                 }
             }
             """;

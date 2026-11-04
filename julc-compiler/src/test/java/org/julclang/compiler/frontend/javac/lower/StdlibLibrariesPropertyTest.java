@@ -46,7 +46,7 @@ class StdlibLibrariesPropertyTest {
 
     private static List<JulcEval> frontends(String library) {
         String source = JavacLibrariesTest.stdlibSource(library);
-        return List.of(JulcEval.forSource(source), JulcEval.forSource(source).frontend(CompilerFrontend.JAVAC));
+        return List.of(JulcEval.forSource(source).frontend(CompilerFrontend.JAVAPARSER), JulcEval.forSource(source).frontend(CompilerFrontend.JAVAC));
     }
 
     private static <T> void agrees(List<JulcEval> evals, T expected, Function<CallResult, T> read, String method, Object... arguments) {

@@ -545,7 +545,8 @@ class LoopDesugarTest {
                         var txInfo = ctx.txInfo();
                         boolean paid = false;
                         for (var output : txInfo.outputs()) {
-                            if (output.value().equals(redeemer)) {
+                            // A Value never equals a byte[] in Java (JULC0078 on javac, ADR-068 r17): test the amount.
+                            if (output.value().lovelaceOf().signum() > 0) {
                                 paid = true;
                                 break;
                             }
@@ -608,7 +609,7 @@ class LoopDesugarTest {
                 @SpendingValidator
                 class TwoAccNoBreak {
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, ScriptContext ctx) {
+                    static boolean validate(PubKeyHash redeemer, ScriptContext ctx) {
                         var txInfo = ctx.txInfo();
                         boolean found = false;
                         BigInteger count = BigInteger.ZERO;
@@ -639,7 +640,7 @@ class LoopDesugarTest {
                 @SpendingValidator
                 class TwoAccWithBreak {
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, ScriptContext ctx) {
+                    static boolean validate(PubKeyHash redeemer, ScriptContext ctx) {
                         var txInfo = ctx.txInfo();
                         boolean found = false;
                         BigInteger index = BigInteger.ZERO;
@@ -685,7 +686,7 @@ class LoopDesugarTest {
                             }
                             total = total.add(BigInteger.ONE);
                         }
-                        return total == BigInteger.ZERO;
+                        return total.equals(BigInteger.ZERO);
                     }
                 }
                 """;
@@ -715,7 +716,7 @@ class LoopDesugarTest {
                             }
                             total = total.add(count);
                         }
-                        return total == BigInteger.ZERO;
+                        return total.equals(BigInteger.ZERO);
                     }
                 }
                 """;
@@ -744,7 +745,7 @@ class LoopDesugarTest {
                             }
                             outer = outer.add(BigInteger.ONE);
                         }
-                        return outer == datum;
+                        return outer.equals(datum);
                     }
                 }
                 """;
@@ -926,7 +927,7 @@ class LoopDesugarTest {
                         while (k.compareTo(BigInteger.ZERO) > 0) {
                             k = k.subtract(BigInteger.ONE);
                         }
-                        return k == BigInteger.ZERO;
+                        return k.equals(BigInteger.ZERO);
                     }
                 }
                 """;
@@ -1001,12 +1002,12 @@ class LoopDesugarTest {
                     static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         BigInteger k = BigInteger.valueOf(10);
                         while (k.compareTo(BigInteger.ZERO) > 0) {
-                            if (k == BigInteger.valueOf(5)) {
+                            if (k.equals(BigInteger.valueOf(5))) {
                                 break;
                             }
                             k = k.subtract(BigInteger.ONE);
                         }
-                        return k == BigInteger.valueOf(5);
+                        return k.equals(BigInteger.valueOf(5));
                     }
                 }
                 """;
@@ -1075,7 +1076,7 @@ class LoopDesugarTest {
                         while (k.compareTo(BigInteger.ZERO) > 0) {
                             k = k.subtract(BigInteger.ONE);
                         }
-                        return k == BigInteger.ZERO;
+                        return k.equals(BigInteger.ZERO);
                     }
                 }
                 """;
@@ -1105,7 +1106,7 @@ class LoopDesugarTest {
                             sum = sum.add(k);
                             k = k.subtract(BigInteger.ONE);
                         }
-                        return sum == BigInteger.valueOf(15);
+                        return sum.equals(BigInteger.valueOf(15));
                     }
                 }
                 """;
@@ -1131,12 +1132,12 @@ class LoopDesugarTest {
                     static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         BigInteger k = BigInteger.valueOf(10);
                         while (k.compareTo(BigInteger.ZERO) > 0) {
-                            if (k == BigInteger.valueOf(5)) {
+                            if (k.equals(BigInteger.valueOf(5))) {
                                 break;
                             }
                             k = k.subtract(BigInteger.ONE);
                         }
-                        return k == BigInteger.valueOf(5);
+                        return k.equals(BigInteger.valueOf(5));
                     }
                 }
                 """;
@@ -1165,7 +1166,7 @@ class LoopDesugarTest {
                             k = k.subtract(BigInteger.ONE);
                         }
                         BigInteger result = k.add(BigInteger.valueOf(100));
-                        return result == BigInteger.valueOf(100);
+                        return result.equals(BigInteger.valueOf(100));
                     }
                 }
                 """;
@@ -1194,7 +1195,7 @@ class LoopDesugarTest {
                         boolean found = false;
                         BigInteger k = BigInteger.valueOf(5);
                         while (k.compareTo(BigInteger.ZERO) > 0) {
-                            if (k == BigInteger.valueOf(3)) {
+                            if (k.equals(BigInteger.valueOf(3))) {
                                 found = true;
                             }
                             k = k.subtract(BigInteger.ONE);
@@ -1227,13 +1228,13 @@ class LoopDesugarTest {
                         boolean found = false;
                         BigInteger k = BigInteger.valueOf(5);
                         while (k.compareTo(BigInteger.ZERO) > 0) {
-                            found = k == BigInteger.valueOf(3);
+                            found = k.equals(BigInteger.valueOf(3));
                             if (found) {
                                 break;
                             }
                             k = k.subtract(BigInteger.ONE);
                         }
-                        return found && k == BigInteger.valueOf(3);
+                        return found && k.equals(BigInteger.valueOf(3));
                     }
                 }
                 """;
@@ -1291,7 +1292,7 @@ class LoopDesugarTest {
                             }
                             i = i.add(BigInteger.ONE);
                         }
-                        return sum == BigInteger.valueOf(99);
+                        return sum.equals(BigInteger.valueOf(99));
                     }
                 }
                 """;
@@ -1416,7 +1417,7 @@ class LoopDesugarTest {
                         while (i.compareTo(size) < 0 && !found) {
                             BigInteger j = i.add(BigInteger.ONE);
                             while (j.compareTo(size) < 0 && !found) {
-                                if (i == j) {
+                                if (i.equals(j)) {
                                     found = true;
                                 }
                                 j = j.add(BigInteger.ONE);
@@ -1453,7 +1454,7 @@ class LoopDesugarTest {
                         while (i.compareTo(BigInteger.valueOf(3)) < 0) {
                             BigInteger j = BigInteger.ZERO;
                             while (j.compareTo(BigInteger.valueOf(5)) < 0) {
-                                if (j == BigInteger.valueOf(2)) {
+                                if (j.equals(BigInteger.valueOf(2))) {
                                     break;
                                 }
                                 j = j.add(BigInteger.ONE);
@@ -1461,7 +1462,7 @@ class LoopDesugarTest {
                             outerSum = outerSum.add(j);
                             i = i.add(BigInteger.ONE);
                         }
-                        return outerSum == BigInteger.valueOf(6);
+                        return outerSum.equals(BigInteger.valueOf(6));
                     }
                 }
                 """;
@@ -1524,7 +1525,7 @@ class LoopDesugarTest {
                             }
                             i = i.add(BigInteger.ONE);
                         }
-                        return sum == BigInteger.valueOf(444);
+                        return sum.equals(BigInteger.valueOf(444));
                     }
                 }
                 """;
@@ -1568,7 +1569,7 @@ class LoopDesugarTest {
                             }
                             i = i.add(BigInteger.ONE);
                         }
-                        return count == BigInteger.valueOf(16);
+                        return count.equals(BigInteger.valueOf(16));
                     }
                 }
                 """;
@@ -1636,7 +1637,7 @@ class LoopDesugarTest {
                             while (j.compareTo(BigInteger.valueOf(5)) < 0) {
                                 BigInteger k = BigInteger.ZERO;
                                 while (k.compareTo(BigInteger.valueOf(10)) < 0) {
-                                    if (k == BigInteger.valueOf(3)) {
+                                    if (k.equals(BigInteger.valueOf(3))) {
                                         break;
                                     }
                                     k = k.add(BigInteger.ONE);
@@ -1646,7 +1647,7 @@ class LoopDesugarTest {
                             }
                             i = i.add(BigInteger.ONE);
                         }
-                        return outerSum == BigInteger.valueOf(45);
+                        return outerSum.equals(BigInteger.valueOf(45));
                     }
                 }
                 """;
@@ -1688,7 +1689,7 @@ class LoopDesugarTest {
                             }
                             i = i.add(BigInteger.ONE);
                         }
-                        return total == BigInteger.valueOf(248);
+                        return total.equals(BigInteger.valueOf(248));
                     }
                 }
                 """;
@@ -1743,11 +1744,11 @@ class LoopDesugarTest {
                         BigInteger k = BigInteger.valueOf(10);
                         while (k.compareTo(BigInteger.ZERO) > 0) {
                             k = k.subtract(BigInteger.ONE);
-                            if (k == BigInteger.valueOf(3)) {
+                            if (k.equals(BigInteger.valueOf(3))) {
                                 k = BigInteger.ZERO;
                             }
                         }
-                        return k == BigInteger.ZERO;
+                        return k.equals(BigInteger.ZERO);
                     }
                 }
                 """;
@@ -1782,7 +1783,7 @@ class LoopDesugarTest {
                             }
                             k = k.subtract(BigInteger.ONE);
                         }
-                        return k == BigInteger.ZERO;
+                        return k.equals(BigInteger.ZERO);
                     }
                 }
                 """;
@@ -1817,7 +1818,7 @@ class LoopDesugarTest {
                             }
                             k = k.subtract(BigInteger.ONE);
                         }
-                        return k == BigInteger.ZERO;
+                        return k.equals(BigInteger.ZERO);
                     }
                 }
                 """;
@@ -1844,12 +1845,12 @@ class LoopDesugarTest {
                     static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         BigInteger k = BigInteger.valueOf(5);
                         while (k.compareTo(BigInteger.ZERO) > 0) {
-                            if (k == BigInteger.valueOf(3)) {
+                            if (k.equals(BigInteger.valueOf(3))) {
                                 k = BigInteger.valueOf(-1);
                             }
                             k = k.subtract(BigInteger.ONE);
                         }
-                        return k == BigInteger.valueOf(-2);
+                        return k.equals(BigInteger.valueOf(-2));
                     }
                 }
                 """;
@@ -1879,7 +1880,7 @@ class LoopDesugarTest {
                     static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         BigInteger k = BigInteger.valueOf(10);
                         while (k.compareTo(BigInteger.ZERO) > 0) {
-                            if (k == BigInteger.valueOf(5)) {
+                            if (k.equals(BigInteger.valueOf(5))) {
                                 k = BigInteger.valueOf(-100);
                             }
                             if (k.compareTo(BigInteger.ZERO) < 0) {
@@ -1887,7 +1888,7 @@ class LoopDesugarTest {
                             }
                             k = k.subtract(BigInteger.ONE);
                         }
-                        return k == BigInteger.valueOf(-100);
+                        return k.equals(BigInteger.valueOf(-100));
                     }
                 }
                 """;
@@ -1925,7 +1926,7 @@ class LoopDesugarTest {
                             }
                             k = k.subtract(BigInteger.ONE);
                         }
-                        return k == BigInteger.ZERO;
+                        return k.equals(BigInteger.ZERO);
                     }
                 }
                 """;

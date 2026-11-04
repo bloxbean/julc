@@ -1,5 +1,6 @@
 package org.julclang.difftest;
 
+import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.LedgerTypeProvider;
@@ -67,7 +68,7 @@ class Adr068GateTimingTest {
 
     static void compile(Sample s) {
         var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(),
-                new CompilerOptions().setJavacGate(JavacGateMode.OFF).setLogger(m -> { }));
+                new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.OFF).setLogger(m -> { }));
         var result = s.entry().equals("compileMethod") ? compiler.compileMethod(s.main(), s.method(), s.libraries())
                 : compiler.compile(s.main(), s.libraries());
         if (result.hasErrors()) throw new IllegalStateException("rejected");
@@ -157,7 +158,7 @@ class Adr068GateTimingTest {
         public static void main(String[] args) throws Exception {
             if (args[0].equals("metadata")) {
                 long t0 = System.nanoTime();
-                new LedgerTypeProvider().types();
+                new LedgerTypeProvider(new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).types();
                 System.out.printf(Locale.ROOT, "%.0f%n", (System.nanoTime() - t0) / 1e6);
                 return;
             }
@@ -165,7 +166,7 @@ class Adr068GateTimingTest {
             for (int i = 3; i < args.length; i++) libraries.add(Files.readString(Path.of(args[i])));
             var s = new Sample(args[0], args[1], Files.readString(Path.of(args[2])), libraries);
             long t0 = System.nanoTime();
-            var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setLogger(m -> { }));
+            var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setLogger(m -> { }));
             var result = s.entry().equals("compileMethod") ? compiler.compileMethod(s.main(), s.method(), s.libraries())
                     : compiler.compile(s.main(), s.libraries());
             long t1 = System.nanoTime();

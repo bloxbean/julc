@@ -1,5 +1,6 @@
 package org.julclang.compiler.frontend.javac;
 
+import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompileResult;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerOptions;
@@ -71,7 +72,7 @@ class JavacGateTest {
             """;
 
     static JulcCompiler compiler(JavacGateMode mode) {
-        return new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setJavacGate(mode));
+        return new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(mode));
     }
 
     static byte[] flat(CompileResult result) {
@@ -90,10 +91,10 @@ class JavacGateTest {
         String saved = System.getProperty(JavacGate.MODE_PROPERTY);
         try {
             System.clearProperty(JavacGate.MODE_PROPERTY);
-            assertEquals(JavacGateMode.ENFORCE, JavacGate.mode(new CompilerOptions()));
+            assertEquals(JavacGateMode.ENFORCE, JavacGate.mode(new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)));
             System.setProperty(JavacGate.MODE_PROPERTY, "report");
             assertEquals(JavacGateMode.REPORT, JavacGate.mode(null));
-            assertEquals(JavacGateMode.OFF, JavacGate.mode(new CompilerOptions().setJavacGate(JavacGateMode.OFF)));
+            assertEquals(JavacGateMode.OFF, JavacGate.mode(new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.OFF)));
             System.setProperty(JavacGate.MODE_PROPERTY, "sometimes");
             assertThrows(IllegalArgumentException.class, () -> JavacGate.mode(null));
         } finally {
@@ -136,10 +137,10 @@ class JavacGateTest {
     void reportAndOffCompileDialectToTheSameBytesAtEveryLevel() {
         for (var level : OptimizationLevel.values()) {
             Function<JavacGateMode, byte[]> bytes = mode -> flat(new JulcCompiler(StdlibRegistry.defaultRegistry(),
-                    new CompilerOptions().setJavacGate(mode).setOptimizationLevel(level)).compile(DIALECT_VALIDATOR));
+                    new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(mode).setOptimizationLevel(level)).compile(DIALECT_VALIDATOR));
             assertArrayEquals(bytes.apply(JavacGateMode.OFF), bytes.apply(JavacGateMode.REPORT), level.name());
             Function<JavacGateMode, byte[]> method = mode -> flat(new JulcCompiler(StdlibRegistry.defaultRegistry(),
-                    new CompilerOptions().setJavacGate(mode).setOptimizationLevel(level))
+                    new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(mode).setOptimizationLevel(level))
                     .compileMethod(DIALECT_METHOD, "twice"));
             assertArrayEquals(method.apply(JavacGateMode.OFF), method.apply(JavacGateMode.REPORT), level.name());
         }
@@ -183,9 +184,9 @@ class JavacGateTest {
     @Test
     void offRunsNoJavac() {
         assertNull(JavacGate.check("compile", List.of(JavacFrontend.Unit.of(DIALECT_METHOD)), List.of(),
-                new CompilerOptions().setJavacGate(JavacGateMode.OFF)));
+                new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.OFF)));
         assertFalse(JavacGate.check("compile", List.of(JavacFrontend.Unit.of(DIALECT_METHOD)), List.of(),
-                new CompilerOptions().setJavacGate(JavacGateMode.REPORT)).isAccepted());
+                new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.REPORT)).isAccepted());
     }
 
     @Test
@@ -240,7 +241,7 @@ class JavacGateTest {
                 @OnchainLibrary
                 public class Unreferenced { public static BigInteger two() { return 2; } }
                 """;
-        var enforce = new CompilerOptions().setJavacGate(JavacGateMode.ENFORCE);
+        var enforce = new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.ENFORCE);
         assertDoesNotThrow(() -> new JavaLibraryProvider(List.of(used), StdlibRegistry.defaultRegistry(), enforce));
         var e = assertThrows(CompilerException.class,
                 () -> new JavaLibraryProvider(List.of(used, unreferenced), StdlibRegistry.defaultRegistry(), enforce));
@@ -248,19 +249,19 @@ class JavacGateTest {
         assertEquals("Unreferenced.java", e.diagnostics().getFirst().fileName());
         // Report mode: the provider is built as before.
         var report = new JavaLibraryProvider(List.of(used, unreferenced), StdlibRegistry.defaultRegistry(),
-                new CompilerOptions().setJavacGate(JavacGateMode.REPORT));
+                new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.REPORT));
         assertFalse(report.describe("com.example.Unreferenced").isEmpty());
     }
 
     @Test
     void emptyProviderBuildsTheMetadataTaskAndKeepsItsMetadata() {
-        var off = new JavaLibraryProvider(List.of(), null, new CompilerOptions().setJavacGate(JavacGateMode.OFF));
+        var off = new JavaLibraryProvider(List.of(), null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.OFF));
         var enforce = new JavaLibraryProvider(List.of(), null,
-                new CompilerOptions().setJavacGate(JavacGateMode.ENFORCE));
+                new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.ENFORCE));
         assertEquals(off.types(), enforce.types());
         assertEquals(off.namedDefinitions(), enforce.namedDefinitions());
         assertTrue(enforce.describe("com.example.Used").isEmpty());
-        assertNotNull(JavacGate.metadata(new CompilerOptions().setJavacGate(JavacGateMode.ENFORCE)));
-        assertNull(JavacGate.metadata(new CompilerOptions().setJavacGate(JavacGateMode.OFF)));
+        assertNotNull(JavacGate.metadata(new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.ENFORCE)));
+        assertNull(JavacGate.metadata(new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.OFF)));
     }
 }

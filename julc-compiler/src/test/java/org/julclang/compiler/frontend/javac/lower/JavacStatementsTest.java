@@ -283,7 +283,7 @@ class JavacStatementsTest {
     }
 
     private static void rejectedWith(String members, String message) {
-        var reference = assertThrows(CompilerException.class, () -> new JulcCompiler().compileMethod(source(SUM + members), "m", List.of()));
+        var reference = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod(source(SUM + members), "m", List.of()));
         assertTrue(reference.getMessage().contains(message), reference::getMessage);
         var failure = javac(SUM + members);
         assertFalse(failure instanceof NotPorted, failure::getMessage);

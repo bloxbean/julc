@@ -206,7 +206,9 @@ class LoopFieldUpdateTest {
         // Java reads the field before the local is declared and after the local's block ends.
         rejected("static long K = 0; static long helper(long v) { long a = K; long K = 7; return a + K; }\n" + ENTRY_UPDATES_K,
                 "'helper' reads it");
-        rejected("static long K = 0; static long helper(long v) { long a = 0; if (v > 0) { long K = 7; a = K; } return a + K; }\n"
+        // ADR-068 D13 (F946): the reference collects the reassignment of 'a' (JULC0061) and goes on to this rule, and javac's
+        // frontend, the default from M5, stops at the first; so the block that ends is written without a second error.
+        rejected("static long K = 0; static long helper(long v) { if (v > 0) { long K = 7; return K; } return K; }\n"
                 + ENTRY_UPDATES_K, "'helper' reads it");
         // Whichever method is generated first, the error points at the loop assignment. The class
         // body starts on line 4.

@@ -332,8 +332,10 @@ class BinderNameIndependenceTest {
     }
 
     private static CompileResult compile(Adr060Corpus.Entry entry, OptimizationLevel level, boolean maps) {
+        // The renames are made on JavaParser's tree, so the programs compile on the JavaParser frontend, selected explicitly
+        // from ADR-068 M5; M6 ports this guard to javac's trees (068-m6a-tools.md, step 6).
         var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), Adr060Corpus.dialectGate(new CompilerOptions()
-                .setOptimizationLevel(level).setSourceMapEnabled(maps)
+                .setFrontend(CompilerFrontend.JAVAPARSER).setOptimizationLevel(level).setSourceMapEnabled(maps)
                 .setOptimizationCostProfile(OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1), entry.source()));
         try {
             var result = entry.validator() ? compiler.compileWithDetails(entry.source())

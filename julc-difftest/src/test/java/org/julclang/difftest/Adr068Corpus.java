@@ -1,5 +1,6 @@
 package org.julclang.difftest;
 
+import org.julclang.compiler.CompilerFrontend;
 import java.util.regex.Pattern;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JulcCompiler;
@@ -246,7 +247,7 @@ final class Adr068Corpus {
 
     /** Adds (or tags) a case built the way the entry point would record it. */
     Case add(String tag, String entry, String method, String lookup, Source main, List<Source> libraries) {
-        var options = new CompilerOptions();
+        var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER);
         String text = CorpusRecorder.caseText(entry, method, lookup, CorpusRecorder.Options.of(options),
                 main == null ? null : main.ref(),
                 libraries.stream().map(Source::ref).toList());

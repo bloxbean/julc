@@ -130,7 +130,7 @@ final class Adr068Types {
         String referenceRejection = null, javacRejection = null;
         JavaLibraryProvider reference = null, javac = null;
         try {
-            reference = new JavaLibraryProvider(sources, lookup, new CompilerOptions().setJavacGate(JavacGateMode.OFF));
+            reference = new JavaLibraryProvider(sources, lookup, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.OFF));
         } catch (RuntimeException e) {
             referenceRejection = message(e);
         }

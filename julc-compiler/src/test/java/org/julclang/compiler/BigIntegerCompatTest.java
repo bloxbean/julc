@@ -353,7 +353,14 @@ class BigIntegerCompatTest {
                         }
                     }
                     """;
-            var compiler = new JulcCompiler();
+            // ADR-068 M5: on javac, the default, byte[].equals is Object.equals, identity on the JVM: JULC0087, whose fix
+            // names Builtins.equalsByteString and the way back to the JavaParser frontend, which this test is about.
+            var rejected = assertThrows(CompilerException.class, () -> new JulcCompiler().compile(source));
+            var diagnostic = rejected.diagnostics().getFirst();
+            assertEquals("JULC0087", diagnostic.code(), rejected.getMessage());
+            assertTrue(diagnostic.suggestion().contains("Builtins.equalsByteString(a, b)"), diagnostic.suggestion());
+            assertTrue(diagnostic.suggestion().contains("--frontend javaparser"), diagnostic.suggestion());
+            var compiler = new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER));
             var program = compiler.compile(source).program();
 
             var pkh = new byte[]{1, 2, 3, 4, 5};

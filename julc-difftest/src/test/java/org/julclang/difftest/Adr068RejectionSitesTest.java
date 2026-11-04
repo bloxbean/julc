@@ -1,5 +1,7 @@
 package org.julclang.difftest;
 
+import org.julclang.compiler.CompilerFrontend;
+import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.stdlib.StdlibRegistry;
 import org.junit.jupiter.api.Test;
@@ -38,7 +40,7 @@ class Adr068RejectionSitesTest {
             String source = "import java.math.BigInteger;\nimport java.util.*;\n"
                     + "class F { static BigInteger m(" + type + " x) { return BigInteger.ONE; } }\n";
             try {
-                new JulcCompiler(StdlibRegistry.defaultRegistry()).compileMethod(source, "m");
+                new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod(source, "m");
                 fail(type + " compiled");
             } catch (RuntimeException e) {
                 for (var d : Adr068Ledger.rejection(e).diagnostics()) {

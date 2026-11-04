@@ -103,7 +103,7 @@ final class Adr060Corpus {
     }
 
     static CompileResult compile(Entry entry, OptimizationLevel level, boolean maps) {
-        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), dialectGate(new CompilerOptions()
+        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), dialectGate(new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)
                 .setOptimizationLevel(level).setSourceMapEnabled(maps)
                 .setOptimizationCostProfile(OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1), entry.source()));
         return entry.validator() ? compiler.compile(entry.source()) : compiler.compileMethod(entry.source(), entry.method());

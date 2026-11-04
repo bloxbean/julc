@@ -19,7 +19,7 @@ class CrossLibraryTypeWarningTest {
      * library takes {@code PlutusData}), which javac rejects; tested on the JavaParser frontend with the gate off.
      */
     private static JulcCompiler dialectCompiler() {
-        return new JulcCompiler(null, new CompilerOptions().setJavacGate(JavacGateMode.OFF));
+        return new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.OFF));
     }
 
     @Test

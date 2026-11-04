@@ -393,8 +393,10 @@ class IfLoopContinuationTest {
                 assertTrue(error.getMessage().contains("t"), error.getMessage());
                 assertFalse(error.getMessage().matches("(?s).*t'[0-9]+.*"), error.getMessage());
                 if (declaration.equals("BigInteger t;")) {
-                    assertTrue(error.getMessage().contains("Variable must be initialized: t."), error.getMessage());
-                    assertTrue(error.getMessage().contains("var t = BigInteger.ZERO;"), error.getMessage());
+                    // javac's frontend, the default from ADR-068 M5, gives JULC0002 the words without the reference's full stop.
+                    assertTrue(error.getMessage().contains("Variable must be initialized: t"), error.getMessage());
+                    // The catalog's fix, which shows the form with a placeholder name; the reference wrote `var t = ...`.
+                    assertTrue(error.getMessage().contains("Initialize at declaration"), error.getMessage());
                 } else {
                     // javac rejects the G1 element where a BigInteger is declared first (ADR-068 I2b).
                     assertTrue(error.getMessage().contains("JULC0085")

@@ -1,5 +1,6 @@
 package org.julclang.difftest;
 
+import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.OptimizationLevel;
@@ -213,7 +214,7 @@ final class Adr068Evaluations {
     }
 
     private static Program compile(Adr068Corpus.Case c, OptimizationLevel level) {
-        var options = new CompilerOptions().setOptimizationLevel(level).setSourceMapEnabled(c.sourceMap).setLogger(m -> { });
+        var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setOptimizationLevel(level).setSourceMapEnabled(c.sourceMap).setLogger(m -> { });
         c.disabledRules.forEach(options::disableOptimizationRule);
         var lookup = c.lookup.equals("none") ? null : StdlibRegistry.defaultRegistry();
         var compiler = new JulcCompiler(lookup, options);

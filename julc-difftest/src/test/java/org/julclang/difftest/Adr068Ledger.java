@@ -1,5 +1,6 @@
 package org.julclang.difftest;
 
+import org.julclang.compiler.CompilerFrontend;
 import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.CompilationUnitTree;
 import com.sun.source.util.JavacTask;
@@ -244,7 +245,7 @@ final class Adr068Ledger {
     static CompilerOptions options(Adr068Corpus.Case c, OptimizationLevel level, boolean sourceMap) {
         // The reference rows are the JavaParser frontend's: the javac gate, enforcing by default since M1b, stays off
         // (-Padr068.gate=enforce gives M1b's byte-identity check the same cases with the gate on).
-        var options = new CompilerOptions().setOptimizationLevel(level).setSourceMapEnabled(sourceMap)
+        var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setOptimizationLevel(level).setSourceMapEnabled(sourceMap)
                 .setJavacGate(GATE).setLogger(message -> { });
         c.disabledRules.forEach(options::disableOptimizationRule);
         if (c.costProfile != null) options.setOptimizationCostProfile(OptimizationCostProfiles.forId(c.costProfile.split(" ")[0]));
@@ -434,7 +435,7 @@ final class Adr068Ledger {
      * of the types it declares, as one digest.
      */
     private void precomputeLedgerTypes() {
-        var provider = new JavaLibraryProvider(List.of(), null, new CompilerOptions().setLogger(m -> { }));
+        var provider = new JavaLibraryProvider(List.of(), null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setLogger(m -> { }));
         for (var c : corpus.sorted()) {
             if (!c.entry.equals("ledger-source")) continue;
             var declared = declaredTypes(List.of(c.main));

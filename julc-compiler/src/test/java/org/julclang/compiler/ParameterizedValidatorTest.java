@@ -545,7 +545,7 @@ class ParameterizedValidatorTest {
                 }
                 """;
         // ADR-068 M1b: the implicit bytes-to-Data encoding at the call is the subject, and it is not Java (U4).
-        var result = new JulcCompiler(null, new CompilerOptions().setJavacGate(JavacGateMode.OFF))
+        var result = new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.OFF))
                 .compile(validatorSource, java.util.List.of(libSource));
         assertTrue(result.isParameterized());
 

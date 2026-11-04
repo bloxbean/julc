@@ -142,7 +142,7 @@ class JavacTypesTest {
 
         @Test
         void providerOutputEqualsTheJavaParserPath() {
-            var reference = new LedgerTypeProvider();
+            var reference = new LedgerTypeProvider(new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER));
             var javac = new LedgerTypeProvider(new CompilerOptions().setFrontend(CompilerFrontend.JAVAC));
             assertEquals(new TreeMap<>(reference.types()), new TreeMap<>(javac.types()));
             assertEquals(List.copyOf(reference.types().keySet()), List.copyOf(javac.types().keySet()), "iteration order");
@@ -843,8 +843,17 @@ class JavacTypesTest {
         private static final CompilerOptions JAVAC = new CompilerOptions().setFrontend(CompilerFrontend.JAVAC);
 
         @Test
-        void theDefaultIsJavaParser() {
-            assertEquals(CompilerFrontend.JAVAPARSER, new CompilerOptions().getFrontend());
+        void theDefaultIsJavac() {
+            // ADR-068 M5: javac is the default; JavaParser is selected only explicitly, until M6.
+            assertEquals(CompilerFrontend.JAVAC, new CompilerOptions().getFrontend());
+            assertEquals(CompilerFrontend.JAVAC, CompilerFrontend.DEFAULT);
+            // What javac's frontend stops at names the way back to the JavaParser frontend until M6.
+            for (var info : List.of(DiagnosticCodes.FRONTEND_CONSTRUCT_NOT_PORTED, DiagnosticCodes.ARRAY_EQUALS_UNSUPPORTED)) {
+                assertTrue(info.fix().contains("--frontend javaparser"), info.fix());
+                assertTrue(info.fix().contains("CompilerFrontend.JAVAPARSER"), info.fix());
+            }
+            assertTrue(DiagnosticCodes.ARRAY_EQUALS_UNSUPPORTED.fix().contains("Builtins.equalsByteString(a, b)"));
+            assertTrue(DiagnosticCodes.ARRAY_EQUALS_UNSUPPORTED.fix().contains("ByteStringLib.equals(a, b)"));
         }
 
         /**
@@ -920,7 +929,7 @@ class JavacTypesTest {
         void sourceTheJavaParserFrontendRejectsNeverReachesIt() {
             String source = "class V { static String m() { return \"\\uD800\"; } }";
             var reference = assertThrows(CompilerException.class, () -> new JulcCompiler(null,
-                    new CompilerOptions().setJavacGate(JavacGateMode.OFF)).compileMethod(source, "m", List.of()));
+                    new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.OFF)).compileMethod(source, "m", List.of()));
             assertNotEquals(DiagnosticCodes.JAVAC_ERROR.code(), reference.diagnostics().isEmpty() ? null : reference.diagnostics().getFirst().code());
             var javac = assertThrows(CompilerException.class, () -> new JulcCompiler(null, JAVAC).compileMethod(source, "m", List.of()));
             assertEquals(DiagnosticCodes.STRING_LITERAL_UNPAIRED_SURROGATE.code(), javac.diagnostics().getFirst().code(), javac.getMessage());
@@ -978,7 +987,7 @@ class JavacTypesTest {
 
         @Test
         void aProvidersTypesEqualTheJavaParserPath() {
-            var reference = new JavaLibraryProvider(List.of(LIBRARY), null, new CompilerOptions().setJavacGate(JavacGateMode.OFF));
+            var reference = new JavaLibraryProvider(List.of(LIBRARY), null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.OFF));
             var javac = new JavaLibraryProvider(List.of(LIBRARY), null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC));
             assertEquals(new TreeMap<>(reference.types()), new TreeMap<>(javac.types()));
             assertEquals(new TreeMap<>(reference.namedDefinitions()), new TreeMap<>(javac.namedDefinitions()));
@@ -988,7 +997,7 @@ class JavacTypesTest {
         /** Group 3a: the exports are lowered, as the reference lowers them ({@code JavacExportsTest} compares them). */
         @Test
         void theExportsAreTheReferences() {
-            var reference = new JavaLibraryProvider(List.of(LIBRARY), null, new CompilerOptions().setJavacGate(JavacGateMode.OFF));
+            var reference = new JavaLibraryProvider(List.of(LIBRARY), null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.OFF));
             var javac = new JavaLibraryProvider(List.of(LIBRARY), null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC));
             assertEquals(reference.describe("lib.L"), javac.describe("lib.L"));
             assertEquals(reference.schemes("lib.L"), javac.schemes("lib.L"));

@@ -244,7 +244,7 @@ class SubsetRulesAtEveryEntryTest {
     }
 
     private static JulcCompiler compiler() {
-        return new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setSourceMapEnabled(true));
+        return new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setSourceMapEnabled(true));
     }
 
     private static int files;
@@ -393,7 +393,7 @@ class SubsetRulesAtEveryEntryTest {
                     return compiler.compileWithSiblings(validator);
                 }),
                 entry("compileMethod", (compiler, library) -> compiler.compileMethod(METHOD_CALLS_THE_LIBRARY, "m", List.of(library))),
-                entry("JavaLibraryProvider", (compiler, library) -> new JavaLibraryProvider(List.of(library), null, new CompilerOptions())));
+                entry("JavaLibraryProvider", (compiler, library) -> new JavaLibraryProvider(List.of(library), null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER))));
     }
 
     @ParameterizedTest(name = "{0}")
@@ -414,12 +414,12 @@ class SubsetRulesAtEveryEntryTest {
     }
 
     private static Executable compiling(JavacGateMode mode, String source) {
-        return () -> new JulcCompiler(null, new CompilerOptions().setJavacGate(mode)).compile(source);
+        return () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(mode)).compile(source);
     }
 
     @Test
     void theDefaultModeEnforces() {
-        assertEquals(JavacGateMode.ENFORCE, JavacGate.mode(new CompilerOptions()));
+        assertEquals(JavacGateMode.ENFORCE, JavacGate.mode(new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)));
     }
 
     @Test

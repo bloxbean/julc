@@ -58,7 +58,7 @@ class ConstantStringJoinsTest {
             "(\"a\" + \"b\") + s + (\"c\" + \"d\") | 2",
             "\"a\"                         | 0"})
     void aJoinOfConstantsWarnsOnBothFrontends(String expression, int warnings) {
-        var onDefault = joins(compile(expression, new CompilerOptions()));
+        var onDefault = joins(compile(expression, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)));
         assertEquals(warnings, onDefault.size());
         assertEquals(onDefault, joins(compile(expression, javac())));
     }
@@ -76,14 +76,14 @@ class ConstantStringJoinsTest {
                     @Entrypoint static boolean validate(PlutusData r, ScriptContext c) { return true; }
                 }
                 """;
-        var onDefault = joins(new JulcCompiler(null, new CompilerOptions()).compile(source, List.of()));
+        var onDefault = joins(new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compile(source, List.of()));
         assertEquals(1, onDefault.size());
         assertEquals(onDefault, joins(new JulcCompiler(null, javac()).compile(source, List.of())));
     }
 
     @Test
     void itSaysWhereAndWhatToWrite() {
-        var warning = joins(compile("\"a\" + \"b\"", new CompilerOptions())).getFirst();
+        var warning = joins(compile("\"a\" + \"b\"", new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER))).getFirst();
         assertEquals(CompilerDiagnostic.Level.WARNING, warning.level());
         assertEquals(3, warning.line());
         assertEquals("Write one string literal.", warning.suggestion());
@@ -92,13 +92,13 @@ class ConstantStringJoinsTest {
     /** The reference's cells are compared with the gate off, so the warning is the gate's to give. */
     @Test
     void itNeedsTheGateOnTheJavaParserFrontend() {
-        assertEquals(List.of(), joins(compile("\"a\" + \"b\"", new CompilerOptions().setJavacGate(JavacGateMode.OFF))));
+        assertEquals(List.of(), joins(compile("\"a\" + \"b\"", new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.OFF))));
     }
 
     @Test
     void itChangesNoScript() {
-        var off = compile("\"a\" + \"b\"", new CompilerOptions().setJavacGate(JavacGateMode.OFF));
-        var on = compile("\"a\" + \"b\"", new CompilerOptions());
+        var off = compile("\"a\" + \"b\"", new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.OFF));
+        var on = compile("\"a\" + \"b\"", new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER));
         assertEquals(off.pirTerm(), on.pirTerm());
     }
 
@@ -106,7 +106,7 @@ class ConstantStringJoinsTest {
     @Test
     void aComparisonOfConstantsDoesNotWarn() {
         var source = "class P { static boolean m() { return \"a\" == \"b\"; } }";
-        assertEquals(List.of(), joins(new JulcCompiler(null, new CompilerOptions()).compileMethod(source, "m", List.of())));
+        assertEquals(List.of(), joins(new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod(source, "m", List.of())));
     }
 
     @Test
@@ -117,7 +117,7 @@ class ConstantStringJoinsTest {
                     static String m() { return "c"; }
                 }
                 """;
-        assertEquals(List.of(), joins(new JulcCompiler(null, new CompilerOptions()).compileMethod(source, "m", List.of())));
+        assertEquals(List.of(), joins(new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod(source, "m", List.of())));
     }
 
     /** A tree of {@code +}: its constant subtrees are what warns, each counted at its top, whatever the shape. */
@@ -142,6 +142,6 @@ class ConstantStringJoinsTest {
 
     @Property(tries = 60)
     void eachMaximalConstantJoinWarnsOnce(@ForAll("joins") Join join) {
-        assertEquals(join.warnings(), joins(compile(join.text(), new CompilerOptions())).size(), join.text());
+        assertEquals(join.warnings(), joins(compile(join.text(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER))).size(), join.text());
     }
 }

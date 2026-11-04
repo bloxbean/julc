@@ -14,8 +14,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * ADR-068 D4: {@code julc { frontend = ... }}. The script from {@code javac} must equal the script from the default, and a
- * construct not ported must stop that frontend and not the default: the second proves the option reaches the compilation.
+ * ADR-068 D4: {@code julc { frontend = ... }}. The script from {@code javac} must equal the script from the reference
+ * ({@code javaparser}, selected explicitly), and a construct javac alone rejects must stop that frontend and not the
+ * reference: the second proves the option reaches the compilation. javac is the default from ADR-068 M5.
  * A blueprint needs a contract schema, which {@code javac} does not produce yet, so these turn it off.
  */
 class JulcPluginFrontendTest {
@@ -72,9 +73,9 @@ class JulcPluginFrontendTest {
     }
 
     @Test
-    void javacCompilesTheScriptTheDefaultDoes() throws IOException {
+    void javacCompilesTheScriptTheReferenceDoes() throws IOException {
         write("return ctx.txInfo().fee().compareTo(BigInteger.TWO) > 0;");
-        configure(null);
+        configure("javaparser");
         assertEquals(TaskOutcome.SUCCESS, runner().build().task(":compileJulc").getOutcome());
         String reference = script();
         configure("javac");
@@ -98,7 +99,7 @@ class JulcPluginFrontendTest {
                     public static boolean ok(BigInteger fee) { return fee.compareTo(LIMIT) > 0; }
                 }
                 """);
-        configure(null);
+        configure("javaparser");
         assertEquals(TaskOutcome.SUCCESS, runner().build().task(":compileJulc").getOutcome());
         String reference = script();
         configure("javac");
@@ -115,6 +116,10 @@ class JulcPluginFrontendTest {
         configure("javac");
         var result = runner().buildAndFail();
         assertTrue(result.getOutput().contains("JULC0124"), result.getOutput());
+        // ADR-068 M5: javac is the default when the project names no frontend.
+        configure(null);
+        var byDefault = runner().buildAndFail();
+        assertTrue(byDefault.getOutput().contains("JULC0124"), byDefault.getOutput());
     }
 
     /** Validators under src/main/java go through the processor, which must compile on the frontend the project chose. */

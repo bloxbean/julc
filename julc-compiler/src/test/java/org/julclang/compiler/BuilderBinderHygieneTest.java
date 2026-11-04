@@ -55,7 +55,7 @@ class BuilderBinderHygieneTest {
     }
 
     private static boolean accepts(String body, PlutusData redeemer, OptimizationLevel level) {
-        var result = new JulcCompiler(STDLIB, new CompilerOptions().setOptimizationLevel(level))
+        var result = new JulcCompiler(STDLIB, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setOptimizationLevel(level))
                 .compile(LISTS.formatted(body));
         assertFalse(result.hasErrors(), () -> "Compilation failed: " + result);
         return CompilerTestVm.pv11()

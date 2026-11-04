@@ -216,7 +216,7 @@ class StdlibCompileEvalTest {
      * the javac gate off until the API changes; ADR-068 M1b's report lists each use.
      */
     static Program compileDialectValidator(String source) {
-        var compiler = new JulcCompiler(STDLIB, new CompilerOptions().setJavacGate(JavacGateMode.OFF));
+        var compiler = new JulcCompiler(STDLIB, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.OFF));
         var result = compiler.compile(source);
         assertFalse(result.hasErrors(), "Compilation failed: " + result);
         assertNotNull(result.program(), "Program should not be null");
@@ -224,7 +224,7 @@ class StdlibCompileEvalTest {
     }
 
     static Program compileValidator(String source) {
-        var compiler = new JulcCompiler(STDLIB);
+        var compiler = new JulcCompiler(STDLIB, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER));
         var result = compiler.compile(source);
         assertFalse(result.hasErrors(), "Compilation failed: " + result);
         assertNotNull(result.program(), "Program should not be null");
@@ -232,7 +232,7 @@ class StdlibCompileEvalTest {
     }
 
     static Program compileValidatorWithLibs(String validator, String... libs) {
-        var compiler = new JulcCompiler(STDLIB);
+        var compiler = new JulcCompiler(STDLIB, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER));
         var result = compiler.compile(validator, List.of(libs));
         assertFalse(result.hasErrors(), "Compilation failed: " + result);
         assertNotNull(result.program(), "Program should not be null");
@@ -2389,7 +2389,7 @@ class StdlibCompileEvalTest {
                         }
                     }
                     """;
-            var compiler = new JulcCompiler(STDLIB);
+            var compiler = new JulcCompiler(STDLIB, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER));
             var result = compiler.compile(validator, List.of(userLib));
             assertFalse(result.hasErrors(), "Compilation should succeed: " + result);
             var evalResult = vm.evaluateWithArgs(result.program(), List.of(mockCtx(PlutusData.constr(0))));
@@ -2426,7 +2426,7 @@ class StdlibCompileEvalTest {
                         }
                     }
                     """;
-            var compiler = new JulcCompiler(STDLIB);
+            var compiler = new JulcCompiler(STDLIB, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER));
             var result = compiler.compile(validator, List.of(userLib));
             assertFalse(result.hasErrors(), "Compilation should succeed: " + result);
             var evalResult = vm.evaluateWithArgs(result.program(), List.of(mockCtx(PlutusData.integer(0))));
@@ -2474,7 +2474,7 @@ class StdlibCompileEvalTest {
                         }
                     }
                     """;
-            var compiler = new JulcCompiler(STDLIB);
+            var compiler = new JulcCompiler(STDLIB, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER));
             var result = compiler.compile(validator, List.of(helperLib, middleLib));
             assertFalse(result.hasErrors(), "Compilation should succeed: " + result);
             var evalResult = vm.evaluateWithArgs(result.program(), List.of(mockCtx(PlutusData.integer(0))));
@@ -5201,7 +5201,7 @@ class StdlibCompileEvalTest {
                         }
                     }
                     """;
-            var compiler = new JulcCompiler(STDLIB);
+            var compiler = new JulcCompiler(STDLIB, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER));
             var compiled = compiler.compile(source);
             assertFalse(compiled.hasErrors(), "Compilation failed: " + compiled);
             assertTrue(compiled.isParameterized(), "Should be parameterized");
@@ -5245,7 +5245,7 @@ class StdlibCompileEvalTest {
                         }
                     }
                     """;
-            var compiler = new JulcCompiler(STDLIB);
+            var compiler = new JulcCompiler(STDLIB, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER));
             var compiled = compiler.compile(source);
             assertFalse(compiled.hasErrors(), "Compilation failed: " + compiled);
 

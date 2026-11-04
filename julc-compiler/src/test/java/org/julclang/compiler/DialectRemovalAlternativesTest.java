@@ -40,7 +40,7 @@ class DialectRemovalAlternativesTest {
             """;
 
     private static EvalResult run(JavacGateMode gate, String method, List<PlutusData> args) {
-        var options = new CompilerOptions();
+        var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER);
         if (gate != null) options.setJavacGate(gate);
         var compiled = new JulcCompiler(StdlibRegistry.defaultRegistry(), options)
                 .compileMethod(IMPORTS + "class Alternatives {\n" + TYPES + method + "\n}\n", "f");

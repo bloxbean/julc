@@ -123,7 +123,7 @@ class LibraryRegistrationPropertyTest {
         String rejected = null;
         for (var level : List.of(OptimizationLevel.NONE, OptimizationLevel.PV11_SAFE)) {
             try {
-                var program = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setJavacGate(JavacGateMode.OFF)
+                var program = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.OFF)
                         .setOptimizationLevel(level)).compileMethod(source, "f", pool).program();
                 expected = UplcFlatEncoder.encodeProgram(program);
             } catch (CompilerException e) {

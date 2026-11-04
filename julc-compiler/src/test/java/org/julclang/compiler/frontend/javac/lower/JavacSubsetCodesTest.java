@@ -234,7 +234,7 @@ class JavacSubsetCodesTest {
     void aUseOfARecordOfTwoSealedParentsStopsAtItsDeclaration(String members) {
         var source = IMPORTS + "class C {\n" + members + "\n}\n";
         assertEquals("JULC0079", code(source));
-        new JulcCompiler(null, new CompilerOptions()).compileMethod(source, "m");
+        new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod(source, "m");
     }
 
     /** A record's instance method is no member a record holds, before the lambda it returns is read. */
@@ -250,7 +250,7 @@ class JavacSubsetCodesTest {
         var source = IMPORTS + "class C { sealed interface S permits A, B { } record A() implements S { } record B() implements S { } "
                 + "static long m(S s, long n) { return switch (s) { case A a when +n > 0 -> 1; default -> 3; }; } }";
         assertEquals("JULC0119", code(source));
-        var reference = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions()).compileMethod(source, "m"));
+        var reference = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod(source, "m"));
         assertEquals(null, reference.diagnostics().getFirst().code());
     }
 

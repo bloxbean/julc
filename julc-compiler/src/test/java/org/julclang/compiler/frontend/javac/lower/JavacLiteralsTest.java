@@ -159,7 +159,7 @@ class JavacLiteralsTest {
         var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAC);
         var failure = assertThrows(CompilerException.class, () -> new JulcCompiler(null, options).compileMethod(source, "m", List.of()));
         assertTrue(failure.getMessage().contains("unpaired surrogate U+D83D"), failure::getMessage);
-        var reference = assertThrows(CompilerException.class, () -> new JulcCompiler().compileMethod(source, "m", List.of()));
+        var reference = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod(source, "m", List.of()));
         assertTrue(reference.getMessage().contains("unpaired surrogate U+D83D"), reference::getMessage);
     }
 

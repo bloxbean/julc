@@ -33,11 +33,11 @@ class DebugCompileResultTest {
 
     @Test
     void localsCollectionIsByteIdenticalToSourceMapOnlyCompilation() {
-        var options = new CompilerOptions().setSourceMapEnabled(true);
+        var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setSourceMapEnabled(true);
         var sourceMapOnly = new JulcCompiler(StdlibRegistry.defaultRegistry(), options)
                 .compileWithDetails(SOURCE, List.of());
         var withLocals = new JulcCompiler(StdlibRegistry.defaultRegistry(),
-                new CompilerOptions().setSourceMapEnabled(true)).compileForDebug(SOURCE, List.of());
+                new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setSourceMapEnabled(true)).compileForDebug(SOURCE, List.of());
 
         assertArrayEquals(UplcFlatEncoder.encodeProgram(sourceMapOnly.program()),
                 UplcFlatEncoder.encodeProgram(withLocals.compileResult().program()));
@@ -49,9 +49,9 @@ class DebugCompileResultTest {
     @Test
     void metadataIdsAndDigestAreDeterministicAcrossFreshCompilers() {
         var first = new JulcCompiler(StdlibRegistry.defaultRegistry(),
-                new CompilerOptions().setSourceMapEnabled(true)).compileForDebug(SOURCE, List.of()).debugMetadata();
+                new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setSourceMapEnabled(true)).compileForDebug(SOURCE, List.of()).debugMetadata();
         var second = new JulcCompiler(StdlibRegistry.defaultRegistry(),
-                new CompilerOptions().setSourceMapEnabled(true)).compileForDebug(SOURCE, List.of()).debugMetadata();
+                new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setSourceMapEnabled(true)).compileForDebug(SOURCE, List.of()).debugMetadata();
 
         assertEquals(first.bindings().stream().map(org.julclang.core.debug.DebugMetadata.Binding::id).toList(),
                 second.bindings().stream().map(org.julclang.core.debug.DebugMetadata.Binding::id).toList());
@@ -60,7 +60,7 @@ class DebugCompileResultTest {
 
     @Test
     void debugEntryPointRequiresExplicitSourceMapCompilation() {
-        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions());
+        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER));
         var error = assertThrows(IllegalStateException.class, () -> compiler.compileForDebug(SOURCE, List.of()));
         assertTrue(error.getMessage().contains("source-map"));
     }
@@ -167,12 +167,12 @@ class DebugCompileResultTest {
 
     /** ADR-068 M1b: lambdas bound to {@code var} locals are not Java (U3); compiled with the javac gate off. */
     private static DebugCompileResult compileDialectDebug(String source) {
-        return new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setSourceMapEnabled(true)
+        return new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setSourceMapEnabled(true)
                 .setJavacGate(JavacGateMode.OFF)).compileForDebug(source, List.of());
     }
 
     private static DebugCompileResult compileDebug(String source) {
         return new JulcCompiler(StdlibRegistry.defaultRegistry(),
-                new CompilerOptions().setSourceMapEnabled(true)).compileForDebug(source, List.of());
+                new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setSourceMapEnabled(true)).compileForDebug(source, List.of());
     }
 }

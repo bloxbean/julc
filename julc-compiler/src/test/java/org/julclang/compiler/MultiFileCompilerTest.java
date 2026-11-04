@@ -22,11 +22,16 @@ import static org.junit.jupiter.api.Assertions.*;
 class MultiFileCompilerTest {
 
     private final JulcCompiler compiler = new JulcCompiler();
+
+    /** The JavaParser frontend, which compiles every library unit it is given (ADR-068 D8); selected explicitly from M5. */
+    private static JulcCompiler reference() {
+        return new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER));
+    }
     private final JulcVm vm = CompilerTestVm.pv11();
 
     /** ADR-068 M1b: a dialect construct with no Java form, compiled with the javac gate off (M1b's report). */
     private Program compileDialect(String validatorSource, String... librarySources) {
-        var result = new JulcCompiler(null, new CompilerOptions().setJavacGate(JavacGateMode.OFF))
+        var result = new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.OFF))
                 .compile(validatorSource, List.of(librarySources));
         assertFalse(result.hasErrors(), "Compilation should not have errors: " + result.diagnostics());
         return result.program();
@@ -271,7 +276,10 @@ class MultiFileCompilerTest {
                     """;
 
             assertThrows(CompilerException.class,
-                    () -> compiler.compile(validator, List.of(badLib)));
+                    () -> reference().compile(validator, List.of(badLib)));
+            // ADR-068 D8 (r11): javac, the default from M5, reads only the units a program references, so a library nothing
+            // references is not compiled and its annotation is not rejected; JavacLibraryRolesTest holds the referenced case.
+            assertFalse(compiler.compile(validator, List.of(badLib)).hasErrors());
         }
 
         @Test
@@ -300,7 +308,10 @@ class MultiFileCompilerTest {
                     """;
 
             assertThrows(CompilerException.class,
-                    () -> compiler.compile(validator, List.of(badLib)));
+                    () -> reference().compile(validator, List.of(badLib)));
+            // ADR-068 D8 (r11): javac, the default from M5, reads only the units a program references, so a library nothing
+            // references is not compiled and its annotation is not rejected; JavacLibraryRolesTest holds the referenced case.
+            assertFalse(compiler.compile(validator, List.of(badLib)).hasErrors());
         }
 
         @Test
@@ -330,7 +341,7 @@ class MultiFileCompilerTest {
                     """;
 
             // JuLC's own rule, as a host without the gate sees it.
-            var off = new JulcCompiler(null, new CompilerOptions().setJavacGate(JavacGateMode.OFF));
+            var off = new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.OFF));
             assertThrows(CompilerException.class, () -> off.compile(validator, List.of(lib)));
             // With the gate, ADR-068 D8 decides first: the root's Datum takes precedence and the library unit that
             // redeclares it is left out, so the validator, which does not use it, compiles.
@@ -679,7 +690,7 @@ class MultiFileCompilerTest {
                     @OnchainLibrary
                     class DataCheckLib {
                         static boolean areSame(PlutusData a, PlutusData b) {
-                            return a == b;
+                            return a.equals(b);
                         }
                     }
                     """;

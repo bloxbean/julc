@@ -36,7 +36,7 @@ class FailureReportIntegrationTest {
                 static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                     BigInteger expected = BigInteger.valueOf(42);
                     BigInteger actual = BigInteger.valueOf(99);
-                    return actual == expected;
+                    return actual.equals(expected);
                 }
             }
             """;

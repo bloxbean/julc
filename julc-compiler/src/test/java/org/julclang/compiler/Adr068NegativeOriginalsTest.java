@@ -86,7 +86,7 @@ class Adr068NegativeOriginalsTest {
     }
 
     private static RuntimeException rejection(Row row, String source, List<String> libraries, JavacGateMode mode) {
-        var options = new CompilerOptions().setSourceMapEnabled(row.sourceMap()).setJavacGate(mode).setLogger(message -> { });
+        var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setSourceMapEnabled(row.sourceMap()).setJavacGate(mode).setLogger(message -> { });
         if (!row.costProfile().equals("-")) {
             options.setOptimizationCostProfile(OptimizationCostProfiles.forId(row.costProfile()));
         }

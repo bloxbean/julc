@@ -100,7 +100,7 @@ class JavacCastsTest {
     @Test
     void theReferenceErasesTheNarrowing() {
         var source = method("static long m(long x) { return (int) x; }");
-        var program = new JulcCompiler(STDLIB).compileMethod(source, "m", List.of()).program();
+        var program = new JulcCompiler(STDLIB, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod(source, "m", List.of()).program();
         var result = JulcVm.create().evaluateWithArgs(program, List.of(PlutusData.integer((1L << 32) + 5)));
         assertNotEquals(new Term.Const(Constant.integer(BigInteger.valueOf(5))),
                 assertInstanceOf(EvalResult.Success.class, result).resultTerm());
@@ -197,7 +197,7 @@ class JavacCastsTest {
                 }
                 """;
         for (var level : OptimizationLevel.values()) {
-            var reference = new JulcCompiler(STDLIB, new CompilerOptions().setOptimizationLevel(level)).compileMethod(values, "m");
+            var reference = new JulcCompiler(STDLIB, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setOptimizationLevel(level)).compileMethod(values, "m");
             var javac = new JulcCompiler(STDLIB, new CompilerOptions().setOptimizationLevel(level)
                     .setFrontend(CompilerFrontend.JAVAC)).compileMethod(values, "m");
             assertArrayEquals(UplcFlatEncoder.encodeProgram(reference.program()), UplcFlatEncoder.encodeProgram(javac.program()),

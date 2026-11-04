@@ -34,7 +34,7 @@ class SwitchDiagnosticsTest {
     /** JuLC rejects the program with {@code code} and a message containing {@code fragment}. */
     private static CompilerDiagnostic rejected(String source, String code, String fragment) {
         var error = assertThrows(CompilerException.class,
-                () -> new JulcCompiler(StdlibRegistry.defaultRegistry()).compileMethod(source, "m"), source);
+                () -> new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod(source, "m"), source);
         var diagnostic = error.diagnostics().stream().filter(d -> d.level() == CompilerDiagnostic.Level.ERROR)
                 .findFirst().orElseThrow();
         assertEquals(code, diagnostic.code(), diagnostic.message());
@@ -45,14 +45,14 @@ class SwitchDiagnosticsTest {
     /** With the gate off, for what its rules reject first: the frontend's own rejection is what is pinned. */
     private static void rejectedWithTheGateOff(String source, String code, String fragment) {
         var error = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(),
-                new CompilerOptions().setJavacGate(JavacGateMode.OFF)).compileMethod(source, "m"), source);
+                new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.OFF)).compileMethod(source, "m"), source);
         var diagnostic = error.diagnostics().getFirst();
         assertEquals(code, diagnostic.code(), diagnostic.message());
         assertTrue(diagnostic.message().contains(fragment), diagnostic.message());
     }
 
     private static void accepted(String source) {
-        var result = new JulcCompiler(StdlibRegistry.defaultRegistry()).compileMethod(source, "m");
+        var result = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod(source, "m");
         assertFalse(result.hasErrors(), () -> result.diagnostics().toString());
     }
 
@@ -1130,7 +1130,7 @@ class SwitchDiagnosticsTest {
 
     @Test
     void guardCannotAssign() {
-        var error = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry())
+        var error = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER))
                 .compileMethod(probe(S + """
                     static BigInteger m(BigInteger a) {
                         BigInteger t = BigInteger.ZERO;

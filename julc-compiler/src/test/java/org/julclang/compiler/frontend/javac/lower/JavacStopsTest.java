@@ -155,7 +155,7 @@ class JavacStopsTest {
 
     private static String onDefault(String members) {
         try {
-            new JulcCompiler(stdlib(), new CompilerOptions()).compileMethod(source(members), "m", List.of());
+            new JulcCompiler(stdlib(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod(source(members), "m", List.of());
             return "accepted";
         } catch (CompilerException e) {
             var code = e.diagnostics().isEmpty() ? null : e.diagnostics().getFirst().code();

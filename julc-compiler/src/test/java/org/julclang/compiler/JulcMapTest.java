@@ -383,6 +383,7 @@ class JulcMapTest {
 
         final ForEachGetProxy proxy = JulcEval
                 .forSource(SOURCE)
+                .frontend(CompilerFrontend.JAVAPARSER) // the dialect is the JavaParser frontend's (ADR-068 M5)
                 .create(ForEachGetProxy.class);
 
         @Test
@@ -583,6 +584,7 @@ class JulcMapTest {
 
         final WhileLoopGetProxy proxy = JulcEval
                 .forSource(SOURCE)
+                .frontend(CompilerFrontend.JAVAPARSER) // the dialect is the JavaParser frontend's (ADR-068 M5)
                 .create(WhileLoopGetProxy.class);
 
         @Test
@@ -723,6 +725,7 @@ class JulcMapTest {
 
         final MultiAccProxy proxy = JulcEval
                 .forSource(SOURCE)
+                .frontend(CompilerFrontend.JAVAPARSER) // the dialect is the JavaParser frontend's (ADR-068 M5)
                 .create(MultiAccProxy.class);
 
         @Test
@@ -834,6 +837,7 @@ class JulcMapTest {
 
         final NestedProxy proxy = JulcEval
                 .forSource(SOURCE)
+                .frontend(CompilerFrontend.JAVAPARSER) // the dialect is the JavaParser frontend's (ADR-068 M5)
                 .create(NestedProxy.class);
 
         @Test
@@ -913,6 +917,7 @@ class JulcMapTest {
 
         final EdgeProxy proxy = JulcEval
                 .forSource(SOURCE)
+                .frontend(CompilerFrontend.JAVAPARSER) // the dialect is the JavaParser frontend's (ADR-068 M5)
                 .create(EdgeProxy.class);
 
         @Test

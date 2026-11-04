@@ -40,7 +40,7 @@ class CompileResultProvenanceTest {
             """;
 
     private static JulcCompiler compiler(JavacGateMode gate) {
-        return new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setJavacGate(gate));
+        return new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(gate));
     }
 
     private static void assertRecorded(JavacProvenance provenance, JavacGateMode gate, Outcome outcome) {

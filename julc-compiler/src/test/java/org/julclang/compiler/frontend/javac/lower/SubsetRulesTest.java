@@ -746,7 +746,7 @@ class SubsetRulesTest {
     @ValueSource(strings = {"static final long K = 7;", "static long k = 7;", "static boolean k = true;",
             "static byte[] k = new byte[]{1, 2};"})
     void aLibrarysConstantStaticFieldStaysLegal(String member) {
-        new JulcCompiler(null, new CompilerOptions()).compile(LIBRARY_CALLER, List.of(library(member)));
+        new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compile(LIBRARY_CALLER, List.of(library(member)));
     }
 
     /** javac reads what the program references, and the rule reads what javac read. */
@@ -754,7 +754,7 @@ class SubsetRulesTest {
     void aLibraryTheProgramDoesNotReadIsNotChecked() {
         String validator = LIBRARY_CALLER.replace("L.helper() > 0", "true");
         for (var level : OptimizationLevel.values()) {
-            var options = new CompilerOptions().setOptimizationLevel(level);
+            var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setOptimizationLevel(level);
             new JulcCompiler(null, options).compile(validator, List.of(library("long instance = helper();")));
         }
     }
@@ -845,7 +845,7 @@ class SubsetRulesTest {
             "boolean flag = r.signum() > 0; return (Boolean) (Object) flag;",
             "boolean flag = r.signum() > 0; return (boolean) ((Object) flag);"})
     void aCastToBooleanOfABooleanCompiles(String body) {
-        new JulcCompiler(null, new CompilerOptions()).compile(validator(body));
+        new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compile(validator(body));
     }
 
     @ParameterizedTest
@@ -916,12 +916,12 @@ class SubsetRulesTest {
             "boolean flag = r.signum() > 0; return (boolean) PlutusData.cast(flag, Object.class);",
             "boolean flag = r.signum() > 0; return PlutusData.cast(PlutusData.cast(flag, Object.class), Boolean.class);"})
     void plutusDataCastOfABooleanCompiles(String body) {
-        new JulcCompiler(null, new CompilerOptions()).compile(validator(body));
+        new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compile(validator(body));
     }
 
     @Test
     void plutusDataCastToAnotherTypeIsLeftAlone() {
-        new JulcCompiler(null, new CompilerOptions()).compile(validator("BigInteger same = PlutusData.cast(r, BigInteger.class); return same.signum() > 0;"));
+        new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compile(validator("BigInteger same = PlutusData.cast(r, BigInteger.class); return same.signum() > 0;"));
     }
 
     /** A target holds a boolean through a bound too, and a {@code @NewType} of one is one on-chain. */
@@ -943,7 +943,7 @@ class SubsetRulesTest {
 
     @Test
     void aNewTypeOfABooleanKeepsItsOwnCast() {
-        new JulcCompiler(null, new CompilerOptions()).compile(IMPORTS + """
+        new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compile(IMPORTS + """
                 @SpendingValidator
                 class V {
                     @NewType record F(boolean v) { }
@@ -1080,7 +1080,7 @@ class SubsetRulesTest {
 
     @Test
     void anotherNameIsAName() {
-        new JulcCompiler(null, new CompilerOptions()).compileMethod("class P { record Bool(long a) { } static <T> long f() { return 1; } static long m() { return 1; } }", "m");
+        new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod("class P { record Bool(long a) { } static <T> long f() { return 1; } static long m() { return 1; } }", "m");
     }
 
     /** The gate's rule is about how the default frontend reads a name. On javac the type is the user's. */
@@ -1202,7 +1202,7 @@ class SubsetRulesTest {
             "BigInteger value", "BigInteger intValue", "BigInteger longValue", "BigInteger v", "BigInteger raw", "BigInteger amount",
             "byte[] value", "String v", "String value", "String abs", "boolean v", "boolean value", "boolean length"})
     void aNewTypesComponentTakesAnyOtherName(String component) {
-        new JulcCompiler(null, new CompilerOptions()).compileMethod("""
+        new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod("""
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.*;
                 class P {
@@ -1231,7 +1231,7 @@ class SubsetRulesTest {
     /** A {@code @NewType} of a type outside the four is that type's own rejection. */
     @Test
     void aNewTypeOfAnotherTypeIsNotThisRule() {
-        var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions()).compileMethod("""
+        var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod("""
                 import org.julclang.stdlib.annotation.*;
                 class P {
                     @NewType record N(long abs) { }
@@ -1245,7 +1245,7 @@ class SubsetRulesTest {
     @ParameterizedTest
     @ValueSource(strings = {"BigInteger abs", "byte[] length", "byte[] hash", "String getBytes", "BigInteger signum"})
     void aPlainRecordsComponentTakesAnyName(String component) {
-        new JulcCompiler(null, new CompilerOptions()).compileMethod("""
+        new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod("""
                 import java.math.BigInteger;
                 class P {
                     record R(%s) { }
@@ -1258,7 +1258,7 @@ class SubsetRulesTest {
     @ParameterizedTest
     @ValueSource(strings = {"BigInteger equals", "byte[] equals", "BigInteger toPlutusData", "String toPlutusData"})
     void anyRecordsComponentTakesNeitherName(String component) {
-        var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions()).compileMethod("""
+        var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod("""
                 import java.math.BigInteger;
                 class P {
                     record R(%s) { }
@@ -1283,7 +1283,7 @@ class SubsetRulesTest {
 
     @Test
     void aNewTypeOfBytesReadsItsValue() {
-        new JulcCompiler(null, new CompilerOptions()).compileMethod("""
+        new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod("""
                 import org.julclang.stdlib.annotation.*;
                 class P {
                     @NewType record H(byte[] value) { }
@@ -1308,7 +1308,7 @@ class SubsetRulesTest {
 
     @Test
     void theRuleNamesTheComponent() {
-        var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions()).compileMethod("""
+        var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod("""
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.*;
                 class P {
@@ -1323,7 +1323,7 @@ class SubsetRulesTest {
 
     @Test
     void aSpelledNameIsAMethodsOwnElsewhere() {
-        new JulcCompiler(null, new CompilerOptions()).compileMethod("""
+        new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod("""
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.*;
                 class P {
@@ -1346,7 +1346,7 @@ class SubsetRulesTest {
 
     @Test
     void aGeneratedMethodIsExempt() {
-        new JulcCompiler(null, new CompilerOptions()).compileMethod("""
+        new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod("""
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.*;
                 class P {
@@ -1361,7 +1361,7 @@ class SubsetRulesTest {
     @Test
     void anApiMethodThroughAVariableIsNoSpelledCall() {
         String source = validator("Class<BigInteger> k = BigInteger.class; return k.cast(r).signum() > 0;");
-        var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions()).compile(source));
+        var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compile(source));
         assertFalse(thrown.getMessage().contains("JULC0101"), thrown::getMessage);
     }
 
@@ -1374,7 +1374,7 @@ class SubsetRulesTest {
                     static long m() { return R.of(1) + R.valueOf(1); }
                 }
                 """;
-        var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions()).compileMethod(source, "m"));
+        var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod(source, "m"));
         assertFalse(thrown.getMessage().contains("JULC0101"), thrown::getMessage);
     }
 
@@ -1388,13 +1388,13 @@ class SubsetRulesTest {
                     static boolean m(BigInteger r) { return R.cast(r, Object.class); }
                 }
                 """;
-        var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions()).compileMethod(source, "m"));
+        var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod(source, "m"));
         assertFalse(thrown.getMessage().contains("JULC0098"), thrown::getMessage);
     }
 
     @Test
     void anApiCallIsNoSpelledCall() {
-        new JulcCompiler(null, new CompilerOptions()).compile(validator("BigInteger two = BigInteger.valueOf(2); return PlutusData.cast(two, BigInteger.class).signum() > 0;"));
+        new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compile(validator("BigInteger two = BigInteger.valueOf(2); return PlutusData.cast(two, BigInteger.class).signum() > 0;"));
     }
 
     @Test
@@ -1414,7 +1414,7 @@ class SubsetRulesTest {
 
     @Test
     void theMethodRuleNamesTheMethod() {
-        var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions()).compileMethod("""
+        var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod("""
                 class P {
                     record R(long a) { static boolean fromPlutusData(long x) { return false; } }
                     static long m() { return 1; }
@@ -1428,7 +1428,7 @@ class SubsetRulesTest {
 
     @Test
     void theTypeRuleNamesTheType() {
-        var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions()).compileMethod("""
+        var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod("""
                 class P {
                     record Boolean(long a) { }
                     static long m() { return 1; }
@@ -1442,7 +1442,7 @@ class SubsetRulesTest {
 
     @Test
     void aCastToAnotherTypeIsLeftAlone() {
-        new JulcCompiler(null, new CompilerOptions()).compile(validator("BigInteger same = (BigInteger) (Object) r; return same.signum() > 0;"));
+        new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compile(validator("BigInteger same = (BigInteger) (Object) r; return same.signum() > 0;"));
     }
 
     @Test
@@ -1528,7 +1528,7 @@ class SubsetRulesTest {
 
     @Test
     void theRuleNamesTheConstructor() {
-        var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions()).compileMethod("""
+        var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod("""
                 import java.math.BigInteger;
                 class P {
                     record R(BigInteger a) { R { a = a.abs(); } }
@@ -1553,7 +1553,7 @@ class SubsetRulesTest {
         String with = "class P { %s static long m() { return 1; } }".formatted(member);
         String without = "class P { static long m() { return 1; } }";
         for (var level : OptimizationLevel.values()) {
-            var options = new CompilerOptions().setOptimizationLevel(level);
+            var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setOptimizationLevel(level);
             assertArrayEquals(UplcFlatEncoder.encodeProgram(new JulcCompiler(null, options).compileMethod(without, "m").program()),
                     UplcFlatEncoder.encodeProgram(new JulcCompiler(null, options).compileMethod(with, "m").program()), level.name());
         }
@@ -1562,7 +1562,7 @@ class SubsetRulesTest {
     /** A type with no constructor of its own has one javac generated, with a body javac wrote. */
     @Test
     void aGeneratedConstructorHoldsNothing() {
-        new JulcCompiler(null, new CompilerOptions()).compileMethod("""
+        new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod("""
                 class P {
                     record R(long a) { }
                     static class C { }
@@ -1574,7 +1574,7 @@ class SubsetRulesTest {
     /** An API type is a class file here, so its constructors are not read: nothing of them runs on-chain either way. */
     @Test
     void anApiTypesConstructorIsNotRead() {
-        new JulcCompiler(null, new CompilerOptions()).compile(IMPORTS + """
+        new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compile(IMPORTS + """
                 import org.julclang.ledger.PubKeyHash;
                 import org.julclang.ledger.TokenName;
                 @SpendingValidator
@@ -1590,7 +1590,7 @@ class SubsetRulesTest {
     /** A method's statements are its own: the rule is about constructors. */
     @Test
     void aMethodHoldsStatements() {
-        new JulcCompiler(null, new CompilerOptions()).compileMethod("""
+        new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod("""
                 class P {
                     static long m() {
                         long x = 1;
@@ -1618,14 +1618,14 @@ class SubsetRulesTest {
 
     @Test
     void aLibrarysDeclarationOfTwoTypesHoldsOnlyConstants() {
-        new JulcCompiler(null, new CompilerOptions()).compile(LIBRARY_CALLER, List.of(library("final byte a = 1, b[] = new byte[]{1};")));
+        new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compile(LIBRARY_CALLER, List.of(library("final byte a = 1, b[] = new byte[]{1};")));
     }
 
     /** A lowered {@code byte} has no type on-chain: that is the type's rejection, not a failure to read the declaration. */
     @ParameterizedTest
     @ValueSource(strings = {"static final byte a = 1, b[] = new byte[]{1};", "@Param static byte a = 1, b[] = new byte[]{1};"})
     void aLoweredDeclarationOfTwoTypesIsReadVariableByVariable(String field) {
-        var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions()).compile(IMPORTS + """
+        var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compile(IMPORTS + """
                 @SpendingValidator
                 class V {
                     %s
@@ -1638,14 +1638,14 @@ class SubsetRulesTest {
 
     @Test
     void aLibrarysLoweredDeclarationOfTwoTypesIsReadVariableByVariable() {
-        var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions())
+        var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER))
                 .compile(LIBRARY_CALLER, List.of(library("static final byte a = 1, b[] = new byte[]{1};"))));
         assertTrue(thrown.getMessage().contains("byte"), thrown::getMessage);
     }
 
     @Test
     void theParamsHaveATypeEach() {
-        var result = new JulcCompiler(null, new CompilerOptions()).compile(IMPORTS + """
+        var result = new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compile(IMPORTS + """
                 @SpendingValidator
                 class V {
                     @Param static BigInteger first = BigInteger.ZERO, second = BigInteger.ONE;
@@ -1660,7 +1660,7 @@ class SubsetRulesTest {
 
     /** The words the reference has for a {@code byte} parameter, where it has no position to give. */
     private static void assertNoVarargs(String source) {
-        var reference = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions()).compileMethod(source, "m"));
+        var reference = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod(source, "m"));
         var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAC);
         var javac = assertThrows(CompilerException.class, () -> new JulcCompiler(null, options).compileMethod(source, "m"));
         assertEquals(reference.getMessage(), javac.diagnostics().getFirst().message());

@@ -1,5 +1,6 @@
 package org.julclang.difftest;
 
+import org.julclang.compiler.CompilerOptions;
 import net.jqwik.api.Arbitraries;
 import net.jqwik.api.Arbitrary;
 import net.jqwik.api.ForAll;
@@ -43,7 +44,7 @@ class Adr068LedgerFromDataPropertyTest {
             "ScriptPurpose", "StakingCredential", "TokenName", "TxCert", "TxId", "TxInInfo", "TxInfo", "TxOut", "TxOutRef",
             "ValidatorHash", "Vote", "Voter");
 
-    private static final LedgerTypeProvider LEDGER = new LedgerTypeProvider();
+    private static final LedgerTypeProvider LEDGER = new LedgerTypeProvider(new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER));
     /** The types decoded on-chain: a type whose shape holds a map stops there ({@code JavacLedgerFromDataTest}). */
     static final List<String> TYPES = NAMES.stream().filter(Adr068LedgerFromDataPropertyTest::decodable)
             .filter(name -> !holdsMap(type(name), new HashSet<>())).toList();

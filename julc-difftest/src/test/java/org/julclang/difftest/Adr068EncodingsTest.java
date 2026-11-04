@@ -1,5 +1,6 @@
 package org.julclang.difftest;
 
+import org.julclang.compiler.CompilerFrontend;
 import org.julclang.blueprint.SchemaGenerator;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JulcCompiler;
@@ -312,7 +313,7 @@ class Adr068EncodingsTest {
         var matcher = PACKAGE.matcher(source);
         String text = matcher.find() ? source.substring(0, matcher.end()) + IMPORTS + source.substring(matcher.end()) : IMPORTS + source;
         try {
-            var options = new CompilerOptions().setJavacGate(JavacGateMode.OFF).setLogger(m -> { });
+            var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.OFF).setLogger(m -> { });
             var compiled = new JulcCompiler(StdlibRegistry.defaultRegistry(), options).compileMethod(text, method, libraries);
             return switch (VM.get().evaluateWithArgs(compiled.program(), List.of(), BUDGET)) {
                 case EvalResult.Success s -> Adr068Encodings.digest(ValueMapping.fromTerm(s.resultTerm()));
@@ -329,7 +330,7 @@ class Adr068EncodingsTest {
                                   Map<String, String> referenceBlueprints) {
         ContractSchema schema;
         try {
-            var options = new CompilerOptions().setJavacGate(JavacGateMode.OFF).setLogger(m -> { });
+            var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.OFF).setLogger(m -> { });
             schema = new JulcCompiler(lookup, options).compileContract(c.main.text(), libraries).contractSchema();
         } catch (RuntimeException e) {
             return;     // no validator, or no schema: nothing to compare

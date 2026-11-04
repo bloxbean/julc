@@ -309,6 +309,7 @@ class GovernanceTypeTest {
     @Nested
     class SwitchWithFieldAccess {
 
+        /** ADR-068 r17: a switch's values have one representation, so the hash, held as bytes, is written as its Data. */
         @Test
         void voterSwitchExtractCredential() {
             var source = """
@@ -327,9 +328,9 @@ class GovernanceTypeTest {
                             PlutusData result = switch (voter) {
                                 case CommitteeVoter cv -> PlutusData.cast(cv.credential(), PlutusData.class);
                                 case DRepVoter dv -> PlutusData.cast(dv.credential(), PlutusData.class);
-                                case StakePoolVoter spv -> PlutusData.cast(spv.pubKeyHash(), PlutusData.class);
+                                case StakePoolVoter spv -> PlutusData.cast(spv.pubKeyHash().toPlutusData(), PlutusData.class);
                             };
-                            return result == result;
+                            return result.equals(result);
                         }
                     }
                     """;

@@ -1,5 +1,6 @@
 package org.julclang.compiler.corpus;
 
+import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.CompilerTarget;
 import org.julclang.compiler.JavaLibraryProvider;
@@ -22,7 +23,7 @@ public final class CorpusRecorderOptionsProbe {
     }
 
     public static void main(String[] args) {
-        var options = new CompilerOptions();
+        var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER);
         var provider = new JavaLibraryProvider(List.of(CorpusRecorderProbe.LIBRARY), StdlibRegistry.defaultRegistry(), options);
         options.setTarget(new CompilerTarget(LedgerEvaluationTarget.pv10(PlutusLanguage.PLUTUS_V3), UplcVersion.V1_1_0));
         var request = new LibraryRequest.Instantiate("sample.Twice.count", List.of(new LibraryType.Reference("Int", List.of())));

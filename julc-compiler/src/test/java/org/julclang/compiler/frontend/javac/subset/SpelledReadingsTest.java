@@ -1,5 +1,7 @@
 package org.julclang.compiler.frontend.javac.subset;
 
+import org.julclang.compiler.CompilerFrontend;
+import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.CompileResult;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerTestVm;
@@ -64,7 +66,7 @@ class SpelledReadingsTest {
     }
 
     private static CompileResult compile(Program program) {
-        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry());
+        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER));
         return program.root().contains("@Entrypoint") ? compiler.compile(program.root(), program.pool())
                 : compiler.compileMethod(program.root(), "m", program.pool());
     }

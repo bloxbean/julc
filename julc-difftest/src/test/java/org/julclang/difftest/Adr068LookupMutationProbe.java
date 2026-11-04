@@ -1,5 +1,6 @@
 package org.julclang.difftest;
 
+import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JavaLibraryProvider;
 import org.julclang.compiler.backend.LibraryRequest;
@@ -40,7 +41,7 @@ public final class Adr068LookupMutationProbe {
 
     public static void main(String[] args) {
         var registry = StdlibRegistry.defaultRegistry();
-        var provider = new JavaLibraryProvider(List.of(LIBRARY), registry, new CompilerOptions().setLogger(m -> { }));
+        var provider = new JavaLibraryProvider(List.of(LIBRARY), registry, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setLogger(m -> { }));
         registry.register(BUILTINS, "equalsByteString", registry.lookupBuilder(BUILTINS, "lessThanByteString").orElseThrow(),
                 registry.requirements(BUILTINS, "equalsByteString"));
         var imports = provider.materialize(List.<LibraryRequest>of(REQUEST));

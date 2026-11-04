@@ -142,7 +142,7 @@ class LambdaExpressionTest {
          * not accept a functional-interface type for the local; compiled with the javac gate off (M1b's report).
          */
         private static JulcCompiler dialectCompiler() {
-            return new JulcCompiler(null, new CompilerOptions().setJavacGate(JavacGateMode.OFF));
+            return new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.OFF));
         }
         @Test
         void lambdaInLetBinding() {

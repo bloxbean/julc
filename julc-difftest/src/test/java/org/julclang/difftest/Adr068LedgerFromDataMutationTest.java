@@ -32,7 +32,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class Adr068LedgerFromDataMutationTest {
 
-    private static final LedgerTypeProvider LEDGER = new LedgerTypeProvider();
+    private static final LedgerTypeProvider LEDGER = new LedgerTypeProvider(new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER));
     private static final PlutusData ONE = new PlutusData.IntData(BigInteger.ONE);
     private static final int SEEDS = 3;
     private static final int PER_TYPE = 4000;

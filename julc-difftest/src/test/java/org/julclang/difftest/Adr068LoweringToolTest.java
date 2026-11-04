@@ -232,7 +232,7 @@ class Adr068LoweringToolTest {
     void aMethodLoweredToAnotherTermIsReported() {
         var injected = new Injected();
         var other = method("class P { static long m(long a, long b) { return b; } }");
-        injected.attempts = attempts -> Adr068Lowering.frontend().attempts(other, new CompilerOptions());
+        injected.attempts = attempts -> Adr068Lowering.frontend().attempts(other, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER));
         var row = injected.row(method("class P { static long m(long a, long b) { return a; } }"));
         assertEquals("DIFFERENT-pir", row.kind(), row::line);
     }
@@ -245,7 +245,7 @@ class Adr068LoweringToolTest {
     void aMethodLoweredToAnotherTermWhereJavacRejectsIsUnaccepted() {
         var injected = new Injected();
         var other = method("class P { static long m(long a, long b) { return b; } }");
-        injected.attempts = attempts -> Adr068Lowering.frontend().attempts(other, new CompilerOptions());
+        injected.attempts = attempts -> Adr068Lowering.frontend().attempts(other, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER));
         injected.program = c -> method("class P { static long m(long a, long b) { long q = (short) a; return q; } }");
         var row = injected.row(method("class P { static long m(long a, long b) { return a; } }"));
         assertEquals("DIFFERENT-pir-unaccepted", row.kind(), row::line);
@@ -265,7 +265,7 @@ class Adr068LoweringToolTest {
     void aPirRowOnlyJavacRejectsIsAPolicyRejection() {
         var injected = new Injected();
         var other = method("class P { static long m(long a, long b) { return b; } }");
-        injected.attempts = attempts -> Adr068Lowering.frontend().attempts(other, new CompilerOptions());
+        injected.attempts = attempts -> Adr068Lowering.frontend().attempts(other, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER));
         injected.program = c -> method("class P { static long m(long a, long b) { long q = (short) a; return q; } }");
         var row = injected.row(method("class P { static long m(long a, long b) { return a; } }"));
         assertEquals("javac", row.rejects(), row::line);
@@ -317,7 +317,7 @@ class Adr068LoweringToolTest {
     private static Adr068Lowering.Row loweredTo(String body) {
         var injected = new Injected();
         var other = method("class P { static long m(long a, long b) { return " + body + "; } }");
-        injected.attempts = attempts -> Adr068Lowering.frontend().attempts(other, new CompilerOptions());
+        injected.attempts = attempts -> Adr068Lowering.frontend().attempts(other, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER));
         return injected.row(method("class P { static long m(long a, long b) { return a; } }"));
     }
 
@@ -347,7 +347,7 @@ class Adr068LoweringToolTest {
         for (var body : List.of("b", "a + b")) {
             var injected = new Injected();
             var other = method("class P { static long m(long a, long b) { return b; } static long n(long a, long b) { return " + body + "; } }");
-            injected.attempts = attempts -> Adr068Lowering.frontend().attempts(other, new CompilerOptions());
+            injected.attempts = attempts -> Adr068Lowering.frontend().attempts(other, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER));
             lines.add(injected.row(method("class P { static long m(long a, long b) { return a; } static long n(long a, long b) { return a; } }")).line());
         }
         assertNotEquals(lines.get(0), lines.get(1));
@@ -941,7 +941,7 @@ class Adr068LoweringToolTest {
     void theFrontendReportsWhatItThrew() {
         var c = new Adr068Corpus(REPO).add("tool", "no such entry", "m", "none",
                 Adr068Corpus.Source.of("class P { static long m() { return 1; } }", null), List.of());
-        var thrown = Adr068Lowering.frontend().compile(c, new CompilerOptions()).thrown();
+        var thrown = Adr068Lowering.frontend().compile(c, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).thrown();
         assertTrue(thrown != null && !(thrown instanceof org.julclang.compiler.CompilerException), () -> String.valueOf(thrown));
     }
 

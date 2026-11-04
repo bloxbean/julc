@@ -1,5 +1,6 @@
 package org.julclang.compiler.frontend.javac.lower;
 
+import org.julclang.compiler.CompilerFrontend;
 import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.MethodTree;
 import com.sun.source.tree.VariableTree;
@@ -68,7 +69,7 @@ class LoweringAloneTest {
     /** A read of a class's method is recorded too, or the check would pass it by its dot. */
     @Test
     void aMethodReadIsRecordedForItsMethod() {
-        withMethod("class P { static long h(long a) { return a; } static long m(long a) { return h(a); } }", new CompilerOptions(), (facts, lowered) -> {
+        withMethod("class P { static long h(long a) { return a; } static long m(long a) { return h(a); } }", new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER), (facts, lowered) -> {
             var body = ((PirTerm.Lam) lowered.term()).body();
             var read = (PirTerm.Var) ((PirTerm.App) body).function();
             assertEquals("h", lowered.lowering().terms().provenance().readOf(read).getSimpleName().toString());
@@ -78,7 +79,7 @@ class LoweringAloneTest {
     /** If nothing were recorded, I13's check would pass every term: it reads this table and nothing else. */
     @Test
     void everyVarAndBinderOfASourceElementIsRecorded() {
-        withMethod("class P { static long m(long a, long b) { return b; } }", new CompilerOptions(), (facts, lowered) -> {
+        withMethod("class P { static long m(long a, long b) { return b; } }", new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER), (facts, lowered) -> {
             var outer = assertInstanceOf(PirTerm.Lam.class, lowered.term());
             var inner = assertInstanceOf(PirTerm.Lam.class, outer.body());
             var read = assertInstanceOf(PirTerm.Var.class, inner.body());
@@ -97,7 +98,7 @@ class LoweringAloneTest {
      */
     @Test
     void aWrongLookupFailsTheCheck() {
-        withMethod("class P { static long K = 1; static long m(long K) { return K; } }", new CompilerOptions(), (facts, lowered) -> {
+        withMethod("class P { static long K = 1; static long m(long K) { return K; } }", new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER), (facts, lowered) -> {
             var field = facts.elements().getTypeElement("P").getEnclosedElements().stream()
                     .filter(e -> e.getSimpleName().contentEquals("K") && e.getKind() == ElementKind.FIELD).findFirst().orElseThrow();
             var parameter = facts.element(lowered.parameter(0));
@@ -130,7 +131,7 @@ class LoweringAloneTest {
     @Test
     void aBranchLocalTakesAMarkSoWhatFollowsReadsTheStatic() {
         withMethod("class P { static final long K = 1; static long m(long a) { if (a > 0) { long K = a; if (K > 5) { return K; } } return a + K; } }",
-                new CompilerOptions(), (facts, lowered) -> {
+                new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER), (facts, lowered) -> {
                     var field = facts.elements().getTypeElement("P").getEnclosedElements().stream()
                             .filter(e -> e.getKind() == ElementKind.FIELD).findFirst().orElseThrow();
                     var scope = Scope.empty().bind(field, integer());
@@ -148,7 +149,7 @@ class LoweringAloneTest {
     @Test
     void whatFollowsAnIfIsOneTerm() {
         withMethod("class P { static long m(long a) { if (a > 0) { if (a > 1) { return 1; } } long b = a; return b; } }",
-                new CompilerOptions(), (facts, lowered) -> {
+                new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER), (facts, lowered) -> {
                     var outer = (PirTerm.IfThenElse) ((PirTerm.Lam) lowered.term()).body();
                     var inner = (PirTerm.IfThenElse) outer.thenBranch();
                     assertSame(outer.elseBranch(), inner.elseBranch());
@@ -164,7 +165,7 @@ class LoweringAloneTest {
     @Test
     void anOperandOutsideTheVariantsInterfaceStops() {
         withMethod("class P { sealed interface S { record A() implements S { } } static Object O; static boolean m() { return O instanceof S.A a; } }",
-                new CompilerOptions(), (facts, lowered) -> {
+                new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER), (facts, lowered) -> {
                     var field = facts.elements().getTypeElement("P").getEnclosedElements().stream()
                             .filter(e -> e.getKind() == ElementKind.FIELD).findFirst().orElseThrow();
                     var scope = Scope.empty().bind(field, new PirType.DataType());
@@ -178,7 +179,7 @@ class LoweringAloneTest {
     @ValueSource(strings = {"if (a > 0) { while (a > 0) { } }", "if (a > 0) { if (a > 1) { while (a > 0) { } } }",
             "if (a > 0) { if (a > 1) { } else { while (a > 0) { } } }", "if (a > 0) if (a > 1) { } else while (a > 0) { }"})
     void whatFollowsAnIfAroundALoopIsBoundOnce(String statement) {
-        withMethod("class P { static long m(long a) { " + statement + " return a; } }", new CompilerOptions(), (facts, lowered) -> {
+        withMethod("class P { static long m(long a) { " + statement + " return a; } }", new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER), (facts, lowered) -> {
             var join = (PirTerm.Let) ((PirTerm.Lam) lowered.term()).body();
             assertInstanceOf(PirTerm.Lam.class, join.value());
             assertInstanceOf(PirTerm.IfThenElse.class, join.body());
@@ -192,7 +193,7 @@ class LoweringAloneTest {
      */
     @Test
     void aBinderKeepsItsProvenanceThroughTheStrictTransform() {
-        withMethod("record R(long a) { } class P { static long m(R r, long y) { return y; } }", new CompilerOptions(), (facts, lowered) -> {
+        withMethod("record R(long a) { } class P { static long m(R r, long y) { return y; } }", new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER), (facts, lowered) -> {
             var terms = lowered.lowering().terms();
             var root = facts.element(lowered.parameter(0));
             var local = facts.element(lowered.parameter(1));
@@ -218,11 +219,11 @@ class LoweringAloneTest {
     @Test
     void positionsAreRecordedOnlyForASourceMap() {
         String source = "class P {\n    static long m(long a) {\n        return a;\n    }\n}\n";
-        withMethod(source, new CompilerOptions(), (facts, lowered) -> {
+        withMethod(source, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER), (facts, lowered) -> {
             lowered.term();
             assertTrue(lowered.lowering().terms().positions().isEmpty());
         });
-        withMethod(source, new CompilerOptions().setSourceMapEnabled(true), (facts, lowered) -> {
+        withMethod(source, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setSourceMapEnabled(true), (facts, lowered) -> {
             var term = (PirTerm.Lam) lowered.term();
             var positions = lowered.lowering().terms().positions();
             assertEquals(2, positions.get(term).line(), "the method");
@@ -234,9 +235,9 @@ class LoweringAloneTest {
     /** The scan stops these first in a compilation; lowering must still not lower what it does not know. */
     @Test
     void anArrayOtherThanALiteralByteArrayIsNotPortedHereToo() {
-        withMethod("class P { static byte[] m() { return new byte[2]; } }", new CompilerOptions(), (facts, lowered) ->
+        withMethod("class P { static byte[] m() { return new byte[2]; } }", new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER), (facts, lowered) ->
                 assertEquals("JULC0014", assertThrows(CompilerException.class, lowered::term).diagnostics().getFirst().code()));
-        withMethod("class P { static byte[] m(boolean b) { return b ? new byte[2] : new byte[]{1}; } }", new CompilerOptions(), (facts, lowered) ->
+        withMethod("class P { static byte[] m(boolean b) { return b ? new byte[2] : new byte[]{1}; } }", new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER), (facts, lowered) ->
                 assertEquals("JULC0014", assertThrows(CompilerException.class, lowered::term).diagnostics().getFirst().code()));
     }
 
@@ -246,14 +247,14 @@ class LoweringAloneTest {
             "static String m(String a) { return a + 1; }                         | JULC0090",
             "static String m(String a) { return 1 + a; }                         | JULC0090"})
     void whatTheSubsetRejectsIsNotLoweredHereToo(String method, String code) {
-        withMethod("class P { " + method + " }", new CompilerOptions(), (facts, lowered) ->
+        withMethod("class P { " + method + " }", new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER), (facts, lowered) ->
                 assertEquals(code, assertThrows(CompilerException.class, lowered::term).diagnostics().getFirst().code()));
     }
 
     /** On an array {@code equals} is the scan's {@code JULC0087}, and the lowering's too, in the scan's words. */
     @Test
     void anEqualsOnAnArrayIsTheScansRejectionHereToo() {
-        withMethod("class P { static boolean m(byte[] a, byte[] b) { return a.equals(b); } }", new CompilerOptions(), (facts, lowered) -> {
+        withMethod("class P { static boolean m(byte[] a, byte[] b) { return a.equals(b); } }", new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER), (facts, lowered) -> {
             var diagnostic = assertThrows(CompilerException.class, lowered::term).diagnostics().getFirst();
             assertEquals("JULC0087", diagnostic.code());
             assertEquals("Object.equals compares byte[], whose equality on the JVM compares an array by identity", diagnostic.message());
@@ -270,14 +271,14 @@ class LoweringAloneTest {
     void whatTheScanCodesIsCodedHereToo(String method, String code) {
         var types = "sealed interface S permits A, B { } sealed interface T permits B { } record A(java.math.BigInteger v) implements S { }"
                 + " record B(java.math.BigInteger v) implements S, T { } ";
-        withMethod("class P { " + types + method + " }", new CompilerOptions(), (facts, lowered) ->
+        withMethod("class P { " + types + method + " }", new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER), (facts, lowered) ->
                 assertEquals(code, assertThrows(CompilerException.class, lowered::term).diagnostics().getFirst().code()));
     }
 
     /** D6's rule is the lowering's too, so no {@code ==} on references reaches a term, read by the scan or not. */
     @Test
     void anIdentityComparisonIsNotLoweredHereToo() {
-        withMethod("class P { static boolean m(java.math.BigInteger a) { return a == a; } }", new CompilerOptions(), (facts, lowered) ->
+        withMethod("class P { static boolean m(java.math.BigInteger a) { return a == a; } }", new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER), (facts, lowered) ->
                 assertEquals("JULC0086", assertThrows(CompilerException.class, lowered::term).diagnostics().getFirst().code()));
     }
 
@@ -296,7 +297,7 @@ class LoweringAloneTest {
                     return null;
                 }
             }.scan(program.roots().getFirst(), null);
-            var lowering = new Lowering(facts, CompilationContext.resolve(new CompilerOptions()));
+            var lowering = new Lowering(facts, CompilationContext.resolve(new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)));
             var failure = assertThrows(CompilerException.class, () -> lowering.method(methods.getFirst(), Scope.empty(), false));
             assertTrue(failure.getMessage().contains("Generic library method lib.L.f cannot be called from Java yet"), failure::getMessage);
             return null;
@@ -390,7 +391,7 @@ class LoweringAloneTest {
 
     @Test
     void anOuterScopeIsKept() {
-        withMethod("class P { static long K = 1; static long m(long K) { return K; } }", new CompilerOptions(), (facts, lowered) -> {
+        withMethod("class P { static long K = 1; static long m(long K) { return K; } }", new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER), (facts, lowered) -> {
             var field = facts.elements().getTypeElement("P").getEnclosedElements().stream()
                     .filter(e -> e.getSimpleName().contentEquals("K")).findFirst().orElseThrow();
             var term = (PirTerm.Lam) lowered.lowering().method(lowered.method(), Scope.empty().bind(field, new PirType.IntegerType()), false);

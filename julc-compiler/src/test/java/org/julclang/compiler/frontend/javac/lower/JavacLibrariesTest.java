@@ -157,7 +157,7 @@ class JavacLibrariesTest {
                 }
                 """;
         for (var level : OptimizationLevel.values()) {
-            var reference = new JulcCompiler(STDLIB, new CompilerOptions().setOptimizationLevel(level)).compileMethod(method, "f");
+            var reference = new JulcCompiler(STDLIB, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setOptimizationLevel(level)).compileMethod(method, "f");
             var javac = new JulcCompiler(STDLIB, new CompilerOptions().setOptimizationLevel(level)
                     .setFrontend(CompilerFrontend.JAVAC)).compileMethod(method, "f");
             assertArrayEquals(UplcFlatEncoder.encodeProgram(reference.program()), UplcFlatEncoder.encodeProgram(javac.program()),
@@ -167,7 +167,7 @@ class JavacLibrariesTest {
                 "import org.julclang.stdlib.lib.MathLib;\n").replace(
                 "RulesLib.allowed(redeemer, RulesLib.twice(redeemer)) && TokenLib.small(redeemer)",
                 "MathLib.pow(redeemer, BigInteger.TWO).signum() >= 0");
-        var reference = new JulcCompiler(STDLIB).compile(validator);
+        var reference = new JulcCompiler(STDLIB, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compile(validator);
         var javac = new JulcCompiler(STDLIB, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compile(validator);
         assertArrayEquals(UplcFlatEncoder.encodeProgram(reference.program()), UplcFlatEncoder.encodeProgram(javac.program()));
     }
@@ -329,7 +329,7 @@ class JavacLibrariesTest {
                 }
                 """;
         LoweringFixture.assertSameMethodAsReference(source, "g", List.of(library), STDLIB);
-        var warned = new JulcCompiler(STDLIB).compileMethod(source, "f", List.of(library)).diagnostics();
+        var warned = new JulcCompiler(STDLIB, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod(source, "f", List.of(library)).diagnostics();
         assertTrue(warned.stream().anyMatch(d -> d.message().contains("expects Data")), warned::toString);
         LoweringFixture.assertSameMethodAsReference(source, "f", List.of(library), STDLIB);
     }
@@ -354,7 +354,7 @@ class JavacLibrariesTest {
                     static PlutusData f(BigInteger a) { return D.id(PlutusData.cast(a, PlutusData.class)); }
                 }
                 """;
-        assertTrue(new JulcCompiler(STDLIB).compileMethod(source, "f", List.of(library)).diagnostics().isEmpty());
+        assertTrue(new JulcCompiler(STDLIB, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod(source, "f", List.of(library)).diagnostics().isEmpty());
         LoweringFixture.assertSameMethodAsReference(source, "f", List.of(library), STDLIB);
     }
 
@@ -429,7 +429,7 @@ class JavacLibrariesTest {
                     static BigInteger f(BigInteger a) { return F.f(a); }
                 }
                 """;
-        var off = new CompilerOptions().setJavacGate(JavacGateMode.OFF);
+        var off = new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.OFF);
         assertFalse(new JulcCompiler(STDLIB, off).compileMethod(source, "f", List.of(library)).hasErrors());
         var javac = assertThrows(CompilerException.class, () -> new JulcCompiler(STDLIB,
                 new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compileMethod(source, "f", List.of(library)));
@@ -469,7 +469,7 @@ class JavacLibrariesTest {
     void aLibraryRootIsALibraryOnlyWhereTheReferenceResolvesIt() {
         var source = stdlibSource("ByteStringLib");
         for (var level : OptimizationLevel.values()) {
-            var reference = new JulcCompiler(STDLIB, new CompilerOptions().setOptimizationLevel(level)).compileMethod(source, "length");
+            var reference = new JulcCompiler(STDLIB, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setOptimizationLevel(level)).compileMethod(source, "length");
             var javac = new JulcCompiler(STDLIB, new CompilerOptions().setOptimizationLevel(level)
                     .setFrontend(CompilerFrontend.JAVAC)).compileMethod(source, "length");
             assertArrayEquals(UplcFlatEncoder.encodeProgram(reference.program()), UplcFlatEncoder.encodeProgram(javac.program()),
@@ -486,7 +486,7 @@ class JavacLibrariesTest {
         var root = library("H", "static final BigInteger HALF = BigInteger.valueOf(100).divide(BigInteger.TWO);\n"
                 + "public static BigInteger g(BigInteger x) { return x.add(x); }\n"
                 + "public static BigInteger f(BigInteger x) { return g(x).add(HALF); }\n");
-        var off = new CompilerOptions().setJavacGate(JavacGateMode.OFF);
+        var off = new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.OFF);
         for (var frontend : List.of(CompilerFrontend.JAVAPARSER, CompilerFrontend.JAVAC)) {
             for (var level : OptimizationLevel.values()) {
                 var program = new JulcCompiler(STDLIB, new CompilerOptions().setJavacGate(JavacGateMode.OFF).setOptimizationLevel(level)
@@ -507,7 +507,7 @@ class JavacLibrariesTest {
         var g = library("G", "public static BigInteger f(BigInteger x) { return x.add(x); }\n"
                 + "public static <T> T f(T x, BigInteger y) { return x; }\n");
         var caller = "import com.lib.G;\nimport java.math.BigInteger;\nclass M { static BigInteger f(BigInteger a) { return G.f(a); } }\n";
-        var reference = assertThrows(CompilerException.class, () -> new JulcCompiler(STDLIB).compileMethod(caller, "f", List.of(g)));
+        var reference = assertThrows(CompilerException.class, () -> new JulcCompiler(STDLIB, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)).compileMethod(caller, "f", List.of(g)));
         var javac = assertThrows(CompilerException.class, () -> new JulcCompiler(STDLIB,
                 new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compileMethod(caller, "f", List.of(g)));
         // The reference throws the message alone; javac's has the call's position too.
@@ -526,9 +526,9 @@ class JavacLibrariesTest {
                 + "public static BigInteger f(BigInteger x) { return x.add(K).add(O.z(x)); }\n");
         var o = library("O", "public static BigInteger f(BigInteger y) { return y.add(BigInteger.TEN); }\n"
                 + "public static BigInteger z(BigInteger y) { return y; }\n");
-        var off = new CompilerOptions().setJavacGate(JavacGateMode.OFF);
+        var off = new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.OFF);
         for (var level : OptimizationLevel.values()) {
-            var reference = new JulcCompiler(STDLIB, new CompilerOptions().setJavacGate(JavacGateMode.OFF).setOptimizationLevel(level))
+            var reference = new JulcCompiler(STDLIB, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setJavacGate(JavacGateMode.OFF).setOptimizationLevel(level))
                     .compileMethod(r, "f", List.of(r, o));
             var javac = new JulcCompiler(STDLIB, new CompilerOptions().setOptimizationLevel(level).setFrontend(CompilerFrontend.JAVAC))
                     .compileMethod(r, "f", List.of(r, o));

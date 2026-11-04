@@ -8,6 +8,11 @@ class JulcCompilerTest {
 
     private final JulcCompiler compiler = new JulcCompiler();
 
+    /** The JavaParser frontend, which compiles every library unit it is given (ADR-068 D8); selected explicitly from M5. */
+    private static JulcCompiler reference() {
+        return new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER));
+    }
+
     @Test
     void compilesSimpleValidator() {
         var source = """
@@ -20,7 +25,7 @@ class JulcCompilerTest {
             class SimpleValidator {
                 @Entrypoint
                 static boolean validate(BigInteger datum, BigInteger redeemer, PlutusData ctx) {
-                    return datum == redeemer;
+                    return datum.equals(redeemer);
                 }
             }
             """;
@@ -150,7 +155,7 @@ class JulcCompilerTest {
             class SpendTest {
                 @Entrypoint
                 static boolean validate(BigInteger datum, BigInteger redeemer, PlutusData ctx) {
-                    return datum == redeemer;
+                    return datum.equals(redeemer);
                 }
             }
             """;
@@ -331,7 +336,10 @@ class JulcCompilerTest {
             }
             """;
         assertThrows(CompilerException.class,
-                () -> compiler.compile(validatorSource, java.util.List.of(librarySource)));
+                () -> reference().compile(validatorSource, java.util.List.of(librarySource)));
+        // ADR-068 D8 (r11): javac, the default from M5, reads only the units a program references, so a library nothing
+        // references is not compiled and its annotation is not rejected; JavacLibraryRolesTest holds the referenced case.
+        assertFalse(compiler.compile(validatorSource, java.util.List.of(librarySource)).hasErrors());
     }
 
     @Test
@@ -390,10 +398,13 @@ class JulcCompilerTest {
             """;
 
         var ex = assertThrows(CompilerException.class,
-                () -> compiler.compile(validatorSource, java.util.List.of(librarySource)));
+                () -> reference().compile(validatorSource, java.util.List.of(librarySource)));
 
         assertTrue(ex.getMessage().contains("must not combine @OnchainLibrary"));
         assertTrue(ex.getMessage().contains("@MintingValidator"));
+        // ADR-068 D8 (r11): javac, the default from M5, reads only the units a program references, so a library nothing
+        // references is not compiled and its annotation is not rejected; JavacLibraryRolesTest holds the referenced case.
+        assertFalse(compiler.compile(validatorSource, java.util.List.of(librarySource)).hasErrors());
     }
 
     @Test
@@ -472,7 +483,7 @@ class JulcCompilerTest {
 
                 @Entrypoint
                 static boolean validate(BigInteger redeemer, PlutusData ctx) {
-                    return redeemer == THRESHOLD;
+                    return redeemer.equals(THRESHOLD);
                 }
             }
             """;

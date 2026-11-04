@@ -14,11 +14,13 @@ import java.util.TreeMap;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * ADR-068 D4: {@code julc build --frontend}. The script from {@code javac} must equal the default's, and a construct not
- * ported must stop that frontend and not the default: the second proves the option reaches the compilation. A blueprint
- * needs a contract schema, which {@code javac} does not produce yet, so these pass {@code --no-blueprint}.
+ * ADR-068 D4: {@code julc build --frontend}. The script from {@code javac} must equal the reference's ({@code javaparser},
+ * selected explicitly), and a construct javac alone rejects must stop that frontend and not the reference: the second
+ * proves the option reaches the compilation. javac is the default from ADR-068 M5. Most of these pass
+ * {@code --no-blueprint}; {@link #aBlueprintBuildsOnTheDefault} builds one.
  */
 class BuildCommandFrontendTest {
 
@@ -83,18 +85,18 @@ class BuildCommandFrontendTest {
                     }
                     """);
         }
-        assertEquals(0, build(reference));
+        assertEquals(0, build(reference, "--frontend", "javaparser"));
         assertEquals(0, build(javac, "--frontend", "javac"));
         assertFalse(artifacts(reference).isEmpty());
         assertEquals(artifacts(reference), artifacts(javac));
     }
 
     @Test
-    void javacBuildsTheScriptTheDefaultDoes(@TempDir Path dir) throws Exception {
+    void javacBuildsTheScriptTheReferenceDoes(@TempDir Path dir) throws Exception {
         String body = "return ctx.txInfo().fee().compareTo(BigInteger.TWO) > 0;";
         Path reference = project(dir, "reference", body);
         Path javac = project(dir, "javac", body);
-        assertEquals(0, build(reference));
+        assertEquals(0, build(reference, "--frontend", "javaparser"));
         assertEquals(0, build(javac, "--frontend", "javac"));
         assertFalse(artifacts(reference).isEmpty());
         assertEquals(artifacts(reference), artifacts(javac));
@@ -105,6 +107,21 @@ class BuildCommandFrontendTest {
         String body = "long fee = (short) ctx.txInfo().fee().longValue(); return fee > 0;";
         assertEquals(0, build(project(dir, "reference", body), "--frontend", "javaparser"));
         assertEquals(1, build(project(dir, "javac", body), "--frontend", "javac"));
+        // ADR-068 M5: javac is the default when no frontend is named.
+        assertEquals(1, build(project(dir, "default", body)));
+    }
+
+    /** ADR-068 M5: a blueprint builds on the default frontend, javac, and equals the reference's. */
+    @Test
+    void aBlueprintBuildsOnTheDefault(@TempDir Path dir) throws Exception {
+        String body = "return ctx.txInfo().fee().compareTo(BigInteger.TWO) > 0;";
+        Path reference = project(dir, "reference", body);
+        Path javac = project(dir, "javac", body);
+        assertEquals(0, new CommandLine(new BuildCommand()).execute(reference.toString(), "--frontend", "javaparser"));
+        assertEquals(0, new CommandLine(new BuildCommand()).execute(javac.toString()));
+        var artifacts = artifacts(javac);
+        assertTrue(artifacts.containsKey("plutus.json"), artifacts.keySet()::toString);
+        assertEquals(artifacts(reference), artifacts);
     }
 
     @Test

@@ -152,7 +152,7 @@ class Adr068LedgerEncodingTest {
     @Test
     void everyLedgerTypesDataEqualsTheLedgersOwnEncoder() throws Exception {
         var javac = javacLayout();
-        var reference = layout(Adr068Types.reference(List.of(TRIVIAL)).registry(), new LedgerTypeProvider());
+        var reference = layout(Adr068Types.reference(List.of(TRIVIAL)).registry(), new LedgerTypeProvider(new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)));
         var identities = new TreeMap<>(javac.registry().records()).keySet();
         assertFalse(identities.isEmpty());
         var actual = new TreeMap<String, String>();

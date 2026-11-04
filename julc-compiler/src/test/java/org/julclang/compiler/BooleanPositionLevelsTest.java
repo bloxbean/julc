@@ -153,7 +153,7 @@ class BooleanPositionLevelsTest {
     }
 
     private static CompileResult compile(Shape shape, OptimizationLevel level, boolean sourceMap) {
-        return new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()
+        return new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)
                 .setOptimizationLevel(level).setSourceMapEnabled(sourceMap).setJavacGate(JavacGateMode.OFF))
                 .compile(shape.source(), shape.libraries());
     }
@@ -224,7 +224,7 @@ class BooleanPositionLevelsTest {
                 }""";
         var compiled = compile(new Shape("proven", integer(1), proven), OptimizationLevel.PV11_SAFE, false);
         assertTrue(compiled.optimizationReport().appliedRules().contains(UplcGenerator.PV11_CASE_BOOL_RULE));
-        var unproven = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()
+        var unproven = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)
                 .setOptimizationLevel(OptimizationLevel.PV11_SAFE).setJavacGate(JavacGateMode.OFF))
                 .compileMethod("""
                         import java.math.BigInteger;

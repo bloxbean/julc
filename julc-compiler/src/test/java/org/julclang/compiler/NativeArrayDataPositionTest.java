@@ -144,7 +144,8 @@ class NativeArrayDataPositionTest {
         rejected("The value of 'arr'", 13, 9 + body.indexOf("arr).size()"), sealed, LONG_SIG, body);
         String lambda = "S s = new A(BigInteger.ONE); var ys = xs.map(v -> switch (s) { case A a -> JulcArray.of(v); case B b -> JulcArray.of(v); });"
                 + " return ys.size();";
-        rejected("The value encoded here", 13, 9 + lambda.indexOf("switch"), sealed, LONG_SIG, lambda);
+        // ADR-068 M5: javac's frontend, the default, names the encoded expression where the reference says "The value encoded here".
+        rejected("The value of 'switch (s)", 13, 9 + lambda.indexOf("switch"), sealed, LONG_SIG, lambda);
     }
 
     @Test
