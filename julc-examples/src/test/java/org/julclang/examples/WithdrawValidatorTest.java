@@ -32,7 +32,7 @@ class WithdrawValidatorTest {
             @WithdrawValidator
             class AuthorizedWithdraw {
                 static boolean isAuthorized(BigInteger pkh, BigInteger expected) {
-                    return pkh == expected;
+                    return pkh.equals(expected);
                 }
 
                 @Entrypoint
@@ -54,7 +54,7 @@ class WithdrawValidatorTest {
             @WithdrawValidator
             class RejectingWithdraw {
                 static boolean isAuthorized(BigInteger pkh, BigInteger expected) {
-                    return pkh == expected;
+                    return pkh.equals(expected);
                 }
 
                 @Entrypoint

@@ -33,7 +33,7 @@ class VestingValidatorTest {
                 }
 
                 static boolean checkBeneficiary(BigInteger pkh, BigInteger expected) {
-                    return pkh == expected;
+                    return pkh.equals(expected);
                 }
 
                 @Entrypoint

@@ -481,18 +481,20 @@ class BlueprintTest {
 
     @Test
     void advertisedContainerEncodingIsAcceptedByTheSameCompiledValidator() {
+        // A JulcMap: java.util.Map's get with a byte[] key compares it by identity on the JVM (JULC0087, ADR-068 D6),
+        // and JuLC's map compares byte[] keys by content on the JVM as on-chain.
         String source = """
                 import org.julclang.stdlib.annotation.*;
                 import org.julclang.ledger.ScriptContext;
                 import java.math.BigInteger;
                 import java.util.List;
-                import java.util.Map;
+                import org.julclang.core.types.JulcMap;
                 import java.util.Optional;
 
                 @MintingValidator
                 class EncodingGate {
                     record Redeemer(List<BigInteger> values,
-                                    Map<byte[], BigInteger> balances,
+                                    JulcMap<byte[], BigInteger> balances,
                                     Optional<byte[]> owner,
                                     boolean active) {}
 

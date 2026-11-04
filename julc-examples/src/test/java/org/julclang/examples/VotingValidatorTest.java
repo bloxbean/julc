@@ -32,7 +32,7 @@ class VotingValidatorTest {
             @VotingValidator
             class AuthorizedVoter {
                 static boolean isAuthorized(BigInteger credential, BigInteger expected) {
-                    return credential == expected;
+                    return credential.equals(expected);
                 }
 
                 @Entrypoint
@@ -54,7 +54,7 @@ class VotingValidatorTest {
             @VotingValidator
             class RejectingVoter {
                 static boolean isAuthorized(BigInteger credential, BigInteger expected) {
-                    return credential == expected;
+                    return credential.equals(expected);
                 }
 
                 @Entrypoint
