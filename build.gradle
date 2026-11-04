@@ -112,8 +112,9 @@ subprojects {
             systemProperty 'julc.javacGate.report', rootProject.file(javacGateReport.get()).absolutePath
             outputs.upToDateWhen { false }
         }
-        // ADR-068 M6: `-Pjulc.tools.reader=JAVAC` runs the tools that read Java source (lint, test discovery, MCP
-        // arity, the metadata extractor, the verification resolvers) on javac's parser instead of JavaParser's.
+        // ADR-068 M6: `-Pjulc.tools.reader=JAVAPARSER` runs the tools that read Java source (lint, test discovery, MCP
+        // arity, the metadata extractor, the verification resolvers) on JavaParser's parser instead of javac's, the
+        // default from M5.
         def toolsReader = providers.gradleProperty('julc.tools.reader')
         if (toolsReader.present) systemProperty 'julc.tools.reader', toolsReader.get()
         def corpusRecord = providers.gradleProperty('julc.corpus.record')

@@ -27,7 +27,7 @@ public class CompilerOptions {
     private Consumer<String> logger = System.out::println;
     private JavacGateMode javacGate;
     private Set<String> jarLibrarySources = Set.of();
-    private CompilerFrontend frontend = CompilerFrontend.JAVAPARSER;
+    private CompilerFrontend frontend = CompilerFrontend.DEFAULT;
     private LoweredMethodObserver methodObserver;
 
     /**
@@ -119,7 +119,8 @@ public class CompilerOptions {
 
     /**
      * Experimental (ADR-068 M1): how the javac gate acts, which has javac analyze every compilation's sources before
-     * the JavaParser frontend compiles them. {@code null} (the default) defers to the system property
+     * the JavaParser frontend compiles them. It applies only to {@link CompilerFrontend#JAVAPARSER}; the javac frontend,
+     * the default from ADR-068 M5, has no gate to turn off (D15). {@code null} (the default) defers to the system property
      * {@code julc.javacGate} ({@code off}, {@code report} or {@code enforce}), and then to {@code enforce}, which
      * fails a compilation javac rejects. {@code report} never fails one. The subset's rules that rest on what javac
      * resolved run in the gate, so they follow its mode, and {@code off} turns them off with the rest of it.
@@ -155,9 +156,10 @@ public class CompilerOptions {
     }
 
     /**
-     * Experimental (ADR-068 D4): the Java frontend of this compilation, {@link CompilerFrontend#JAVAPARSER} by default.
-     * {@link CompilerFrontend#JAVAC} has javac read and type the sources and never falls back: until ADR-068 M4 a
-     * construct it has not ported is {@code JULC0084}.
+     * Experimental (ADR-068 D4): the Java frontend of this compilation, {@link CompilerFrontend#JAVAC} by default from
+     * ADR-068 M5. javac reads and types the sources and never falls back (I8). {@link CompilerFrontend#JAVAPARSER}, the
+     * frozen reference frontend, is selected only explicitly, runs behind the javac gate ({@link #setJavacGate}), and is
+     * removed at M6 with this option.
      */
     public CompilerOptions setFrontend(CompilerFrontend frontend) {
         this.frontend = Objects.requireNonNull(frontend, "frontend");

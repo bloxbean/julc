@@ -7,6 +7,8 @@ import org.gradle.api.file.DirectoryProperty;
 import org.gradle.api.model.ObjectFactory;
 import org.gradle.api.provider.Property;
 
+import java.util.Locale;
+
 /**
  * Configuration extension for the julc Gradle plugin.
  * <p>
@@ -51,7 +53,7 @@ public class JulcExtension {
         optimization = objects.property(String.class)
                 .convention(OptimizationLevel.DEFAULT_PROFILE_ID);
         costProfile = objects.property(String.class);
-        frontend = objects.property(String.class).convention(CompilerFrontend.JAVAPARSER.name().toLowerCase());
+        frontend = objects.property(String.class).convention(CompilerFrontend.DEFAULT.name().toLowerCase(Locale.ROOT));
     }
 
     public DirectoryProperty getSourceDir() {
@@ -92,8 +94,8 @@ public class JulcExtension {
     }
 
     /**
-     * Experimental (ADR-068 D4): the Java frontend, {@code javaparser} or {@code javac}. On {@code javac} a construct not
-     * ported yet fails the build with {@code JULC0084}, and so does a blueprint: use {@code blueprint = false}.
+     * Experimental (ADR-068 D4): the Java frontend, {@code javac} (the default from ADR-068 M5) or {@code javaparser}, the
+     * frozen reference frontend, selectable explicitly until M6 removes it and this option.
      */
     public Property<String> getFrontend() {
         return frontend;

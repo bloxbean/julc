@@ -54,7 +54,7 @@ public final class JulcEval {
     private final org.julclang.core.PlutusData[] params;
     private boolean sourceMapEnabled;
     private boolean tracingEnabled;
-    private CompilerFrontend frontend = CompilerFrontend.JAVAPARSER;
+    private CompilerFrontend frontend = CompilerFrontend.DEFAULT;
     private volatile List<ExecutionTraceEntry> lastExecutionTrace = List.of();
     private volatile List<BuiltinExecution> lastBuiltinTrace = List.of();
 
@@ -119,8 +119,8 @@ public final class JulcEval {
     }
 
     /**
-     * Experimental (ADR-068 D4): the Java frontend that compiles the methods, {@link CompilerFrontend#JAVAPARSER} by
-     * default. On {@link CompilerFrontend#JAVAC} a construct not ported yet is {@code JULC0084}.
+     * Experimental (ADR-068 D4): the Java frontend that compiles the methods, {@link CompilerFrontend#JAVAC} by default
+     * from ADR-068 M5. {@link CompilerFrontend#JAVAPARSER} is selectable explicitly until M6, which removes this option.
      */
     public JulcEval frontend(CompilerFrontend frontend) {
         this.frontend = Objects.requireNonNull(frontend, "frontend must not be null");
@@ -281,7 +281,8 @@ public final class JulcEval {
     // --- Internal ---
 
     private Term evaluateTerm(String methodName, org.julclang.core.PlutusData[] args) {
-        if (sourceMapEnabled || frontend != CompilerFrontend.JAVAPARSER) {
+        // MethodEvaluator compiles with the default options, so it serves only the default frontend without a map.
+        if (sourceMapEnabled || frontend != CompilerFrontend.DEFAULT) {
             return evaluateTermWithOptions(methodName, args);
         }
         if (javaSource != null) {

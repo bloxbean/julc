@@ -135,6 +135,9 @@ public class JulcCompiler {
                 collectDebugMetadata ? pool.stream().map(JavacFrontend.Unit::text).toList() : null);
         var compiled = JavacGate.onJavacFrontend(() -> JavacCompilation.validator(root, pool, stdlibLookup, context, request));
         var result = compiled.result();
+        if (context.isVerbose() && result.program() != null) {
+            context.logf("Compilation complete (javac frontend): %s", result.scriptSizeFormatted());
+        }
         DebugMetadata metadata = compiled.debug() == null ? null : compiled.debug().finish(result, options,
                 compiled.lowered().debug().emittedBinders(), compiled.lowered().debug().exactUplcPositions());
         return new CompilationOutcome(result, compiled.schema(), metadata);

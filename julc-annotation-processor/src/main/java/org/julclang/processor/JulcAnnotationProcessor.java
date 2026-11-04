@@ -72,7 +72,7 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
     private CompilerTarget compilerTarget;
     private OptimizationLevel optimizationLevel;
     private OptimizationCostProfile optimizationCostProfile;
-    private CompilerFrontend frontend = CompilerFrontend.JAVAPARSER;
+    private CompilerFrontend frontend = CompilerFrontend.DEFAULT;
 
     /** Accumulated compiled validators for CIP-57 blueprint generation. */
     private final List<BlueprintGenerator.CompiledValidator> compiledValidators = new ArrayList<>();

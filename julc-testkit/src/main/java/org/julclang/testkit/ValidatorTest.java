@@ -156,8 +156,9 @@ public final class ValidatorTest {
     }
 
     /**
-     * Compile Java source to a UPLC Program on the given Java frontend (experimental, ADR-068 D4). On
-     * {@link CompilerFrontend#JAVAC} a construct not ported yet is {@code JULC0084}.
+     * Compile Java source to a UPLC Program on the given Java frontend (experimental, ADR-068 D4).
+     * {@link CompilerFrontend#JAVAC} is the default from ADR-068 M5; {@link CompilerFrontend#JAVAPARSER} stays selectable
+     * until M6.
      *
      * @param javaSource the Java source code
      * @param frontend   the Java frontend

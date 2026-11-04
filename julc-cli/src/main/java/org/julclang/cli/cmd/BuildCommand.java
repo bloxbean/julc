@@ -60,9 +60,9 @@ public class BuildCommand implements Callable<Integer> {
     private String costProfile;
 
     @Option(names = "--frontend",
-            defaultValue = "javaparser",
-            description = "Experimental: the Java frontend, javaparser or javac (default: ${DEFAULT-VALUE}). On javac a"
-                    + " construct not ported yet is JULC0084, and so is a blueprint: use --no-blueprint")
+            defaultValue = "javac",
+            description = "Experimental: the Java frontend, javac or javaparser (default: ${DEFAULT-VALUE}). javaparser,"
+                    + " the frozen reference frontend, stays selectable until it is removed (ADR-068 M6)")
     private String frontend;
 
     @Override
