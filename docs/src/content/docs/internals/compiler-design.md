@@ -3,10 +3,9 @@ title: "JuLC Compiler Design"
 description: "JuLC Compiler Design - JuLC documentation"
 ---
 
-> **Frontend note (ADR-068 M5).** JuLC reads Java with javac by default: javac parses and attributes the sources, and
-> `frontend/javac` lowers javac's trees to PIR. The parsing and validation stages below describe the JavaParser
-> frontend, which stays selectable (`CompilerOptions.setFrontend(CompilerFrontend.JAVAPARSER)`) until ADR-068 M6 removes
-> it; the PIR, UPLC and backend stages are shared. See [ADR-068](https://github.com/bloxbean/julc/blob/main/adr/068-javac-frontend-migration.md).
+> **Frontend note (ADR-068 M6).** JuLC reads Java with javac alone: javac parses and attributes the sources, and
+> `frontend/javac` lowers javac's trees to PIR. See
+> [ADR-068](https://github.com/bloxbean/julc/blob/main/adr/068-javac-frontend-migration.md).
 
 A progressive guide to the JuLC compiler architecture — from high-level overview to internal implementation details. Intended for anyone from first-time contributors to seasoned compiler engineers.
 
@@ -98,11 +97,11 @@ The JuLC compilation pipeline transforms Java source through three intermediate 
 ```
 Java Source                     (human-readable)
      │
-     │  JavaParser
+     │  javac (parse, attribute)
      ▼
-Java AST                        (abstract syntax tree — JavaParser nodes)
+javac trees                     (attributed com.sun.source trees, through JavacFacts)
      │
-     │  PirGenerator
+     │  Lowering
      ▼
 PIR (Plutus Intermediate Rep)   (typed, named variables, high-level constructs)
      │
@@ -142,7 +141,7 @@ JuLC is organized into focused modules. Here are the key ones grouped by role:
 
 | Module | Role | Key Types |
 |--------|------|-----------|
-| `julc-compiler` | Java source → UPLC compilation (36 Java files) | `JulcCompiler`, `PirGenerator`, `PirTerm`, `PirType`, `UplcGenerator` |
+| `julc-compiler` | Java source → UPLC compilation (36 Java files) | `JulcCompiler`, `Lowering`, `PirTerm`, `PirType`, `UplcGenerator` |
 | `julc-stdlib` | On-chain standard library (13 libraries, ~65 methods) | `StdlibRegistry`, `ListsLib`, `MapLib`, `ValuesLib`, etc. |
 
 ### Runtime (execution)
@@ -337,8 +336,8 @@ Java Source(s)
      │
      ▼
 ┌─────────────────────────────────────────┐
-│  1. Parse (JavaParser → AST)            │
-│  2. Validate (SubsetValidator)          │
+│  1. Parse and attribute (javac)         │
+│  2. Validate (SubsetRules and SubsetScan)          │
 │  3. Library check                       │
 │  4. Annotated class discovery           │
 │  5. Script purpose detection            │
@@ -382,26 +381,21 @@ The pipeline can be divided into four major phases:
 
 ### Parsing
 
-JuLC uses [JavaParser](https://javaparser.org/) to parse Java source into an AST:
+JuLC runs javac in-process (`JavacTask.parse()` and `analyze()`, never `generate()`) over a closed environment: a shipped
+`java.base` blob and signature-only stubs of JuLC's API, and the sources of the compilation. A javac error rejects the
+program (`JULC0085`). The source language is Java 25's, read by the JDK 25 compiler on every host.
 
-```java
-StaticJavaParser.getParserConfiguration()
-    .setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
-CompilationUnit cu = StaticJavaParser.parse(source);
-```
+### Subset rules
 
-The parser handles Java 21 features: records, sealed interfaces, pattern matching in `switch`, `instanceof` patterns.
-
-### SubsetValidator
-
-After parsing, `SubsetValidator` walks the AST to reject unsupported Java constructs. It extends JavaParser's `VoidVisitorAdapter` and collects multiple errors:
+On what javac accepted, `SubsetRules` and `SubsetScan` reject the Java constructs that have no on-chain meaning. They read
+javac's attributed trees through `JavacFacts`, so a name is the element javac bound, not its spelling.
 
 ```
-SubsetValidator rejects:
+Rejected:
   try/catch, throw, synchronized, for(;;), do-while,
   null, this, super, new T[], float/double, class inheritance
 
-SubsetValidator allows:
+Allowed:
   for-each, while, break (in loops), records, sealed interfaces,
   switch expressions, instanceof patterns, Optional<T>
 ```
@@ -441,7 +435,7 @@ Tier 4: Top-level          → TxInfo (16 fields), ScriptContext
 
 Governance types (Conway era): `Vote`, `DRep`, `Voter`, `StakingCredential`, `Delegatee`, `TxCert`, `GovernanceAction`, `ProposalProcedure`, `Committee`, `Constitution`, `ScriptPurpose`.
 
-**Stage 2: User Types** (`TypeRegistrar`)
+**Stage 2: User Types** (`JavacTypeRegistrar`)
 
 Processes all compilation units (validator + libraries) together:
 
@@ -455,9 +449,9 @@ Processes all compilation units (validator + libraries) together:
 
 Circular dependencies are detected and reported as errors.
 
-### TypeResolver
+### TypeRegistry
 
-`TypeResolver` maps Java types to PIR types:
+`TypeRegistry` maps Java types to PIR types:
 
 | Java Type | PIR Type |
 |-----------|----------|
@@ -477,30 +471,30 @@ Circular dependencies are detected and reported as errors.
 
 ## 10. Phase 3: PIR Generation
 
-This is the heart of the compiler. `PirGenerator` (2,147 lines) transforms Java AST nodes into PIR terms, assisted by three extracted helper classes.
+This is the heart of the compiler. `Lowering` (2,147 lines) transforms Java AST nodes into PIR terms, assisted by three extracted helper classes.
 
 ### Architecture After ADR-018 Refactoring
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│                    PirGenerator (2,147 lines)             │
+│                    Lowering (2,147 lines)             │
 │  Entry points: generateMethod(), generateExpression()    │
-│  Owns: SymbolTable, TypeResolver, StdlibLookup           │
+│  Owns: Scope, TypeRegistry, StdlibLookup           │
 │                                                          │
 │  Delegates to:                                           │
 │  ┌────────────────────────────────────────────────┐      │
-│  │  AccumulatorTypeAnalyzer (432 lines)            │      │
+│  │  LoopRules (432 lines)            │      │
 │  │  Pure AST analysis — detects loop accumulator   │      │
 │  │  types (List vs Map) from usage patterns        │      │
 │  └────────────────────────────────────────────────┘      │
 │  ┌────────────────────────────────────────────────┐      │
-│  │  TypeInferenceHelper (282 lines)                │      │
+│  │  Typing (282 lines)                │      │
 │  │  Read-only type inference —                     │      │
 │  │  resolveExpressionType, inferPirType,           │      │
 │  │  inferBuiltinReturnType                         │      │
 │  └────────────────────────────────────────────────┘      │
 │  ┌────────────────────────────────────────────────┐      │
-│  │  LoopBodyGenerator (531 lines)                  │      │
+│  │  Loops (531 lines)                  │      │
 │  │  Loop body compilation — 5 paths:               │      │
 │  │  single/multi-acc × break/no-break + zero-acc   │      │
 │  │  Pack/unpack accumulators, nested loop handling  │      │
@@ -612,7 +606,7 @@ LetRec([#loop__while__0 = \n ->
 
 ### Accumulator Type Refinement
 
-`AccumulatorTypeAnalyzer` distinguishes `ListType` vs `MapType` accumulators by scanning the loop body for evidence:
+`LoopRules` distinguishes `ListType` vs `MapType` accumulators by scanning the loop body for evidence:
 
 | Evidence Found | Inferred Type |
 |---------------|---------------|
@@ -863,18 +857,18 @@ Understanding encode/decode insertion is key to understanding the compiler. Here
 
 ---
 
-## 18. PirGenerator and Its Extracted Helpers
+## 18. Lowering and Its Extracted Helpers
 
 ### Responsibility Split (ADR-018)
 
-Before the ADR-018 refactoring, PirGenerator was a 3,369-line monolith. It was decomposed into focused classes:
+Before the ADR-018 refactoring, Lowering was a 3,369-line monolith. It was decomposed into focused classes:
 
 | Class | Lines | Responsibility |
 |-------|-------|----------------|
-| `PirGenerator` | 2,147 | Core: expressions, statements, method calls, record access, control flow |
-| `LoopBodyGenerator` | 531 | Loop body compilation across 5 paths (single/multi-acc × break/no-break) |
-| `AccumulatorTypeAnalyzer` | 432 | Pure AST analysis: detect accumulator types from usage patterns |
-| `TypeInferenceHelper` | 282 | Read-only type queries: resolve expression types, infer PIR types |
+| `Lowering` | 2,147 | Core: expressions, statements, method calls, record access, control flow |
+| `Loops` | 531 | Loop body compilation across 5 paths (single/multi-acc × break/no-break) |
+| `LoopRules` | 432 | Pure AST analysis: detect accumulator types from usage patterns |
+| `Typing` | 282 | Read-only type queries: resolve expression types, infer PIR types |
 | `TypeMethodRegistry` | 905 | Instance method dispatch: 50+ methods across 11 type categories |
 | `PirHelpers` | 356 | Static utilities: wrapDecode, wrapEncode, list operations |
 | `PirHofBuilders` | 244 | HOF PIR construction: map, filter, any, all, find, foldl, zip |
@@ -882,17 +876,17 @@ Before the ADR-018 refactoring, PirGenerator was a 3,369-line monolith. It was d
 ### How They Interact
 
 ```
-PirGenerator
+Lowering
   │
-  ├── calls ──► AccumulatorTypeAnalyzer.refineAccumulatorTypes()
+  ├── calls ──► LoopRules.refineAccumulatorTypes()
   │              (before loop compilation, to determine accumulator types)
   │
-  ├── calls ──► TypeInferenceHelper.resolveExpressionType()
+  ├── calls ──► Typing.resolveExpressionType()
   │              (during expression compilation, for type-aware dispatch)
   │
-  ├── calls ──► LoopBodyGenerator.generateSingleAccBody() / etc.
-  │              (loop body compilation; LoopBodyGenerator calls BACK to
-  │               PirGenerator for nested expressions/statements)
+  ├── calls ──► Loops.generateSingleAccBody() / etc.
+  │              (loop body compilation; Loops calls BACK to
+  │               Lowering for nested expressions/statements)
   │
   ├── calls ──► TypeMethodRegistry.resolve(type, method, args)
   │              (instance method dispatch: list.head(), map.get(), etc.)
@@ -908,7 +902,7 @@ PirGenerator
 
 ## 19. Method Call Dispatch
 
-`PirGenerator.generateMethodCall()` implements a 5-level cascading dispatch. After the ADR-018 refactoring, each level is a named method:
+`Lowering.generateMethodCall()` implements a 5-level cascading dispatch. After the ADR-018 refactoring, each level is a named method:
 
 ```java
 private PirTerm generateMethodCall(MethodCallExpr mce) {
@@ -997,7 +991,7 @@ First match wins. If neither matches, the compiler falls through to helper metho
 
 ## 21. Library Compilation
 
-Library methods may depend on each other across files. `LibraryCompiler` (extracted from JulcCompiler in ADR-018) uses a multi-pass retry strategy:
+Library methods may depend on each other across files. `JavacLibraries` (extracted from JulcCompiler in ADR-018) uses a multi-pass retry strategy:
 
 ```
 Pass 1: Try compiling all library CUs
@@ -1093,8 +1087,8 @@ class MyValidatorTest extends ValidatorTest {
 │   (Compile → Evaluate)      │  3,442+ tests, 0 failures
 ├─────────────────────────────┤
 │     Unit Tests              │  Individual component tests
-│  (TypeResolver, SymbolTable,│  (PirHelpers, UplcOptimizer, etc.)
-│   SubsetValidator, etc.)    │
+│  (TypeRegistry, Scope,│  (PirHelpers, UplcOptimizer, etc.)
+│   SubsetRules and SubsetScan, etc.)    │
 └─────────────────────────────┘
 ```
 
@@ -1147,13 +1141,13 @@ public class AlwaysSucceeds {
 }
 ```
 
-### Step 1: Parse → Java AST
+### Step 1: Parse and attribute → javac trees
 
-JavaParser produces a `CompilationUnit` with one class declaration containing one method with three statements.
+javac produces a `CompilationUnitTree` with one class declaration containing one method with three statements.
 
 ### Step 2: Validate
 
-SubsetValidator walks the AST. No rejected constructs.
+SubsetRules and SubsetScan walks the AST. No rejected constructs.
 
 ### Step 3: Type Registration
 
@@ -1213,7 +1207,7 @@ After optimization, the validator becomes equivalent to `\ctx -> Unit` (always s
 | File | Lines | Role |
 |------|-------|------|
 | `JulcCompiler.java` | 1,221 | Main pipeline orchestrator — 24-phase compilation |
-| `LibraryCompiler.java` | 138 | Library compilation sub-pipeline |
+| `JavacLibraries.java` | 138 | Library compilation sub-pipeline |
 | `CompileResult.java` | — | Compilation result (program + diagnostics + params) |
 | `CompilerException.java` | — | Fatal compiler error |
 | `CompilerOptions.java` | — | Compilation options |
@@ -1223,10 +1217,10 @@ After optimization, the validator becomes equivalent to `\ctx -> Unit` (always s
 
 | File | Lines | Role |
 |------|-------|------|
-| `PirGenerator.java` | 2,147 | Core Java AST → PIR transformer |
-| `LoopBodyGenerator.java` | 531 | Loop body compilation (5 paths × break/no-break) |
-| `AccumulatorTypeAnalyzer.java` | 432 | Accumulator type analysis (pair list detection) |
-| `TypeInferenceHelper.java` | 282 | Read-only type inference |
+| `Lowering.java` | 2,147 | Core Java AST → PIR transformer |
+| `Loops.java` | 531 | Loop body compilation (5 paths × break/no-break) |
+| `LoopRules.java` | 432 | Accumulator type analysis (pair list detection) |
+| `Typing.java` | 282 | Read-only type inference |
 | `TypeMethodRegistry.java` | 905 | Instance method dispatch (~50 methods across 11 types) |
 | `PirHelpers.java` | 356 | wrapDecode/wrapEncode + list utilities |
 | `PirHofBuilders.java` | 244 | HOF PIR builders (map, filter, any, all, find, foldl, zip) |
@@ -1241,12 +1235,12 @@ After optimization, the validator becomes equivalent to `\ctx -> Unit` (always s
 
 | File | Role |
 |------|------|
-| `TypeResolver.java` | Java → PIR type mapping |
-| `TypeRegistrar.java` | Topological type registration (Kahn's algorithm) |
-| `SymbolTable.java` | Scope stack for variable/method management |
-| `LedgerSourceLoader.java` | Dynamic ledger type loading from META-INF |
+| `TypeRegistry.java` | Java → PIR type mapping |
+| `JavacTypeRegistrar.java` | Topological type registration (Kahn's algorithm) |
+| `Scope.java` | Scope stack for variable/method management |
+| `the API stubs.java` | Dynamic ledger type loading from META-INF |
 | `LibraryMethodRegistry.java` | Compiled library method storage + typed coercion |
-| `ImportResolver.java` | Import resolution |
+| `javac.java` | Import resolution |
 
 **Other packages:**
 
@@ -1254,12 +1248,12 @@ After optimization, the validator becomes equivalent to `\ctx -> Unit` (always s
 |------|------|
 | `codegen/ValidatorWrapper.java` | ScriptContext decoding + bool→unit/error wrapping |
 | `desugar/LoopDesugarer.java` | For-each/while → LetRec transformation |
-| `desugar/PatternMatchDesugarer.java` | Switch/instanceof → DataMatch transformation |
+| `frontend/javac/lower/Switches.java`, `TypeTests.java` | Switch/instanceof → DataMatch transformation |
 | `error/CompilerDiagnostic.java` | Diagnostic record (level, message, location) |
 | `error/DiagnosticCollector.java` | Structured error collection |
 | `uplc/UplcGenerator.java` | PIR → UPLC lowering |
 | `uplc/UplcOptimizer.java` | 6-pass UPLC optimizer with fixpoint iteration |
-| `validate/SubsetValidator.java` | Java subset enforcement |
+| `frontend/javac/SubsetRules.java` | Java subset enforcement |
 | `util/MethodDependencyResolver.java` | Method dependency graph construction |
 | `util/StringUtils.java` | String utilities (Levenshtein distance) |
 

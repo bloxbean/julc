@@ -3,10 +3,9 @@ title: "Java to UPLC End to End"
 description: "A beginner-friendly deep dive into how JuLC compiles Java to PIR, UPLC, FLAT bytes, and Cardano script CBOR."
 ---
 
-> **Frontend note (ADR-068 M5).** JuLC reads Java with javac by default: javac parses and attributes the sources, and
-> `frontend/javac` lowers javac's trees to PIR. The parsing and validation stages below describe the JavaParser
-> frontend, which stays selectable (`CompilerOptions.setFrontend(CompilerFrontend.JAVAPARSER)`) until ADR-068 M6 removes
-> it; the PIR, UPLC and backend stages are shared. See [ADR-068](https://github.com/bloxbean/julc/blob/main/adr/068-javac-frontend-migration.md).
+> **Frontend note (ADR-068 M6).** JuLC reads Java with javac alone: javac parses and attributes the sources, and
+> `frontend/javac` lowers javac's trees to PIR. See
+> [ADR-068](https://github.com/bloxbean/julc/blob/main/adr/068-javac-frontend-migration.md).
 
 This guide is for JuLC developers who want to work on the core language, PIR generation, UPLC lowering, encoding, or compiler tests.
 
@@ -14,7 +13,7 @@ It starts from the basic concepts and then follows the real JuLC pipeline:
 
 ```text
 Java source
-  -> JavaParser AST
+  -> javac trees (attributed)
   -> validation and type resolution
   -> PIR
   -> validator wrapper
@@ -30,9 +29,9 @@ The main implementation files are:
 | Area | File |
 | ---- | ---- |
 | Pipeline orchestration | `julc-compiler/.../compiler/JulcCompiler.java` |
-| Java subset validation | `julc-compiler/.../compiler/validate/SubsetValidator.java` |
-| Type registration and resolution | `julc-compiler/.../compiler/resolve/TypeRegistrar.java`, `TypeResolver.java` |
-| Java AST to PIR | `julc-compiler/.../compiler/pir/PirGenerator.java` |
+| Java subset validation | `julc-compiler/.../compiler/frontend/javac/SubsetRules.java` |
+| Type registration and resolution | `julc-compiler/.../compiler/resolve/JavacTypeRegistrar.java`, `TypeRegistry.java` |
+| Java AST to PIR | `julc-compiler/.../compiler/pir/Lowering.java` |
 | PIR AST | `julc-compiler/.../compiler/pir/PirTerm.java`, `PirType.java` |
 | Validator wrapper | `julc-compiler/.../compiler/codegen/ValidatorWrapper.java` |
 | PIR to UPLC | `julc-compiler/.../compiler/uplc/UplcGenerator.java` |
@@ -47,7 +46,7 @@ The main implementation files are:
 
 ### Java Source Is the User Language
 
-JuLC does not compile JVM bytecode. It parses `.java` source with JavaParser. That means compiler behavior is driven by Java syntax trees, annotations, method declarations, records, sealed interfaces, expressions, and statements.
+JuLC does not compile JVM bytecode. It reads `.java` source with javac. That means compiler behavior is driven by Java syntax trees, annotations, method declarations, records, sealed interfaces, expressions, and statements.
 
 A validator class is discovered by annotation:
 
@@ -447,20 +446,21 @@ The main path is `JulcCompiler.doCompile(...)`.
 
 ### Phase 1: Parse Source
 
-JuLC configures JavaParser for Java 21 and parses the validator plus optional library sources:
+JuLC runs javac in-process over the validator plus optional library sources, in a closed environment of a shipped `java.base`
+blob and API stubs (`JavacFrontend`):
 
 ```text
 String validatorSource
 List<String> librarySources
-  -> CompilationUnit validatorCu
-  -> List<CompilationUnit> libraryCus
+  -> CompilationUnitTree of the validator, attributed
+  -> CompilationUnitTree of each library it reads
 ```
 
-Source-file compile methods preserve file paths in the JavaParser `CompilationUnit`. That matters for diagnostics and source maps.
+Source-file compile methods preserve file paths in the javac `CompilationUnitTree`. That matters for diagnostics and source maps.
 
 ### Phase 2: Validate the Java Subset
 
-`SubsetValidator` walks each `CompilationUnit` and rejects unsupported Java.
+`SubsetRules and SubsetScan` walks each `CompilationUnitTree` and rejects unsupported Java.
 
 This phase catches unsupported language constructs before PIR generation. That is better than allowing an arbitrary AST node to drift into a confusing "unsupported expression" error later.
 
@@ -529,11 +529,11 @@ The deployed script is not fully usable until the parameter is applied with `Pro
 
 JuLC compiles `@OnchainLibrary` Java source methods to PIR first. Library methods are stored in `LibraryMethodRegistry`. Standard library PIR builders are resolved through `StdlibLookup` and `StdlibRegistry`.
 
-Helper methods inside the validator class are also compiled to PIR lambdas and stored in `SymbolTable`. Later, they are wrapped around the entrypoint as `Let` or `LetRec`.
+Helper methods inside the validator class are also compiled to PIR lambdas and stored in `Scope`. Later, they are wrapped around the entrypoint as `Let` or `LetRec`.
 
 ### Phase 7: Generate PIR for the Entrypoint
 
-`PirGenerator.generateMethod(method)` turns the JavaParser method AST into a PIR lambda:
+`Lowering.method(...)` turns javac's method tree into a PIR lambda:
 
 ```text
 static boolean validate(PlutusData redeemer, ScriptContext ctx) { ... }
@@ -1246,7 +1246,7 @@ The regular `compile(...)` method does not retain PIR or UPLC intermediate terms
 
 ### Add a New Java Expression
 
-Work mostly in `PirGenerator.generateExpression`.
+Work mostly in `Lowering.generateExpression`.
 
 Checklist:
 
@@ -1261,8 +1261,8 @@ Checklist:
 Work in:
 
 ```text
-TypeRegistrar
-TypeResolver
+JavacTypeRegistrar
+TypeRegistry
 PirType
 PirHelpers.wrapEncode / wrapDecode
 ```
@@ -1326,12 +1326,12 @@ When something fails, identify the boundary where it first becomes wrong:
 
 | Symptom | Start looking at |
 | ------- | ---------------- |
-| Unsupported Java construct | `SubsetValidator` |
-| Wrong type selected | `TypeResolver`, `TypeInferenceHelper`, `SymbolTable` |
-| Wrong builtin in PIR | `PirGenerator`, `TypeMethodRegistry`, `StdlibLookup` |
-| Field access broken | `TypeRegistrar`, record field extraction in `PirGenerator` |
-| Pattern match broken | `PatternMatchDesugarer`, `UplcGenerator.generateDataMatch` |
-| Loop behavior wrong | `LoopDesugarer`, `AccumulatorTypeAnalyzer`, `LoopBodyGenerator` |
+| Unsupported Java construct | `SubsetRules and SubsetScan` |
+| Wrong type selected | `TypeRegistry`, `Typing`, `Scope` |
+| Wrong builtin in PIR | `Lowering`, `TypeMethodRegistry`, `StdlibLookup` |
+| Field access broken | `JavacTypeRegistrar`, record field extraction in `Lowering` |
+| Pattern match broken | `Switches`, `TypeTests`, `UplcGenerator.generateDataMatch` |
+| Loop behavior wrong | `LoopDesugarer`, `LoopRules`, `Loops` |
 | Unbound variable | PIR binding shape or `UplcGenerator` scope stack |
 | Both branches evaluate | missing `Delay`/`Force` in conditional lowering |
 | Script too large | helper/library bindings, recursion patterns, optimizer |
@@ -1377,7 +1377,7 @@ class ThresholdValidator {
 Pipeline shape:
 
 ```text
-JavaParser:
+javac:
   class ThresholdValidator
   field threshold annotated @Param
   method validate annotated @Entrypoint

@@ -110,12 +110,6 @@ legacy ID is also accepted. All identifiers are case-sensitive and fail closed.
 See the [cost model catalog](../docs/src/content/docs/reference/cost-model-profiles.md)
 for pinned benchmark models and caller-supplied evaluation costs.
 
-`--frontend` (experimental, ADR-068 D4) selects the Java frontend. The default is
-`javac`: javac reads and types the sources. `--frontend javaparser` selects the
-frozen JavaParser frontend, which stays available until it is removed (ADR-068 M6);
-see the [release notes](../docs/src/content/docs/reference/release-notes.md) for what
-changes and how to migrate.
-
 ## Documentation
 
 For full documentation, visit: https://github.com/bloxbean/julc

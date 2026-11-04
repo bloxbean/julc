@@ -1,0 +1,188 @@
+status	file	renamed_to	tests_before	tests_after	why
+ported	julc-annotation-processor/src/test/java/org/julclang/processor/JulcAnnotationProcessorFrontendTest.java		4	3	Compared the two frontends and read the option; what remains holds the stop on another frontend
+renamed	julc-annotation-processor/src/test/java/org/julclang/processor/JulcAnnotationProcessorJavacGateTest.java	julc-annotation-processor/src/test/java/org/julclang/processor/JulcAnnotationProcessorJavacTest.java	7	7	Name said gate; ported
+ported	julc-cli/src/test/java/org/julclang/cli/Adr068ToolsCorpusTest.java		1	1	Ported: the frontend selection or reference comparison is out
+ported	julc-cli/src/test/java/org/julclang/cli/check/TestDiscoveryOnJavacTest.java		22	22	Ported: the frontend selection or reference comparison is out
+ported	julc-cli/src/test/java/org/julclang/cli/check/TestDiscoveryTest.java		16	12	Reader choice removed; the rest of TestDiscovery runs on javac in the same file, and the corpus gate holds it
+ported	julc-cli/src/test/java/org/julclang/cli/cmd/BuildCommandFrontendTest.java		5	3	Compared the two frontends and read the option; what remains holds the stop on another frontend
+renamed	julc-cli/src/test/java/org/julclang/cli/cmd/BuildCommandJavacGateTest.java	julc-cli/src/test/java/org/julclang/cli/cmd/BuildCommandJavacTest.java	6	6	Name said gate; ported
+renamed	julc-cli/src/test/java/org/julclang/cli/mcp/lint/LintEngineOnJavacTest.java	julc-cli/src/test/java/org/julclang/cli/mcp/lint/LintEngineShapesTest.java	7	6	Renamed LintEngineShapesTest: the shapes where the trees differ, without the second reading
+ported	julc-cli/src/test/java/org/julclang/cli/mcp/lint/LintEngineTest.java		45	45	Ported: the frontend selection or reference comparison is out
+ported	julc-cli/src/test/java/org/julclang/cli/mcp/tools/EvaluateToolAccess.java		0	0	Ported: the frontend selection or reference comparison is out
+ported	julc-compiler/src/test/java/org/julclang/compiler/Adr060ByteSnapshotTest.java		1	1	Ported: the frontend selection or reference comparison is out
+ported	julc-compiler/src/test/java/org/julclang/compiler/Adr060Corpus.java		0	0	Ported: the frontend selection or reference comparison is out
+ported	julc-compiler/src/test/java/org/julclang/compiler/Adr068DiscoveryCorpusTest.java		1	1	Ported: the frontend selection or reference comparison is out
+ported	julc-compiler/src/test/java/org/julclang/compiler/Adr068NegativeOriginalsTest.java		1	1	Ported: the frontend selection or reference comparison is out
+ported	julc-compiler/src/test/java/org/julclang/compiler/Adr068RejectionFixturesTest.java		1	1	Ported: the frontend selection or reference comparison is out
+ported	julc-compiler/src/test/java/org/julclang/compiler/BigIntegerCompatTest.java		13	13	Ported: the frontend selection or reference comparison is out
+ported	julc-compiler/src/test/java/org/julclang/compiler/BinderNameIndependenceTest.java		1	1	Ported: the frontend selection or reference comparison is out
+ported	julc-compiler/src/test/java/org/julclang/compiler/BinderNamespaceCheckTest.java		3	3	Ported: the frontend selection or reference comparison is out
+ported	julc-compiler/src/test/java/org/julclang/compiler/BooleanPositionLevelsTest.java		4	4	Ported: the frontend selection or reference comparison is out
+ported	julc-compiler/src/test/java/org/julclang/compiler/BuilderBinderHygieneTest.java		9	8	Methods removed: see m6-test-methods.tsv
+ported	julc-compiler/src/test/java/org/julclang/compiler/ComparisonLoweringTest.java		7	5	Methods removed: see m6-test-methods.tsv
+ported	julc-compiler/src/test/java/org/julclang/compiler/CompileResultProvenanceTest.java		6	3	Report mode and a skipped gate are gone
+ported	julc-compiler/src/test/java/org/julclang/compiler/CrossLibraryTypeWarningTest.java		7	2	Methods removed: see m6-test-methods.tsv
+ported	julc-compiler/src/test/java/org/julclang/compiler/CrossMethodTypeInferenceTest.java		9	9	Ported: the frontend selection or reference comparison is out
+ported	julc-compiler/src/test/java/org/julclang/compiler/DebugCompileResultTest.java		6	5	Methods removed: see m6-test-methods.tsv
+ported	julc-compiler/src/test/java/org/julclang/compiler/DelayedMethodProgramsTest.java		3	3	Ported: the frontend selection or reference comparison is out
+deleted	julc-compiler/src/test/java/org/julclang/compiler/DialectGate.java		0	0	Test helper turning the gate off; the gate is gone
+ported	julc-compiler/src/test/java/org/julclang/compiler/DialectRemovalAlternativesTest.java		13	11	Ported; two equality-rewrite comparisons with the reference became one test that JULC0078 rejects those forms
+ported	julc-compiler/src/test/java/org/julclang/compiler/JulcCompilerTest.java		25	23	Methods removed: see m6-test-methods.tsv
+ported	julc-compiler/src/test/java/org/julclang/compiler/JulcMapTest.java		61	35	26 methods in five nested classes iterated a JulcMap, dialect javac rejects (D6). ForEachOverKeysAndValues holds the Java form
+ported	julc-compiler/src/test/java/org/julclang/compiler/LambdaExpressionTest.java		12	2	6 used dialect lambdas (D6); 4 used PirGenerator's API. JavacLambdasTest holds them on javac
+ported	julc-compiler/src/test/java/org/julclang/compiler/LibraryDiscoveryCleanupTest.java		5	4	ImportResolver is gone
+ported	julc-compiler/src/test/java/org/julclang/compiler/LibrarySourceResolverReadersTest.java		2	2	Ported: the frontend selection or reference comparison is out
+ported	julc-compiler/src/test/java/org/julclang/compiler/LoopBreakContinuationTest.java		3	3	Ported: the frontend selection or reference comparison is out
+ported	julc-compiler/src/test/java/org/julclang/compiler/MultiFileCompilerTest.java		35	30	Methods removed: see m6-test-methods.tsv
+ported	julc-compiler/src/test/java/org/julclang/compiler/NativeValueTypingTest.java		10	10	Ported: the frontend selection or reference comparison is out
+ported	julc-compiler/src/test/java/org/julclang/compiler/O3ListCaseLoweringTest.java		7	6	Methods removed: see m6-test-methods.tsv
+ported	julc-compiler/src/test/java/org/julclang/compiler/ParameterizedValidatorTest.java		16	15	Methods removed: see m6-test-methods.tsv
+ported	julc-compiler/src/test/java/org/julclang/compiler/PatternMatchTest.java		14	13	PatternMatchDesugarer's API; Switches' tag order is in lowering-javac.tsv and in the sealed switch tests
+ported	julc-compiler/src/test/java/org/julclang/compiler/PlutusDataConversionTest.java		16	11	Methods removed: see m6-test-methods.tsv
+ported	julc-compiler/src/test/java/org/julclang/compiler/SealedInterfaceTest.java		15	7	TypeRegistrar and PirGenerator internals; JavacTypesTest holds variants and tags, and SealedInterfaceTest's compile-and-run remains
+ported	julc-compiler/src/test/java/org/julclang/compiler/SourceReadersTest.java		2	1	An unknown reader and JavaParser's enum order; one reader is left
+ported	julc-compiler/src/test/java/org/julclang/compiler/StdlibCompileEvalTest.java		237	227	Methods removed: see m6-test-methods.tsv
+ported	julc-compiler/src/test/java/org/julclang/compiler/StringLiteralEscapeTest.java		7	6	Methods removed: see m6-test-methods.tsv
+ported	julc-compiler/src/test/java/org/julclang/compiler/SubsetRulesAtEveryEntryTest.java		17	12	Gate modes (off, report, enforce) are gone; the rules at every entry remain
+ported	julc-compiler/src/test/java/org/julclang/compiler/SwitchDiagnosticsTest.java		55	55	Ported: the frontend selection or reference comparison is out
+ported	julc-compiler/src/test/java/org/julclang/compiler/TypeMethodsTest.java		67	59	Methods removed: see m6-test-methods.tsv
+ported	julc-compiler/src/test/java/org/julclang/compiler/UnicodeEscapeReadingTest.java		17	5	JavaParser reader's positions and pre-filters; the same shapes on javac remain in the file and in JavacSeamTest
+ported	julc-compiler/src/test/java/org/julclang/compiler/VerboseCompilationTest.java		6	3	Methods removed: see m6-test-methods.tsv
+ported	julc-compiler/src/test/java/org/julclang/compiler/backend/GenericExportsTest.java		13	13	Ported: the frontend selection or reference comparison is out
+ported	julc-compiler/src/test/java/org/julclang/compiler/backend/JavacExportsTest.java		6	6	Ported: the frontend selection or reference comparison is out
+deleted	julc-compiler/src/test/java/org/julclang/compiler/corpus/CorpusRecorderFrontendProbe.java		0	0	Probe choosing a frontend; one frontend is left
+ported	julc-compiler/src/test/java/org/julclang/compiler/corpus/CorpusRecorderOptionsProbe.java		0	0	Ported: the frontend selection or reference comparison is out
+ported	julc-compiler/src/test/java/org/julclang/compiler/corpus/CorpusRecorderProbe.java		0	0	Ported: the frontend selection or reference comparison is out
+ported	julc-compiler/src/test/java/org/julclang/compiler/corpus/CorpusRecorderTest.java		8	7	A recording on either frontend
+ported	julc-compiler/src/test/java/org/julclang/compiler/error/DiagnosticCatalogConsistencyTest.java		5	5	Ported: the frontend selection or reference comparison is out
+ported	julc-compiler/src/test/java/org/julclang/compiler/error/DiagnosticCollectorTest.java		11	6	Reported by JavaParser node; positions on javac in JavacSeamTest
+deleted	julc-compiler/src/test/java/org/julclang/compiler/frontend/javac/DialectCodemod.java		1	0	M1b's one-time codemod; its output is committed
+ported	julc-compiler/src/test/java/org/julclang/compiler/frontend/javac/JavacContractAndDebugTest.java		12	12	Ported: the frontend selection or reference comparison is out
+ported	julc-compiler/src/test/java/org/julclang/compiler/frontend/javac/JavacEnvironmentProbe.java		0	0	Ported: the frontend selection or reference comparison is out
+renamed	julc-compiler/src/test/java/org/julclang/compiler/frontend/javac/JavacGateEnvironmentTest.java	julc-compiler/src/test/java/org/julclang/compiler/frontend/javac/JavacEnvironmentTest.java	5	4	Gate modes on a host without javac; JULC0089 on a host without javac remains
+renamed	julc-compiler/src/test/java/org/julclang/compiler/frontend/javac/JavacGateReviewTest.java	julc-compiler/src/test/java/org/julclang/compiler/frontend/javac/JavacFrontendPoolTest.java	23	14	The gate's cache, report and modes; the pool tests remain
+deleted	julc-compiler/src/test/java/org/julclang/compiler/frontend/javac/JavacGateTest.java		9	0	Tests of the gate's modes and report; the gate is gone (D15). SubsetRulesTest and JavacFrontendPoolTest hold the rules
+ported	julc-compiler/src/test/java/org/julclang/compiler/frontend/javac/JavacLibraryShapeCheckTest.java		1	1	Ported: the frontend selection or reference comparison is out
+ported	julc-compiler/src/test/java/org/julclang/compiler/frontend/javac/JavacSeamTest.java		11	9	Guarded a seam with a frontend that is gone
+ported	julc-compiler/src/test/java/org/julclang/compiler/frontend/javac/JavacStubsTest.java		6	6	Ported: the frontend selection or reference comparison is out
+ported	julc-compiler/src/test/java/org/julclang/compiler/frontend/javac/JavacTypesTest.java		67	67	Ported: the frontend selection or reference comparison is out
+ported	julc-compiler/src/test/java/org/julclang/compiler/frontend/javac/JavacWalkingSkeletonTest.java		8	8	Ported: the frontend selection or reference comparison is out
+ported	julc-compiler/src/test/java/org/julclang/compiler/frontend/javac/SwitchLabelsTest.java		4	4	Ported: the frontend selection or reference comparison is out
+ported	julc-compiler/src/test/java/org/julclang/compiler/frontend/javac/lower/ByteEqualsRemedyTest.java		4	4	Ported: the frontend selection or reference comparison is out
+ported	julc-compiler/src/test/java/org/julclang/compiler/frontend/javac/lower/EntrypointContextPropertyTest.java		1	1	Ported: the frontend selection or reference comparison is out
+added	julc-compiler/src/test/java/org/julclang/compiler/frontend/javac/lower/FrozenReference.java		0	0	Support: the frozen answers of the reference
+ported	julc-compiler/src/test/java/org/julclang/compiler/frontend/javac/lower/JavacCallsTest.java		42	42	Ported: the frontend selection or reference comparison is out
+ported	julc-compiler/src/test/java/org/julclang/compiler/frontend/javac/lower/JavacCastsTest.java		16	15	Pinned the reference's erasure of a narrowing
+ported	julc-compiler/src/test/java/org/julclang/compiler/frontend/javac/lower/JavacLambdasTest.java		12	12	Ported: the frontend selection or reference comparison is out
+ported	julc-compiler/src/test/java/org/julclang/compiler/frontend/javac/lower/JavacLedgerFromDataTest.java		7	7	Ported: the frontend selection or reference comparison is out
+ported	julc-compiler/src/test/java/org/julclang/compiler/frontend/javac/lower/JavacLibrariesTest.java		22	22	Ported: the frontend selection or reference comparison is out
+ported	julc-compiler/src/test/java/org/julclang/compiler/frontend/javac/lower/JavacLibraryRolesTest.java		3	3	Ported: the frontend selection or reference comparison is out
+ported	julc-compiler/src/test/java/org/julclang/compiler/frontend/javac/lower/JavacLiteralsTest.java		18	18	Ported: the frontend selection or reference comparison is out
+ported	julc-compiler/src/test/java/org/julclang/compiler/frontend/javac/lower/JavacLoopsTest.java		18	18	Ported: the frontend selection or reference comparison is out
+ported	julc-compiler/src/test/java/org/julclang/compiler/frontend/javac/lower/JavacM5aTest.java		20	20	Ported: the frontend selection or reference comparison is out
+ported	julc-compiler/src/test/java/org/julclang/compiler/frontend/javac/lower/JavacNamesTest.java		20	20	Ported: the frontend selection or reference comparison is out
+ported	julc-compiler/src/test/java/org/julclang/compiler/frontend/javac/lower/JavacOperatorsTest.java		37	37	Ported: the frontend selection or reference comparison is out
+ported	julc-compiler/src/test/java/org/julclang/compiler/frontend/javac/lower/JavacRecordsTest.java		12	12	Ported: the frontend selection or reference comparison is out
+ported	julc-compiler/src/test/java/org/julclang/compiler/frontend/javac/lower/JavacRejectionsTest.java		26	26	Ported: the frontend selection or reference comparison is out
+ported	julc-compiler/src/test/java/org/julclang/compiler/frontend/javac/lower/JavacStatementsTest.java		21	21	Ported: the frontend selection or reference comparison is out
+ported	julc-compiler/src/test/java/org/julclang/compiler/frontend/javac/lower/JavacStopsTest.java		2	2	Ported: the frontend selection or reference comparison is out
+ported	julc-compiler/src/test/java/org/julclang/compiler/frontend/javac/lower/JavacSubsetCodesTest.java		22	22	Ported: the frontend selection or reference comparison is out
+ported	julc-compiler/src/test/java/org/julclang/compiler/frontend/javac/lower/JavacSwitchesTest.java		32	32	Ported: the frontend selection or reference comparison is out
+ported	julc-compiler/src/test/java/org/julclang/compiler/frontend/javac/lower/LibraryRegistrationPropertyTest.java		1	1	Ported: the frontend selection or reference comparison is out
+ported	julc-compiler/src/test/java/org/julclang/compiler/frontend/javac/lower/LoweringAloneTest.java		19	19	Ported: the frontend selection or reference comparison is out
+ported	julc-compiler/src/test/java/org/julclang/compiler/frontend/javac/lower/LoweringFixture.java		0	0	Ported: the frontend selection or reference comparison is out
+ported	julc-compiler/src/test/java/org/julclang/compiler/frontend/javac/lower/NewTypeVariantConsumersTest.java		8	8	Ported: the frontend selection or reference comparison is out
+ported	julc-compiler/src/test/java/org/julclang/compiler/frontend/javac/lower/StdlibLibrariesPropertyTest.java		9	9	Ported: the frontend selection or reference comparison is out
+ported	julc-compiler/src/test/java/org/julclang/compiler/frontend/javac/lower/SubsetRulesTest.java		115	88	27 methods of JULC0100 and gate-only JULC0101 (D15), listed in m6-test-methods.tsv
+ported	julc-compiler/src/test/java/org/julclang/compiler/frontend/javac/subset/ConstantStringJoinsTest.java		8	7	Methods removed: see m6-test-methods.tsv
+added	julc-compiler/src/test/java/org/julclang/compiler/frontend/javac/subset/GuardConstantsTest.java		0	7	Replaces JavaConstantsTest and GuardConstantsAgainstJavaConstantsTest
+ported	julc-compiler/src/test/java/org/julclang/compiler/frontend/javac/subset/JavacRecordMembersTest.java		6	6	Ported: the frontend selection or reference comparison is out
+deleted	julc-compiler/src/test/java/org/julclang/compiler/frontend/javac/subset/SpelledBindingsTest.java		85	0	Rejections of JULC0100 and gate-only JULC0101 (D15); SpelledProgramsOnJavacTest compiles the same programs from SpelledPrograms
+deleted	julc-compiler/src/test/java/org/julclang/compiler/frontend/javac/subset/SpelledNameLintTest.java		6	0	Held the gate's name lists to TypeResolver; both are gone
+renamed	julc-compiler/src/test/java/org/julclang/compiler/frontend/javac/subset/SpelledReadingsTest.java	julc-compiler/src/test/java/org/julclang/compiler/frontend/javac/subset/SpelledPrograms.java	1	0	Name said gate; ported
+ported	julc-compiler/src/test/java/org/julclang/compiler/frontend/javac/subset/SpelledProgramsOnJavacTest.java		3	3	Ported: the frontend selection or reference comparison is out
+deleted	julc-compiler/src/test/java/org/julclang/compiler/pir/GuardConstantsAgainstJavaConstantsTest.java		2	0	Replaced by GuardConstantsTest: the reference's answers as guard-constants.tsv, with javac's folding
+deleted	julc-compiler/src/test/java/org/julclang/compiler/pir/IfJoinLoweringTest.java		3	0	Unit test of PirGenerator's and AccumulatorTypeAnalyzer's internals; IfLoopContinuationTest and LoweringAloneTest hold the behavior, and Ifs' bytes are in lowering-javac.tsv
+deleted	julc-compiler/src/test/java/org/julclang/compiler/pir/JavaConstantsTest.java		7	0	Replaced by GuardConstantsTest, on javac. Forms javac rejects (a narrowing initializer, an out-of-range literal) stop at JULC0085 first
+ported	julc-compiler/src/test/java/org/julclang/compiler/pir/PairDestructuringPassTest.java		9	8	Built its PIR with PirGenerator; the pass's own tests remain
+deleted	julc-compiler/src/test/java/org/julclang/compiler/pir/PirGeneratorTest.java		24	0	Expression lowering through PirGenerator's API; JavacOperatorsTest, JavacCallsTest and LoweringAloneTest hold it on javac
+ported	julc-compiler/src/test/java/org/julclang/compiler/pir/PirTermTest.java		13	12	Built its PIR with PirGenerator
+ported	julc-compiler/src/test/java/org/julclang/compiler/resolve/FqcnResolutionTest.java		19	10	TypeResolver's API; javac resolves. Compile-level cases remain
+deleted	julc-compiler/src/test/java/org/julclang/compiler/resolve/TypeResolverTest.java		37	0	TypeResolver is gone; javac resolves, and JavacTypesTest holds the registered types
+ported	julc-compiler/src/test/java/org/julclang/compiler/validate/SubsetValidatorTest.java		42	34	Validator API for lambdas, method references and unreachable code; rejections on javac in SubsetRulesTest and JavacLambdasTest, unreachable code is javac's JULC0085
+deleted	julc-difftest/src/test/java/org/julclang/difftest/Adr068BaselineTest.java		3	0	Wrote both frontends' baseline; lowering-javac.tsv replaces it
+deleted	julc-difftest/src/test/java/org/julclang/difftest/Adr068BytesRecheckTest.java		1	0	Compared the two frontends; lowering-javac.tsv replaces it
+ported	julc-difftest/src/test/java/org/julclang/difftest/Adr068CallsHarnessTest.java		46	46	Ported: the frontend selection or reference comparison is out
+ported	julc-difftest/src/test/java/org/julclang/difftest/Adr068CastsHarnessTest.java		1	1	Ported: the frontend selection or reference comparison is out
+deleted	julc-difftest/src/test/java/org/julclang/difftest/Adr068ContractDebugCorpusTest.java		1	0	Compared the two frontends; contract and debug columns of lowering-javac.tsv hold it
+ported	julc-difftest/src/test/java/org/julclang/difftest/Adr068Corpus.java		0	0	Ported: the frontend selection or reference comparison is out
+ported	julc-difftest/src/test/java/org/julclang/difftest/Adr068DelayedMethodsTest.java		40	39	Compared with the reference
+deleted	julc-difftest/src/test/java/org/julclang/difftest/Adr068EncodingsTest.java		1	0	Compared the registry with the reference; the registry and description columns of lowering-javac.tsv hold it
+ported	julc-difftest/src/test/java/org/julclang/difftest/Adr068EqualityHarnessTest.java		2	2	Ported: the frontend selection or reference comparison is out
+ported	julc-difftest/src/test/java/org/julclang/difftest/Adr068EqualityRelationPropertyTest.java		2	2	Ported: the frontend selection or reference comparison is out
+deleted	julc-difftest/src/test/java/org/julclang/difftest/Adr068EqualityScan.java		0	0	M5's scan of the reference's equality; done
+deleted	julc-difftest/src/test/java/org/julclang/difftest/Adr068EvaluationProbe.java		0	0	Support of Adr068EvaluationsTest
+deleted	julc-difftest/src/test/java/org/julclang/difftest/Adr068Evaluations.java		0	0	Support of Adr068EvaluationsTest
+deleted	julc-difftest/src/test/java/org/julclang/difftest/Adr068EvaluationsTest.java		1	0	Compared evaluations of the two frontends; bytes equal to the frozen ones mean equal evaluations
+deleted	julc-difftest/src/test/java/org/julclang/difftest/Adr068GateTimingTest.java		1	0	Timed the gate; the gate is gone
+ported	julc-difftest/src/test/java/org/julclang/difftest/Adr068GuardShapesPropertyTest.java		1	1	Ported: the frontend selection or reference comparison is out
+ported	julc-difftest/src/test/java/org/julclang/difftest/Adr068LambdasHarnessTest.java		48	48	Ported: the frontend selection or reference comparison is out
+ported	julc-difftest/src/test/java/org/julclang/difftest/Adr068LambdasPropertyTest.java		1	1	Ported: the frontend selection or reference comparison is out
+ported	julc-difftest/src/test/java/org/julclang/difftest/Adr068Ledger.java		0	0	Ported: the frontend selection or reference comparison is out
+ported	julc-difftest/src/test/java/org/julclang/difftest/Adr068LedgerEncodingTest.java		3	3	Ported: the frontend selection or reference comparison is out
+ported	julc-difftest/src/test/java/org/julclang/difftest/Adr068LedgerFromDataMutationTest.java		1	1	Ported: the frontend selection or reference comparison is out
+ported	julc-difftest/src/test/java/org/julclang/difftest/Adr068LedgerFromDataPropertyTest.java		2	2	Ported: the frontend selection or reference comparison is out
+ported	julc-difftest/src/test/java/org/julclang/difftest/Adr068LedgerRecordsHarnessTest.java		2	2	Ported: the frontend selection or reference comparison is out
+ported	julc-difftest/src/test/java/org/julclang/difftest/Adr068LookupMutationProbe.java		0	0	Ported: the frontend selection or reference comparison is out
+ported	julc-difftest/src/test/java/org/julclang/difftest/Adr068LoopCasesOnJavacTest.java		2	2	Ported: the frontend selection or reference comparison is out
+ported	julc-difftest/src/test/java/org/julclang/difftest/Adr068LoopRepresentationsPropertyTest.java		5	5	Ported: the frontend selection or reference comparison is out
+ported	julc-difftest/src/test/java/org/julclang/difftest/Adr068LoopRepresentationsTest.java		30	30	Ported: the frontend selection or reference comparison is out
+ported	julc-difftest/src/test/java/org/julclang/difftest/Adr068LoopsHarnessTest.java		10	10	Ported: the frontend selection or reference comparison is out
+ported	julc-difftest/src/test/java/org/julclang/difftest/Adr068LoopsPropertyTest.java		1	1	Ported: the frontend selection or reference comparison is out
+ported	julc-difftest/src/test/java/org/julclang/difftest/Adr068Lowering.java		0	0	Ported: the frontend selection or reference comparison is out
+ported	julc-difftest/src/test/java/org/julclang/difftest/Adr068LoweringHarnessTest.java		17	16	The frontend in the cache key
+ported	julc-difftest/src/test/java/org/julclang/difftest/Adr068LoweringTest.java		1	1	Ported: the frontend selection or reference comparison is out
+ported	julc-difftest/src/test/java/org/julclang/difftest/Adr068LoweringToolTest.java		73	7	Tested the two-frontend tool's classification; replaced by 7 injected differences against the frozen table
+ported	julc-difftest/src/test/java/org/julclang/difftest/Adr068M5aHarnessTest.java		3	2	Pinned a reference misreading
+ported	julc-difftest/src/test/java/org/julclang/difftest/Adr068M5bHarnessTest.java		5	5	Ported: the frontend selection or reference comparison is out
+ported	julc-difftest/src/test/java/org/julclang/difftest/Adr068MixedArmsHarnessTest.java		4	4	Ported: the frontend selection or reference comparison is out
+ported	julc-difftest/src/test/java/org/julclang/difftest/Adr068NameCasesTest.java		1	1	Ported: the frontend selection or reference comparison is out
+ported	julc-difftest/src/test/java/org/julclang/difftest/Adr068NarrowingHarnessTest.java		5	5	Ported: the frontend selection or reference comparison is out
+ported	julc-difftest/src/test/java/org/julclang/difftest/Adr068ReadsHarnessTest.java		20	20	Ported: the frontend selection or reference comparison is out
+deleted	julc-difftest/src/test/java/org/julclang/difftest/Adr068RecheckToolTest.java		6	0	Tested the recheck tool; the tool is gone
+ported	julc-difftest/src/test/java/org/julclang/difftest/Adr068RecordsHarnessTest.java		25	25	Ported: the frontend selection or reference comparison is out
+ported	julc-difftest/src/test/java/org/julclang/difftest/Adr068RecordsPropertyTest.java		1	1	Ported: the frontend selection or reference comparison is out
+ported	julc-difftest/src/test/java/org/julclang/difftest/Adr068RejectionSitesTest.java		2	2	Ported: the frontend selection or reference comparison is out
+ported	julc-difftest/src/test/java/org/julclang/difftest/Adr068SavedCasesOnJavacTest.java		2	2	Ported: the frontend selection or reference comparison is out
+ported	julc-difftest/src/test/java/org/julclang/difftest/Adr068ShapesTest.java		1	1	Ported: the frontend selection or reference comparison is out
+ported	julc-difftest/src/test/java/org/julclang/difftest/Adr068StatementsHarnessTest.java		25	25	Ported: the frontend selection or reference comparison is out
+ported	julc-difftest/src/test/java/org/julclang/difftest/Adr068StatementsPropertyTest.java		1	1	Ported: the frontend selection or reference comparison is out
+ported	julc-difftest/src/test/java/org/julclang/difftest/Adr068StringLengthTest.java		6	6	Ported: the frontend selection or reference comparison is out
+ported	julc-difftest/src/test/java/org/julclang/difftest/Adr068SwitchCorpusOnJavacTest.java		1	1	Ported: the frontend selection or reference comparison is out
+ported	julc-difftest/src/test/java/org/julclang/difftest/Adr068SwitchHarnessTest.java		49	49	Ported: the frontend selection or reference comparison is out
+ported	julc-difftest/src/test/java/org/julclang/difftest/Adr068SwitchPropertyTest.java		1	1	Ported: the frontend selection or reference comparison is out
+ported	julc-difftest/src/test/java/org/julclang/difftest/Adr068ThrowingMethodsTest.java		21	21	Ported: the frontend selection or reference comparison is out
+ported	julc-difftest/src/test/java/org/julclang/difftest/Adr068TypeIdentityTest.java		4	3	Pinned the reference's reading by spelling
+deleted	julc-difftest/src/test/java/org/julclang/difftest/Adr068Types.java		0	0	Support of the types baseline; the registry column holds it
+deleted	julc-difftest/src/test/java/org/julclang/difftest/Adr068TypesTest.java		1	0	Support of the types baseline; the registry column holds it
+ported	julc-difftest/src/test/java/org/julclang/difftest/CampaignVerifier.java		0	0	Ported: the frontend selection or reference comparison is out
+ported	julc-difftest/src/test/java/org/julclang/difftest/ComparisonOrderDiffTest.java		8	8	Ported: the frontend selection or reference comparison is out
+ported	julc-difftest/src/test/java/org/julclang/difftest/G1MustRejectTest.java		2	2	Ported: the frontend selection or reference comparison is out
+ported	julc-difftest/src/test/java/org/julclang/difftest/G1RediscoveryTest.java		8	8	Ported: the frontend selection or reference comparison is out
+ported	julc-difftest/src/test/java/org/julclang/difftest/SwitchParityCorpusTest.java		1	1	Ported: the frontend selection or reference comparison is out
+ported	julc-gradle-plugin/src/test/java/org/julclang/gradle/BundleJulcSourcesTaskTest.java		11	10	A candidate JavaParser cannot read
+ported	julc-gradle-plugin/src/test/java/org/julclang/gradle/JulcPluginFrontendTest.java		6	3	Compared the two frontends and read the option; what remains holds the stop on another frontend
+renamed	julc-gradle-plugin/src/test/java/org/julclang/gradle/JulcPluginJavacGateTest.java	julc-gradle-plugin/src/test/java/org/julclang/gradle/JulcPluginJavacTest.java	5	5	Name said gate; ported
+renamed	julc-playground/src/test/java/org/julclang/playground/api/CompileControllerJavacGateTest.java	julc-playground/src/test/java/org/julclang/playground/api/CompileControllerJavacTest.java	2	2	Name said gate; ported
+deleted	julc-testkit/src/test/java/org/julclang/testkit/FrontendOptionTest.java		10	0	The option is gone. JavacSourceDiscoveryTest holds discovery; JulcEvalTest holds its two hash programs on javac
+renamed	julc-testkit/src/test/java/org/julclang/testkit/JavacGateSourceDiscoveryTest.java	julc-testkit/src/test/java/org/julclang/testkit/JavacSourceDiscoveryTest.java	7	7	Name said gate; ported
+ported	julc-testkit/src/test/java/org/julclang/testkit/JulcEvalTest.java		61	63	Ported; gained methods from a deleted file
+ported	julc-tools/src/test/java/org/julclang/tools/debug/JavacDebugMetadataTest.java		1	1	Ported: the frontend selection or reference comparison is out
+ported	julc-tools/src/test/java/org/julclang/tools/java/Adr068MetadataCorpusTest.java		1	1	Ported: the frontend selection or reference comparison is out
+ported	julc-tools/src/test/java/org/julclang/tools/java/JavaMetadataExtractorReadersTest.java		2	2	Ported: the frontend selection or reference comparison is out
+renamed	julc-tools/src/test/java/org/julclang/tools/service/JavacGateToolsHostTest.java	julc-tools/src/test/java/org/julclang/tools/service/JavacToolsHostTest.java	7	7	Name said gate; ported
+ported	julc-verification/src/test/java/org/julclang/verification/Adr068AnnotationsCorpusTest.java		1	1	Ported: the frontend selection or reference comparison is out
+ported	julc-verification/src/test/java/org/julclang/verification/SourceAnnotationsTest.java		4	4	Ported: the frontend selection or reference comparison is out
+renamed	julc-wasm/src/test/java/org/julclang/wasm/FullApiJavacGateTest.java	julc-wasm/src/test/java/org/julclang/wasm/FullApiJavacTest.java	2	2	Name said gate; ported
+renamed	julc-wasm/src/test/java/org/julclang/wasm/JavacGateProbe.java	julc-wasm/src/test/java/org/julclang/wasm/JavacProbe.java	0	0	Name said gate; ported
+renamed	julc-wasm/src/test/java/org/julclang/wasm/JavacGateProbeTest.java	julc-wasm/src/test/java/org/julclang/wasm/JavacProbeTest.java	1	1	Name said gate; ported

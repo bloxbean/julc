@@ -148,7 +148,7 @@ In on-chain code, **always** prefer high-level ledger type classes:
 | Sealed interface with `record` variants (`switch` on it) | `ConstrData` with manual constructor-index checks |
 | `BigInteger`, `byte[]`, `boolean`, `String` | `PlutusData.IntData(...)`, `PlutusData.BytesData(...)` for values you own |
 
-The compiler infrastructure (TypeRegistrar, sealed-interface dispatch, named-record method dispatch, `JulcList`/`JulcMap` builtins) exists *precisely so you don't touch `PlutusData` directly*.
+The compiler infrastructure (type registration, sealed-interface dispatch, named-record method dispatch, `JulcList`/`JulcMap` builtins) exists *precisely so you don't touch `PlutusData` directly*.
 
 ### 5.2 When raw `PlutusData` is acceptable
 
@@ -349,9 +349,9 @@ A cast to `boolean` or `Boolean`, or `PlutusData.cast` to either, takes an opera
 
 A value is built from its components alone, so a constructor's body does not run on-chain. Any constructor a source declares, compact, canonical or other, on a record or a class, holds no statement: `JULC0099`. An empty `R { }` is allowed. Write a static method that returns the value instead.
 
-### 6.19 Some names are JuLC's
+### 6.19 A record is its components
 
-A name JuLC reads by its spelling, such as `Boolean`, `BigInteger`, `Math`, `JulcList`, `PubKeyHash` or `Builtins`, binds at every use to the type JuLC reads, not to a variable, a type parameter or another type: `JULC0100`. A name of the ledger, such as `Rational`, may also be a nested or packaged record or sealed interface. A top-level type of the unnamed package takes no name of the ledger, of another type of the compilation or of a package of it. A variable does not take the name of a type of the compilation, a plain class does not share its name with a record or a library class of it, a class or a record does not take a type key of the lowering such as `ListType` or `Value`, a datum is written `Optional<...>` exactly when it is one, `new` has no class body, and the operand of `instanceof` has the variant's type or its sealed interface's. A method does not take a name JuLC reads in place of its body: `fromPlutusData` and `toPlutusData` on any type, `of` or an instance method on a `@NewType`, an explicit accessor or `equals` on a record, and a `@NewType`'s component named like a method of its type, such as `abs` on a `BigInteger`: `JULC0101`. A `@NewType` of `byte[]` names its component `value`, and a `@NewType` takes no instance call but its accessor and no field read. A `byte[]` or a ledger hash takes no other no-argument call. A call named `headList`, `tailList`, `mkCons` and the like is `Builtins`' own.
+A record's Data is its components, so a record's body holds only nested types (`JULC0080`), and a declared `toPlutusData` or explicit accessor is rejected (`JULC0101`). Each name binds as Java binds it: javac reads the source.
 
 ## 7. Common errors — root cause and fix
 

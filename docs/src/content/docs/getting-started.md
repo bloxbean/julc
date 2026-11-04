@@ -1635,24 +1635,14 @@ following limitations apply:
   whose type, through parentheses and other casts, is `boolean` or `Boolean`. Read a
   boolean out of Data by a typed field. A `@NewType` of a boolean
   is one too.
-- **Some names are JuLC's.** A name JuLC reads by its spelling, such as `Boolean`,
-  `BigInteger`, `Math`, `JulcList`, `PubKeyHash` or `Builtins`, binds at every use to
-  the type JuLC reads, not to a variable, a type parameter or another type
-  (`JULC0100`). A name of the ledger, such as `Rational`, may also be a nested or
-  packaged record or sealed interface. A top-level type of the unnamed package takes
-  no name of the ledger, of another type of the compilation or of a package of it. A
-  variable does not take the name of a type of the compilation, and a plain class does
-  not share its name with a record or a library class of it. `new` has no class body,
-  and the operand of `instanceof` has the variant's type or its sealed interface's.
-  A method does not take a name JuLC reads in place of its body (`JULC0101`):
-  `fromPlutusData` and `toPlutusData` on any type, `of` or an instance method on a
-  `@NewType`, an explicit accessor or `equals` on a record. A `@NewType`'s component
-  does not take the name of a method of its type, such as `abs` on a `BigInteger` or
-  `length` on a `String`, and a `@NewType` of `byte[]` names its component `value`.
+- **A record is its components.** A record's Data is its components, so a record's body
+  holds only nested types (`JULC0080`), and a declared `toPlutusData` or explicit accessor
+  is rejected (`JULC0101`). Each name binds as Java binds it: javac reads the source.
 - **A constructor holds no statement** (`JULC0099`), on a record or a class: a value
   is built from its components alone, so a constructor's body does not run on-chain.
-  That goes for a compact, canonical or other constructor; `R { }` holds nothing, and
-  is allowed. Put the statement in a static method that returns the value.
+  An empty constructor of a class holds nothing, and is allowed; a record's compact
+  constructor is a record's body (`JULC0080`). Put the statement in a static method that
+  returns the value.
 
 ### Strings
 

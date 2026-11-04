@@ -609,7 +609,7 @@ Source maps capture positions for these Java constructs:
 ### Architecture
 
 ```
-Java Source → PirGenerator → PIR Terms → UplcGenerator → UPLC Terms → CekMachine
+Java Source → Lowering → PIR Terms → UplcGenerator → UPLC Terms → CekMachine
                  ↓                           ↓                          ↓
          pirPositions map            uplcPositions map           currentTerm
     (PirTerm → SourceLocation)    (Term → SourceLocation)    (on exception)
@@ -618,7 +618,7 @@ Java Source → PirGenerator → PIR Terms → UplcGenerator → UPLC Terms → 
                                   (IdentityHashMap)
 ```
 
-1. **PirGenerator** records `SourceLocation` for each PIR term it creates from a JavaParser AST node
+1. **Lowering** records `SourceLocation` for each PIR term it creates from a javac tree
 2. **UplcGenerator** transfers positions from PIR terms to their outermost UPLC terms, propagating parent locations to children
 3. The resulting `IdentityHashMap<Term, SourceLocation>` is wrapped in a `SourceMap`
 4. When the **CekMachine** throws an exception, it attaches `currentTerm` (the UPLC term being evaluated)

@@ -3,10 +3,9 @@ title: "JuLC Compiler Developer Guide"
 description: "JuLC Compiler Developer Guide - JuLC documentation"
 ---
 
-> **Frontend note (ADR-068 M5).** JuLC reads Java with javac by default: javac parses and attributes the sources, and
-> `frontend/javac` lowers javac's trees to PIR. The parsing and validation stages below describe the JavaParser
-> frontend, which stays selectable (`CompilerOptions.setFrontend(CompilerFrontend.JAVAPARSER)`) until ADR-068 M6 removes
-> it; the PIR, UPLC and backend stages are shared. See [ADR-068](https://github.com/bloxbean/julc/blob/main/adr/068-javac-frontend-migration.md).
+> **Frontend note (ADR-068 M6).** JuLC reads Java with javac alone: javac parses and attributes the sources, and
+> `frontend/javac` lowers javac's trees to PIR. See
+> [ADR-068](https://github.com/bloxbean/julc/blob/main/adr/068-javac-frontend-migration.md).
 
 A comprehensive guide for developers who maintain, debug, or extend the JuLC compiler — the Java-to-UPLC compiler for Cardano smart contracts.
 
@@ -277,7 +276,7 @@ like `NativeValueType`, so the O7 isolation rules (`JULC0041`/`JULC0042`),
 the blueprint schema, the strict boundary and the verification projection
 treat them the same way; the Java markers are `JulcG1`, `JulcG2`,
 `JulcMlResult`, `JulcScalars`, `JulcG1Points`, `JulcG2Points` in `julc-core`.
-`TypeInferenceHelper` types every BLS builtin by its group (`compress` is the
+`Typing` types every BLS builtin by its group (`compress` is the
 only way to a byte string, `uncompress` the only way back) and a BLS or
 native-list constant by its universe. The registry's
 `nativeArgumentSignature` table says which native type each argument of a
@@ -286,11 +285,11 @@ and `validateNativeValueArguments` rejects anything else at compile time with
 the expected type in the message (`requires G1`, `requires
 NativeList[Integer]`); the variadic producers check every element
 (`requires Integer` for `scalars`), the converters check the Data list's
-static element type, and `PirGenerator.checkNativeBoundary` applies the same
+static element type, and `Lowering.checkNativeBoundary` applies the same
 native comparison to initializers, same-class helper arguments, `return`
 expressions against the declared return type (a lambda's own `return` is
 exempt), the `else` branch of a conditional against its `then` branch, and,
-through `LoopBodyGenerator`, declarations inside a loop body and assignments to
+through `Loops`, declarations inside a loop body and assignments to
 accumulators and loop-body locals (a bare nested block is spliced into the loop
 body with its own declarations renamed apart, which is the lowering of the
 braceless body byte for byte; an assignment the loop body generators do not
@@ -480,28 +479,28 @@ sealed interface Shape {
 ```
 org.julclang.compiler/
 ├── JulcCompiler.java          # Main pipeline orchestrator 
-├── LibraryCompiler.java       # Library compilation sub-pipeline 
+├── JavacLibraries.java       # Library compilation sub-pipeline 
 ├── CompileResult.java         # Compilation result record
 ├── CompilerException.java     # Fatal compiler error
 ├── CompilerOptions.java       # Compilation options
 ├── LibrarySourceResolver.java # Classpath scanning + transitive resolution
 ├── codegen/                   # ValidatorWrapper, strict boundary checks
-├── desugar/                   # LoopDesugarer, PatternMatchDesugarer
+├── desugar/                   # LoopDesugarer
 ├── error/                     # CompilerDiagnostic, DiagnosticCollector
 ├── pir/                       # PIR generation subsystem 
-│   ├── PirGenerator.java      #   Core PIR generation 
-│   ├── LoopBodyGenerator.java #   Loop body compilation 
-│   ├── AccumulatorTypeAnalyzer.java # Accumulator type analysis 
-│   ├── TypeInferenceHelper.java #   Read-only type inference 
+│   ├── Lowering.java      #   Core PIR generation 
+│   ├── Loops.java #   Loop body compilation 
+│   ├── LoopRules.java # Accumulator type analysis 
+│   ├── Typing.java #   Read-only type inference 
 │   ├── TypeMethodRegistry.java #   Instance method dispatch 
 │   ├── PirHelpers.java        #   wrapDecode/wrapEncode + utilities 
 │   ├── PirHofBuilders.java    #   HOF PIR builders 
 │   ├── PirTerm.java, PirType.java # PIR AST + type system
 │   └── StdlibLookup.java, CompositeStdlibLookup.java # Stdlib resolution
-├── resolve/                   # TypeResolver, TypeRegistrar, SymbolTable,
-│                              #   LedgerSourceLoader, LibraryMethodRegistry
+├── resolve/                   # TypeRegistry, JavacTypeRegistrar, Scope,
+│                              #   the API stubs, LibraryMethodRegistry
 ├── uplc/                      # UplcGenerator, UplcOptimizer
-└── validate/                  # SubsetValidator
+└── validate/                  # SubsetRules and SubsetScan
 ```
 
 ---
@@ -551,14 +550,14 @@ Helper records:
 
 ### 4.2 Java-to-PIR Type Mapping
 
-Defined in `TypeResolver.resolve(Type)`:
+Defined in `TypeRegistry.resolve(Type)`:
 
 | Java Type | PIR Type | Notes |
 |-----------|----------|-------|
 | `boolean` | `BoolType` | |
 | `int`, `long` | `IntegerType` | |
 | `void` | `UnitType` | |
-| `var` | `DataType` | Placeholder; PirGenerator infers actual type from initializer |
+| `var` | `DataType` | Placeholder; Lowering infers actual type from initializer |
 | `byte[]` | `ByteStringType` | Special-cased array type |
 | `BigInteger` | `IntegerType` | |
 | `String` | `StringType` | |
@@ -577,7 +576,7 @@ Defined in `TypeResolver.resolve(Type)`:
 
 Types must be registered before they can be resolved. Registration happens in two places:
 
-**1. `LedgerTypeRegistry.registerAll(TypeResolver)`** — Pre-registers all Cardano ledger types in 4 tiers:
+**1. `LedgerTypeRegistry.registerAll(TypeRegistry)`** — Pre-registers all Cardano ledger types in 4 tiers:
 
 | Tier | Types | Examples |
 |------|-------|---------|
@@ -586,7 +585,7 @@ Types must be registered before they can be resolved. Registration happens in tw
 | Tier 3: Composite records | Records referencing Tier 1/2 types | `Address`, `TxOut`, `TxInInfo`, `Interval` |
 | Tier 4: Top-level types | Types referencing Tier 3 | `TxInfo` (16 fields), `ScriptContext` (3 fields) |
 
-**2. `TypeRegistrar.registerAll(List<CompilationUnit>, TypeResolver)`** — Registers user-defined types via topological sort:
+**2. `JavacTypeRegistrar`** — Registers user-defined types via topological sort:
 
 1. **Collect** — Scan all compilation units for `record` and `sealed interface` declarations
 2. **Validate** — Check for duplicate type names across compilation units
@@ -625,12 +624,12 @@ Java Source(s)
      │
      ▼
 ┌─────────────────────────────────────┐
-│  1. Parse                           │  JavaParser → CompilationUnit ASTs
-│  2. Validate                        │  SubsetValidator rejects unsupported constructs
+│  1. Parse and attribute             │  javac → CompilationUnitTree
+│  2. Validate                        │  SubsetRules and SubsetScan rejects unsupported constructs
 │  3. Library Check                   │  Ensure libraries don't contain validator annotations
 │  4. Annotated Class Discovery       │  Find class with a supported validator annotation
 │  5. Script Purpose Detection        │  Map annotation → SPENDING/MINTING/WITHDRAW/...
-│  6. Type Registration               │  LedgerTypeRegistry + TypeRegistrar (topo sort)
+│  6. Type Registration               │  LedgerTypeRegistry + JavacTypeRegistrar (topo sort)
 │  7. @Param Field Detection          │  Find @Param-annotated fields
 │  8. Static Field Detection          │  Find static fields with initializers
 │  9. Entrypoint Discovery            │  Find @Entrypoint method
@@ -661,18 +660,13 @@ Java Source(s)
 
 ### Parsing
 
-The compiler uses [JavaParser](https://javaparser.org/) configured for Java 21 language level:
+The compiler runs javac in-process (`JavacFrontend`, `JavacTask.parse()` and `analyze()`, never `generate()`) over a closed
+environment: a shipped `java.base` blob and signature-only stubs of JuLC's API. javac errors are `JULC0085`, with javac's key.
+Facts about a tree come only through `JavacFacts`.
 
-```java
-StaticJavaParser.getParserConfiguration()
-    .setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
-```
+### Subset rules
 
-Each source string is parsed into a `CompilationUnit` AST. Parse errors are reported as `CompilerDiagnostic` entries.
-
-### SubsetValidator
-
-`SubsetValidator` (`validate/SubsetValidator.java`) extends JavaParser's `VoidVisitorAdapter` to walk the AST and reject unsupported Java constructs. It collects non-fatal diagnostics so multiple errors can be reported at once.
+`SubsetRules` and `SubsetScan` (`frontend/javac/`) walk javac's attributed trees and reject unsupported Java constructs. It collects non-fatal diagnostics so multiple errors can be reported at once.
 
 **Rejected constructs:**
 
@@ -705,9 +699,9 @@ Each source string is parsed into a `CompilationUnit` AST. Parse errors are repo
 
 ## 7. Phase 2: Type Registration
 
-### TypeRegistrar
+### JavacTypeRegistrar
 
-`TypeRegistrar.registerAll()` processes all compilation units (validator + libraries) together:
+`JavacTypeRegistrar.registerAll()` processes all compilation units (validator + libraries) together:
 
 ```
 1. Collect all record and sealed interface declarations
@@ -726,7 +720,7 @@ Each source string is parsed into a `CompilationUnit` AST. Parse errors are repo
 
 ### LedgerTypeRegistry
 
-`LedgerTypeRegistry.registerAll()` is called before `TypeRegistrar` to pre-register all Cardano ledger types. The 4-tier ordering ensures types are available when referenced as field types.
+`LedgerTypeRegistry.registerAll()` is called before `JavacTypeRegistrar` to pre-register all Cardano ledger types. The 4-tier ordering ensures types are available when referenced as field types.
 
 **Key types registered:**
 
@@ -746,23 +740,23 @@ Each source string is parsed into a `CompilationUnit` AST. Parse errors are repo
 
 ## 8. Phase 3: PIR Generation
 
-This is the heart of the compiler. `PirGenerator` transforms JavaParser AST nodes into PIR terms.
+This is the heart of the compiler. `Lowering` transforms javac trees into PIR terms.
 
-### 8.1 PirGenerator Architecture
+### 8.1 Lowering Architecture
 
-After the ADR-018 refactoring, PirGenerator (2,147 lines) delegates to three extracted helper classes:
+After the ADR-018 refactoring, Lowering (2,147 lines) delegates to three extracted helper classes:
 
-- **`AccumulatorTypeAnalyzer`** — Pure AST analysis: detects accumulator variables in loops, refines types (e.g., distinguishing `ListType` vs `MapType` accumulators based on pair operation evidence)
-- **`TypeInferenceHelper`** — Read-only type inference: `resolveExpressionType()`, `inferPirType()`, `inferBuiltinReturnType()`, etc. Takes read-only dependencies (SymbolTable, TypeResolver, StdlibLookup, TypeMethodRegistry)
-- **`LoopBodyGenerator`** — Loop body compilation: 9 body-processing methods across 5 loop paths (single/multi accumulator × break/no-break), plus pack/unpack helpers and nested loop handling
+- **`LoopRules`** — Pure AST analysis: detects accumulator variables in loops, refines types (e.g., distinguishing `ListType` vs `MapType` accumulators based on pair operation evidence)
+- **`Typing`** — Read-only type inference: `resolveExpressionType()`, `inferPirType()`, `inferBuiltinReturnType()`, etc. Takes read-only dependencies (Scope, TypeRegistry, StdlibLookup, TypeMethodRegistry)
+- **`Loops`** — Loop body compilation: 9 body-processing methods across 5 loop paths (single/multi accumulator × break/no-break), plus pack/unpack helpers and nested loop handling
 
 All three are package-private, final classes in the `pir/` package.
 
 **Constructor dependencies:**
 
 ```java
-PirGenerator(TypeResolver typeResolver,
-             SymbolTable symbolTable,
+Lowering(TypeRegistry typeResolver,
+             Scope symbolTable,
              StdlibLookup stdlibLookup,
              TypeMethodRegistry typeMethodRegistry,
              String libraryClassName)  // non-null when compiling @OnchainLibrary
@@ -770,7 +764,7 @@ PirGenerator(TypeResolver typeResolver,
 
 **Two entry points:**
 
-1. **`generateMethod(MethodDeclaration)`** — Compiles an entrypoint or helper method:
+1. **`Lowering.method(...)`** — Compiles an entrypoint or helper method:
    - Pushes a new scope
    - Registers parameters
    - Compiles the method body via `generateBlock()`
@@ -778,9 +772,9 @@ PirGenerator(TypeResolver typeResolver,
 
 2. **`generateExpression(Expression)`** (public) — Compiles any expression node to a PIR term. Dispatches by expression type to specialized handlers.
 
-**Callback surface for LoopBodyGenerator:**
+**Callback surface for Loops:**
 
-LoopBodyGenerator calls back to PirGenerator via 7 methods (1 already public, 6 widened to package-private):
+Loops calls back to Lowering via 7 methods (1 already public, 6 widened to package-private):
 - `generateExpression()` (public), `generateStatement()`, `generateWhileStmt()`, `generateForEachStmt()`, `inferType()`, `enrichedError()` (static), `detectForEachAccumulators()`
 
 **Error collection:**
@@ -800,7 +794,7 @@ LoopBodyGenerator calls back to PirGenerator via 7 methods (1 already public, 6 
 | `"hello"` | `Const(String("hello"))` |
 
 **Variables:**
-- `name` → `Var(name, type)` where type is looked up from the SymbolTable
+- `name` → `Var(name, type)` where type is looked up from the Scope
 
 **Binary operations (type-aware dispatch):**
 
@@ -846,7 +840,7 @@ LoopBodyGenerator calls back to PirGenerator via 7 methods (1 already public, 6 
 - Otherwise generate field extraction: `HeadList(TailList^n(SndPair(UnConstrData(data))))`
 
 **Level 5: Helper method / library method calls**
-- Look up method name in SymbolTable
+- Look up method name in Scope
 - For library classes, try qualified name `ClassName.methodName`
 - Apply scope + args
 - If not found → error with fuzzy suggestion
@@ -909,7 +903,7 @@ switch (shape) {
     case Rect r -> r.w() * r.h();
 }
 ```
-→ `DataMatch` with branches ordered by tag, delegated to `PatternMatchDesugarer`
+→ `DataMatch` with branches ordered by tag, built by `Switches`
 
 **Ternary:** `cond ? a : b` → `IfThenElse(cond, a, b)`
 
@@ -963,8 +957,8 @@ applies to every lowering:
   entry method that no method calls, the loop is not in a lambda, and no other
   method reads the field. A method refers to a name when the name is free in
   its generated PIR once `let x = x` is removed, so a variable that shadows the
-  field is not a read (`PirGenerator.requireUnsharedFields`). A new pipeline
-  must declare its entry methods with `PirGenerator.setEntryMethods`, or no
+  field is not a read (`Lowering.requireUnsharedFields`). A new pipeline
+  must declare its entry methods with `Lowering.setEntryMethods`, or no
   method may update a field. A body local that shadows a field is a local, not
   an accumulator.
 - **Choose names while building the term.** Never rename afterwards: source maps
@@ -972,7 +966,7 @@ applies to every lowering:
 - **A binder that rebinds a source name keeps it exactly** (method parameters,
   locals, accumulators, `Let p = decode(p)`); block-local renames use `name'N`.
 - **Methods have their own namespace.** Declare them with
-  `SymbolTable.declareMethod(sourceName, owner + "." + sourceName, type)` and
+  `Scope.declareMethod(sourceName, owner + "." + sourceName, type)` and
   resolve calls with `lookupMethodSignature`; never look a method up as a
   variable.
 - **Other frontends must not bind or reference `#` names.**
@@ -987,7 +981,7 @@ names to the old internal names and requires identical output.
 
 Loops are transformed into recursive `LetRec` patterns by `LoopDesugarer`. The desugarer assigns unique names to each loop function (`#loop__forEach__0`, `#loop__while__1`, etc.) to support nesting.
 
-Before choosing a lowering path, `LoopBodyGenerator.validateConditionalLocalUpdates`
+Before choosing a lowering path, `Loops.validateConditionalLocalUpdates`
 checks lexical scopes (ADR-048, #155). An `if` returns only the loop's accumulators,
 so an assignment to a loop-body local declared outside that branch is rejected
 with a source location and rewrite hints. Bare blocks do not introduce joins;
@@ -1102,7 +1096,7 @@ LetRec([#loop__while__0 = \n ->
 ], #loop__while__0(x))
 ```
 
-**Accumulator type refinement** (`AccumulatorTypeAnalyzer.refineAccumulatorTypes()`): The compiler distinguishes `ListType` vs `MapType` accumulators by looking for evidence (this logic was extracted from PirGenerator into `AccumulatorTypeAnalyzer` as part of ADR-018):
+**Accumulator type refinement** (`LoopRules.refineAccumulatorTypes()`): The compiler distinguishes `ListType` vs `MapType` accumulators by looking for evidence (this logic was extracted from Lowering into `LoopRules` as part of ADR-018):
 
 | Evidence | Inferred Type |
 |----------|---------------|
@@ -1125,7 +1119,7 @@ Inner: #loop__forEach__1
 
 ## 10. Phase 5: Pattern Matching
 
-`PatternMatchDesugarer` transforms Java pattern matching into PIR `DataMatch` terms.
+`Switches` and `TypeTests` (`frontend/javac/lower`) transform Java pattern matching into PIR `DataMatch` terms.
 
 ### Switch on Sealed Interfaces
 
@@ -1377,7 +1371,7 @@ Case(Constr(tag, [a, b]), [br0, br1, br2]) → Apply(Apply(br_tag, a), b)
 
 ### Multi-Pass Retry Strategy
 
-Library methods may depend on each other across compilation units. Library compilation was extracted into `LibraryCompiler.java` (138 lines) as part of ADR-018. `JulcCompiler` delegates via `new LibraryCompiler(options).compile(...)`. The strategy is multi-pass:
+Library methods may depend on each other across compilation units. Library compilation was extracted into `JavacLibraries.java` (138 lines) as part of ADR-018. `JulcCompiler` delegates via `new JavacLibraries(options).compile(...)`. The strategy is multi-pass:
 
 ```
 1. Create progressive LibraryMethodRegistry (starts empty)
@@ -1433,7 +1427,7 @@ When the compiler encounters `SomeClass.method(args)`:
 
 ## 14. The Symbol Table
 
-`SymbolTable` (`resolve/SymbolTable.java`) manages lexical scoping during PIR generation.
+`Scope` (`resolve/Scope.java`) manages lexical scoping during PIR generation.
 
 ### Data Structure
 
@@ -1492,11 +1486,11 @@ Each handler receives:
 - `scopeType` — The receiver's PIR type
 - `argTypes` — Argument PIR types
 
-### ReturnTypeResolver
+### ReturnTypeRegistry
 
 ```java
 @FunctionalInterface
-interface ReturnTypeResolver {
+interface ReturnTypeRegistry {
     PirType resolve(PirType scopeType);
 }
 ```
@@ -1660,10 +1654,9 @@ not bypass lookup or target-legality checks. See ADR-035 for the contract.
 
 ### Tracing a Stdlib Call End-to-End
 
-Example: `ListsLib.foldl(fn, init, list)`, an intrinsic with no Java declaration, reached through the
-JavaParser frontend's dispatch when the javac gate is off (`julc.javacGate=off`):
+Example: `ListsLib.foldl(fn, init, list)`, an intrinsic of the stdlib registry:
 
-1. **PirGenerator.generateMethodCall()** detects scope = `ListsLib` (class name)
+1. **Lowering.generateMethodCall()** detects scope = `ListsLib` (class name)
 2. **Level 2 dispatch:** Calls `stdlibLookup.lookup("ListsLib", "foldl", compiledArgs)`
 3. **StdlibRegistry** finds the registered `PirTermBuilder` for `ListsLib.foldl`
 4. Builder generates a LetRec PIR pattern:
@@ -1709,7 +1702,7 @@ public record CompilerDiagnostic(
 
 **Non-fatal errors** (recoverable — compilation continues):
 ```java
-// In PirGenerator:
+// In Lowering:
 private PirTerm collectError(String message, String suggestion, Node node) {
     collectedErrors.add(new CompilerDiagnostic(
         Level.ERROR, message, fileName, line, column, suggestion));
@@ -1733,7 +1726,7 @@ private CompilerException enrichedError(String message, String suggestion, Node 
 ERROR MyValidator.java:15:8 - Unknown method 'filterr'. Did you mean 'filter'?
 ```
 
-**Construct-specific suggestions:** Each rejected construct in `SubsetValidator` has a tailored suggestion (e.g., "Use `Optional<T>` to represent absence of a value" for `null`).
+**Construct-specific suggestions:** Each rejected construct in `SubsetRules and SubsetScan` has a tailored suggestion (e.g., "Use `Optional<T>` to represent absence of a value" for `null`).
 
 ---
 
@@ -1851,7 +1844,7 @@ record RationalType() implements PirType {}
 
 Or use an existing type — `Rational` is currently mapped to `DataType` (opaque).
 
-**Step 2: Register in TypeResolver** (`resolve/TypeResolver.java`):
+**Step 2: Register in TypeRegistry** (`resolve/TypeRegistry.java`):
 
 In the `resolve()` method, add a case:
 ```java
@@ -2045,15 +2038,15 @@ public class SimpleValidator {
 
 ### Phase 1: Parse
 
-JavaParser produces an AST with:
-- `ClassOrInterfaceDeclaration` "SimpleValidator" with `@SpendingValidator`
-- `MethodDeclaration` "validate" with `@Entrypoint`
+javac produces a tree with:
+- A `ClassTree` "SimpleValidator" with `@SpendingValidator`
+- A `MethodTree` "validate" with `@Entrypoint`
 - Two parameters: `redeemer: PlutusData`, `scriptContext: PlutusData`
 - Body: three statements (two var decls, one return)
 
 ### Phase 2: Validate
 
-SubsetValidator walks the AST. No rejected constructs found.
+SubsetRules and SubsetScan walks the AST. No rejected constructs found.
 
 ### Phase 5: Script Purpose
 
@@ -2193,9 +2186,9 @@ The `CompileResult` contains both the compiled `Program` (if successful) and a l
 | Error | Likely Cause | Fix |
 |-------|-------------|-----|
 | "Unknown method 'X'" | Method not in stdlib, TypeMethodRegistry, or helper methods | Check spelling, add import, or register method |
-| "Unknown type: 'X'" | Type not registered in TypeResolver | Register record/sealed interface, add to LedgerTypeRegistry |
+| "Unknown type: 'X'" | Type not registered in TypeRegistry | Register record/sealed interface, add to LedgerTypeRegistry |
 | "Unbound variable: 'X'" | Variable used outside its scope, or De Bruijn index wrong | Check scope push/pop lifecycle |
-| "Unsupported statement" | Java construct not in supported subset | Rewrite using supported subset (see SubsetValidator) |
+| "Unsupported statement" | Java construct not in supported subset | Rewrite using supported subset (see SubsetRules and SubsetScan) |
 | "Cycle detected in type dependencies" | Mutually recursive record types | Break cycle with DataType fields |
 
 ### PIR Debugging
@@ -2235,11 +2228,11 @@ System.out.println("Script size: " + cbor.length() / 2 + " bytes");
 |------------|---------------|
 | `JulcCompilerTest` | Full pipeline integration |
 | `EndToEndTest` | Complete validator scenarios |
-| `PirGeneratorTest` | PIR generation from Java AST |
+| `LoweringTest` | PIR generation from Java AST |
 | `PirTypeTest` | PirType equality and structure |
 | `PirTermTest` | PirTerm construction |
-| `SubsetValidatorTest` | Java subset validation |
-| `TypeResolverTest` | Java-to-PIR type mapping |
+| `SubsetRules and SubsetScanTest` | Java subset validation |
+| `TypeRegistryTest` | Java-to-PIR type mapping |
 | `TypeMethodRegistryTest` | Instance method dispatch |
 | `TypeMethodsTest` | Instance method compilation + eval |
 | `UplcGeneratorTest` | PIR-to-UPLC lowering |
@@ -2293,7 +2286,7 @@ void testFeature() {
 
 ### Test Types
 
-**Unit tests:** Test individual components (TypeResolver, SymbolTable, PirHelpers) in isolation.
+**Unit tests:** Test individual components (TypeRegistry, Scope, PirHelpers) in isolation.
 
 **Integration tests:** Compile Java source → assert PIR structure or UPLC evaluation result.
 
@@ -2322,7 +2315,7 @@ void testFeature() {
 | ADR-015 | CompileMethod Param Support | — |
 | ADR-016 | Feature Roadmap Prioritization | — |
 | ADR-017 | 1.0 Release Readiness Assessment | — |
-| ADR-018 | PirGenerator Refactoring | Completed |
+| ADR-018 | Lowering Refactoring | Completed |
 
 ADR files are in the `adr/` directory at the project root.
 
@@ -2363,20 +2356,20 @@ ADR files are in the `adr/` directory at the project root.
 | File | Lines | Role |
 |------|-------|------|
 | `julc-compiler/.../JulcCompiler.java` | 1,221 | Main pipeline orchestrator — 24-phase compilation |
-| `julc-compiler/.../LibraryCompiler.java` | 138 | Library compilation sub-pipeline (extracted from JulcCompiler, ADR-018) |
+| `julc-compiler/.../JavacLibraries.java` | 138 | Library compilation sub-pipeline (extracted from JulcCompiler, ADR-018) |
 | `julc-compiler/.../CompileResult.java` | — | Compilation result (program + diagnostics + params) |
 | `julc-compiler/.../CompilerException.java` | — | Fatal compiler error |
 | `julc-compiler/.../CompilerOptions.java` | — | Compilation options |
 | `julc-compiler/.../LibrarySourceResolver.java` | — | Classpath scanning + transitive BFS library resolution |
 | `julc-compiler/.../codegen/ValidatorWrapper.java` | — | ScriptContext decoding + bool→unit/error wrapping |
 | `julc-compiler/.../desugar/LoopDesugarer.java` | — | For-each/while → LetRec transformation |
-| `julc-compiler/.../desugar/PatternMatchDesugarer.java` | — | Switch/instanceof → DataMatch transformation |
+| `julc-compiler/.../frontend/javac/lower/Switches.java` | — | Switch/instanceof → DataMatch transformation |
 | `julc-compiler/.../error/CompilerDiagnostic.java` | — | Diagnostic record (level, message, location, suggestion) |
 | `julc-compiler/.../error/DiagnosticCollector.java` | — | Structured error collection with source location |
-| `julc-compiler/.../pir/PirGenerator.java` | 2,147 | Java AST → PIR — core expression/statement compilation |
-| `julc-compiler/.../pir/LoopBodyGenerator.java` | 531 | Loop body compilation — 5 paths × break/no-break (extracted, ADR-018) |
-| `julc-compiler/.../pir/AccumulatorTypeAnalyzer.java` | 432 | Accumulator type analysis — pair list detection heuristics (extracted, ADR-018) |
-| `julc-compiler/.../pir/TypeInferenceHelper.java` | 282 | Read-only type inference — resolveExpressionType, inferPirType (extracted, ADR-018) |
+| `julc-compiler/.../pir/Lowering.java` | 2,147 | Java AST → PIR — core expression/statement compilation |
+| `julc-compiler/.../pir/Loops.java` | 531 | Loop body compilation — 5 paths × break/no-break (extracted, ADR-018) |
+| `julc-compiler/.../pir/LoopRules.java` | 432 | Accumulator type analysis — pair list detection heuristics (extracted, ADR-018) |
+| `julc-compiler/.../pir/Typing.java` | 282 | Read-only type inference — resolveExpressionType, inferPirType (extracted, ADR-018) |
 | `julc-compiler/.../pir/TypeMethodRegistry.java` | 905 | Instance method dispatch (~50 methods across 11 types) |
 | `julc-compiler/.../pir/PirHelpers.java` | 356 | wrapDecode/wrapEncode + list length/contains/foldl + blockStmts |
 | `julc-compiler/.../pir/PirHofBuilders.java` | 244 | HOF PIR builders (map, filter, any, all, find, foldl, zip) |
@@ -2386,15 +2379,15 @@ ADR files are in the `adr/` directory at the project root.
 | `julc-compiler/.../pir/StdlibLookup.java` | — | Interface for stdlib method resolution |
 | `julc-compiler/.../pir/PirFormatter.java` | — | PIR pretty-printing |
 | `julc-compiler/.../pir/PirSubstitution.java` | — | PIR variable substitution |
-| `julc-compiler/.../resolve/TypeResolver.java` | — | Java → PIR type mapping |
-| `julc-compiler/.../resolve/TypeRegistrar.java` | — | Topological type registration (Kahn's algorithm) |
-| `julc-compiler/.../resolve/SymbolTable.java` | — | Scope stack for variable/method management |
-| `julc-compiler/.../resolve/LedgerSourceLoader.java` | — | Dynamic ledger type loading from META-INF |
+| `julc-compiler/.../resolve/TypeRegistry.java` | — | Java → PIR type mapping |
+| `julc-compiler/.../resolve/JavacTypeRegistrar.java` | — | Topological type registration (Kahn's algorithm) |
+| `julc-compiler/.../resolve/Scope.java` | — | Scope stack for variable/method management |
+| `julc-compiler/.../resolve/the API stubs.java` | — | Dynamic ledger type loading from META-INF |
 | `julc-compiler/.../resolve/LibraryMethodRegistry.java` | — | Compiled library method storage + typed coercion |
-| `julc-compiler/.../resolve/ImportResolver.java` | — | Import resolution |
+| `julc-compiler/.../resolve/javac.java` | — | Import resolution |
 | `julc-compiler/.../uplc/UplcGenerator.java` | — | PIR → UPLC lowering (Let→Apply, LetRec→Z-combinator) |
 | `julc-compiler/.../uplc/UplcOptimizer.java` | — | 6-pass UPLC optimizer with fixpoint iteration |
-| `julc-compiler/.../validate/SubsetValidator.java` | — | Java subset enforcement |
+| `julc-compiler/.../frontend/javac/SubsetRules.java` | — | Java subset enforcement |
 | `julc-compiler/.../util/MethodDependencyResolver.java` | — | Method dependency graph construction |
 | `julc-compiler/.../util/StringUtils.java` | — | String utilities (Levenshtein distance, etc.) |
 | `julc-core/.../DefaultFun.java` | — | 101 released Plutus builtins (tags 0-100) plus future `MultiIndexArray` (tag 101) |

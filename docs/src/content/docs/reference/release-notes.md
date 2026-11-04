@@ -3,10 +3,9 @@ title: "Release Notes"
 description: "JuLC release notes and migration guidance"
 ---
 
-## Upcoming preview: javac is the default frontend (ADR-068 M5)
+## Upcoming preview: javac is JuLC's only Java reader (ADR-068 M5, M6)
 
-JuLC now reads every Java source with javac. `CompilerOptions.frontend` defaults to `JAVAC` on every host: the compiler
-API, the Gradle plugin, the annotation processor, the testkit (`JulcEval`, `ValidatorTest`, `ContractTest`), the CLI
+JuLC now reads every Java source with javac, on every host: the compiler API, the Gradle plugin, the annotation processor, the testkit (`JulcEval`, `ValidatorTest`, `ContractTest`), the CLI
 (`julc build`, `julc check`, the REPL, the MCP tools), the playground and `julc-wasm`, and Elci's
 `JavaLibraryProvider` and `LedgerTypeProvider`. javac resolves every name, type, overload and literal, and JuLC lowers
 javac's attributed trees. The tools that read Java source without compiling it (lint, test discovery, the MCP tools'
@@ -23,26 +22,32 @@ bytes, each classified in the ADR's ledger (a semantic fix, a cost change or a r
 JavaParser frontend accepted are rejected with a code (below). Of the 102 external example programs in that corpus, 43
 keep their bytes, 11 change them, and 48 are rejected until rewritten; the examples held 125 `byte[].equals` call sites.
 
-### Opting back, until ADR-068 M6
+### The JavaParser frontend and the frontend option are gone (ADR-068 M6)
 
-The JavaParser frontend stays selectable explicitly until ADR-068 M6 removes it, with the option:
+There is no way back to the JavaParser frontend: `javaparser-core` is on no class path, and a build that fails on javac is
+fixed by the rewrites below. What opted back is removed:
 
-| Host | Option |
-|---|---|
-| Compiler API | `new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)` |
-| Gradle plugin | `julc { frontend = 'javaparser' }` (it also passes `-Ajulc.frontend=javaparser` to the annotation processor) |
-| Annotation processor | `-Ajulc.frontend=javaparser` |
-| CLI | `julc build --frontend javaparser` |
-| Testkit | `JulcEval.forSource(src).frontend(...)` and `JulcEval.forClass(cls, root).frontend(...)` with `CompilerFrontend.JAVAPARSER`; `ValidatorTest.compile(src, frontend)`, `compileValidator(cls, root, frontend)`, `compileValidatorByName(fqcn, root, frontend)`; `ContractTest.compileValidator(cls, root, frontend)`; `SourceDiscovery.compile(cls, root, options)`, `compile(fqcn, root, options)` and `compileMethod(cls, root, method, options)` with `CompilerOptions.setFrontend` |
-| Source-reading tools | `-Djulc.tools.reader=JAVAPARSER` |
+| Host | Removed | What a build that still names it gets |
+|---|---|---|
+| Compiler API | `CompilerFrontend`, `CompilerOptions.setFrontend`, `getFrontend`, `setJavacGate`, `getJavacGate`, `setMethodObserver` | A compile error |
+| Gradle plugin | `julc { frontend = ... }` | `javac` builds; anything else stops, saying the option is gone |
+| Annotation processor | `-Ajulc.frontend` | `javac` compiles; anything else is an error, saying the option is gone |
+| CLI | `julc build --frontend` | `javac` builds; anything else stops, saying the option is gone |
+| Testkit | `JulcEval.frontend(...)`; `ValidatorTest.compile(src, frontend)`, `compileValidator(cls, root, frontend)`, `compileValidatorByName(fqcn, root, frontend)`; `ContractTest.compileValidator(cls, root, frontend)` | A compile error: drop the argument |
+| Source-reading tools | `-Djulc.tools.reader` | Ignored |
+| The javac gate | `-Djulc.javacGate`, `-Pjulc.javacGate`, `CompilerOptions.setJavacGate` | Ignored, or a compile error for the method: javac reads every compilation |
 
-The other hosts (`julc check`, the REPL, the MCP tools, the playground, `julc-wasm`) have no option and use javac, and so
-do the testkit entries that take no frontend or options: `ValidatorTest.compileValidator(cls)`, `compileValidatorByName(fqcn)`,
-`compileValidatorWithSourceMap`, `compile(src, libraries...)`, `MethodEvaluator` and `ContractTest`'s other helpers.
-Opting back is a stopgap: the JavaParser frontend keeps the divergences from Java that this release closes, and it is
-removed at M6. The javac gate (`-Djulc.javacGate=off|report|enforce`, `CompilerOptions.setJavacGate`) runs only in front
-of the JavaParser frontend; the javac frontend has no gate to turn off. `JULC0100`, and the `JULC0101` rules other than a
-record's declared `toPlutusData` or accessor, are rules of that gate and do not apply on javac.
+**Retired codes,** never reused: `JULC0084` (a construct the javac frontend had not ported; nothing reaches it) and `JULC0100`
+(a name the JavaParser frontend read by its spelling). A compilation no longer reports them. `JULC0101` now holds only a
+record's declared `toPlutusData` or explicit accessor, and a generated accessor that implements `ToPlutusData.toPlutusData`;
+its other rows were rules of the JavaParser frontend's gate. So these compile on javac, where each name binds to its
+declaration, and give Java's answer: a method or component named `fromPlutusData`, `of` or like a method of the type a
+`@NewType` lowers to, a variable or type named `Boolean`, `BigInteger`, `Math` or another name of the API. A record's body
+stays `JULC0080`, and a `@NewType`'s instance call keeps its own rejection where there is one.
+
+**A rule written outside JuLC:** `LintRule.check` takes javac's tree (`JavacSyntax`), and `supports` is gone.
+`JavaSourceIntrospector`'s methods on JavaParser nodes and `JavaSourceParser` are gone, and `DiagnosticCollector` reports by line
+and column. `JavacProvenance` has no gate. `CompilerFrontend.DEFAULT` is gone.
 
 ### Source javac's frontend rejects
 
@@ -159,8 +164,7 @@ JuLC never accepted it under the default gate, so compare its component:
 ```java
 @NewType record OrderId(byte[] value) { }
 
-// Rejected: JULC0087 on the javac frontend, and JULC0101 on the JavaParser frontend's gate
-// (it compiled there only with the gate off)
+// Rejected: JULC0087
 boolean same = a.equals(b);                            // OrderId a, b
 // Write
 boolean same = Builtins.equalsByteString(a.value(), b.value());
@@ -170,16 +174,15 @@ A record or sealed variant with a `byte[]` component has the same problem throug
 `contains`, `get` or `containsKey` on a `java.util` collection of `byte[]`: compare the components, or keep the bytes in a
 `JulcList`, `JulcMap` or `JulcArray`, whose JVM equality compares `byte[]` by content (since ADR-068 M1). A source with
 the old form stops at compile time, so there is nothing to look for at run time. The diagnostic's fix names the same
-replacements, and how to select the JavaParser frontend until M6.
+replacements.
 
 ### Also in this release
 
 - **The tools read with javac.** Lint, `julc check`'s test discovery, the MCP tools, the metadata extractor and the
-  verification resolvers read sources with javac's parser. Lint and test discovery read the corpus alike on both
-  parsers; the metadata extractor (the playground's check) now reports the javac frontend's diagnostics (ADR-068 M6a).
+  verification resolvers read sources with javac's parser. Lint and test discovery read the corpus as JavaParser read it;
+  the metadata extractor (the playground's check) now reports the javac frontend's diagnostics (ADR-068 M6a).
 - **`LedgerTypeProvider()`** and `JavaLibraryProvider(..., new CompilerOptions())` describe the ledger and libraries as
   javac reads them; their types and named definitions are equal to the JavaParser frontend's (ADR-068 M2).
-- `CompilerFrontend.DEFAULT` names the default.
 - **JRL support has been removed.** The experimental JRL rule language, its transpiler, `julc build`'s compilation of
   `.jrl` files and the JRL guide are gone; `julc build` warns that it ignores any `.jrl` file it finds. Write the contract in Java, as
   the [first contract](/first-contract/) guide shows. JRL was never published, so no Maven artifact disappears. The

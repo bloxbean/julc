@@ -1617,7 +1617,6 @@ AssetClass ac = new AssetClass(myBytes);
 **Constraints:**
 - Must be a `record` with exactly one field
 - Underlying type must be `byte[]`, `BigInteger`, `String`, or `boolean`
-- The field does not take the name of a method of its type (`JULC0101`), such as `abs` on a `BigInteger` or `length` on a `String`. A `byte[]` field is named `value`
 - Multi-field or unsupported-type records produce a compiler error
 
 **On-chain behavior:** `new AssetClass(bytes)` compiles to identity — the bytes are passed through as-is. Field access `ac.policyId()` is also identity. A synthesized `AssetClass.of(bytes)` factory is not Java, so JuLC no longer accepts it (ADR-068 D6); the ledger hash types keep their real `of(byte[])` methods.
