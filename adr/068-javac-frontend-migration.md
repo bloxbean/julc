@@ -1239,6 +1239,24 @@ Decisions recorded from the M1a reviews:
 - **Secondary top-level types** of pool units are indexed under every top-level name (javac's own source path
   finds only the primary one).
 
+### M5: entry gate met (2026-11-04)
+
+[M5a](evidence/068-m5a.md) and [the integration](evidence/068-m5-integration.md), with M6a's tool readings merged
+([`068-m6a-tools.md`](evidence/068-m6a-tools.md)). The tables are frozen with `m5-corpus-head-3`, a recording of the head at
+`8875e6a9` that replaces `m2-corpus-head`; the reference gained 7,633 rows and lost the 564 cases no longer recorded, with no
+row changed. `JAVAPARSER` stays the default.
+
+| Gate, at `c9ffdb47` unless stated | Result |
+|---|---|
+| I1, 24,167 cases | Moved 0, shrunk 0; 14,405 identical; no `JULC0084`, no `not-ported`; every `DIFFERENT` row classified, none owed |
+| M6a's effect on I1 | None: the merged tree's row table equals the one frozen from M5a alone, byte for byte |
+| `adr068Baseline`, `adr068Types` | Pass |
+| `./gradlew test` | 19,099 tests, 530 skipped, 2 failures (pins of `JULC0084` that M5a made `JULC0124`), fixed at `1c2afab6`, whose two modules then pass |
+| `Javac21ParityTest` (javac 21.0.3 required), `pairCaseTest`, `onChainHarnessTest` (offline), Blaster | Pass |
+| Rediscovery | Five profiles pass; `REDISCOVER_162` ends in #162's rejection, as ADR-066 designs it |
+
+M5's exit criteria (the default flip and its gates) remain. Codex reads are owed at M5a's, M6a's and this head.
+
 ### M3a: closed (2026-11-01)
 
 [Evidence](evidence/068-m3a-lowering-foundation.md), [reference B2](evidence/068-m3a-reference-b2.md). A program of literals, names and static constants compiles through `frontend=JAVAC` to the reference's bytes; everything else stops at `JULC0084`.
