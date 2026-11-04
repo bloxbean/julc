@@ -217,13 +217,16 @@ class Adr068LoweringTest {
     private static final Pattern LISTED = Pattern.compile("DIFFERENT.*");
 
     private static void assertListed(Map<String, Adr068Lowering.Row> rows) throws IOException {
-        var accepted = Adr068Lowering.acceptedDifferences(
-                Files.readAllLines(EVIDENCE.resolve("lowering-accepted-differences.tsv")));
+        var lines = Files.readAllLines(EVIDENCE.resolve("lowering-accepted-differences.tsv"));
+        var accepted = Adr068Lowering.acceptedDifferences(lines);
         var found = new TreeMap<String, String>();
         rows.values().forEach(row -> {
             if (LISTED.matcher(row.kind()).matches()) found.put(row.key(), row.kind());
         });
         assertEquals(accepted, found, "an unclassified difference (D13), or a stale entry");
+        // A row whose PIR differs where a frontend rejects: its class must fit the side that rejects.
+        var classes = Adr068Lowering.acceptedClasses(lines);
+        for (var row : rows.values()) Adr068Lowering.explainsUnaccepted(classes.get(row.key()), row);
     }
 
     private static List<String> summary(Map<String, Adr068Lowering.Row> rows, Map<String, Integer> parts) {

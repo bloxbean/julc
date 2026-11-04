@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -248,10 +249,69 @@ class Adr068LoweringToolTest {
         injected.program = c -> method("class P { static long m(long a, long b) { long q = (short) a; return q; } }");
         var row = injected.row(method("class P { static long m(long a, long b) { return a; } }"));
         assertEquals("DIFFERENT-pir-unaccepted", row.kind(), row::line);
+        assertEquals("javac", row.rejects(), row::line);
         assertThrows(IllegalArgumentException.class, () -> Adr068Lowering.acceptedDifferences(
                 List.of("k\tDIFFERENT-pir-unaccepted\tRepresentation only: the PIR diff")));
         assertEquals(Map.of("k", "DIFFERENT-pir"), Adr068Lowering.acceptedDifferences(
                 List.of("k\tDIFFERENT-pir\tRepresentation only: the PIR diff, and every level's bytes equal")));
+    }
+
+    /**
+     * A PIR that differs where only the javac frontend rejects is a Policy rejection, as a {@code DIFFERENT-javac-rejects}
+     * row: never a Semantic fix, which needs the javac frontend's value, nor Accepted by decision (the M5a re-confirmation's
+     * G1).
+     */
+    @Test
+    void aPirRowOnlyJavacRejectsIsAPolicyRejection() {
+        var injected = new Injected();
+        var other = method("class P { static long m(long a, long b) { return b; } }");
+        injected.attempts = attempts -> Adr068Lowering.frontend().attempts(other, new CompilerOptions());
+        injected.program = c -> method("class P { static long m(long a, long b) { long q = (short) a; return q; } }");
+        var row = injected.row(method("class P { static long m(long a, long b) { return a; } }"));
+        assertEquals("javac", row.rejects(), row::line);
+        Adr068Lowering.explainsUnaccepted("Policy rejection", row);
+        assertEquals(Map.of("k", "DIFFERENT-pir-unaccepted"), Adr068Lowering.acceptedDifferences(
+                List.of("k\tDIFFERENT-pir-unaccepted\tPolicy rejection (D15): the javac frontend rejects it")));
+        assertThrows(IllegalArgumentException.class, () -> Adr068Lowering.acceptedDifferences(
+                List.of("k\tDIFFERENT-pir-unaccepted\tSemantic fix (r13): the javac frontend rejects it")));
+        assertThrows(IllegalArgumentException.class, () -> Adr068Lowering.explainsUnaccepted("Semantic fix", row));
+        assertThrows(IllegalArgumentException.class, () -> Adr068Lowering.explainsUnaccepted("Accepted by decision", row));
+    }
+
+    /**
+     * A PIR that differs where only the reference rejects, as {@code (var x) -> x.signum() > 0} (the reference reads a var
+     * lambda parameter as Data and cannot resolve the call; javac gives it the element's type), is Accepted by decision, as
+     * a {@code DIFFERENT-javac-accepts} row: never a Semantic fix, since the reference has no value to differ from, nor a
+     * Policy rejection (the M5a re-confirmation's G1).
+     */
+    @Test
+    void aPirRowOnlyTheReferenceRejectsIsAcceptedByDecision() {
+        var row = row("""
+                import java.math.BigInteger;
+                import org.julclang.core.types.JulcList;
+                class P { static boolean m(JulcList<BigInteger> xs) { return xs.any((var x) -> x.signum() > 0); } }
+                """);
+        assertEquals("DIFFERENT-pir-unaccepted", row.kind(), row::line);
+        assertEquals("reference", row.rejects(), row::line);
+        Adr068Lowering.explainsUnaccepted("Accepted by decision", row);
+        assertEquals(Map.of("k", "DIFFERENT-pir-unaccepted"), Adr068Lowering.acceptedDifferences(
+                List.of("k\tDIFFERENT-pir-unaccepted\tAccepted by decision (r13): a var lambda parameter")));
+        assertThrows(IllegalArgumentException.class, () -> Adr068Lowering.acceptedDifferences(
+                List.of("k\tDIFFERENT-pir-unaccepted\tSemantic fix (r13): a var lambda parameter")));
+        assertThrows(IllegalArgumentException.class, () -> Adr068Lowering.explainsUnaccepted("Policy rejection", row));
+        assertThrows(IllegalArgumentException.class, () -> Adr068Lowering.explainsUnaccepted("Semantic fix", row));
+    }
+
+    /** A PIR that differs where both frontends reject has no class that explains it: it needs a decision of its own. */
+    @Test
+    void aPirRowBothRejectHasNoClass() {
+        var row = new Adr068Lowering.Row("k", "DIFFERENT-pir-unaccepted", 0, 1, "-", "-", "C.m differs from the reference",
+                List.of(), "-", "both");
+        for (String d13Class : List.of("Accepted by decision", "Policy rejection", "Semantic fix", "Diagnostic change")) {
+            assertThrows(IllegalArgumentException.class, () -> Adr068Lowering.explainsUnaccepted(d13Class, row), d13Class);
+        }
+        var bytes = new Adr068Lowering.Row("k", "DIFFERENT-bytes", 0, 1, "-", "-", "bytes", List.of(), "-");
+        Adr068Lowering.explainsUnaccepted("Semantic fix", bytes);
     }
 
     private static Adr068Lowering.Row loweredTo(String body) {
@@ -771,14 +831,17 @@ class Adr068LoweringToolTest {
     }
 
     /**
-     * The M5a tables hold the tool's classes, and each run-time policy rejection cites a control that is a test method of
-     * this module.
+     * The committed table, and the M5a tables whose rows it holds, are in the tool's classes, and each run-time policy
+     * rejection cites a control that is a test method of this module. The committed table, which the gate reads, holds
+     * every run-time policy rejection of the M5a tables.
      */
     @Test
     void theM5aTablesCiteControlsThatExist() throws Exception {
         var evidence = Path.of(System.getProperty("adr068.repo", "..")).toAbsolutePath().normalize().resolve("adr/evidence/068");
-        int controls = 0;
-        for (String table : List.of("m5a-accepted-differences.tsv", "m5a-head2-accepted-differences.tsv")) {
+        var controlled = new TreeMap<String, TreeSet<String>>();
+        for (String table : List.of("lowering-accepted-differences.tsv", "m5a-accepted-differences.tsv",
+                "m5a-head2-accepted-differences.tsv")) {
+            var keys = new TreeSet<String>();
             var lines = Files.readAllLines(evidence.resolve(table));
             Adr068Lowering.acceptedDifferences(lines);
             for (String line : lines) {
@@ -788,10 +851,15 @@ class Adr068LoweringToolTest {
                 var type = Class.forName("org.julclang.difftest." + control.group(1));
                 assertNotNull(type.getDeclaredMethod(control.group(2)), line);
                 assertNotNull(type.getDeclaredMethod(control.group(2)).getAnnotation(Test.class), line);
-                controls++;
+                keys.add(line.substring(0, line.indexOf('\t')));
             }
+            controlled.put(table, keys);
         }
-        assertTrue(controls > 0, "no run-time policy rejection listed");
+        var committed = controlled.get("lowering-accepted-differences.tsv");
+        assertTrue(!committed.isEmpty(), "no run-time policy rejection in the committed table");
+        assertTrue(committed.containsAll(controlled.get("m5a-accepted-differences.tsv"))
+                && committed.containsAll(controlled.get("m5a-head2-accepted-differences.tsv")),
+                "a run-time policy rejection of the M5a tables is not in the committed table: " + controlled);
     }
 
     @Test

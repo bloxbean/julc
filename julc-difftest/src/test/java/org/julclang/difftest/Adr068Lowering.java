@@ -89,9 +89,17 @@ final class Adr068Lowering {
      * @param detail     what the class compared, in full
      * @param pir        the canonical terms of the covered methods, not written to the table
      * @param program    the FLAT digest at the default level, when both accept
+     * @param rejects    for a {@code DIFFERENT-pir-unaccepted} row, the side that rejects the program ({@code reference},
+     *                   {@code javac} or {@code both}), which decides the D13 class that can explain it; - otherwise.
+     *                   Not written to the table: the row's class and digest already pin the outcome
      */
     record Row(String key, String kind, int covered, int total, String construct, String provenance, String detail,
-               List<String> pir, String program) {
+               List<String> pir, String program, String rejects) {
+
+        Row(String key, String kind, int covered, int total, String construct, String provenance, String detail,
+                List<String> pir, String program) {
+            this(key, kind, covered, total, construct, provenance, detail, pir, program, "-");
+        }
 
         String line() {
             String shown = detail.replace('\t', ' ').replace('\n', ' ');
@@ -186,14 +194,17 @@ final class Adr068Lowering {
      * D13's classes, each with the rows it can explain. A row class not listed under one cannot be accepted. "Representation
      * only" explains a {@code DIFFERENT-pir} row only where both frontends accept: there {@link #differences} found every
      * level's bytes, size, diagnostics and params equal, so values and budgets are equal by construction (r17). A PIR that
-     * differs where a frontend rejects is {@code DIFFERENT-pir-unaccepted}, which it cannot explain.
+     * differs where a frontend rejects is {@code DIFFERENT-pir-unaccepted}, which it cannot explain: where only the javac
+     * frontend accepts, the row is "Accepted by decision", as a {@code DIFFERENT-javac-accepts} row; where only it rejects,
+     * a "Policy rejection", as a {@code DIFFERENT-javac-rejects} row ({@link #explainsUnaccepted}). No semantic observation
+     * of the side that rejects exists, so "Semantic fix" explains neither (r17, the M5a re-confirmation's G1).
      */
     private static final Map<String, Set<String>> D13 = Map.of(
-            "Semantic fix", Set.of("DIFFERENT-bytes", "DIFFERENT-pir", "DIFFERENT-pir-unaccepted"),
+            "Semantic fix", Set.of("DIFFERENT-bytes", "DIFFERENT-pir"),
             "UPLC-only semantic fix", Set.of("DIFFERENT-bytes"),
-            "Policy rejection", Set.of("DIFFERENT-javac-rejects"),
+            "Policy rejection", Set.of("DIFFERENT-javac-rejects", "DIFFERENT-pir-unaccepted"),
             "Policy rejection at run time", Set.of("DIFFERENT-bytes"),
-            "Accepted by decision", Set.of("DIFFERENT-javac-accepts"),
+            "Accepted by decision", Set.of("DIFFERENT-javac-accepts", "DIFFERENT-pir-unaccepted"),
             "Diagnostic change", Set.of("DIFFERENT-rejection", "DIFFERENT-diagnostics"),
             "Provenance change", Set.of("DIFFERENT-provenance"),
             "Representation only", Set.of("DIFFERENT-bytes", "DIFFERENT-pir"),
@@ -210,6 +221,41 @@ final class Adr068Lowering {
     static final Pattern CONTROL = Pattern.compile("\\bcontrol (\\w+)#(\\w+)");
 
     private static final Pattern ACCEPTED_CLASS = Pattern.compile("([^:(]+?)(?: \\((.*?)\\))?: (\\S.*)");
+
+    /** The side of a {@code DIFFERENT-pir-unaccepted} row each class that can explain it requires to reject. */
+    private static final Map<String, String> UNACCEPTED_SIDE = Map.of(
+            "Accepted by decision", "reference",
+            "Policy rejection", "javac");
+
+    /**
+     * Whether a D13 class explains a {@code DIFFERENT-pir-unaccepted} row, by the side that rejects: "Accepted by decision"
+     * only where the reference rejects and the javac frontend accepts, "Policy rejection" only where the javac frontend
+     * rejects and the reference accepts. A row both reject has no class here: it needs a decision of its own.
+     *
+     * @throws IllegalArgumentException where the class does not fit the row
+     */
+    static void explainsUnaccepted(String d13Class, Row row) {
+        if (!row.kind().equals("DIFFERENT-pir-unaccepted")) return;
+        String side = d13Class == null ? null : UNACCEPTED_SIDE.get(d13Class);
+        if (side == null || !side.equals(row.rejects())) {
+            throw new IllegalArgumentException(d13Class + " cannot explain a DIFFERENT-pir-unaccepted row where "
+                    + (row.rejects().equals("both") ? "both frontends reject" : "the " + row.rejects() + " frontend rejects")
+                    + ": " + row.key());
+        }
+    }
+
+    /** Each entry's D13 class, by case, of a table {@link #acceptedDifferences} accepts. */
+    static Map<String, String> acceptedClasses(List<String> lines) {
+        acceptedDifferences(lines);
+        var classes = new TreeMap<String, String>();
+        for (String line : lines) {
+            if (line.startsWith("#") || line.isBlank()) continue;
+            String[] cells = line.split("\t", -1);
+            var written = ACCEPTED_CLASS.matcher(cells[2]);
+            if (written.matches()) classes.put(cells[0], written.group(1));
+        }
+        return classes;
+    }
 
     /**
      * {@code lowering-accepted-differences.tsv}: each entry's row class, by case. The table says why a difference is
@@ -387,8 +433,14 @@ final class Adr068Lowering {
             return new Row(c.key, "i1a-identical", coverage.covered(), coverage.total(), "-", sourceMap, "",
                     coverage.pir(), reference.outcome().digest());
         }
-        // A frontend rejects: no budgets or values to compare, so never "Representation only" (r17).
-        if (coverage.mismatch() != null) return row(c, "DIFFERENT-pir-unaccepted", coverage, construct, "-", coverage.mismatch());
+        // A frontend rejects: no budgets or values to compare, so never "Representation only" (r17). Which one decides the
+        // class that can explain the row.
+        if (coverage.mismatch() != null) {
+            var unaccepted = row(c, "DIFFERENT-pir-unaccepted", coverage, construct, "-", coverage.mismatch());
+            String rejects = reference.accepted() ? "javac" : javac.accepted() ? "reference" : "both";
+            return new Row(unaccepted.key(), unaccepted.kind(), unaccepted.covered(), unaccepted.total(), unaccepted.construct(),
+                    unaccepted.provenance(), unaccepted.detail(), unaccepted.pir(), unaccepted.program(), rejects);
+        }
         var javacError = javac.outcome().error();
         if (reference.accepted()) {
             if (javac.construct() != null) return row(c, "not-ported", coverage, construct, "-", "");
