@@ -8,6 +8,7 @@ import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.OptimizationLevel;
 import org.julclang.core.Constant;
 import org.julclang.core.PlutusData;
+import org.julclang.core.Program;
 import org.julclang.core.Term;
 import org.julclang.core.flat.UplcFlatEncoder;
 import org.julclang.stdlib.StdlibRegistry;
@@ -18,7 +19,9 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.math.BigInteger;
+import java.util.HexFormat;
 import java.util.List;
+import java.util.function.LongUnaryOperator;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -104,6 +107,104 @@ class JavacCastsTest {
         var result = JulcVm.create().evaluateWithArgs(program, List.of(PlutusData.integer((1L << 32) + 5)));
         assertNotEquals(new Term.Const(Constant.integer(BigInteger.valueOf(5))),
                 assertInstanceOf(EvalResult.Success.class, result).resultTerm());
+    }
+
+    /** {@link #method} with the stdlib's byte strings: the two-argument entry finds the library on the class path. */
+    private static Program compiledWithLibrary(String members, CompilerFrontend frontend, OptimizationLevel level) {
+        var source = "import org.julclang.stdlib.lib.ByteStringLib;\n" + method(members);
+        return new JulcCompiler(STDLIB, new CompilerOptions().setOptimizationLevel(level).setFrontend(frontend))
+                .compileMethod(source, "m").program();
+    }
+
+    private static byte[] bytesOf(String members, CompilerFrontend frontend, OptimizationLevel level) {
+        return UplcFlatEncoder.encodeProgram(compiledWithLibrary(members, frontend, level));
+    }
+
+    /** ADR-068 r18: where the operand's value is shown to be in range, the script is what the reference's erasure gives. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "static long m(byte[] b, long i) { return (int) Builtins.indexByteString(b, i); }",
+            "static long m(byte[] b, long i) { return (int) ByteStringLib.at(b, i); }",
+            "static long m(byte[] b, long i) { long v = ByteStringLib.at(b, i); int x = (int) v; return x + 1; }",
+            "static long h(byte[] b) { return Builtins.indexByteString(b, 0); } static long m(byte[] b) { return (int) h(b); }",
+            "static long five() { return 5L; } static long m() { return (int) five(); }",
+            "static long m(long x) { return (int) (x % 16); }",
+            "static long m(long x) { return (int) (x % 2147483648L); }",
+            "static long m(BigInteger a) { return (int) a.mod(BigInteger.valueOf(256)).longValue(); }",
+            "static int nibble(byte[] self, int index) { int v = (int) ByteStringLib.at(self, index / 2); "
+                    + "if (index % 2 == 0) { return v / 16; } else { return v % 16; } } static long m(byte[] p, int i) { return nibble(p, i); }",
+    })
+    void aCastInRangeHasNoWrapAtAnyLevel(String members) {
+        for (var level : OptimizationLevel.values()) {
+            assertArrayEquals(bytesOf(members, CompilerFrontend.JAVAPARSER, level), bytesOf(members, CompilerFrontend.JAVAC, level), level + " " + members);
+        }
+    }
+
+    /** Where the value is not shown to be in range the wrap stays, so the script differs from the reference's erasure. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "static long m(long x) { return (int) x; }",
+            "static long m(long x) { return (int) (x + 1); }",
+            // A length has no upper bound.
+            "static long m(byte[] b) { return (int) Builtins.lengthOfByteString(b); }",
+            "static long m(byte[] b) { return (int) ByteStringLib.length(b); }",
+            // 2^32 - 1 is out of range.
+            "static long m(long x) { return (int) (x % 4294967296L); }",
+            "static long m(long x, long k) { return (int) (x % k); }",
+            "static long m(BigInteger a) { return (int) a.mod(BigInteger.valueOf(4294967296L)).longValue(); }",
+            // An arm of a choice, and a loop's result: a local assigned again is what its last assignment left.
+            "static long m(boolean c, byte[] b, long x) { long v = c ? ByteStringLib.at(b, 0) : x; return (int) v; }",
+            "static long m(byte[] b, JulcList<BigInteger> xs) { long v = ByteStringLib.at(b, 0); for (var y : xs) { v = v + y.longValue(); } return (int) v; }",
+            // A parameter, and a recursive method.
+            "static long id(long x) { return x; } static long m(byte[] b) { return (int) id(ByteStringLib.at(b, 0)); }",
+            "static long r(long n) { if (n == 0) { return 5L; } else { return r(n - 1); } } static long m(long n) { return (int) r(n); }",
+    })
+    void aCastNotShownInRangeKeepsItsWrap(String members) {
+        for (var level : OptimizationLevel.values()) {
+            assertNotEquals(HexFormat.of().formatHex(bytesOf(members, CompilerFrontend.JAVAPARSER, level)),
+                    HexFormat.of().formatHex(bytesOf(members, CompilerFrontend.JAVAC, level)), level + " " + members);
+        }
+    }
+
+    /** A byte with its wrap removed is the JVM's unsigned value, 0 to 255, at every level, and past the end it still fails. */
+    @Test
+    void aReadByteIsJavasValueWithItsWrapRemoved() {
+        var program = "static long m(byte[] b, long i) { return (int) ByteStringLib.at(b, i); }";
+        var data = new byte[]{0, 1, 127, (byte) 128, (byte) 255};
+        for (var level : OptimizationLevel.values()) {
+            var compiled = compiledWithLibrary(program, CompilerFrontend.JAVAC, level);
+            for (int i = 0; i < data.length; i++) {
+                long java = (int) (long) Byte.toUnsignedInt(data[i]);
+                var result = JulcVm.create().evaluateWithArgs(compiled, List.of(PlutusData.bytes(data), PlutusData.integer(i)));
+                assertEquals(new Term.Const(Constant.integer(BigInteger.valueOf(java))),
+                        assertInstanceOf(EvalResult.Success.class, result, () -> level + " " + data).resultTerm(), level.toString());
+            }
+            // The operand still runs: an index past the end fails, as it does in Java.
+            assertInstanceOf(EvalResult.Failure.class, JulcVm.create().evaluateWithArgs(compiled, List.of(PlutusData.bytes(data), PlutusData.integer(5))));
+        }
+    }
+
+    /** A value shown in range and one not: the JVM's answer on each side of the bound. */
+    @Test
+    void remainderAndModuloHaveJavasValue() {
+        record Row(String members, LongUnaryOperator java) {}
+        var rows = List.of(
+                new Row("static long m(long x) { return (int) (x % 16); }", x -> (int) (x % 16)),
+                new Row("static long m(long x) { return (int) (x % 2147483648L); }", x -> (int) (x % 2147483648L)),
+                new Row("static long m(long x) { return (int) (x % 4294967296L); }", x -> (int) (x % 4294967296L)),
+                new Row("static long m(BigInteger x) { return (int) x.mod(BigInteger.valueOf(256)).longValue(); }", x -> (int) Math.floorMod(x, 256L)),
+                new Row("static long m(BigInteger x) { return (int) x.mod(BigInteger.valueOf(4294967296L)).longValue(); }", x -> (int) Math.floorMod(x, 4294967296L)));
+        var values = new long[]{0, 1, -1, 15, 16, -16, -17, 255, 256, 2147483647L, 2147483648L, -2147483648L, -2147483649L, 4294967295L, 4294967296L, -4294967297L};
+        for (var row : rows) {
+            for (var level : OptimizationLevel.values()) {
+                var compiled = compiledWithLibrary(row.members(), CompilerFrontend.JAVAC, level);
+                for (long x : values) {
+                    var result = JulcVm.create().evaluateWithArgs(compiled, List.of(PlutusData.integer(x)));
+                    assertEquals(new Term.Const(Constant.integer(BigInteger.valueOf(row.java().applyAsLong(x)))),
+                            assertInstanceOf(EvalResult.Success.class, result, () -> row.members() + " " + x).resultTerm(), row.members() + " " + level + " " + x);
+                }
+            }
+        }
     }
 
     @Test

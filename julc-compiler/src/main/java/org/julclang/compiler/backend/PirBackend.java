@@ -82,7 +82,9 @@ public final class PirBackend {
             PirDebugProvenance provenance,
             Bindings bindings,
             boolean logStages) {
-        var values = new ValueLiteralFoldPass(context, positions, provenance).lower(term);
+        // First, at every level: it decides how a cast lowers, and needs only every method's body in the term.
+        var narrowing = new NarrowingElisionPass(positions, provenance).lower(term);
+        var values = new ValueLiteralFoldPass(context, narrowing.positions(), provenance).lower(narrowing.term());
         var folding =
                 new ArrayLiteralFoldPass(context, values.positions(), provenance)
                         .lower(values.term());

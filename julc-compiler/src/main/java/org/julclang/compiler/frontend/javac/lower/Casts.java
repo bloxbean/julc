@@ -17,7 +17,7 @@ import org.julclang.compiler.error.DiagnosticCodes;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacNames;
 import org.julclang.compiler.frontend.javac.SwitchResults;
-import org.julclang.compiler.pir.PirHelpers;
+import org.julclang.compiler.pir.NarrowingElisionPass;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.core.Constant;
@@ -41,15 +41,13 @@ import java.util.Set;
  *       time and the script does not (#288), as with {@code PlutusData.cast}, which D6 names an unchecked view.</li>
  *   <li>A cast between {@code int} and {@code long} has Java's value: {@code (int)} of a {@code long} keeps its low 32 bits,
  *       as two's complement; widening and a cast to the same type are the operand. The reference erases the narrowing, which
- *       differs from Java only out of range (D4's cap, the follow-ups' "Closed by M5").</li>
+ *       differs from Java only out of range (D4's cap, the follow-ups' "Closed by M5"). Where the operand's value is shown to
+ *       be in range, {@link NarrowingElisionPass} removes the wrap on the assembled term, when every method body is known.</li>
  *   <li>A cast to {@code byte}, {@code short} or {@code char} has no representation, as its type: {@code JULC0124}.</li>
  * </ul>
  * The operand is evaluated once, before what the cast does to it. A guard's casts are {@link Lowering}'s, under ADR-067.
  */
 final class Casts {
-
-    private static final BigInteger INT_RANGE = BigInteger.ONE.shiftLeft(32);
-    private static final BigInteger INT_OFFSET = BigInteger.ONE.shiftLeft(31);
 
     private final JavacFacts facts;
     private final Typing typing;
@@ -101,14 +99,12 @@ final class Casts {
         };
     }
 
-    /** {@code (int)} of a {@code long}: {@code ((x + 2^31) mod 2^32) - 2^31}, folded where the operand is a constant. */
+    /** {@code (int)} of a {@code long}: {@link NarrowingElisionPass#narrowToInt}, folded where the operand is a constant. */
     private static PirTerm narrowToInt(PirTerm value) {
         if (value instanceof PirTerm.Const(Constant.IntegerConst(var constant))) {
             return new PirTerm.Const(Constant.integer(BigInteger.valueOf(constant.intValue())));
         }
-        var shifted = PirHelpers.builtinApp2(DefaultFun.AddInteger, value, integer(INT_OFFSET));
-        var wrapped = PirHelpers.builtinApp2(DefaultFun.ModInteger, shifted, integer(INT_RANGE));
-        return PirHelpers.builtinApp2(DefaultFun.SubtractInteger, wrapped, integer(INT_OFFSET));
+        return NarrowingElisionPass.narrowToInt(value);
     }
 
     private static PirTerm integer(BigInteger value) {
