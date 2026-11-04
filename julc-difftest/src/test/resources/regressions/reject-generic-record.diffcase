@@ -3,8 +3,9 @@ name: a generic record (K1)
 class: Probe
 method: m
 arg: 03
-expect: REJECT none
+expect: REJECT JULC0012
 note: ADR-067 K1: out of scope.
+note: ADR-068 M6: on the only frontend, javac, REJECT JULC0012; the JavaParser frontend answered REJECT none.
 ---
 import java.math.BigInteger;
 

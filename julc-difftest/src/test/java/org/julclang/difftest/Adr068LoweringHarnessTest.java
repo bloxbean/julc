@@ -27,7 +27,6 @@ class Adr068LoweringHarnessTest {
 
     private static List<DiffConfig> configs() {
         var configs = new ArrayList<>(DiffConfig.allLevels());
-        configs.addAll(DiffConfig.allLevels(CompilerFrontend.JAVAC));
         return configs;
     }
 
@@ -53,14 +52,7 @@ class Adr068LoweringHarnessTest {
     private static void assertAgree(String members, List<PlutusData> args) {
         var report = run(members, args);
         assertTrue(report.all(Verdict.Kind.AGREE), report::describe);
-        assertEquals(8, report.results().size());
-        var byLevel = report.results().entrySet().stream()
-                .filter(e -> e.getKey().frontend() == CompilerFrontend.JAVAPARSER).toList();
-        for (var entry : byLevel) {
-            var javac = report.results().get(new DiffConfig(entry.getKey().level(), "Java", CompilerFrontend.JAVAC));
-            assertEquals(entry.getValue().uplc(), javac.uplc(), "the frontends disagree at " + entry.getKey());
-            assertEquals(entry.getValue().measurement(), javac.measurement(), "cost at " + entry.getKey());
-        }
+        assertEquals(4, report.results().size());
     }
 
     @ParameterizedTest
@@ -180,7 +172,7 @@ class Adr068LoweringHarnessTest {
     private static void assertAcceptedByDecision(String source, List<PlutusData> args) {
         var report = RUNNER.run(new DiffCase("m3a", source, "Case", "m", args));
         report.results().forEach((config, result) -> assertEquals(
-                config.frontend() == CompilerFrontend.JAVAC ? Verdict.Kind.AGREE : Verdict.Kind.REJECTED,
+                Verdict.Kind.AGREE,
                 result.verdict().kind(), report::describe));
     }
 
@@ -189,25 +181,10 @@ class Adr068LoweringHarnessTest {
     void aProgramNotPortedIsRejectedHereAndAgreesThere() {
         var report = run("public static BigInteger m(BigInteger a) { return BigInteger.valueOf((short) a.longValue()); }", List.of(integer(2)));
         report.results().forEach((config, result) -> {
-            if (config.frontend() == CompilerFrontend.JAVAPARSER) {
-                assertEquals(Verdict.Kind.AGREE, result.verdict().kind(), report.describe());
-            } else {
                 assertEquals(Verdict.Kind.REJECTED, result.verdict().kind(), report.describe());
                 assertEquals("JULC0124", assertInstanceOf(Observation.Rejected.class, result.uplc()).code());
-            }
+            
         });
     }
 
-    /** The cache must not hand one frontend the other's script: the two would look equal whatever each one does. */
-    @Test
-    void theFrontendIsPartOfTheCacheKey() {
-        var executor = new UplcExecutor();
-        var diffCase = new DiffCase("m3a", program("public static BigInteger m(BigInteger a) { return BigInteger.valueOf((short) a.longValue()); }"), "Case", "m",
-                List.of(integer(2)));
-        var reference = executor.run(diffCase, new DiffConfig(org.julclang.compiler.OptimizationLevel.BASELINE, "Java"));
-        var javac = executor.run(diffCase, new DiffConfig(org.julclang.compiler.OptimizationLevel.BASELINE, "Java", CompilerFrontend.JAVAC));
-        assertInstanceOf(Observation.Value.class, reference.observation());
-        assertInstanceOf(Observation.Rejected.class, javac.observation());
-        assertNotEquals(reference.observation(), javac.observation());
-    }
 }

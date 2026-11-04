@@ -37,7 +37,6 @@ class Adr068SwitchHarnessTest {
 
     private static List<DiffConfig> configs() {
         var configs = new ArrayList<>(DiffConfig.allLevels());
-        configs.addAll(DiffConfig.allLevels(CompilerFrontend.JAVAC));
         return configs;
     }
 
@@ -120,13 +119,8 @@ class Adr068SwitchHarnessTest {
     private static void assertAgree(String members, PlutusData... args) {
         var report = run(members, List.of(args));
         assertTrue(report.all(Verdict.Kind.AGREE), report::describe);
-        assertEquals(8, report.results().size());
+        assertEquals(4, report.results().size());
         report.results().forEach((config, result) -> {
-            if (config.frontend() == CompilerFrontend.JAVAPARSER) {
-                var javac = report.results().get(new DiffConfig(config.level(), "Java", CompilerFrontend.JAVAC));
-                assertEquals(result.uplc(), javac.uplc(), "the frontends disagree at " + config);
-                assertEquals(result.measurement(), javac.measurement(), "cost at " + config);
-            }
         });
         AGREED.incrementAndGet();
     }
@@ -152,25 +146,18 @@ class Adr068SwitchHarnessTest {
     /** The JVM's answer on {@code JAVAC}, and on the reference at least one level differs: a D13 semantic fix. */
     private static void assertFixedOnJavac(String members, PlutusData... args) {
         var report = run(members, List.of(args));
-        boolean referenceDiverges = false;
         for (var entry : report.results().entrySet()) {
-            if (entry.getKey().frontend() == CompilerFrontend.JAVAC) {
                 assertEquals(Verdict.Kind.AGREE, entry.getValue().verdict().kind(), report::describe);
-            } else {
-                assertTrue(entry.getValue().verdict().kind() != Verdict.Kind.REJECTED, () -> "a rejection is no fix, it is a decision: " + report.describe());
-                referenceDiverges |= entry.getValue().verdict().kind() != Verdict.Kind.AGREE;
-            }
+            
         }
-        assertTrue(referenceDiverges, () -> "the reference no longer diverges, so this is no fix: " + report.describe());
     }
 
     private static void assertStopsOnJavac(String members, String code, PlutusData... args) {
         var report = run(members, List.of(args));
         report.results().forEach((config, result) -> {
-            if (config.frontend() == CompilerFrontend.JAVAC) {
                 assertEquals(Verdict.Kind.REJECTED, result.verdict().kind(), report::describe);
                 assertTrue(result.uplc().toString().contains(code), () -> code + " expected: " + report.describe());
-            }
+            
         });
     }
 
@@ -441,7 +428,7 @@ class Adr068SwitchHarnessTest {
         for (var q : List.of(constr(0, integer(5)), constr(1, integer(5), integer(9)))) {
             var report = RUNNER.run(new DiffCase("switch", program(members), "Case", "m", List.of(q), tags, null));
             report.results().forEach((config, result) -> {
-                if (config.frontend() == CompilerFrontend.JAVAC) assertEquals(Verdict.Kind.AGREE, result.verdict().kind(), report::describe);
+                assertEquals(Verdict.Kind.AGREE, result.verdict().kind(), report::describe);
             });
         }
     }
@@ -494,12 +481,9 @@ class Adr068SwitchHarnessTest {
         var report = run(IDENTITY_HELPERS + "public static long m(S s, String str, String oth, JulcList<String> lst) { return switch (s) { case S.A a when " + guard + " -> 1; default -> 2; }; }",
                 List.of(a(1), text("ab"), text("ab"), strings));
         report.results().forEach((config, result) -> {
-            if (config.frontend() == CompilerFrontend.JAVAC) {
                 assertEquals(Verdict.Kind.REJECTED, result.verdict().kind(), report::describe);
                 assertTrue(result.uplc().toString().contains("JULC0086"), report::describe);
-            } else {
-                assertEquals(Verdict.Kind.MISMATCH, result.verdict().kind(), report::describe);
-            }
+            
         });
     }
 
@@ -512,8 +496,8 @@ class Adr068SwitchHarnessTest {
     void aConstantOutsideThePlainFormStopsInAGuard(String guard) {
         var report = run(IDENTITY_HELPERS + "public static long m(S s, boolean c) { final var f = true ? \"a\" : \"b\"; return switch (s) { case S.A a when " + guard + " -> 1; default -> 2; }; }", List.of(a(1), bool(true)));
         report.results().forEach((config, result) -> {
-            assertEquals(config.frontend() == CompilerFrontend.JAVAC ? Verdict.Kind.REJECTED : Verdict.Kind.AGREE, result.verdict().kind(), report::describe);
-            if (config.frontend() == CompilerFrontend.JAVAC) assertTrue(result.uplc().toString().contains("JULC0086"), report::describe);
+            assertEquals(Verdict.Kind.REJECTED, result.verdict().kind(), report::describe);
+            assertTrue(result.uplc().toString().contains("JULC0086"), report::describe);
         });
     }
 
@@ -522,8 +506,8 @@ class Adr068SwitchHarnessTest {
     void aConstantFieldTheReferenceMisreadsInAGuard() {
         var report = run(CONSTANTS + "public static long m(S s, boolean c) { return switch (s) { case S.A a when c && BAD == \"a\" -> 1; default -> 2; }; }", List.of(a(1), bool(true)));
         report.results().forEach((config, result) -> {
-            assertEquals(config.frontend() == CompilerFrontend.JAVAC ? Verdict.Kind.REJECTED : Verdict.Kind.MISMATCH, result.verdict().kind(), report::describe);
-            if (config.frontend() == CompilerFrontend.JAVAC) assertTrue(result.uplc().toString().contains("JULC0086"), report::describe);
+            assertEquals(Verdict.Kind.REJECTED, result.verdict().kind(), report::describe);
+            assertTrue(result.uplc().toString().contains("JULC0086"), report::describe);
         });
     }
 
@@ -627,7 +611,7 @@ class Adr068SwitchHarnessTest {
     private static void assertJavacIsTheJvm(String members, PlutusData... args) {
         var report = run(members, List.of(args));
         report.results().forEach((config, result) -> {
-            if (config.frontend() == CompilerFrontend.JAVAC) assertEquals(Verdict.Kind.AGREE, result.verdict().kind(), report::describe);
+            assertEquals(Verdict.Kind.AGREE, result.verdict().kind(), report::describe);
         });
     }
 
@@ -669,7 +653,7 @@ class Adr068SwitchHarnessTest {
     /** A rejection of the reference that {@code JAVAC} does not make: the JVM's answer at every level, and the reference still refuses. */
     private static void assertWiderOnJavac(String members, PlutusData... args) {
         var report = run(members, List.of(args));
-        report.results().forEach((config, result) -> assertEquals(config.frontend() == CompilerFrontend.JAVAC ? Verdict.Kind.AGREE : Verdict.Kind.REJECTED,
+        report.results().forEach((config, result) -> assertEquals(Verdict.Kind.AGREE,
                 result.verdict().kind(), report::describe));
         AGREED.incrementAndGet();
     }
@@ -713,7 +697,7 @@ class Adr068SwitchHarnessTest {
     void twoBooleansComparedUnderANew() {
         var members = "public static X m(S s, Boolean p, Boolean q) { return " + underNew("p == q") + "; }";
         var report = run(members, List.of(a(1), bool(true), bool(true)));
-        report.results().forEach((config, result) -> assertEquals(config.frontend() == CompilerFrontend.JAVAC ? Verdict.Kind.REJECTED : Verdict.Kind.AGREE,
+        report.results().forEach((config, result) -> assertEquals(Verdict.Kind.REJECTED,
                 result.verdict().kind(), report::describe));
     }
 

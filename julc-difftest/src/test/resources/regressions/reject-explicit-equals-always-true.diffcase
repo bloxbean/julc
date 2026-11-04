@@ -3,8 +3,9 @@ name: #282 an explicit equals that is always true (T31)
 class: Probe
 method: m
 arg: 05
-expect: REJECT JULC0101
+expect: REJECT JULC0080
 note: ADR-067 #282. A subset rule: a method does not take a name read in place of its body.
+note: ADR-068 M6: on the only frontend, javac, REJECT JULC0080; the JavaParser frontend answered REJECT JULC0101.
 ---
 import java.math.BigInteger;
 

@@ -22,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class Adr068LoopRepresentationsPropertyTest {
 
-    private static final DiffRunner RUNNER = new DiffRunner(DiffConfig.allLevels(CompilerFrontend.JAVAC), 10_000);
+    private static final DiffRunner RUNNER = new DiffRunner(DiffConfig.allLevels(), 10_000);
 
     private static void assertAgrees(DiffCase diffCase) {
         var report = RUNNER.run(diffCase);

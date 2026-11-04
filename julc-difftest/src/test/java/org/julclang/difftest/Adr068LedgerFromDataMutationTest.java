@@ -32,7 +32,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class Adr068LedgerFromDataMutationTest {
 
-    private static final LedgerTypeProvider LEDGER = new LedgerTypeProvider(new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER));
+    private static final LedgerTypeProvider LEDGER = new LedgerTypeProvider(new CompilerOptions());
     private static final PlutusData ONE = new PlutusData.IntData(BigInteger.ONE);
     private static final int SEEDS = 3;
     private static final int PER_TYPE = 4000;
@@ -126,7 +126,7 @@ class Adr068LedgerFromDataMutationTest {
             inputs += list.size();
             if (!Adr068LedgerFromDataPropertyTest.TYPES.contains(name)) {
                 var stop = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(),
-                        new CompilerOptions().setFrontend(CompilerFrontend.JAVAC))
+                        new CompilerOptions())
                         .compileMethod(Adr068LedgerFromDataPropertyTest.accepts(name), "m"));
                 assertEquals("JULC0128", stop.diagnostics().getFirst().code(), stop::getMessage);
                 counts.merge("stops", list.size(), Integer::sum);

@@ -23,12 +23,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class Adr068LoopRepresentationsTest {
 
-    private static final DiffRunner RUNNER = new DiffRunner(DiffConfig.allLevels(CompilerFrontend.JAVAC), 10_000);
+    private static final DiffRunner RUNNER = new DiffRunner(DiffConfig.allLevels(), 10_000);
     private static final DiffRunner BOTH = new DiffRunner(both(), 10_000);
 
     private static List<DiffConfig> both() {
         var configs = new ArrayList<>(DiffConfig.allLevels());
-        configs.addAll(DiffConfig.allLevels(CompilerFrontend.JAVAC));
         return configs;
     }
 
@@ -172,14 +171,9 @@ class Adr068LoopRepresentationsTest {
         var report = BOTH.run(new DiffCase("cursors", cursors(members), "Case", "m", List.of(args), tags, null));
         boolean referenceAgrees = true;
         for (var entry : report.results().entrySet()) {
-            if (entry.getKey().frontend() == CompilerFrontend.JAVAC) {
                 assertEquals(Verdict.Kind.AGREE, entry.getValue().verdict().kind(), report::describe);
-            } else {
-                referenceAgrees &= entry.getValue().verdict().kind() == Verdict.Kind.AGREE;
-            }
+            
         }
-        boolean agrees = referenceAgrees;
-        assertEquals(!referenceFails, agrees, report::describe);
     }
 
     /** The accumulator's value reaches it some way the reference's reading of the assignment does not see. */
@@ -288,10 +282,7 @@ class Adr068LoopRepresentationsTest {
                     for (int i = 0; i < iterations; i++) items.add(integer(i));
                     var report = BOTH.run(new DiffCase("pairs", source, "Case", "m", List.of(pairs(size), other, list(items.toArray(PlutusData[]::new)),
                             integer(iterations), list(pairs(1)), pairs(1), bool(true))));
-                    report.results().forEach((config, result) -> {
-                        boolean mayFail = config.frontend() != CompilerFrontend.JAVAC && referenceFails;
-                        if (!mayFail) assertEquals(Verdict.Kind.AGREE, result.verdict().kind(), report::describe);
-                    });
+                    report.results().forEach((config, result) -> assertEquals(Verdict.Kind.AGREE, result.verdict().kind(), report::describe));
                 }
             }
         }
@@ -473,11 +464,8 @@ class Adr068LoopRepresentationsTest {
             var report = BOTH.run(diffCase);
             assertInstanceOf(Observation.Value.class, report.jvm(), report::describe);
             report.results().forEach((config, result) -> {
-                if (config.frontend() == CompilerFrontend.JAVAC) {
                     assertEquals("JULC0012", assertInstanceOf(Observation.Rejected.class, result.uplc(), report::describe).code(), report::describe);
-                } else {
-                    assertEquals(Verdict.Kind.AGREE, result.verdict().kind(), report::describe);
-                }
+                
             });
         }
     }

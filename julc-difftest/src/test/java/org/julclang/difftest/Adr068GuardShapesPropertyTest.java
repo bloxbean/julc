@@ -37,7 +37,6 @@ class Adr068GuardShapesPropertyTest {
             new TagTable.Entry("Case$S$B", "Case$S", 1), new TagTable.Entry("Case$S$D", "Case$S", 2)));
 
     /** The one shape {@code JAVAC} accepts and the reference does not: a lambda whose parameter the guard reads, at a simple-name receiver. */
-    private static final Pattern WIDER_RECEIVER = Pattern.compile("return l\\.(filter|any|all)\\(e ");
 
     private static final List<String> RECEIVERS = List.of("l", "(l)", "h.is()", "ids(l)", "l.tail()", "l.filter(y -> true)");
     private static final List<String> LEAVES = List.of("P.signum() > 0", "P.equals(BigInteger.ONE)", "!P.equals(BigInteger.ONE)",
@@ -72,7 +71,6 @@ class Adr068GuardShapesPropertyTest {
 
     private static List<DiffConfig> configs() {
         var configs = new ArrayList<>(DiffConfig.allLevels());
-        configs.addAll(DiffConfig.allLevels(CompilerFrontend.JAVAC));
         return configs;
     }
 
@@ -126,7 +124,6 @@ class Adr068GuardShapesPropertyTest {
             assertTrue(SEEN.getOrDefault(family + " accepted", 0) >= 5, () -> family + " accepted too rarely: " + SEEN);
             assertTrue(SEEN.getOrDefault(family + " rejected", 0) >= 5, () -> family + " rejected too rarely: " + SEEN);
         }
-        assertTrue(SEEN.getOrDefault("a parameter wider", 0) >= 5, () -> "a parameter wider too rarely: " + SEEN);
     }
 
     private static PlutusData integer(long value) {
@@ -138,29 +135,19 @@ class Adr068GuardShapesPropertyTest {
     }
 
     @Property(tries = TRIES, seed = "20261102")
-    void bothFrontendsAnswerAlike(@ForAll("shapes") Shape shape, @ForAll("inputs") List<Integer> inputs) {
+    void everyLevelAnswersAlike(@ForAll("shapes") Shape shape, @ForAll("inputs") List<Integer> inputs) {
         var values = new PlutusData.ListData(inputs.stream().map(v -> integer(v)).toList());
         var arguments = List.of(variant(inputs.get(0)), variant(inputs.get(1)), new PlutusData.ConstrData(inputs.get(2) > 0 ? 1 : 0, List.of()), values,
                 new PlutusData.ConstrData(0, List.of(values)));
         var report = RUNNER.run(new DiffCase("guards", program(shape.family(), shape.body()), "Case", "m", arguments, TAGS, null));
         boolean rejected = report.results().values().stream().anyMatch(result -> result.verdict().kind() == Verdict.Kind.REJECTED);
-        boolean wider = rejected && report.results().entrySet().stream().noneMatch(result -> result.getKey().frontend() == CompilerFrontend.JAVAC
-                && result.getValue().verdict().kind() == Verdict.Kind.REJECTED);
-        SEEN.merge(shape.family() + (wider ? " wider" : rejected ? " rejected" : " accepted"), 1, Integer::sum);
+        SEEN.merge(shape.family() + (rejected ? " rejected" : " accepted"), 1, Integer::sum);
         report.results().forEach((config, result) -> {
-            var javac = report.results().get(new DiffConfig(config.level(), "Java", CompilerFrontend.JAVAC));
-            if (wider) {
-                assertTrue(WIDER_RECEIVER.matcher(shape.body()).lookingAt(), report::describe);
-                assertEquals(config.frontend() == CompilerFrontend.JAVAC ? Verdict.Kind.AGREE : Verdict.Kind.REJECTED, result.verdict().kind(), report::describe);
-                return;
-            }
             if (rejected) {
                 assertEquals(Verdict.Kind.REJECTED, result.verdict().kind(), report::describe);
-                var code = assertInstanceOf(Observation.Rejected.class, result.uplc(), report::describe).code();
-                assertEquals(code, assertInstanceOf(Observation.Rejected.class, javac.uplc(), report::describe).code(), report::describe);
+                assertInstanceOf(Observation.Rejected.class, result.uplc(), report::describe);
             } else {
                 assertEquals(Verdict.Kind.AGREE, result.verdict().kind(), report::describe);
-                assertEquals(result.measurement(), javac.measurement(), () -> config + "\n" + report.describe());
             }
         });
     }

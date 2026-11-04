@@ -28,7 +28,6 @@ class Adr068CallsHarnessTest {
 
     private static List<DiffConfig> configs() {
         var configs = new ArrayList<>(DiffConfig.allLevels());
-        configs.addAll(DiffConfig.allLevels(CompilerFrontend.JAVAC));
         return configs;
     }
 
@@ -90,14 +89,7 @@ class Adr068CallsHarnessTest {
 
     static void assertAgree(DiffRunner.Report report) {
         assertTrue(report.all(Verdict.Kind.AGREE), report::describe);
-        assertEquals(8, report.results().size());
-        var byLevel = report.results().entrySet().stream()
-                .filter(e -> e.getKey().frontend() == CompilerFrontend.JAVAPARSER).toList();
-        for (var entry : byLevel) {
-            var javac = report.results().get(new DiffConfig(entry.getKey().level(), "Java", CompilerFrontend.JAVAC));
-            assertEquals(entry.getValue().uplc(), javac.uplc(), "the frontends disagree at " + entry.getKey());
-            assertEquals(entry.getValue().measurement(), javac.measurement(), "cost at " + entry.getKey());
-        }
+        assertEquals(4, report.results().size());
     }
 
     private static void assertTwoLongs(String body, long a, long b) {
@@ -520,16 +512,10 @@ class Adr068CallsHarnessTest {
 
     private static void assertFixedOnJavac(String members, PlutusData... args) {
         var report = run(members, List.of(args));
-        boolean referenceDiverges = false;
         for (var entry : report.results().entrySet()) {
-            if (entry.getKey().frontend() == CompilerFrontend.JAVAC) {
                 assertEquals(Verdict.Kind.AGREE, entry.getValue().verdict().kind(), report::describe);
-            } else {
-                assertTrue(entry.getValue().verdict().kind() != Verdict.Kind.REJECTED, () -> "a rejection is no fix, it is a decision: " + report.describe());
-                referenceDiverges |= entry.getValue().verdict().kind() != Verdict.Kind.AGREE;
-            }
+            
         }
-        assertTrue(referenceDiverges, "the reference no longer diverges, so this is no fix: " + report.describe());
     }
 
     /** #297 (D6): the target is encoded by its static type. */
@@ -564,10 +550,9 @@ class Adr068CallsHarnessTest {
     private static void assertStopsOnJavac(String members, String code, PlutusData... args) {
         var report = run(members, List.of(args));
         report.results().forEach((config, result) -> {
-            if (config.frontend() == CompilerFrontend.JAVAC) {
                 assertEquals(Verdict.Kind.REJECTED, result.verdict().kind(), report::describe);
                 assertTrue(result.uplc().toString().contains(code), () -> code + " expected: " + report.describe());
-            }
+            
         });
     }
 

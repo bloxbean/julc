@@ -36,7 +36,6 @@ class Adr068SwitchPropertyTest {
 
     private static List<DiffConfig> configs() {
         var configs = new ArrayList<>(DiffConfig.allLevels());
-        configs.addAll(DiffConfig.allLevels(CompilerFrontend.JAVAC));
         return configs;
     }
 
@@ -90,10 +89,6 @@ class Adr068SwitchPropertyTest {
         }
         assertTrue(report.all(Verdict.Kind.AGREE), () -> program.source() + "\n" + report.describe());
         report.results().forEach((config, result) -> {
-            if (config.frontend() == CompilerFrontend.JAVAPARSER) {
-                var javac = report.results().get(new DiffConfig(config.level(), "Java", CompilerFrontend.JAVAC));
-                assertEquals(result.measurement(), javac.measurement(), () -> config + "\n" + program.source());
-            }
         });
     }
 }

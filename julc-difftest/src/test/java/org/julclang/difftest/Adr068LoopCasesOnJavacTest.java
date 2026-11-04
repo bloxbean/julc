@@ -26,7 +26,7 @@ import static org.junit.jupiter.api.Assertions.fail;
  */
 class Adr068LoopCasesOnJavacTest {
 
-    private static final DiffRunner RUNNER = new DiffRunner(DiffConfig.allLevels(CompilerFrontend.JAVAC), 10_000);
+    private static final DiffRunner RUNNER = new DiffRunner(DiffConfig.allLevels(), 10_000);
 
     /** A saved case with a loop whose verdict here is not the reference's, with the reason. */
     private static final Map<String, String> ANSWERED_OTHERWISE = Map.of(

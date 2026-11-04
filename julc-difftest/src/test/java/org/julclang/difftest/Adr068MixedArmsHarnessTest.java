@@ -26,7 +26,6 @@ class Adr068MixedArmsHarnessTest {
 
     private static List<DiffConfig> configs() {
         var configs = new ArrayList<>(DiffConfig.allLevels());
-        configs.addAll(DiffConfig.allLevels(CompilerFrontend.JAVAC));
         return configs;
     }
 
@@ -155,7 +154,6 @@ class Adr068MixedArmsHarnessTest {
                 var report = BOTH.run(new DiffCase(probe.name(), HEADER + probe.members() + "\n}\n", "Case", "m", args, probe.tags(), null));
                 assertInstanceOf(Observation.Value.class, report.jvm(), () -> probe.name() + ": " + report.describe());
                 report.results().forEach((config, result) -> {
-                    if (config.frontend() != CompilerFrontend.JAVAC) return;
                     var rejected = assertInstanceOf(Observation.Rejected.class, result.uplc(), () -> probe.name() + ": " + report.describe());
                     assertEquals("JULC0012", rejected.code(), () -> probe.name() + ": " + report.describe());
                 });
@@ -178,7 +176,7 @@ class Adr068MixedArmsHarnessTest {
             for (var args : probe.inputs()) {
                 var report = BOTH.run(new DiffCase(probe.name(), HEADER + probe.members() + "\n}\n", "Case", "m", args, probe.tags(), null));
                 report.results().forEach((config, result) -> {
-                    if (config.frontend() == CompilerFrontend.JAVAC) assertEquals(Verdict.Kind.AGREE, result.verdict().kind(), () -> probe.name() + ": " + report.describe());
+                    assertEquals(Verdict.Kind.AGREE, result.verdict().kind(), () -> probe.name() + ": " + report.describe());
                 });
             }
         }
@@ -193,7 +191,6 @@ class Adr068MixedArmsHarnessTest {
                 var report = BOTH.run(new DiffCase(probe.name(), HEADER + probe.members() + "\n}\n", "Case", "m", args, probe.tags(), null));
                 assertInstanceOf(Observation.Value.class, report.jvm(), () -> probe.name() + ": " + report.describe());
                 report.results().forEach((config, result) -> {
-                    if (config.frontend() != CompilerFrontend.JAVAC) return;
                     assertEquals(Verdict.Kind.REJECTED, result.verdict().kind(), () -> probe.name() + ": " + report.describe());
                     assertEquals("JULC0012", assertInstanceOf(Observation.Rejected.class, result.uplc()).code(), () -> probe.name() + ": " + report.describe());
                 });

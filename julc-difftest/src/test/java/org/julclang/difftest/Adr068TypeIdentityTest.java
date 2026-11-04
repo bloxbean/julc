@@ -1,10 +1,8 @@
 package org.julclang.difftest;
 
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.OptimizationLevel;
-import org.julclang.compiler.frontend.javac.JavacGateMode;
 import org.julclang.core.PlutusData;
 import org.julclang.core.Program;
 import org.julclang.stdlib.StdlibRegistry;
@@ -38,9 +36,9 @@ class Adr068TypeIdentityTest {
         return Files.readString(REPO.resolve("julc-difftest/src/test/resources/adr068/m3a-fixtures").resolve(name));
     }
 
-    private static Program compile(String source, CompilerFrontend frontend, OptimizationLevel level) {
+    private static Program compile(String source, OptimizationLevel level) {
         return new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setOptimizationLevel(level)
-                .setFrontend(frontend).setJavacGate(JavacGateMode.OFF).setLogger(message -> { })).compile(source, List.of()).program();
+                .setLogger(message -> { })).compile(source, List.of()).program();
     }
 
     private static boolean accepts(Program program, PlutusData context) {
@@ -66,7 +64,7 @@ class Adr068TypeIdentityTest {
         PlutusData record = PlutusData.constr(0, PlutusData.integer(5));
         assertEquals(record, ValueMapping.toData(new OptionalThing(BigInteger.valueOf(5))));
         for (var level : OptimizationLevel.values()) {
-            var javac = compile(source, CompilerFrontend.JAVAC, level);
+            var javac = compile(source, level);
             assertTrue(accepts(javac, spending(record)), level + " the record");
             assertFalse(accepts(javac, spending(PlutusData.integer(5))), level + " its field alone");
             assertFalse(accepts(javac, spending(PlutusData.constr(1))), level + " Constr 1 is no record of this type");
@@ -79,27 +77,15 @@ class Adr068TypeIdentityTest {
     void aQualifiedOptionalIsOptional() throws IOException {
         String source = fixture("M3aSpelledOptional.java");
         for (var level : OptimizationLevel.values()) {
-            var javac = compile(source, CompilerFrontend.JAVAC, level);
+            var javac = compile(source, level);
             assertTrue(accepts(javac, spending(PlutusData.integer(5))), level + " a datum");
             assertTrue(accepts(javac, spending(null)), level + " no datum");
         }
     }
 
-    /** The reference goes by the spelling: it takes the integer for the record, and needs a datum for the optional. */
-    @Test
-    void theReferenceReadsBothByTheirSpelling() throws IOException {
-        for (var level : OptimizationLevel.values()) {
-            var thing = compile(fixture("M3aUserOptionalThing.java"), CompilerFrontend.JAVAPARSER, level);
-            assertFalse(accepts(thing, spending(PlutusData.constr(0, PlutusData.integer(5)))), level + " the record's own Data");
-            assertTrue(accepts(thing, spending(PlutusData.integer(5))), level + " its field alone");
-            var spelled = compile(fixture("M3aSpelledOptional.java"), CompilerFrontend.JAVAPARSER, level);
-            assertFalse(accepts(spelled, spending(null)), level + " no datum");
-        }
-    }
-
     @Test
     void aUserRecordNamedLikeAnApiTypeIsNoApiType() throws IOException {
-        assertEquals(1, new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)
-                .setJavacGate(JavacGateMode.OFF)).compile(fixture("M3aUserBytesData.java"), List.of()).params().size());
+        assertEquals(1, new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()
+                ).compile(fixture("M3aUserBytesData.java"), List.of()).params().size());
     }
 }

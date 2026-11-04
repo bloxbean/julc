@@ -41,7 +41,7 @@ public final class Adr068LookupMutationProbe {
 
     public static void main(String[] args) {
         var registry = StdlibRegistry.defaultRegistry();
-        var provider = new JavaLibraryProvider(List.of(LIBRARY), registry, new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setLogger(m -> { }));
+        var provider = new JavaLibraryProvider(List.of(LIBRARY), registry, new CompilerOptions().setLogger(m -> { }));
         registry.register(BUILTINS, "equalsByteString", registry.lookupBuilder(BUILTINS, "lessThanByteString").orElseThrow(),
                 registry.requirements(BUILTINS, "equalsByteString"));
         var imports = provider.materialize(List.<LibraryRequest>of(REQUEST));

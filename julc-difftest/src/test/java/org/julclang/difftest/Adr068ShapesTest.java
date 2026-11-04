@@ -1,5 +1,11 @@
 package org.julclang.difftest;
 
+import org.julclang.compiler.CompilerException;
+import org.julclang.compiler.frontend.javac.JavacFrontend;
+import org.julclang.compiler.frontend.javac.JavacProgram;
+import org.julclang.core.corpus.CorpusFiles;
+
+import java.util.TreeMap;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Files;
@@ -133,20 +139,13 @@ class Adr068ShapesTest {
     }
 
     private static String row(String label, String source) {
-        var units = List.of(source);
-        var reference = Adr068Types.reference(units);
-        var javac = Adr068Types.javac(units, List.of());
         String verdict;
-        if (reference.accepted() && javac.accepted()) {
-            String difference = Adr068Types.difference(reference.registry(), javac.registry());
-            verdict = difference == null ? "equal\t" : "DIFFERENT\t" + difference;
-        } else if (!reference.accepted() && !javac.accepted()) {
-            verdict = (reference.rejection().equals(javac.rejection()) ? "both-reject-same\t" : "both-reject\t")
-                    + reference.rejection() + " /// " + javac.rejection();
-        } else if (reference.accepted()) {
-            verdict = "JAVAC-REJECTS\t" + javac.rejection();
-        } else {
-            verdict = "REFERENCE-REJECTS\t" + reference.rejection();
+        try {
+            var registry = JavacProgram.analyze(List.of(JavacFrontend.Unit.of(source)), List.of()).registry().snapshot();
+            verdict = "accepted\t" + CorpusFiles.sha256(new TreeMap<>(registry.records()) + "|" + new TreeMap<>(registry.sums()) + "|"
+                    + new TreeMap<>(registry.variants()) + "|" + new TreeMap<>(registry.newTypes()) + "|" + registry.parameterized()).substring(0, 16);
+        } catch (CompilerException e) {
+            verdict = "rejected\t" + e.getMessage();
         }
         return label.replace('\n', ' ') + "\t" + verdict.replace('\n', ' ');
     }

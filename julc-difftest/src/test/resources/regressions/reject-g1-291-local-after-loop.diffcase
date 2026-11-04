@@ -9,7 +9,7 @@ arg: 21
 arg: 23
 arg: 80
 arg: d8799fd87980ff
-expect: AGREE
+expect: REJECT JULC0012
 note: Rediscovered by the G1 r7 campaign under REDISCOVER_291_LOOPS (ADR-066 D10.1), the shrunk reproducer as found:
 note: #291's second symptom with one loop. The default arm block declares S0 v4 after its loop and yields it, and the
 note: switch is an argument of a method call (v.equals(...)). Java accepts the program and returns R0(-5, -5, -5);
@@ -23,6 +23,7 @@ found.plan: 1,0,2,0,3,0,0,0,0,1,0,1,0,0,0,0,0,1,0,1,1,0,0,0,0,11,1,569,450,870,2
 found.inputs: 82,262,170,60,986,53,17,72
 found.seed: 20261030
 found.compiler: 0.1.0-pre20 v0.1.0-pre20-47-gf4a9fa6a43f8-dirty
+note: ADR-068 M6: on the only frontend, javac, REJECT JULC0012; the JavaParser frontend answered AGREE.
 ---
 import java.math.BigInteger;
 import org.julclang.core.types.JulcList;

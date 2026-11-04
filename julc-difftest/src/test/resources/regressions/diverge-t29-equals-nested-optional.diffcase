@@ -3,10 +3,9 @@ name: equals of Optional of different record types (F16d, T29)
 class: Probe
 method: m
 arg: 05
-expect: DIVERGE T29 Value/Value
-jvm: Value 00 []
-uplc: Value 01 []
+expect: REJECT JULC0087
 note: ADR-067 F16d: retained divergence.
+note: ADR-068 M6: on the only frontend, javac, REJECT JULC0087; the JavaParser frontend answered DIVERGE T29 Value/Value.
 ---
 import java.math.BigInteger;
 import java.util.Optional;

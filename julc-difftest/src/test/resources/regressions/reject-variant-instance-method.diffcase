@@ -5,8 +5,9 @@ method: m
 tag: Probe$A Probe$S 0
 tag: Probe$B Probe$S 1
 arg: 05
-expect: REJECT JULC0055
+expect: REJECT JULC0080
 note: ADR-067 N10: legal Java (10).
+note: ADR-068 M6: on the only frontend, javac, REJECT JULC0080; the JavaParser frontend answered REJECT JULC0055.
 ---
 import java.math.BigInteger;
 

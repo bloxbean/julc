@@ -44,7 +44,7 @@ class Adr068LedgerFromDataPropertyTest {
             "ScriptPurpose", "StakingCredential", "TokenName", "TxCert", "TxId", "TxInInfo", "TxInfo", "TxOut", "TxOutRef",
             "ValidatorHash", "Vote", "Voter");
 
-    private static final LedgerTypeProvider LEDGER = new LedgerTypeProvider(new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER));
+    private static final LedgerTypeProvider LEDGER = new LedgerTypeProvider(new CompilerOptions());
     /** The types decoded on-chain: a type whose shape holds a map stops there ({@code JavacLedgerFromDataTest}). */
     static final List<String> TYPES = NAMES.stream().filter(Adr068LedgerFromDataPropertyTest::decodable)
             .filter(name -> !holdsMap(type(name), new HashSet<>())).toList();
@@ -53,7 +53,6 @@ class Adr068LedgerFromDataPropertyTest {
 
     private static List<DiffConfig> configs() {
         var configs = new ArrayList<>(DiffConfig.allLevels());
-        configs.addAll(DiffConfig.allLevels(CompilerFrontend.JAVAC));
         return configs;
     }
 
@@ -143,22 +142,13 @@ class Adr068LedgerFromDataPropertyTest {
         SEEN.merge(!jvmAccepts ? "jvm throws" : exact ? "jvm decodes exactly" : "jvm ignores a part", 1, Integer::sum);
         SEEN.merge(name, 1, Integer::sum);
         report.results().forEach((config, result) -> {
-            if (config.frontend() == CompilerFrontend.JAVAC) {
                 if (exact) assertEquals(Verdict.Kind.AGREE, result.verdict().kind(), () -> name + " " + config + " on " + data + "\n" + report.describe());
                 else assertInstanceOf(Observation.Failure.class, result.uplc(), () -> name + " " + config + " on " + data + "\n" + report.describe());
-            } else if (result.verdict().kind() != Verdict.Kind.AGREE) {
-                // The reference's identity: it returns where the JVM throws. Nothing else may differ.
-                assertTrue(!jvmAccepts, () -> name + " " + config + " on " + data + "\n" + report.describe());
-                assertInstanceOf(Observation.Value.class, result.uplc(), report::describe);
-                SEEN.merge("reference returns where the JVM throws", 1, Integer::sum);
-            }
         });
         if (!exact) return;
         var readBack = RUNNER.run(new DiffCase("read-back-" + name, readsBack(name), "Case", "m", List.of(data)));
         readBack.results().forEach((config, result) -> {
-            if (config.frontend() == CompilerFrontend.JAVAC) {
                 assertEquals(Verdict.Kind.AGREE, result.verdict().kind(), () -> name + " " + config + "\n" + readBack.describe());
-            }
         });
         SEEN.merge("read back", 1, Integer::sum);
     }

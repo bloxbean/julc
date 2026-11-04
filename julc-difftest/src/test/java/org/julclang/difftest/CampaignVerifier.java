@@ -71,6 +71,14 @@ final class CampaignVerifier {
     }
 
     /**
+     * What a generated program may meet where the JVM returns (ADR-068 M6): a rejection by a decision of ADR-068, so that a
+     * script never disagrees where it never existed. Any other rejection stays a failure. A code here is not a value's answer,
+     * so these count as no agreement towards a quota.
+     */
+    private static final Map<String, String> POLICY_REJECTIONS = Map.of(
+            "JULC0078", "D6: equals between types Java keeps distinct");
+
+    /**
      * Runs one generated case. {@code finder} names the test for the provenance; {@code generator} is the
      * generator's version, such as {@code G0 r2}, whose first word, in lower case, starts the case's name;
      * {@code tags} and {@code profile} are carried into the case and its record (ADR-066 D3, D6). It fails, after
@@ -111,6 +119,10 @@ final class CampaignVerifier {
                 confirmations.add(new Confirmation(config, factor, execution, agrees, (System.nanoTime() - start) / 1_000_000));
                 return execution;
             };
+            if (result.uplc() instanceof Observation.Rejected rejected && POLICY_REJECTIONS.containsKey(rejected.code())) {
+                explained.add(rejected.code() + " " + POLICY_REJECTIONS.get(rejected.code()));
+                continue;
+            }
             var known = KNOWN.explain(diffCase, config, features, result, rerun);
             if (known.isPresent()) explained.add(known.get());
             else unexplained = true;

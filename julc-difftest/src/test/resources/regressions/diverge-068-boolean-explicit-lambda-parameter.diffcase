@@ -3,11 +3,10 @@ name: an explicitly typed Boolean lambda parameter read as a boolean
 class: Case
 method: m
 arg: 01
-expect: DIVERGE M5 Value/Failure
-jvm: Value d87a80 []
-uplc: Failure []
+expect: AGREE
 note: The reference leaves an explicitly typed Boolean lambda parameter as Data (BooleanPositionLevelsTest). Closed by M5.
 note: ADR-068 D13: on frontend=JAVAC this agrees with the JVM (Adr068SavedCasesOnJavacTest).
+note: ADR-068 M6: on the only frontend, javac, AGREE; the JavaParser frontend answered DIVERGE M5 Value/Failure.
 ---
 import java.math.BigInteger;
 import org.julclang.core.PlutusData;

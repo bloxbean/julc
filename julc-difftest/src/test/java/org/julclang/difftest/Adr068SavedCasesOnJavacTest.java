@@ -21,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class Adr068SavedCasesOnJavacTest {
 
-    private static final DiffRunner RUNNER = new DiffRunner(DiffConfig.allLevels(CompilerFrontend.JAVAC), 10_000);
+    private static final DiffRunner RUNNER = new DiffRunner(DiffConfig.allLevels(), 10_000);
 
     private static final Set<String> T33_PINS = Set.of("reject-packageless-pubkeyhash-record.diffcase", "reject-packageless-rational-record.diffcase",
             "reject-packageless-rational-record-wildcard.diffcase", "reject-top-level-user-value-on-local.diffcase",

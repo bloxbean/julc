@@ -59,7 +59,6 @@ class Adr068LedgerRecordsHarnessTest {
 
     private static List<DiffConfig> configs() {
         var configs = new ArrayList<>(DiffConfig.allLevels());
-        configs.addAll(DiffConfig.allLevels(CompilerFrontend.JAVAC));
         return configs;
     }
 
@@ -160,7 +159,7 @@ class Adr068LedgerRecordsHarnessTest {
             var report = RUNNER.run(new DiffCase("ledger", program(sample(type, choice)), "Case", "m", List.of(new PlutusData.IntData(BigInteger.ZERO)),
                     TagTable.EMPTY, null));
             assertTrue(report.all(Verdict.Kind.AGREE), report::describe);
-            assertEquals(8, report.results().size());
+            assertEquals(4, report.results().size());
         })));
     }
 

@@ -6,9 +6,10 @@ tag: Case$Action$Pay Case$Action 0
 tag: Case$Action$Stop Case$Action 1
 arg: 43010203
 arg: 05
-expect: REJECT JULC0100
+expect: AGREE
 note: #286, T33, and the fixture M2Sealed: the JavaParser frontend reads the name as the ledger hash, so its Data would be the bytes. The gate rejects the name.
 note: ADR-068 D13: on frontend=JAVAC this agrees with the JVM (Adr068SavedCasesOnJavacTest).
+note: ADR-068 M6: on the only frontend, javac, AGREE; the JavaParser frontend answered REJECT JULC0100.
 ---
 import java.math.BigInteger;
 

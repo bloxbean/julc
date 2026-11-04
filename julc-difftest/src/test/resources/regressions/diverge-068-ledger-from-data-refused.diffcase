@@ -3,11 +3,10 @@ name: a ledger fromPlutusData of Data its decoder refuses
 class: Case
 method: m
 arg: d87b80
-expect: DIVERGE M5 Failure/Value
-jvm: Failure []
-uplc: Value d87a80 []
+expect: AGREE
 note: The reference reads a ledger type's fromPlutusData as an identity, so Data the JVM's decoder refuses passes. Closed by M5.
 note: ADR-068 D13: on frontend=JAVAC this agrees with the JVM (Adr068SavedCasesOnJavacTest).
+note: ADR-068 M6: on the only frontend, javac, AGREE; the JavaParser frontend answered DIVERGE M5 Failure/Value.
 ---
 import org.julclang.core.PlutusData;
 import org.julclang.ledger.Credential;

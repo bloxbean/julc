@@ -35,7 +35,6 @@ class Adr068LambdasPropertyTest {
 
     private static List<DiffConfig> configs() {
         var configs = new ArrayList<>(DiffConfig.allLevels());
-        configs.addAll(DiffConfig.allLevels(CompilerFrontend.JAVAC));
         return configs;
     }
 
@@ -84,14 +83,7 @@ class Adr068LambdasPropertyTest {
         } else {
             assertEquals(new Observation.Value(program.value(), program.traces()), report.jvm(), program::source);
         }
-        report.results().forEach((config, result) -> {
-            if (config.frontend() == CompilerFrontend.JAVAC || program.referenceAgrees()) {
-                assertEquals(Verdict.Kind.AGREE, result.verdict().kind(), () -> program.source() + "\n" + report.describe());
-            }
-            if (config.frontend() == CompilerFrontend.JAVAPARSER && program.referenceAgrees()) {
-                var javac = report.results().get(new DiffConfig(config.level(), "Java", CompilerFrontend.JAVAC));
-                assertEquals(result.measurement(), javac.measurement(), () -> config + "\n" + program.source());
-            }
-        });
+        report.results().forEach((config, result) -> assertEquals(Verdict.Kind.AGREE, result.verdict().kind(),
+                () -> program.source() + "\n" + report.describe()));
     }
 }

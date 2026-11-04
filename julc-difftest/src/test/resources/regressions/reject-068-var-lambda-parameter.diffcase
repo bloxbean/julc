@@ -3,9 +3,10 @@ name: a lambda parameter written var
 class: Case
 method: m
 arg: 9f01ff
-expect: REJECT JULC0055
+expect: AGREE
 note: The reference types a var lambda parameter as Data and cannot resolve signum; javac gives it the element's type (M5a section 12), accepted by decision (r13).
 note: ADR-068 D13: on frontend=JAVAC this agrees with the JVM (Adr068SavedCasesOnJavacTest).
+note: ADR-068 M6: on the only frontend, javac, AGREE; the JavaParser frontend answered REJECT JULC0055.
 ---
 import java.math.BigInteger;
 import org.julclang.core.PlutusData;

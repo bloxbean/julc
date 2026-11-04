@@ -65,12 +65,20 @@ class G1MustRejectTest {
                         default -> BigInteger.TWO;
                     }""");
 
+    /** Under the profile a program may stop first at D6's equals, which the javac frontend reads before the construct. */
+    private static void assertRejectedOrStopsAtEquals(DiffCase diffCase) {
+        var report = CampaignVerifier.RUNNER.run(diffCase);
+        boolean atEquals = report.results().values().stream()
+                .allMatch(result -> result.uplc() instanceof Observation.Rejected rejected && "JULC0078".equals(rejected.code()));
+        if (!atEquals) assertRejected(diffCase);
+    }
+
     private static void assertRejected(DiffCase diffCase) {
         var report = RUNNER.run(diffCase);
         report.results().forEach((config, result) -> {
             var rejected = result.uplc() instanceof Observation.Rejected r ? r : null;
             assertTrue(rejected != null, config + ": " + report.describe());
-            assertEquals(null, rejected.code(), config + ": " + rejected);
+            assertEquals("JULC0120", rejected.code(), config + ": " + rejected);
             assertTrue(rejected.message().contains(MESSAGE), config + ": " + rejected.message());
         });
     }
@@ -100,7 +108,7 @@ class G1MustRejectTest {
             if (!program.features().contains(G1.Feature.ASSIGN_PATTERN_BINDING)) continue;
             var inputs = new ArrayList<Integer>();
             for (int j = 0; j < 40; j++) inputs.add(random.nextInt(1001));
-            assertRejected(new DiffCase("#162 profile", program.source(), "Probe", "m", program.arguments(inputs),
+            assertRejectedOrStopsAtEquals(new DiffCase("#162 profile", program.source(), "Probe", "m", program.arguments(inputs),
                     program.tags(), program.profile().text()));
             checked++;
         }

@@ -4,11 +4,10 @@ class: Case
 method: m
 arg: 4161
 arg: 814161
-expect: DIVERGE M5 Value/Value
-jvm: Value 4161 []
-uplc: Value d8799f4161ff []
+expect: AGREE
 note: A variable holds one type, so a tuple of accumulators encodes what find decoded. Closed by M5.
 note: ADR-068 D13: on frontend=JAVAC this agrees with the JVM (Adr068SavedCasesOnJavacTest).
+note: ADR-068 M6: on the only frontend, javac, AGREE; the JavaParser frontend answered DIVERGE M5 Value/Value.
 ---
 import org.julclang.core.types.JulcList;
 

@@ -29,7 +29,6 @@ class Adr068ReadsHarnessTest {
 
     private static List<DiffConfig> configs() {
         var configs = new ArrayList<>(DiffConfig.allLevels());
-        configs.addAll(DiffConfig.allLevels(CompilerFrontend.JAVAC));
         return configs;
     }
 
@@ -167,7 +166,7 @@ class Adr068ReadsHarnessTest {
     void aBuiltinListInDataFailsClosed(String members) {
         var report = run(members, LIST);
         report.results().forEach((config, result) -> {
-            if (config.frontend() == CompilerFrontend.JAVAC) assertInstanceOf(Observation.Failure.class, result.uplc(), report::describe);
+            assertInstanceOf(Observation.Failure.class, result.uplc(), report::describe);
         });
     }
 
@@ -180,7 +179,7 @@ class Adr068ReadsHarnessTest {
     void dataWhereABuiltinTakesAListOrTextFailsClosed(String members) {
         var report = run(members, i(1));
         report.results().forEach((config, result) -> {
-            if (config.frontend() == CompilerFrontend.JAVAC) assertInstanceOf(Observation.Failure.class, result.uplc(), report::describe);
+            assertInstanceOf(Observation.Failure.class, result.uplc(), report::describe);
         });
     }
 
@@ -201,7 +200,7 @@ class Adr068ReadsHarnessTest {
     void aHelpersReturnIsAFollowUp(String members) {
         var report = run(members, new PlutusData.ConstrData(0, List.of(i(1))));
         report.results().forEach((config, result) -> {
-            if (config.frontend() == CompilerFrontend.JAVAC) assertInstanceOf(Observation.Failure.class, result.uplc(), report::describe);
+            assertInstanceOf(Observation.Failure.class, result.uplc(), report::describe);
         });
     }
 
@@ -230,7 +229,7 @@ class Adr068ReadsHarnessTest {
     @MethodSource("declarations")
     void aDeclarationThatCompilesPastItsBodyIsRejected(String members) {
         var report = run(members, i(1));
-        assertEquals(8, report.results().size(), report::describe);
+        assertEquals(4, report.results().size(), report::describe);
         report.results().forEach((config, result) -> {
             assertEquals(Verdict.Kind.REJECTED, result.verdict().kind(), report::describe);
             assertTrue(result.uplc().toString().contains("JULC0101"), report::describe);
@@ -252,20 +251,17 @@ class Adr068ReadsHarnessTest {
     // --- What no tree says: a record's members that javac generates or inherits ---
 
     /** Asserts every run of {@code frontend} is rejected with {@code code}. */
-    private static void assertRejects(DiffRunner.Report report, CompilerFrontend frontend, String code) {
+    private static void assertRejects(DiffRunner.Report report, String code) {
         report.results().forEach((config, result) -> {
-            if (config.frontend() != frontend) return;
             assertEquals(Verdict.Kind.REJECTED, result.verdict().kind(), report::describe);
             assertTrue(result.uplc().toString().contains(code), report::describe);
         });
     }
 
     /** Asserts every run of {@code frontend} evaluated and agrees with the JVM: a rejection does not pass this. */
-    private static void assertAgrees(DiffRunner.Report report, CompilerFrontend frontend) {
-        assertEquals(8, report.results().size(), report::describe);
-        report.results().forEach((config, result) -> {
-            if (config.frontend() == frontend) assertEquals(Verdict.Kind.AGREE, result.verdict().kind(), report::describe);
-        });
+    private static void assertAgrees(DiffRunner.Report report) {
+        assertEquals(4, report.results().size(), report::describe);
+        report.results().forEach((config, result) -> assertEquals(Verdict.Kind.AGREE, result.verdict().kind(), report::describe));
     }
 
     private static final TagTable SEALED = new TagTable(List.of(new TagTable.Entry("Case$S$A", "Case$S", 0),
@@ -302,9 +298,8 @@ class Adr068ReadsHarnessTest {
     @MethodSource("generatedToPlutusData")
     void aGeneratedToPlutusDataIsRejectedAtTheRecord(String members) {
         var report = tagged(members, i(5));
-        assertEquals(8, report.results().size(), report::describe);
-        assertRejects(report, CompilerFrontend.JAVAC, "JULC0101");
-        assertRejects(report, CompilerFrontend.JAVAPARSER, "JULC0101");
+        assertEquals(4, report.results().size(), report::describe);
+        assertRejects(report, "JULC0101");
     }
 
     /** A generated accessor that implements another method is the component it reads, which is what Java's record holds. */
@@ -318,23 +313,20 @@ class Adr068ReadsHarnessTest {
     })
     void aGeneratedAccessorOfAnotherInterfaceKeepsLowering(String members) {
         var report = tagged(members, i(5));
-        assertAgrees(report, CompilerFrontend.JAVAC);
-        assertAgrees(report, CompilerFrontend.JAVAPARSER);
+        assertAgrees(report);
     }
 
     @Test
     void aParameterOfAGeneratedToPlutusDataIsRejected() {
         var report = run(GENERATED_DATA + "public static X m(X d) { return d; }", new PlutusData.ConstrData(0, List.of(i(5))));
-        assertRejects(report, CompilerFrontend.JAVAC, "JULC0101");
-        assertRejects(report, CompilerFrontend.JAVAPARSER, "JULC0101");
+        assertRejects(report, "JULC0101");
     }
 
     /** The rule keys on {@code ToPlutusData}'s method, and the gate's reads the name: this one is not Java's Data. */
     @Test
     void aToPlutusDataThatIsNotTheInterfacesLowersOnJavac() {
         var report = run("public record X(PlutusData toPlutusData) { } public static X m(PlutusData d) { return new X(d); }", i(5));
-        assertAgrees(report, CompilerFrontend.JAVAC);
-        assertRejects(report, CompilerFrontend.JAVAPARSER, "JULC0101");
+        assertAgrees(report);
     }
 
     /** Neither names a method of an interface, so each keeps lowering, on both frontends where the reference lowers it. */
@@ -346,8 +338,7 @@ class Adr068ReadsHarnessTest {
     })
     void aRecordWhoseAccessorsImplementNothingKeepsLowering(String members) {
         var report = tagged(members, i(5));
-        assertAgrees(report, CompilerFrontend.JAVAC);
-        assertAgrees(report, CompilerFrontend.JAVAPARSER);
+        assertAgrees(report);
     }
 
     /** A record that declares a method stops at its declaration on JAVAC (ADR-067 D9); the reference reads only the accessor. */
@@ -355,8 +346,7 @@ class Adr068ReadsHarnessTest {
     void aRecordThatDeclaresAMethodStopsOnJavac() {
         var report = tagged("public record X(BigInteger a) implements Comparable<X> { public int compareTo(X o) { return 0; } } "
                 + "public static BigInteger m(BigInteger v) { var w = new X(v); return w.a(); }", i(5));
-        assertRejects(report, CompilerFrontend.JAVAC, "JULC0080");
-        assertAgrees(report, CompilerFrontend.JAVAPARSER);
+        assertRejects(report, "JULC0080");
     }
 
     // --- Every member a type decides is read through CallTargets.seen ---
@@ -410,7 +400,7 @@ class Adr068ReadsHarnessTest {
     @MethodSource("equalsOnAValueWithNoEquals")
     void equalsOnADecodedValueWithNoEqualsIsAnUnresolvedMember(String members, PlutusData argument) {
         var report = run(members, argument);
-        assertRejects(report, CompilerFrontend.JAVAC, "JULC0055");
+        assertRejects(report, "JULC0055");
     }
 
     private static Stream<Arguments> equalsThatDispatches() {
@@ -436,8 +426,7 @@ class Adr068ReadsHarnessTest {
     @MethodSource("equalsThatDispatches")
     void equalsOnADecodedValueKeepsItsRow(String members, PlutusData argument) {
         var report = run(members, argument);
-        assertAgrees(report, CompilerFrontend.JAVAC);
-        assertAgrees(report, CompilerFrontend.JAVAPARSER);
+        assertAgrees(report);
     }
 
     private static Stream<Arguments> membersTheReferenceDoesNotSee() {
@@ -462,9 +451,8 @@ class Adr068ReadsHarnessTest {
     @MethodSource("membersTheReferenceDoesNotSee")
     void aMemberOfAReadTheReferenceDoesNotTypeIsUnresolved(String members, PlutusData argument) {
         var report = run(members, argument);
-        assertEquals(8, report.results().size(), report::describe);
-        assertRejects(report, CompilerFrontend.JAVAC, "JULC0055");
-        assertRejects(report, CompilerFrontend.JAVAPARSER, "JULC0055");
+        assertEquals(4, report.results().size(), report::describe);
+        assertRejects(report, "JULC0055");
     }
 
     private static Stream<Arguments> membersTheReferenceSees() {
@@ -494,7 +482,6 @@ class Adr068ReadsHarnessTest {
     @MethodSource("membersTheReferenceSees")
     void aMemberOfAReadTheReferenceTypesKeepsLowering(String members, PlutusData argument) {
         var report = run(members, argument);
-        assertAgrees(report, CompilerFrontend.JAVAC);
-        assertAgrees(report, CompilerFrontend.JAVAPARSER);
+        assertAgrees(report);
     }
 }

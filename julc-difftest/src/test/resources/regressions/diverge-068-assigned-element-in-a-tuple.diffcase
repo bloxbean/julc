@@ -3,12 +3,11 @@ name: a fresh value assigned to a variable the reference holds as Data, in a tup
 class: Case
 method: m
 arg: 01
-expect: DIVERGE M5 Value/Failure
-jvm: Value 04 []
-uplc: Failure []
+expect: AGREE
 note: The reference holds the variable as Data and conses the integer. Closed by M5.
 note: A variable holds one type, so a tuple of accumulators encodes what was decoded.
 note: ADR-068 D13: on frontend=JAVAC this agrees with the JVM (Adr068SavedCasesOnJavacTest).
+note: ADR-068 M6: on the only frontend, javac, AGREE; the JavaParser frontend answered DIVERGE M5 Value/Failure.
 ---
 import java.math.BigInteger;
 import org.julclang.core.PlutusData;

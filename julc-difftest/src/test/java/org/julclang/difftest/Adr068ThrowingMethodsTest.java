@@ -206,7 +206,6 @@ class Adr068ThrowingMethodsTest {
     private static void assertDefaultFrontendAgrees(String imports, String members, PlutusData... arguments) {
         var report = run(imports, members, List.of(arguments));
         report.results().forEach((config, result) -> {
-            if (config.frontend() == CompilerFrontend.JAVAPARSER) assertEquals(Verdict.Kind.AGREE, result.verdict().kind(), report::describe);
         });
     }
 

@@ -24,7 +24,6 @@ class Adr068CastsHarnessTest {
 
     private static List<DiffConfig> configs() {
         var configs = new ArrayList<>(DiffConfig.allLevels());
-        configs.addAll(DiffConfig.allLevels(CompilerFrontend.JAVAC));
         return configs;
     }
 
@@ -64,6 +63,6 @@ class Adr068CastsHarnessTest {
                 }
             }
         }
-        assertEquals(64, runs);
+        assertEquals(32, runs);
     }
 }

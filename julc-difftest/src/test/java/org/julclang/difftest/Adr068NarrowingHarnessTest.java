@@ -5,7 +5,6 @@ import net.jqwik.api.Property;
 import net.jqwik.api.constraints.ByteRange;
 import net.jqwik.api.constraints.IntRange;
 import net.jqwik.api.constraints.Size;
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.core.PlutusData;
 import org.junit.jupiter.api.Test;
 
@@ -46,9 +45,8 @@ class Adr068NarrowingHarnessTest {
     /** The javac frontend agrees with the JVM at every level, whatever the reference's erasure does. */
     private static void assertJavacAgrees(String members, PlutusData... args) {
         var report = run(LIBRARY, members, List.of(args));
-        var javac = report.results().entrySet().stream().filter(e -> e.getKey().frontend() == CompilerFrontend.JAVAC).toList();
-        assertEquals(4, javac.size());
-        javac.forEach(e -> assertEquals(Verdict.Kind.AGREE, e.getValue().verdict().kind(), report::describe));
+        assertEquals(4, report.results().size());
+        report.results().forEach((config, result) -> assertEquals(Verdict.Kind.AGREE, result.verdict().kind(), report::describe));
     }
 
     /** {@code MerklePatriciaForestry.nibble}, as written in the external examples, on each byte's two nibbles. */
@@ -95,8 +93,5 @@ class Adr068NarrowingHarnessTest {
         assertJavacAgrees("static long id(long x) { return x; } public static long m(long x) { return (int) id(x); }", integer(4294967301L));
         assertJavacAgrees("static long r(long n) { if (n == 0) { return 4294967301L; } else { return r(n - 1); } } public static long m(long n) { return (int) r(n); }", integer(2));
 
-        var erased = run(LIBRARY, "public static long m(long x) { return (int) (x % 4294967296L); }", List.of(integer(4294967295L)));
-        assertTrue(erased.results().entrySet().stream().anyMatch(e -> e.getKey().frontend() == CompilerFrontend.JAVAPARSER
-                && e.getValue().verdict().kind() != Verdict.Kind.AGREE), erased::describe);
     }
 }

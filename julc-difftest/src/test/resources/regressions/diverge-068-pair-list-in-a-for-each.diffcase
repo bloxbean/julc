@@ -4,11 +4,10 @@ class: Case
 method: m
 arg: a201020304
 arg: 8101
-expect: DIVERGE M5 Value/Failure
-jvm: Value a10304 []
-uplc: Failure []
+expect: AGREE
 note: A pair list stays a map, on the JVM as on-chain. The reference has no list in a for-each. Closed by M5.
 note: ADR-068 D13: on frontend=JAVAC this agrees with the JVM (Adr068SavedCasesOnJavacTest).
+note: ADR-068 M6: on the only frontend, javac, AGREE; the JavaParser frontend answered DIVERGE M5 Value/Failure.
 ---
 import java.math.BigInteger;
 import org.julclang.core.PlutusData;

@@ -3,11 +3,10 @@ name: a boolean list's found element read as a boolean
 class: Case
 method: m
 arg: 01
-expect: DIVERGE M5 Value/Failure
-jvm: Value 01 []
-uplc: Failure []
+expect: AGREE
 note: The reference leaves find's element of a JulcList<Boolean> as Data where a boolean is read (BooleanPositionLevelsTest). Closed by M5.
 note: ADR-068 D13: on frontend=JAVAC this agrees with the JVM (Adr068SavedCasesOnJavacTest).
+note: ADR-068 M6: on the only frontend, javac, AGREE; the JavaParser frontend answered DIVERGE M5 Value/Failure.
 ---
 import java.math.BigInteger;
 import org.julclang.core.PlutusData;

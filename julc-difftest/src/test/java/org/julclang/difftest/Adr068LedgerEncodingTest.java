@@ -146,13 +146,12 @@ class Adr068LedgerEncodingTest {
 
     private static Adr068Encodings.Layout javacLayout() {
         return layout(JavacProgram.analyze(List.of(JavacFrontend.Unit.of(TRIVIAL)), List.of()).registry().snapshot(),
-                new LedgerTypeProvider(new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)));
+                new LedgerTypeProvider(new CompilerOptions()));
     }
 
     @Test
     void everyLedgerTypesDataEqualsTheLedgersOwnEncoder() throws Exception {
         var javac = javacLayout();
-        var reference = layout(Adr068Types.reference(List.of(TRIVIAL)).registry(), new LedgerTypeProvider(new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)));
         var identities = new TreeMap<>(javac.registry().records()).keySet();
         assertFalse(identities.isEmpty());
         var actual = new TreeMap<String, String>();
@@ -162,8 +161,6 @@ class Adr068LedgerEncodingTest {
             var expected = ((PlutusDataConvertible) built.value()).toPlutusData();
             assertEquals(hex(expected), hex(Adr068Encodings.encode(built.sample(), javac.registry().records().get(identity), javac)),
                     "the javac registry's Data of " + identity);
-            assertEquals(hex(expected), hex(Adr068Encodings.encode(built.sample(), reference.registry().records().get(identity), reference)),
-                    "the JavaParser registry's Data of " + identity);
             actual.put(identity, hex(expected));
         }
         var registry = JavacProgram.analyze(List.of(JavacFrontend.Unit.of(TRIVIAL)), List.of()).registry();

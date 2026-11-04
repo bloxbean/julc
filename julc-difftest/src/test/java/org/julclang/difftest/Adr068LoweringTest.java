@@ -7,36 +7,23 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
-import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ForkJoinPool;
-import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * ADR-068 I1, from M3a to M5: every corpus case on {@code frontend=JAVAC}, classified against the reference's PIR and the
- * frozen reference. Run by {@code ./gradlew :julc-difftest:adr068Lowering}; never part of {@code test}, since it needs the
- * recorded corpora. See {@code adr/evidence/068-m3a-lowering-foundation.md}.
+ * ADR-068 I1 after M6: every corpus case on the javac frontend against the committed {@code lowering-javac.tsv}, in both
+ * directions. A moved row fails, and a case that leaves the corpus fails. Run by {@code ./gradlew :julc-difftest:adr068Lowering};
+ * never part of {@code test}, since it needs the recorded corpora.
  * <p>
- * M2's lessons are the shape of this gate. Every row must equal the committed {@code lowering-i1.tsv}, in both directions,
- * so a case that moves to another class, gains or loses a covered method, or leaves the corpus fails. No class is
- * tolerant: a frontend that rejects everything moves every covered row, and rejections have their own classes rather
- * than falling into a passing one. What the gate writes must then equal the committed files byte for byte, totals
- * included. Every {@code DIFFERENT} row must be listed by key in {@code lowering-accepted-differences.tsv}, with a D13
- * class that can explain it, and a stale entry fails too.
- * <p>
- * The reference is held still by {@code lowering-reference.tsv}: every level's cell, the diagnostics, {@code @Param}
- * infos, source map and method terms of every case, checked on every row. It changes only by
- * {@code -Padr068.freezeReference=true}, at a reference change (D4). {@code -Padr068.freeze=true} writes the row table,
- * and refuses without {@code -Padr068.allowShrink=true} to lose cases, covered methods or a class's comparisons, and to
- * write a table with none to compare against.
+ * {@code -Padr068.freeze=true} writes the table, for a change of the compiler's output that is meant: the diff of the table
+ * shows every row it moved, and a review reads it as the release's change of bytes. It refuses to lose a case without
+ * {@code -Padr068.allowShrink=true}.
  */
 @Tag("adr068-lowering")
 class Adr068LoweringTest {
@@ -44,116 +31,46 @@ class Adr068LoweringTest {
     private static final Path REPO = Path.of(System.getProperty("adr068.repo", "..")).toAbsolutePath().normalize();
     private static final Path OUT = Path.of(System.getProperty("adr068.out", REPO.resolve("build/adr068-lowering").toString()));
     private static final Path EVIDENCE = REPO.resolve("adr/evidence/068");
-    private static final Path FROZEN = EVIDENCE.resolve("lowering-i1.tsv");
-    private static final Path TOTALS = EVIDENCE.resolve("lowering-i1-totals.tsv");
-    private static final Path REFERENCE = EVIDENCE.resolve("lowering-reference.tsv");
+    private static final Path FROZEN = EVIDENCE.resolve("lowering-javac.tsv");
     private static final boolean FREEZE = Boolean.parseBoolean(System.getProperty("adr068.freeze", "false"));
-    private static final boolean FREEZE_REFERENCE = Boolean.parseBoolean(System.getProperty("adr068.freezeReference", "false"));
     private static final boolean ALLOW_SHRINK = Boolean.parseBoolean(System.getProperty("adr068.allowShrink", "false"));
 
     @Test
-    void theJavacFrontendAgainstTheReference() throws Exception {
-        refuseTheEvidenceDirectory(OUT, EVIDENCE);
-        var corpus = Adr068TypesTest.corpus(REPO);
+    void theJavacFrontendAgainstItsFrozenTable() throws Exception {
+        Files.createDirectories(OUT);
+        assertTrue(!Files.isSameFile(OUT, EVIDENCE), "adr068.out is the evidence directory: a table would be compared with itself");
+        var corpus = Adr068Corpus.corpus(REPO);
         corpus.addFixtures("m3a", "julc-difftest/src/test/resources/adr068/m3a-fixtures");
         corpus.addFixtures("m3b", "julc-difftest/src/test/resources/adr068/m3b-fixtures");
-        var tool = new Adr068Lowering(FREEZE_REFERENCE ? null : committedReference());
-        var rows = new ConcurrentHashMap<String, Adr068Lowering.Row>();
-        var references = new ConcurrentHashMap<String, String>();
-        var parts = new ConcurrentHashMap<String, Integer>();
-        var observations = new ConcurrentHashMap<String, String>();
+        var tool = new Adr068Lowering();
+        var lines = new ConcurrentHashMap<String, String>();
         int threads = Integer.parseInt(System.getProperty("adr068.threads",
                 String.valueOf(Math.max(1, Runtime.getRuntime().availableProcessors() - 2))));
         var pool = new ForkJoinPool(threads);
         try {
-            pool.submit(() -> corpus.sorted().parallelStream().forEach(c -> {
-                var classified = tool.classify(c);
-                var row = classified.row();
-                rows.put(c.key, row);
-                references.put(c.key, classified.reference().line());
-                observations.put(c.key, tool.observation(c));
-                for (String part : c.parts()) parts.merge(part + "\t" + row.kind(), 1, Integer::sum);
-            })).get();
+            pool.submit(() -> corpus.sorted().parallelStream().forEach(c -> lines.put(c.key, tool.observation(c)))).get();
         } finally {
             pool.shutdown();
         }
-        assertEquals(corpus.cases.size(), rows.size());
+        assertEquals(corpus.cases.size(), lines.size());
 
-        var lines = new TreeMap<String, String>();
-        rows.forEach((key, row) -> lines.put(key, row.line()));
-        var referenceLines = new ArrayList<String>();
-        referenceLines.add("# ADR-068 F925: the reference's results for every case of the lowering corpus, at the reference named"
-                + " in adr/evidence/068-m3-reference-b4.md. Generated by adr068Lowering -Padr068.freezeReference=true; do not edit.");
-        referenceLines.add(Adr068Lowering.Reference.HEADER);
-        referenceLines.addAll(new TreeMap<>(references).values());
-        var summary = summary(rows, parts);
-        Files.createDirectories(OUT);
-        var written = OUT.resolve("lowering-i1.tsv");
-        var writtenTotals = OUT.resolve("lowering-i1-totals.tsv");
-        var writtenReference = OUT.resolve("lowering-reference.tsv");
-        Files.write(written, lines.values());
-        Files.write(writtenTotals, summary);
-        Files.write(writtenReference, referenceLines);
-        Files.write(OUT.resolve("lowering-javac.tsv"), new TreeMap<>(observations).values());
-        summary.stream().filter(line -> !line.startsWith("part")).forEach(System.out::println);
-
+        var written = OUT.resolve("lowering-javac.tsv");
+        Files.write(written, new TreeMap<>(lines).values());
         var frozen = frozen();
-        var moved = moved(frozen, lines);
-        var shrunk = shrunk(frozen, lines);
-        var differences = new ArrayList<String>();
-        for (var c : corpus.sorted()) {
-            var row = rows.get(c.key);
-            if (LISTED.matcher(row.kind()).matches()) differences.add(Adr068Lowering.describe(c, row));
-        }
-        Files.write(OUT.resolve("lowering-i1-differences.txt"), differences);
-        Files.write(OUT.resolve("lowering-i1-moved.tsv"), moved);
-        Files.write(OUT.resolve("lowering-i1-shrunk.tsv"), shrunk);
-        System.out.println("moved\t" + moved.size() + "\nshrunk\t" + shrunk.size());
+        var moved = Adr068Lowering.moved(frozen, lines);
+        Files.write(OUT.resolve("lowering-javac-moved.tsv"), moved);
+        System.out.println("cases\t" + lines.size() + "\nmoved\t" + moved.size());
         moved.stream().limit(20).forEach(line -> System.out.println("moved\t" + line));
 
-        assertTrue(rows.values().stream().noneMatch(row -> row.kind().equals("REFERENCE-DRIFT")),
-                rows.values().stream().filter(row -> row.kind().equals("REFERENCE-DRIFT")).count()
-                        + " rows differ from lowering-reference.tsv: the frozen frontend changed; see lowering-i1-moved.tsv");
-        // Every difference is listed, with its D13 class, and every entry is still found.
-        assertListed(rows);
-        assertTrue(rows.values().stream().anyMatch(Adr068Lowering.Row::fullyCovered), "no case was compared");
-        if (FREEZE_REFERENCE) {
-            if (Files.exists(REFERENCE)) {
-                var lost = new TreeSet<>(committedReference().keySet());
-                lost.removeAll(references.keySet());
-                assertTrue(ALLOW_SHRINK || lost.isEmpty(), lost.size() + " cases left the reference, for example " + lost.stream().findFirst());
-            }
-            Files.copy(writtenReference, REFERENCE, StandardCopyOption.REPLACE_EXISTING);
-        }
         if (FREEZE) {
-            assertTrue(ALLOW_SHRINK || Files.exists(FROZEN), "no table to protect: pass -Padr068.allowShrink=true if that is meant");
-            assertTrue(ALLOW_SHRINK || shrunk.isEmpty(), shrunk.size() + " rows lost coverage, a comparison, or left the corpus; "
-                    + "see lowering-i1-shrunk.tsv, and pass -Padr068.allowShrink=true if that is meant");
+            var lost = new TreeMap<>(frozen);
+            lost.keySet().removeAll(lines.keySet());
+            assertTrue(ALLOW_SHRINK || lost.isEmpty(), lost.size() + " cases left the corpus; pass -Padr068.allowShrink=true if that is meant");
             Files.copy(written, FROZEN, StandardCopyOption.REPLACE_EXISTING);
-            Files.copy(writtenTotals, TOTALS, StandardCopyOption.REPLACE_EXISTING);
             return;
         }
-        assertEquals(0, moved.size(), moved.size() + " rows differ from " + FROZEN + ", " + shrunk.size()
-                + " of them losing coverage or a comparison; see lowering-i1-moved.tsv");
-        assertSameBytes(written, FROZEN);
-        assertSameBytes(writtenTotals, TOTALS);
-        assertSameBytes(writtenReference, REFERENCE);
-    }
-
-    /** What the keys do not show: order, a duplicate line, and the totals, which nothing reads. */
-    private static void assertSameBytes(Path written, Path committed) throws IOException {
-        assertEquals(-1, Files.mismatch(written, committed), written + " differs from " + committed);
-    }
-
-    /** The committed reference's lines by case. */
-    private static Map<String, String> committedReference() throws IOException {
-        var lines = new TreeMap<String, String>();
-        if (!Files.exists(REFERENCE)) return lines;
-        for (String line : Files.readAllLines(REFERENCE)) {
-            if (line.startsWith("#") || line.startsWith("case\t")) continue;
-            lines.put(line.substring(0, line.indexOf('\t')), line);
-        }
-        return lines;
+        assertEquals(0, moved.size(), moved.size() + " rows differ from " + FROZEN + "; see lowering-javac-moved.tsv");
+        assertEquals(-1, Files.mismatch(written, FROZEN), written + " differs from " + FROZEN);
     }
 
     private static Map<String, String> frozen() throws IOException {
@@ -162,116 +79,4 @@ class Adr068LoweringTest {
         for (String line : Files.readAllLines(FROZEN)) frozen.put(line.substring(0, line.indexOf('\t')), line);
         return frozen;
     }
-
-    /** Both directions: a committed row not reproduced, and a row the table does not have. */
-    static List<String> moved(Map<String, String> frozen, Map<String, String> lines) {
-        var moved = new ArrayList<String>();
-        frozen.forEach((key, line) -> {
-            if (!line.equals(lines.get(key))) moved.add(line + "  ->  " + lines.getOrDefault(key, "(not observed)"));
-        });
-        lines.forEach((key, line) -> {
-            if (!frozen.containsKey(key)) moved.add("(new)  ->  " + line);
-        });
-        return moved;
-    }
-
-    /** A run writes its tables to {@code out}, and then compares them with the committed ones: not with themselves. */
-    static void refuseTheEvidenceDirectory(Path out, Path evidence) throws IOException {
-        Files.createDirectories(out);
-        if (Files.isSameFile(out, evidence)) {
-            throw new IllegalArgumentException("adr068.out is the evidence directory, so the tables would be compared with themselves: " + out);
-        }
-    }
-
-    /** A row that left the corpus, or lost what it compares or pins ({@link #shrinks}). */
-    static List<String> shrunk(Map<String, String> frozen, Map<String, String> lines) {
-        var shrunk = new ArrayList<String>();
-        frozen.forEach((key, line) -> {
-            String now = lines.get(key);
-            if (now == null || shrinks(line, now)) shrunk.add(line + "  ->  " + (now == null ? "(not observed)" : now));
-        });
-        return shrunk;
-    }
-
-    /**
-     * A row shrinks if it covers fewer methods, moves to a class that compares less, or leaves {@code javac-rejects} or
-     * {@code DIFFERENT-javac-rejects}: a rejection went, which no rank can call a loss, since the classes above are what a
-     * slice gains. A move into a listed class from another listed class or from {@code both-reject} is a shrink too: ranks
-     * do not tell those apart. And a row shrinks if its class stays and its digest or provenance change: it now pins
-     * something else, and a miscompile of a listed row reads just so. A provenance only gains by going from {@code fragment}
-     * to {@code same}.
-     */
-    private static boolean shrinks(String line, String now) {
-        String[] was = line.split("\t", -1), is = now.split("\t", -1);
-        if (covered(now) < covered(line) || Adr068Lowering.rank(was[1]) > Adr068Lowering.rank(is[1])) return true;
-        if (!was[1].equals(is[1])) {
-            if (was[1].equals("javac-rejects") || was[1].equals("DIFFERENT-javac-rejects")) return true;
-            return LISTED.matcher(is[1]).matches() && (LISTED.matcher(was[1]).matches() || was[1].startsWith("both-reject"));
-        }
-        boolean provenanceGained = was[4].equals("fragment") && is[4].equals("same");
-        return !was[5].equals(is[5]) || !was[4].equals(is[4]) && !provenanceGained;
-    }
-
-    private static int covered(String line) {
-        String cell = line.split("\t", -1)[2];
-        return Integer.parseInt(cell.substring(0, cell.indexOf('/')));
-    }
-
-    private static final Pattern LISTED = Pattern.compile("DIFFERENT.*");
-
-    private static void assertListed(Map<String, Adr068Lowering.Row> rows) throws IOException {
-        var lines = Files.readAllLines(EVIDENCE.resolve("lowering-accepted-differences.tsv"));
-        var accepted = Adr068Lowering.acceptedDifferences(lines);
-        var found = new TreeMap<String, String>();
-        rows.values().forEach(row -> {
-            if (LISTED.matcher(row.kind()).matches()) found.put(row.key(), row.kind());
-        });
-        assertEquals(accepted, found, "an unclassified difference (D13), or a stale entry");
-        // A row whose PIR differs where a frontend rejects: its class must fit the side that rejects.
-        var classes = Adr068Lowering.acceptedClasses(lines);
-        for (var row : rows.values()) Adr068Lowering.explainsUnaccepted(classes.get(row.key()), row);
-    }
-
-    private static List<String> summary(Map<String, Adr068Lowering.Row> rows, Map<String, Integer> parts) {
-        var totals = new TreeMap<String, Integer>();
-        var constructs = new TreeMap<String, int[]>();
-        var provenance = new TreeMap<String, Integer>();
-        var programs = new TreeSet<String>();
-        var methods = new TreeSet<String>();
-        int accepted = 0, covered = 0, total = 0, nonTrivial = 0;
-        for (var row : rows.values()) {
-            totals.merge(row.kind(), 1, Integer::sum);
-            covered += row.covered();
-            total += row.total();
-            methods.addAll(row.pir());
-            if (Set_ACCEPTED.contains(row.kind())) accepted++;
-            if (row.fullyCovered()) {
-                programs.add(row.program());
-                provenance.merge(row.provenance(), 1, Integer::sum);
-                if (row.total() > 1) nonTrivial++;
-            }
-            if (!row.construct().equals("-")) {
-                var counts = constructs.computeIfAbsent(row.construct(), k -> new int[1]);
-                counts[0]++;
-            }
-        }
-        var summary = new ArrayList<String>();
-        summary.add("cases\t" + rows.size());
-        totals.forEach((kind, n) -> summary.add(kind + "\t" + n));
-        summary.add("coverage\tprograms\t" + totals.getOrDefault("i1a-identical", 0) + "\t" + accepted);
-        summary.add("coverage\tdistinct programs\t" + programs.size());
-        summary.add("coverage\tprograms of more than one method\t" + nonTrivial);
-        summary.add("coverage\tmethods\t" + covered + "\t" + total);
-        summary.add("coverage\tdistinct methods\t" + methods.size());
-        provenance.forEach((kind, n) -> summary.add("provenance\t" + kind + "\t" + n));
-        constructs.entrySet().stream().sorted(Comparator.comparingInt(
-                (Map.Entry<String, int[]> e) -> -e.getValue()[0]).thenComparing(Map.Entry::getKey))
-                .forEach(e -> summary.add("first-construct\t" + e.getKey() + "\t" + e.getValue()[0]));
-        new TreeMap<>(parts).forEach((part, n) -> summary.add("part\t" + part + "\t" + n));
-        return summary;
-    }
-
-    /** The classes of a case the reference accepts: coverage's denominator. */
-    private static final java.util.Set<String> Set_ACCEPTED = java.util.Set.of("i1a-identical", "not-ported", "javac-rejects",
-            "DIFFERENT-bytes", "DIFFERENT-diagnostics", "DIFFERENT-javac-rejects", "DIFFERENT-coverage", "DIFFERENT-provenance");
 }

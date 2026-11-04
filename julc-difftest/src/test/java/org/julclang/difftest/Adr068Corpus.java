@@ -247,7 +247,7 @@ final class Adr068Corpus {
 
     /** Adds (or tags) a case built the way the entry point would record it. */
     Case add(String tag, String entry, String method, String lookup, Source main, List<Source> libraries) {
-        var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER);
+        var options = new CompilerOptions();
         String text = CorpusRecorder.caseText(entry, method, lookup, CorpusRecorder.Options.of(options),
                 main == null ? null : main.ref(),
                 libraries.stream().map(Source::ref).toList());
@@ -366,5 +366,35 @@ final class Adr068Corpus {
 
     List<Case> sorted() {
         return List.copyOf(cases.values());
+    }
+
+    /** The corpus of the I1 gate, from the recordings given, and the fixtures of shapes it lacks. */
+    static Adr068Corpus corpus(Path repository) throws Exception {
+        var corpus = new Adr068Corpus(repository);
+        for (var entry : recorded().entrySet()) corpus.addRecorded(entry.getValue(), entry.getKey());
+        corpus.addStdlib();
+        corpus.addLedger();
+        corpus.addFixtures("blaster", "verification/blaster/fixtures");
+        corpus.addFixtures("c7", "verification/c7/fixtures");
+        corpus.addDiffcases();
+        corpus.addG0Exhaustive();
+        corpus.addG1FixedSeed(Path.of(Adr068G1Capture.FILE));
+        corpus.addFixtures("rules", "julc-difftest/src/test/resources/adr068/rule-fixtures");
+        corpus.addFixtures("m2", "julc-difftest/src/test/resources/adr068/m2-fixtures");
+        return corpus;
+    }
+
+    private static Map<String, Path> recorded() {
+        var corpora = new TreeMap<String, Path>();
+        String recorded = System.getProperty("adr068.corpus");
+        if (recorded == null) throw new IllegalStateException("-Padr068.corpus=<dir recorded with -Pjulc.corpus.record> is required");
+        corpora.put("recorded", Path.of(recorded));
+        String external = System.getProperty("adr068.corpus.external");
+        if (external != null) corpora.put("external", Path.of(external));
+        String elci = System.getProperty("adr068.corpus.elci");
+        if (elci != null) corpora.put("elci", Path.of(elci));
+        String head = System.getProperty("adr068.corpus.head");
+        if (head != null) corpora.put("head", Path.of(head));
+        return corpora;
     }
 }

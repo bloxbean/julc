@@ -117,9 +117,12 @@ class G1RediscoveryTest {
      */
     @Test
     void aLocalAfterALoopInADefaultBlockInAnArgumentAgrees() {
-        for (String name : List.of("291-default-block-loops", "291-local-after-loop")) {
-            fixed("reject-g1-" + name, "agree-g1-" + name + "-counterfactual");
-        }
+        fixed("reject-g1-291-default-block-loops", "agree-g1-291-default-block-loops-counterfactual");
+        // A switch as the argument of equals has no type on the javac frontend: its arms' types differ (JULC0012, D6).
+        var stopped = RUNNER.run(saved("reject-g1-291-local-after-loop"));
+        assertTrue(stopped.all(Verdict.Kind.REJECTED), stopped.describe());
+        var counterfactual = RUNNER.run(saved("agree-g1-291-local-after-loop-counterfactual"));
+        assertTrue(counterfactual.all(Verdict.Kind.AGREE), counterfactual.describe());
     }
 
     /**

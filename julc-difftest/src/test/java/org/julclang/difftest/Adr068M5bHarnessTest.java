@@ -19,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
  */
 class Adr068M5bHarnessTest {
 
-    private static final DiffRunner JAVAC = new DiffRunner(DiffConfig.allLevels(CompilerFrontend.JAVAC), 20_000);
+    private static final DiffRunner JAVAC = new DiffRunner(DiffConfig.allLevels(), 20_000);
 
     private static final String HEADER = """
             import java.math.BigInteger;

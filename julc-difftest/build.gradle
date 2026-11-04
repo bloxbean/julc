@@ -15,7 +15,6 @@ dependencies {
     runtimeOnly project(':julc-vm-java')
 
     testImplementation "net.jqwik:jqwik:${jqwikVersion}"
-    testImplementation 'com.github.javaparser:javaparser-core:3.26.3' // ADR-068 M2: the reference registry; gone at M6
     testImplementation project(':julc-blueprint')
     testImplementation libs.jazzer.junit
 }
@@ -39,8 +38,7 @@ tasks.withType(Test).configureEach {
 test {
     useJUnitPlatform {
         includeEngines 'junit-jupiter', 'jqwik'
-        excludeTags 'nightly', 'rediscovery', 'adr068-g1-capture', 'adr068-baseline', 'adr068-gate-timing', 'adr068-types',
-                'adr068-lowering', 'adr068-contract-debug', 'adr068-recheck'
+        excludeTags 'nightly', 'rediscovery', 'adr068-g1-capture', 'adr068-lowering'
     }
     // ./gradlew :julc-difftest:test -Pdifftest.cases=<dir> replays the .diffcase files in <dir>.
     def cases = providers.gradleProperty('difftest.cases')
@@ -81,15 +79,7 @@ tasks.register('rediscoveryDiffTest', Test) {
     outputs.upToDateWhen { false }
 }
 
-// ADR-068 M0 (adr/evidence/068-javac-frontend-baseline.md). First the G1 fixed-seed corpus is captured with the pull-request
-// campaign's seed, then the baseline compiles the corpus with the reference (JavaParser) frontend and writes the D13
-// ledger, the I2a rejection inventory, the D6 equality scan and the accepted-divergence list under adr/evidence/068/:
-//   ./gradlew :julc-compiler:test :julc-compiler:pairCaseTest :julc-stdlib:test :julc-testkit:test :julc-difftest:test \
-//       :julc-examples:test -Pjulc.corpus.record=build/julc-corpus --offline --continue --rerun
-//   ./gradlew :julc-difftest:adr068Baseline -Padr068.corpus=build/julc-corpus [-Padr068.corpus.external=<dir>]
-//       [-Padr068.corpus.elci=<dir>] [-Padr068.external=<julc-examples checkout>] [-Padr068.threads=<n>] [-Padr068.out=<dir>] --offline
-// It fails unless what it writes equals the frozen reference; -Padr068.freeze=true writes that instead, at a reference change (D4).
-// The evidence file has the external and Elci recording commands.
+// ADR-068: the G1 fixed-seed corpus, captured with the pull-request campaign's seed, is part of the I1 gate's corpus.
 tasks.register('adr068G1Capture', Test) {
     group = 'verification'
     description = 'ADR-068 M0: capture the G1 fixed-seed corpus'
@@ -102,90 +92,15 @@ tasks.register('adr068G1Capture', Test) {
     outputs.upToDateWhen { false }
 }
 
-tasks.register('adr068Baseline', Test) {
-    group = 'verification'
-    description = 'ADR-068 M0: the D13 ledger, I2a inventory, D6 equality scan and accepted divergences'
-    testClassesDirs = sourceSets.test.output.classesDirs
-    classpath = sourceSets.test.runtimeClasspath
-    dependsOn 'adr068G1Capture'
-    useJUnitPlatform {
-        includeEngines 'junit-jupiter'
-        includeTags 'adr068-baseline'
-    }
-    systemProperty 'adr068.repo', rootDir.absolutePath
-    // The reference rows are the JavaParser frontend's: every compilation the baseline makes (ledger, harness runs and
-    // evaluation replays) has the javac gate off, unless -Padr068.gate=enforce asks for M1b's gate-on check.
-    systemProperty 'julc.javacGate', providers.gradleProperty('adr068.gate').orElse('off').get()
-    ['adr068.corpus', 'adr068.corpus.external', 'adr068.corpus.elci', 'adr068.external', 'adr068.out', 'adr068.threads', 'adr068.gate',
-     'adr068.freeze'].each { key ->
-        def value = providers.gradleProperty(key)
-        if (value.isPresent()) {
-            systemProperty key, key in ['adr068.threads', 'adr068.gate', 'adr068.freeze'] ? value.get() : rootProject.file(value.get()).absolutePath
-        }
-    }
-    outputs.upToDateWhen { false }
-}
-// After the root build's Test defaults (1g), which would otherwise apply last.
-tasks.named('adr068Baseline').configure { maxHeapSize = '6g' }
-
-// ADR-068 M1, E6: the javac gate's warm and cold compile time against the JavaParser-only path, on a corpus sample:
-//   ./gradlew :julc-difftest:adr068GateTiming -Padr068.corpus=build/julc-corpus [-Padr068.out=<dir>] --offline
-tasks.register('adr068GateTiming', Test) {
-    group = 'verification'
-    description = 'ADR-068 M1: javac gate compile time (E6)'
-    testClassesDirs = sourceSets.test.output.classesDirs
-    classpath = sourceSets.test.runtimeClasspath
-    useJUnitPlatform {
-        includeEngines 'junit-jupiter'
-        includeTags 'adr068-gate-timing'
-    }
-    ['adr068.corpus', 'adr068.out'].each { key ->
-        def value = providers.gradleProperty(key)
-        if (value.isPresent()) systemProperty key, rootProject.file(value.get()).absolutePath
-    }
-    testLogging { showStandardStreams = true }
-    outputs.upToDateWhen { false }
-}
-tasks.named('adr068GateTiming').configure { maxHeapSize = '4g' }
-
-// ADR-068 M2 (I11): registry equality between the frontends over the corpus (adr/evidence/068-m2-types.md):
-//   ./gradlew :julc-difftest:adr068Types -Padr068.corpus=<M0 recording> [-Padr068.corpus.external=<dir>]
-//       [-Padr068.corpus.elci=<dir>] [-Padr068.corpus.head=<a recording of this head>] [-Padr068.threads=<n>]
-//       [-Padr068.out=<dir>] [-Padr068.freeze=true] --offline
-// -Padr068.freeze writes the encoding and blueprint reference from the JavaParser frontend instead of reading it.
-tasks.register('adr068Types', Test) {
-    group = 'verification'
-    description = 'ADR-068 M2: the frontends\' type registries over the corpus'
-    testClassesDirs = sourceSets.test.output.classesDirs
-    classpath = sourceSets.test.runtimeClasspath
-    dependsOn 'adr068G1Capture'
-    useJUnitPlatform {
-        includeEngines 'junit-jupiter'
-        includeTags 'adr068-types'
-    }
-    systemProperty 'adr068.repo', rootDir.absolutePath
-    systemProperty 'julc.javacGate', 'off'
-    ['adr068.corpus', 'adr068.corpus.external', 'adr068.corpus.elci', 'adr068.corpus.head', 'adr068.out', 'adr068.threads', 'adr068.freeze'].each { key ->
-        def value = providers.gradleProperty(key)
-        if (value.isPresent()) {
-            systemProperty key, key in ['adr068.threads', 'adr068.freeze'] ? value.get() : rootProject.file(value.get()).absolutePath
-        }
-    }
-    testLogging { showStandardStreams = true }
-    outputs.upToDateWhen { false }
-}
-tasks.named('adr068Types').configure { maxHeapSize = '6g' }
-
-// ADR-068 I1: every corpus case on frontend=JAVAC, classified against B1 and the reference's PIR; M3a's tool, driven to
-// full coverage by M3 and M4 (adr/evidence/068-m3a-lowering-foundation.md):
+// ADR-068 I1 after M6: every corpus case on the javac frontend against the committed lowering-javac.tsv (adr/evidence/068-m6.md):
 //   ./gradlew :julc-difftest:adr068Lowering -Padr068.corpus=<M0 recording> [-Padr068.corpus.external=<dir>]
 //       [-Padr068.corpus.elci=<dir>] [-Padr068.corpus.head=<a recording of this head>] [-Padr068.threads=<n>]
-//       [-Padr068.out=<dir>] [-Padr068.freeze=true] [-Padr068.freezeReference=true] [-Padr068.allowShrink=true] --offline --no-watch-fs
-// -Padr068.freeze writes the table instead of comparing with it, and refuses to lose a comparison, or to write with no table
-// to protect, without allowShrink. -Padr068.freezeReference writes lowering-reference.tsv: only at a reference change (D4).
+//       [-Padr068.out=<dir>] [-Padr068.freeze=true] [-Padr068.allowShrink=true] --offline --no-watch-fs
+// -Padr068.freeze writes the table instead of comparing with it, for a change of the compiler's output that is meant; it
+// refuses to lose a case without allowShrink.
 tasks.register('adr068Lowering', Test) {
     group = 'verification'
-    description = 'ADR-068 I1: the javac frontend against the reference over the corpus'
+    description = 'ADR-068 I1: the javac frontend against its frozen table over the corpus'
     testClassesDirs = sourceSets.test.output.classesDirs
     classpath = sourceSets.test.runtimeClasspath
     dependsOn 'adr068G1Capture'
@@ -194,60 +109,15 @@ tasks.register('adr068Lowering', Test) {
         includeTags 'adr068-lowering'
     }
     systemProperty 'adr068.repo', rootDir.absolutePath
-    systemProperty 'julc.javacGate', 'off'
     ['adr068.corpus', 'adr068.corpus.external', 'adr068.corpus.elci', 'adr068.corpus.head', 'adr068.out', 'adr068.threads',
-     'adr068.freeze', 'adr068.freezeReference', 'adr068.allowShrink'].each { key ->
+     'adr068.freeze', 'adr068.allowShrink'].each { key ->
         def value = providers.gradleProperty(key)
         if (value.isPresent()) {
-            systemProperty key, key in ['adr068.threads', 'adr068.freeze', 'adr068.freezeReference', 'adr068.allowShrink'] ? value.get() : rootProject.file(value.get()).absolutePath
+            systemProperty key, key in ['adr068.threads', 'adr068.freeze', 'adr068.allowShrink'] ? value.get() : rootProject.file(value.get()).absolutePath
         }
     }
     testLogging { showStandardStreams = true }
     outputs.upToDateWhen { false }
 }
 tasks.named('adr068Lowering').configure { maxHeapSize = '6g' }
-
-// ADR-068 M5a: the D13 class of listed DIFFERENT-bytes rows, by running each program on the JVM and both frontends:
-//   ./gradlew :julc-difftest:adr068Recheck -Padr068.corpus.head=<recording> -Padr068.recheck.keys=<tsv> -Padr068.out=<dir> --offline
-tasks.register('adr068Recheck', Test) {
-    group = 'verification'
-    description = 'ADR-068 M5a: D13 classes of listed bytes rows, by evaluation'
-    testClassesDirs = sourceSets.test.output.classesDirs
-    classpath = sourceSets.test.runtimeClasspath
-    useJUnitPlatform {
-        includeEngines 'junit-jupiter'
-        includeTags 'adr068-recheck'
-    }
-    systemProperty 'adr068.repo', rootDir.absolutePath
-    systemProperty 'julc.javacGate', 'off'
-    ['adr068.corpus.head', 'adr068.recheck.keys', 'adr068.out'].each { key ->
-        def value = providers.gradleProperty(key)
-        if (value.isPresent()) systemProperty key, rootProject.file(value.get()).absolutePath
-    }
-    testLogging { showStandardStreams = true }
-    outputs.upToDateWhen { false }
-    maxHeapSize = '6g'
-}
-
-// ADR-068 entry points' slice: contract schemas and debug metadata of both frontends over the corpus, which I1 does not
-// compare. Same corpus arguments as adr068Lowering.
-tasks.register('adr068ContractDebug', Test) {
-    group = 'verification'
-    description = 'ADR-068: contract schemas and debug metadata of both frontends over the corpus'
-    testClassesDirs = sourceSets.test.output.classesDirs
-    classpath = sourceSets.test.runtimeClasspath
-    useJUnitPlatform {
-        includeEngines 'junit-jupiter'
-        includeTags 'adr068-contract-debug'
-    }
-    systemProperty 'adr068.repo', rootDir.absolutePath
-    systemProperty 'julc.javacGate', 'off'
-    ['adr068.corpus', 'adr068.corpus.external', 'adr068.corpus.elci', 'adr068.corpus.head', 'adr068.out'].each { key ->
-        def value = providers.gradleProperty(key)
-        if (value.isPresent()) systemProperty key, rootProject.file(value.get()).absolutePath
-    }
-    testLogging { showStandardStreams = true }
-    outputs.upToDateWhen { false }
-    maxHeapSize = '6g'
-}
 

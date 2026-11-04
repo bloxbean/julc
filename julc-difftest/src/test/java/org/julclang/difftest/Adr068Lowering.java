@@ -2,64 +2,54 @@ package org.julclang.difftest;
 
 import org.julclang.compiler.CompileResult;
 import org.julclang.compiler.CompilerException;
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JavaLibraryProvider;
+import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.OptimizationLevel;
 import org.julclang.compiler.frontend.javac.JavacEvidence;
-import org.julclang.compiler.frontend.javac.NotPorted;
-import org.julclang.compiler.pir.PirTerm;
-import org.julclang.compiler.pir.PirType;
+import org.julclang.compiler.frontend.javac.JavacFrontend;
+import org.julclang.compiler.frontend.javac.JavacProgram;
+import org.julclang.compiler.schema.ContractSchema;
 import org.julclang.core.corpus.CorpusFiles;
 import org.julclang.core.debug.DebugMetadata;
 import org.julclang.core.flat.UplcFlatEncoder;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
-import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
- * ADR-068 I1 over one corpus case: the case compiled on {@code frontend=JAVAC} and classified against the reference (the
- * JavaParser frontend at B4, gate off) and against the reference's PIR, method by method.
- * <p>
- * The classes are deliberately not tolerant. A row states what happened, a digest of everything it compared stands in
- * the row whatever is shown of it, and every row is compared with a committed table in {@link Adr068LoweringTest}, so a
- * frontend that rejected more, or a case that left the corpus, moves a row: no class means "fine". A {@code DIFFERENT}
- * row must also be listed, with its D13 class. The reference is held still by a table of its own, {@link Reference}.
+ * ADR-068 I1 after M6: what the javac frontend gives for one corpus case, as a line of {@code lowering-javac.tsv}. The line
+ * holds whatever a comparison with the reference read of the javac side, so with the reference frozen as data an equal line
+ * is an equal row of {@code lowering-i1.tsv}: every level with and without a map, the diagnostics and {@code @Param} infos,
+ * the located terms, each method's binder, type and term, the type registry, and a contract's schema or a debug program's
+ * metadata. {@code lowering-reference.tsv} and {@code lowering-i1.tsv} stay as the evidence of what the table was frozen
+ * against, at M6's start, in a run with 0 moved rows ({@code adr/evidence/068-m6.md}).
  */
 final class Adr068Lowering {
 
-    /** The codes of what javac itself rejects, before any lowering (D3, D5). */
-    private static final Set<String> JAVAC_CODES = Set.of("JULC0085", "JULC0081", "JULC0089");
-
-    /** How much of a row's detail the table shows. What is compared is the digest of all of it. */
-    private static final int SHOWN = 160;
-
-    /** One compilation: what the ledger records of it, the construct that stopped it, and what it threw, if either happened. */
-    record Compilation(Adr068Ledger.Outcome outcome, CompileResult result, String construct, Throwable thrown) {
-        Compilation(Adr068Ledger.Outcome outcome, CompileResult result, String construct) {
-            this(outcome, result, construct, null);
-        }
-
+    /** One compilation: what the ledger records of it, and what it threw, if it did. */
+    record Compilation(Adr068Ledger.Outcome outcome, CompileResult result, Throwable thrown) {
         boolean accepted() {
             return outcome.accepted();
         }
     }
 
-    /** What the tool takes from the javac frontend, so that a test can inject the difference a class must report. */
+    /** What the tool takes from the frontend, so that a test can inject the difference the gate must report. */
     interface Javac {
         Compilation compile(Adr068Corpus.Case c, CompilerOptions options);
 
         List<JavacEvidence.Attempt> attempts(Adr068Corpus.Case c, CompilerOptions options);
     }
 
-    /** The javac frontend itself. */
+    private static final Set<String> CONTRACT = Set.of("compileContract", "compileContractWithDetails", "compileContractPath");
+
+    /** The frontend itself. */
     static Javac frontend() {
         return FRONTEND;
     }
@@ -77,221 +67,14 @@ final class Adr068Lowering {
         }
     };
 
-    /**
-     * One case's row.
-     *
-     * @param kind       what happened, one of the classes of {@link #rank}
-     * @param covered    the methods the javac frontend lowered to the reference's term and type
-     * @param total      the methods the reference lowered, library methods included; the javac frontend attempts only
-     *                   the root's
-     * @param construct  the first construct the javac frontend stopped at, or -
-     * @param provenance how the source maps compare: {@code same}, {@code fragment} (the text differs), or -
-     * @param detail     what the class compared, in full
-     * @param pir        the canonical terms of the covered methods, not written to the table
-     * @param program    the FLAT digest at the default level, when both accept
-     * @param rejects    for a {@code DIFFERENT-pir-unaccepted} row, the side that rejects the program ({@code reference},
-     *                   {@code javac} or {@code both}), which decides the D13 class that can explain it; - otherwise.
-     *                   Not written to the table: the row's class and digest already pin the outcome
-     */
-    record Row(String key, String kind, int covered, int total, String construct, String provenance, String detail,
-               List<String> pir, String program, String rejects) {
-
-        Row(String key, String kind, int covered, int total, String construct, String provenance, String detail,
-                List<String> pir, String program) {
-            this(key, kind, covered, total, construct, provenance, detail, pir, program, "-");
-        }
-
-        String line() {
-            String shown = detail.replace('\t', ' ').replace('\n', ' ');
-            shown = shown.length() > SHOWN ? shown.substring(0, SHOWN) + "..." : shown;
-            String digest = detail.isEmpty() ? "-" : CorpusFiles.sha256(detail).substring(0, 16);
-            return key + "\t" + kind + "\t" + covered + "/" + total + "\t" + construct + "\t" + provenance + "\t" + digest
-                    + "\t" + shown;
-        }
-
-        boolean fullyCovered() {
-            return kind.equals("i1a-identical");
-        }
-    }
-
-    /**
-     * The reference's results for one case, as {@code lowering-reference.tsv} holds them. The table is a record of the
-     * reference and a prefilter for its drift: a run still compiles the reference, since a comparison reads more than a row
-     * holds. Each cell is a digest or ledger cell, of a form the javac frontend's result can be put in too.
-     *
-     * @param status      {@code compiled}, or what the row says instead of compiling
-     * @param cells       {@link Adr068Ledger.Outcome#cell()} per level, at the case's source-map setting
-     * @param diagnostics {@link Adr068Ledger.Outcome#diagnosticsCell()} at the default level
-     * @param params      a digest of the {@code @Param} infos, or -
-     * @param located     a digest of the source map's lines, columns and file names at the default level, or -
-     * @param methods     per method, in lowering order, a digest of its binder, type and canonical term
-     */
-    record Reference(String key, String status, List<String> cells, String diagnostics, String params, String located,
-                     List<String> methods) {
-
-        static final String HEADER = "case\tstatus\t" + String.join("\t", Adr068Ledger.LEVELS.stream().map(Enum::name).toList())
-                + "\tdiagnostics\tparams\tlocated\tmethods";
-
-        static Reference unread(Adr068Corpus.Case c, String status) {
-            return new Reference(c.key, status, Adr068Ledger.LEVELS.stream().map(level -> "-").toList(), "-", "-", "-", List.of());
-        }
-
-        String line() {
-            return key + "\t" + status + "\t" + String.join("\t", cells) + "\t" + diagnostics + "\t" + params + "\t" + located
-                    + "\t" + (methods.isEmpty() ? "-" : String.join(",", methods));
-        }
-
-        /** The column that differs from a committed line, for a person; null when they are equal. */
-        String difference(String committed) {
-            if (committed == null) return "no committed row";
-            String[] names = HEADER.split("\t"), left = committed.split("\t", -1), right = line().split("\t", -1);
-            for (int i = 0; i < names.length; i++) {
-                String was = i < left.length ? left[i] : "(none)";
-                if (!was.equals(right[i])) return names[i] + ": " + was + " -> " + right[i];
-            }
-            return null;
-        }
-    }
-
-    /** A case's row, and the reference's results it was read against. */
-    record Classified(Row row, Reference reference) {
-    }
-
-    private final Map<String, String> committed;
     private final Javac javac;
 
-    /** @param committed the lines of {@code lowering-reference.tsv} by case, or null to take the reference as it is */
-    Adr068Lowering(Map<String, String> committed) {
-        this(committed, FRONTEND);
+    Adr068Lowering() {
+        this(FRONTEND);
     }
 
-    Adr068Lowering(Map<String, String> committed, Javac javac) {
-        this.committed = committed;
+    Adr068Lowering(Javac javac) {
         this.javac = javac;
-    }
-
-    /**
-     * How much a class compares, so that a row moving down has lost a comparison (F926). One number says no more than that:
-     * a row leaving {@code javac-rejects} moves up it, and {@code Adr068LoweringTest.shrunk} counts that move by itself.
-     */
-    static int rank(String kind) {
-        return switch (kind) {
-            case "i1a-identical" -> 5;
-            case "both-reject", "DIFFERENT-bytes", "DIFFERENT-diagnostics", "DIFFERENT-pir", "DIFFERENT-pir-unaccepted", "DIFFERENT-coverage",
-                 "DIFFERENT-provenance",
-                 "DIFFERENT-rejection", "DIFFERENT-javac-rejects", "DIFFERENT-javac-accepts", "DIFFERENT-root-alone" -> 4;
-            case "both-reject-javac-first" -> 3;
-            case "not-ported", "reference-rejects-not-ported" -> 2;
-            case "javac-rejects" -> 1;
-            case "ledger-source", "unreplayable", "REFERENCE-DRIFT" -> 0;
-            default -> throw new IllegalArgumentException("no such class: " + kind);
-        };
-    }
-
-    private static final String DIAGNOSTICS = "diagnostics ";
-
-    /**
-     * D13's classes, each with the rows it can explain. A row class not listed under one cannot be accepted. "Representation
-     * only" explains a {@code DIFFERENT-pir} row only where both frontends accept: there {@link #differences} found every
-     * level's bytes, size, diagnostics and params equal, so values and budgets are equal by construction (r17). A PIR that
-     * differs where a frontend rejects is {@code DIFFERENT-pir-unaccepted}, which it cannot explain: where only the javac
-     * frontend accepts, the row is "Accepted by decision", as a {@code DIFFERENT-javac-accepts} row; where only it rejects,
-     * a "Policy rejection", as a {@code DIFFERENT-javac-rejects} row ({@link #explainsUnaccepted}). No semantic observation
-     * of the side that rejects exists, so "Semantic fix" explains neither (r17, the M5a re-confirmation's G1).
-     */
-    private static final Map<String, Set<String>> D13 = Map.of(
-            "Semantic fix", Set.of("DIFFERENT-bytes", "DIFFERENT-pir"),
-            "UPLC-only semantic fix", Set.of("DIFFERENT-bytes"),
-            "Policy rejection", Set.of("DIFFERENT-javac-rejects", "DIFFERENT-pir-unaccepted"),
-            "Policy rejection at run time", Set.of("DIFFERENT-bytes"),
-            "Accepted by decision", Set.of("DIFFERENT-javac-accepts", "DIFFERENT-pir-unaccepted"),
-            "Diagnostic change", Set.of("DIFFERENT-rejection", "DIFFERENT-diagnostics"),
-            "Provenance change", Set.of("DIFFERENT-provenance"),
-            "Representation only", Set.of("DIFFERENT-bytes", "DIFFERENT-pir"),
-            "Cost change", Set.of("DIFFERENT-bytes", "DIFFERENT-pir"));
-
-    /**
-     * The decisions of this ADR under which a script may fail where the JVM returns (r17, "Policy rejection at run time"). A
-     * closed list: a new one needs an ADR revision. M3f decision 1: a {@code find} that finds nothing fails where any read of
-     * it is computed.
-     */
-    static final Set<String> RUN_TIME_DECISIONS = Set.of("M3f decision 1");
-
-    /** A control program a "Policy rejection at run time" entry cites: a test method, in which the trigger cannot fire. */
-    static final Pattern CONTROL = Pattern.compile("\\bcontrol (\\w+)#(\\w+)");
-
-    private static final Pattern ACCEPTED_CLASS = Pattern.compile("([^:(]+?)(?: \\((.*?)\\))?: (\\S.*)");
-
-    /** The side of a {@code DIFFERENT-pir-unaccepted} row each class that can explain it requires to reject. */
-    private static final Map<String, String> UNACCEPTED_SIDE = Map.of(
-            "Accepted by decision", "reference",
-            "Policy rejection", "javac");
-
-    /**
-     * Whether a D13 class explains a {@code DIFFERENT-pir-unaccepted} row, by the side that rejects: "Accepted by decision"
-     * only where the reference rejects and the javac frontend accepts, "Policy rejection" only where the javac frontend
-     * rejects and the reference accepts. A row both reject has no class here: it needs a decision of its own.
-     *
-     * @throws IllegalArgumentException where the class does not fit the row
-     */
-    static void explainsUnaccepted(String d13Class, Row row) {
-        if (!row.kind().equals("DIFFERENT-pir-unaccepted")) return;
-        String side = d13Class == null ? null : UNACCEPTED_SIDE.get(d13Class);
-        if (side == null || !side.equals(row.rejects())) {
-            throw new IllegalArgumentException(d13Class + " cannot explain a DIFFERENT-pir-unaccepted row where "
-                    + (row.rejects().equals("both") ? "both frontends reject" : "the " + row.rejects() + " frontend rejects")
-                    + ": " + row.key());
-        }
-    }
-
-    /** Each entry's D13 class, by case, of a table {@link #acceptedDifferences} accepts. */
-    static Map<String, String> acceptedClasses(List<String> lines) {
-        acceptedDifferences(lines);
-        var classes = new TreeMap<String, String>();
-        for (String line : lines) {
-            if (line.startsWith("#") || line.isBlank()) continue;
-            String[] cells = line.split("\t", -1);
-            var written = ACCEPTED_CLASS.matcher(cells[2]);
-            if (written.matches()) classes.put(cells[0], written.group(1));
-        }
-        return classes;
-    }
-
-    /**
-     * {@code lowering-accepted-differences.tsv}: each entry's row class, by case. The table says why a difference is
-     * accepted, so an entry must name a D13 class that can explain its row, and a case has one entry. A "Policy rejection at
-     * run time" entry must also name, first in its parenthesis, a decision of {@link #RUN_TIME_DECISIONS}, and cite its
-     * control program ({@link #CONTROL}).
-     *
-     * @throws IllegalArgumentException for an entry that does not
-     */
-    static Map<String, String> acceptedDifferences(List<String> lines) {
-        var accepted = new TreeMap<String, String>();
-        for (String line : lines) {
-            if (line.startsWith("#") || line.isBlank()) continue;
-            String[] cells = line.split("\t", -1);
-            if (cells.length != 3) throw new IllegalArgumentException("not three cells: " + line);
-            var written = ACCEPTED_CLASS.matcher(cells[2]);
-            if (!written.matches()) throw new IllegalArgumentException("no D13 class and reason: " + line);
-            var rows = D13.get(written.group(1));
-            if (rows == null) throw new IllegalArgumentException("not a D13 class of a lowering row: " + line);
-            if (!rows.contains(cells[1])) throw new IllegalArgumentException(written.group(1) + " cannot explain " + line);
-            if (written.group(1).equals("Policy rejection at run time")) {
-                String decision = written.group(2) == null ? "" : written.group(2).split("[;,]")[0].trim();
-                if (!RUN_TIME_DECISIONS.contains(decision)) {
-                    throw new IllegalArgumentException("a run-time policy rejection names no decision of " + RUN_TIME_DECISIONS + ": " + line);
-                }
-                if (!CONTROL.matcher(written.group(3)).find()) {
-                    throw new IllegalArgumentException("a run-time policy rejection cites no control program: " + line);
-                }
-            }
-            if (accepted.put(cells[0], cells[1]) != null) throw new IllegalArgumentException("listed twice: " + line);
-        }
-        return accepted;
-    }
-
-    private static CompilerOptions options(Adr068Corpus.Case c, OptimizationLevel level, boolean sourceMap, CompilerFrontend frontend) {
-        return Adr068Ledger.options(c, level, sourceMap).setFrontend(frontend);
     }
 
     private static Compilation compile(Adr068Corpus.Case c, CompilerOptions options) {
@@ -300,8 +83,7 @@ final class Adr068Lowering {
                 var provider = new JavaLibraryProvider(Adr068Ledger.texts(c.libraries), Adr068Ledger.lookup(c.lookup), options);
                 var failures = new ArrayList<Adr068Ledger.Diagnostic>();
                 String description = Adr068Ledger.describe(provider, c.libraries, failures);
-                return new Compilation(Adr068Ledger.Outcome.accepted(CorpusFiles.sha256(description).substring(0, 32), -1, failures),
-                        null, null);
+                return new Compilation(Adr068Ledger.Outcome.accepted(CorpusFiles.sha256(description).substring(0, 32), -1, failures), null, null);
             }
             var result = Adr068Ledger.invoke(c, options);
             byte[] flat = UplcFlatEncoder.encodeProgram(result.program());
@@ -309,123 +91,53 @@ final class Adr068Lowering {
                     Adr068Ledger.diagnostics(result.diagnostics())), result, null);
         } catch (AssertionError e) {
             throw e;
-        } catch (NotPorted e) {
-            return new Compilation(Adr068Ledger.rejection(e), null, e.construct(), e);
         } catch (Throwable t) {
-            return new Compilation(Adr068Ledger.rejection(t), null, null, t);
+            return new Compilation(Adr068Ledger.rejection(t), null, t);
         }
     }
 
     /**
-     * The javac side of a comparison. Only a {@link CompilerException} is a rejection: anything else, a failed I13 check or
-     * a crash, is the frontend breaking, and that is no row to classify. {@link Javac#attempts} is the other way into the
-     * frontend, and whatever it throws but a {@code CompilerException} goes through {@link #coverage} untouched. A
-     * {@link JavaLibraryProvider} is the one other API: on both frontends it refuses a source it cannot export with an
+     * Only a {@link CompilerException} is a rejection: anything else, a failed I13 check or a crash, is the frontend breaking,
+     * and that is no row. A {@link JavaLibraryProvider} is the one other API: it refuses a source it cannot export with an
      * {@link IllegalArgumentException}. And {@code compileForDebug} refuses a source whose ranges its metadata cannot hold
-     * (lone carriage returns) with a {@link DebugMetadata.ValidationException}: a rejection only where the reference refuses
-     * it alike, and otherwise the frontend breaking.
+     * (lone carriage returns) with a {@link DebugMetadata.ValidationException}.
      */
     private Compilation onJavac(Adr068Corpus.Case c, CompilerOptions options) {
         var compilation = javac.compile(c, options);
         var thrown = compilation.thrown();
         boolean rejection = thrown == null || thrown instanceof CompilerException
                 || c.entry.equals("JavaLibraryProvider") && thrown instanceof IllegalArgumentException
-                || c.entry.equals("compileForDebug") && thrown instanceof DebugMetadata.ValidationException
-                        && referenceRefusesAlike(c, options, thrown);
+                || c.entry.equals("compileForDebug") && thrown instanceof DebugMetadata.ValidationException;
         if (!rejection) throw new AssertionError(c.key + ": " + thrown, thrown);
         return compilation;
     }
 
-    /** Whether the reference refuses the same source with the same exception, class and words: only then is it a rejection. */
-    private static boolean referenceRefusesAlike(Adr068Corpus.Case c, CompilerOptions options, Throwable thrown) {
-        var reference = compile(c, options(c, options.getOptimizationLevel(), options.isSourceMapEnabled(), CompilerFrontend.JAVAPARSER)).thrown();
-        return reference != null && reference.getClass() == thrown.getClass() && Objects.equals(reference.getMessage(), thrown.getMessage());
-    }
-
-    /** The source-map settings a comparison reads: both, for a program. A provider's row has no map to set. */
+    /** The source-map settings a line reads: both, for a program. A provider's row has no map to set. */
     private static List<Boolean> sourceMapSettings(Adr068Corpus.Case c) {
         return Adr068Ledger.isProgramEntry(c.entry) ? List.of(false, true) : List.of(c.sourceMap);
     }
 
-    private static String cellName(OptimizationLevel level, boolean sourceMap) {
-        return level + (sourceMap ? " with a map " : " ");
-    }
-
-    Classified classify(Adr068Corpus.Case c) {
-        if (c.entry.equals("ledger-source")) {
-            return read(c, Reference.unread(c, "ledger-source"), row(c, "ledger-source", 0, 0, "-", "-", ""));
-        }
-        String unreplayable = Adr068Ledger.unreplayableReason(c);
-        if (unreplayable != null) {
-            return read(c, Reference.unread(c, "unreplayable"), row(c, "unreplayable", 0, 0, "-", "-", unreplayable));
-        }
-
-        var level = OptimizationLevel.DEFAULT;
-        var methods = new LinkedHashMap<String, Method>();
-        var observed = new LinkedHashMap<String, List<Method>>();
-        var referenceOptions = options(c, level, c.sourceMap, CompilerFrontend.JAVAPARSER)
-                .setMethodObserver((binder, type, body) -> {
-                    methods.put(binder, new Method(type, body));
-                    observed.computeIfAbsent(binder, b -> new ArrayList<>()).add(new Method(type, body));
-                });
-        var reference = compile(c, referenceOptions);
-        var frozen = reference(c, reference, methods);
-        var row = classify(c, reference, methods, observed);
-        return read(c, frozen, row);
-    }
-
-    /** The row, unless the reference moved: a difference there is a change of the frozen frontend, never of the case. */
-    private Classified read(Adr068Corpus.Case c, Reference frozen, Row row) {
-        String drift = committed == null ? null : frozen.difference(committed.get(c.key));
-        return new Classified(drift == null ? row : row(c, "REFERENCE-DRIFT", 0, 0, "-", "-", drift), frozen);
-    }
-
-    private static Reference reference(Adr068Corpus.Case c, Compilation atDefault, Map<String, Method> methods) {
-        var cells = new ArrayList<String>();
-        for (var level : Adr068Ledger.LEVELS) {
-            cells.add(level == OptimizationLevel.DEFAULT ? atDefault.outcome().cell()
-                    : compile(c, options(c, level, c.sourceMap, CompilerFrontend.JAVAPARSER)).outcome().cell());
-        }
-        String located = "-";
-        if (atDefault.accepted() && Adr068Ledger.isProgramEntry(c.entry)) {
-            var mapped = compile(c, options(c, OptimizationLevel.DEFAULT, true, CompilerFrontend.JAVAPARSER));
-            if (mapped.accepted()) located = positions(mapped.result());
-        }
-        var digests = new ArrayList<String>();
-        methods.forEach((binder, method) -> digests.add(
-                digest(binder + "\n" + method.type() + "\n" + PirCanonical.of(method.body()))));
-        return new Reference(c.key, "compiled", cells, atDefault.outcome().diagnosticsCell(),
-                atDefault.result() == null ? "-" : digest(atDefault.result().params().toString()), located, digests);
-    }
-
-    /**
-     * ADR-068 M6: what the javac frontend gives for one case, on its own, as a line of {@code lowering-javac.tsv}: every level
-     * with and without a map, the diagnostics and {@code @Param} infos at the default level, the located terms at every level
-     * with their fragments, and each method's binder, type and canonical term. Whatever {@link #classify} read of the javac
-     * side is here, so that with the reference frozen an equal line is an equal row of {@code lowering-i1.tsv}.
-     */
+    /** The case's line of {@code lowering-javac.tsv}. */
     String observation(Adr068Corpus.Case c) {
         if (c.entry.equals("ledger-source")) return c.key + "\tledger-source";
         String unreplayable = Adr068Ledger.unreplayableReason(c);
         if (unreplayable != null) return c.key + "\tunreplayable\t" + unreplayable.replace(' ', '-');
         var cells = new ArrayList<String>();
         for (boolean sourceMap : sourceMapSettings(c)) {
-            for (var level : Adr068Ledger.LEVELS) {
-                cells.add(onJavac(c, options(c, level, sourceMap, CompilerFrontend.JAVAC)).outcome().cell());
-            }
+            for (var level : Adr068Ledger.LEVELS) cells.add(onJavac(c, Adr068Ledger.options(c, level, sourceMap)).outcome().cell());
         }
-        var atDefault = onJavac(c, options(c, OptimizationLevel.DEFAULT, c.sourceMap, CompilerFrontend.JAVAC));
+        var atDefault = onJavac(c, Adr068Ledger.options(c, OptimizationLevel.DEFAULT, c.sourceMap));
         var located = new ArrayList<String>();
         if (Adr068Ledger.isProgramEntry(c.entry)) {
             for (var level : Adr068Ledger.LEVELS) {
-                var mapped = onJavac(c, options(c, level, true, CompilerFrontend.JAVAC));
+                var mapped = onJavac(c, Adr068Ledger.options(c, level, true));
                 located.add(mapped.accepted() ? locations(mapped.result()) : "-");
             }
         }
         var methods = new ArrayList<String>();
         if (Adr068Ledger.isProgramEntry(c.entry) && c.main != null) {
             try {
-                for (var attempt : javac.attempts(c, options(c, OptimizationLevel.DEFAULT, c.sourceMap, CompilerFrontend.JAVAC))) {
+                for (var attempt : javac.attempts(c, Adr068Ledger.options(c, OptimizationLevel.DEFAULT, c.sourceMap))) {
                     methods.add(attempt.term() == null ? "stop:" + attempt.construct()
                             : digest(attempt.binder() + "\n" + attempt.type() + "\n" + PirCanonical.of(attempt.term())));
                 }
@@ -435,283 +147,100 @@ final class Adr068Lowering {
         }
         return c.key + "\tcompiled\t" + String.join("\t", cells) + "\t" + atDefault.outcome().diagnosticsCell() + "\t"
                 + (atDefault.result() == null ? "-" : digest(atDefault.result().params().toString())) + "\t"
-                + (located.isEmpty() ? "-" : String.join(",", located)) + "\t" + (methods.isEmpty() ? "-" : String.join(",", methods));
+                + (located.isEmpty() ? "-" : String.join(",", located)) + "\t" + (methods.isEmpty() ? "-" : String.join(",", methods))
+                + "\t" + registry(c) + "\t" + description(c);
     }
 
     /** The located terms, by index, with their file names, lines, columns and fragments. */
     private static String locations(CompileResult result) {
         var text = new StringBuilder();
-        located(result).forEach((index, location) -> text.append(index).append('\t').append(fileName(location.fileName()))
-                .append('\t').append(location.line()).append('\t').append(location.column()).append('\t')
-                .append(location.fragment()).append('\n'));
+        new TreeMap<>(result.sourceMap().toIndexed(result.program().term())).forEach((index, location) -> text.append(index)
+                .append('\t').append(location.fileName() == null ? null : Path.of(location.fileName()).getFileName()).append('\t')
+                .append(location.line()).append('\t').append(location.column()).append('\t').append(location.fragment()).append('\n'));
         return digest(text.toString());
     }
 
-    /** The source map's located terms, by index, without the text javac and the reference spell differently. */
-    private static String positions(CompileResult result) {
+    /** I11: what javac registers of the case's units, or the rejection that stops it. */
+    private static String registry(Adr068Corpus.Case c) {
+        if (c.main == null) return "-";
+        try {
+            var units = c.libraries.stream().map(source -> JavacFrontend.Unit.of(source.text())).toList();
+            var registry = JavacProgram.analyze(List.of(JavacFrontend.Unit.of(c.main.text())), units).registry().snapshot();
+            return digest(new TreeMap<>(registry.records()) + "|" + new TreeMap<>(registry.sums()) + "|" + new TreeMap<>(registry.variants())
+                    + "|" + new TreeMap<>(registry.newTypes()) + "|" + registry.parameterized());
+        } catch (RuntimeException e) {
+            return "rejected:" + digest(String.valueOf(e.getMessage()));
+        }
+    }
+
+    /** A contract's schema, or a debug program's metadata at every level; - for any other entry. */
+    private static String description(Adr068Corpus.Case c) {
+        boolean contract = CONTRACT.contains(c.entry);
+        boolean debug = c.entry.equals("compileForDebug");
+        if (!contract && !debug) return "-";
+        if (!c.lookup.equals("none") && !c.lookup.equals(Adr068Corpus.STDLIB_LOOKUP)) return "unreplayable";
+        var levels = debug ? Arrays.asList(OptimizationLevel.values()) : List.of(OptimizationLevel.DEFAULT);
+        var views = new ArrayList<String>();
+        for (var level : levels) {
+            var compiler = new JulcCompiler(Adr068Ledger.lookup(c.lookup), Adr068Ledger.options(c, level, debug || c.sourceMap));
+            var libraries = Adr068Ledger.texts(c.libraries);
+            try {
+                views.add(digest(debug ? view(compiler.compileForDebug(c.main.text(), libraries).debugMetadata())
+                        : view(compiler.compileContract(c.main.text(), libraries).contractSchema())));
+            } catch (RuntimeException e) {
+                views.add("rejected:" + digest(String.valueOf(e.getMessage())));
+            }
+        }
+        return String.join(",", views);
+    }
+
+    private static String view(ContractSchema schema) {
+        var text = new StringBuilder("indexed=" + schema.purposeIndexed() + "\n");
+        for (var validatorInterface : schema.interfaces()) {
+            text.append(validatorInterface.purpose()).append(' ').append(validatorInterface.entrypointName()).append(" @")
+                    .append(validatorInterface.sourceLocation().line()).append("\n  datum ").append(view(validatorInterface.datum()))
+                    .append("\n  redeemer ").append(view(validatorInterface.redeemer())).append('\n');
+        }
+        for (var parameter : schema.parameters()) {
+            text.append("param ").append(parameter.name()).append(": ").append(parameter.type()).append('\n');
+        }
+        new TreeMap<>(schema.namedDefinitions()).forEach((id, type) -> text.append("definition ").append(id).append(' ').append(type).append('\n'));
+        return text.toString();
+    }
+
+    private static String view(ContractSchema.Argument argument) {
+        return argument == null ? "-" : argument.name() + ": " + argument.type() + " @" + argument.sourceLocation().line();
+    }
+
+    private static String view(DebugMetadata metadata) {
         var text = new StringBuilder();
-        located(result).forEach((index, location) -> text.append(index).append('\t').append(fileName(location.fileName()))
-                .append('\t').append(location.line()).append('\t').append(location.column()).append('\n'));
-        return digest(text.toString());
+        metadata.sources().forEach(source -> text.append("source ").append(source.id()).append(' ')
+                .append(Path.of(source.uri()).getFileName()).append(' ').append(source.contentSha256()).append('\n'));
+        metadata.scopes().forEach(scope -> text.append("scope ").append(scope).append('\n'));
+        var shown = metadata.loweredBindings().stream().map(DebugMetadata.LoweredBinding::sourceBindingId)
+                .filter(id -> id != null).collect(Collectors.toSet());
+        metadata.bindings().forEach(binding -> text.append("binding ").append(binding.id()).append(' ').append(binding.name())
+                .append(' ').append(binding.declarationRange()).append(' ').append(binding.scopeId()).append(' ')
+                .append(binding.kind()).append(' ').append(binding.declaredSpelling())
+                .append(shown.contains(binding.id()) ? " " + binding.typeId() : "").append('\n'));
+        metadata.loweredBindings().forEach(binding -> text.append("lowered ").append(binding).append('\n'));
+        metadata.suspensionPoints().forEach(point -> text.append("point ").append(point).append('\n'));
+        return text.toString();
     }
 
     private static String digest(String text) {
         return CorpusFiles.sha256(text).substring(0, 16);
     }
 
-    private Row classify(Adr068Corpus.Case c, Compilation reference, Map<String, Method> methods,
-            Map<String, List<Method>> observed) {
-        var level = OptimizationLevel.DEFAULT;
-        var javac = onJavac(c, options(c, level, c.sourceMap, CompilerFrontend.JAVAC));
-
-        var coverage = coverage(c, methods, observed, reference.accepted());
-        String construct = javac.construct() != null ? javac.construct() : coverage.construct();
-        if (reference.accepted() && javac.accepted()) {
-            var differences = differences(c, reference, javac);
-            if (!differences.isEmpty()) {
-                boolean diagnosticsOnly = differences.size() == 1 && differences.getFirst().startsWith(DIAGNOSTICS);
-                return row(c, diagnosticsOnly ? "DIFFERENT-diagnostics" : "DIFFERENT-bytes", coverage, construct, "-",
-                        String.join("; ", differences));
-            }
-            if (coverage.mismatch() != null) return row(c, "DIFFERENT-pir", coverage, construct, "-", coverage.mismatch());
-            if (coverage.covered() != coverage.total()) {
-                return row(c, "DIFFERENT-coverage", coverage, construct, "-", "accepted, with methods not lowered");
-            }
-            String sourceMap = sourceMapDifference(c);
-            if (sourceMap.startsWith("location")) return row(c, "DIFFERENT-provenance", coverage, construct, "-", sourceMap);
-            return new Row(c.key, "i1a-identical", coverage.covered(), coverage.total(), "-", sourceMap, "",
-                    coverage.pir(), reference.outcome().digest());
-        }
-        // A frontend rejects: no budgets or values to compare, so never "Representation only" (r17). Which one decides the
-        // class that can explain the row.
-        if (coverage.mismatch() != null) {
-            var unaccepted = row(c, "DIFFERENT-pir-unaccepted", coverage, construct, "-", coverage.mismatch());
-            String rejects = reference.accepted() ? "javac" : javac.accepted() ? "reference" : "both";
-            return new Row(unaccepted.key(), unaccepted.kind(), unaccepted.covered(), unaccepted.total(), unaccepted.construct(),
-                    unaccepted.provenance(), unaccepted.detail(), unaccepted.pir(), unaccepted.program(), rejects);
-        }
-        var javacError = javac.outcome().error();
-        if (reference.accepted()) {
-            if (javac.construct() != null) return row(c, "not-ported", coverage, construct, "-", "");
-            if (javacError != null && javacError.code() != null && JAVAC_CODES.contains(javacError.code())) {
-                return row(c, "javac-rejects", coverage, construct, "-", text(javacError));
-            }
-            return row(c, "DIFFERENT-javac-rejects", coverage, construct, "-", text(javacError));
-        }
-        var referenceError = reference.outcome().error();
-        if (javac.accepted()) {
-            String rootAlone = rootAloneDifference(c);
-            if (rootAlone != null) return row(c, "DIFFERENT-root-alone", coverage, construct, "-", rootAlone);
-            return row(c, "DIFFERENT-javac-accepts", coverage, construct, "-", text(referenceError) + " / " + javacCells(c));
-        }
-        if (javac.construct() != null) return row(c, "reference-rejects-not-ported", coverage, construct, "-", text(referenceError));
-        if (javacError != null && javacError.code() != null && JAVAC_CODES.contains(javacError.code())) {
-            return row(c, "both-reject-javac-first", coverage, construct, "-", text(javacError));
-        }
-        return sameRejection(referenceError, javacError)
-                ? row(c, "both-reject", coverage, construct, "-", text(referenceError))
-                : row(c, "DIFFERENT-rejection", coverage, construct, "-", text(referenceError) + " / " + text(javacError));
-    }
-
-    /** What javac produced of a program only it accepts, at every level, with and without a map: nothing else pins it. */
-    private String javacCells(Adr068Corpus.Case c) {
-        var cells = new ArrayList<String>();
-        for (boolean sourceMap : sourceMapSettings(c)) {
-            for (var level : Adr068Ledger.LEVELS) {
-                cells.add(cellName(level, sourceMap) + onJavac(c, options(c, level, sourceMap, CompilerFrontend.JAVAC)).outcome().cell());
-            }
-        }
-        return String.join("; ", cells);
-    }
-
-    /**
-     * D8: the javac frontend reads what the root references, so where a pool unit is all the reference objects to, its
-     * program is the reference's program of the root alone, at every level, with and without a map. That is an oracle for
-     * these rows: null when it holds.
-     */
-    private String rootAloneDifference(Adr068Corpus.Case c) {
-        if (c.libraries.isEmpty()) return null;
-        var root = c.rootAlone();
-        var levels = new ArrayList<String>();
-        for (boolean sourceMap : sourceMapSettings(c)) {
-            for (var level : Adr068Ledger.LEVELS) {
-                var alone = compile(root, options(root, level, sourceMap, CompilerFrontend.JAVAPARSER)).outcome().cell();
-                var cell = onJavac(c, options(c, level, sourceMap, CompilerFrontend.JAVAC)).outcome().cell();
-                if (!alone.equals(cell)) levels.add(cellName(level, sourceMap) + alone + " / " + cell);
-            }
-        }
-        return levels.isEmpty() ? null : String.join("; ", levels);
-    }
-
-    /** A difference, for a person: each side in full, and where the case came from. Not written to the table. */
-    static String describe(Adr068Corpus.Case c, Row row) {
-        return row.line() + "\n  " + row.detail() + "\n  tags " + c.tags + "\n  entry " + c.entry + " method " + c.method + " source "
-                + (c.main == null ? "-" : c.main.digest()) + " libraries " + c.libraries.size() + "\n";
-    }
-
-    /** One code and one message, and one position wherever the reference gave one. */
-    private static boolean sameRejection(Adr068Ledger.Diagnostic reference, Adr068Ledger.Diagnostic javac) {
-        if (reference == null || javac == null) return reference == javac;
-        return Objects.equals(reference.code(), javac.code()) && Objects.equals(reference.message(), javac.message())
-                && (reference.line() == 0 || reference.line() == javac.line() && reference.column() == javac.column());
-    }
-
-    private static String text(Adr068Ledger.Diagnostic diagnostic) {
-        return diagnostic == null ? "?" : diagnostic.code() + "@" + diagnostic.line() + ":" + diagnostic.column() + " " + diagnostic.message();
-    }
-
-    private static Row row(Adr068Corpus.Case c, String kind, int covered, int total, String construct, String provenance, String detail) {
-        return new Row(c.key, kind, covered, total, construct, provenance, detail, List.of(), "-");
-    }
-
-    private static Row row(Adr068Corpus.Case c, String kind, Coverage coverage, String construct, String provenance, String detail) {
-        return new Row(c.key, kind, coverage.covered(), coverage.total(), construct, provenance, detail, coverage.pir(), "-");
-    }
-
-    /**
-     * Every level, with and without a source map, against the reference, then the diagnostics and {@code @Param} infos at
-     * the default level. The cells come first, so that a row with another difference still pins the bytes. Empty when all are
-     * equal.
-     */
-    private List<String> differences(Adr068Corpus.Case c, Compilation reference, Compilation javac) {
-        var differences = new ArrayList<String>();
-        for (boolean sourceMap : sourceMapSettings(c)) {
-            for (var level : Adr068Ledger.LEVELS) {
-                var r = compile(c, options(c, level, sourceMap, CompilerFrontend.JAVAPARSER));
-                var j = onJavac(c, options(c, level, sourceMap, CompilerFrontend.JAVAC));
-                if (!r.outcome().cell().equals(j.outcome().cell())) {
-                    differences.add(cellName(level, sourceMap) + r.outcome().cell() + " / " + j.outcome().cell());
-                }
-            }
-        }
-        if (!reference.outcome().diagnosticsCell().equals(javac.outcome().diagnosticsCell())) {
-            differences.add(DIAGNOSTICS + reference.outcome().diagnosticsCell() + " / " + javac.outcome().diagnosticsCell());
-        }
-        if (reference.result() != null && !reference.result().params().equals(javac.result().params())) {
-            differences.add("params " + reference.result().params() + " / " + javac.result().params());
-        }
-        return differences;
-    }
-
-    /** What the frontends' source maps say of the same program, at every level: {@code location ...} if one moved (I7). */
-    String sourceMapDifference(Adr068Corpus.Case c) {
-        if (!Adr068Ledger.isProgramEntry(c.entry)) return "-";
+    /** Both directions: a committed line not reproduced, and a line the table does not have. */
+    static List<String> moved(Map<String, String> frozen, Map<String, String> lines) {
         var moved = new ArrayList<String>();
-        boolean compared = false, fragment = false;
-        for (var level : Adr068Ledger.LEVELS) {
-            var reference = compile(c, options(c, level, true, CompilerFrontend.JAVAPARSER));
-            var javac = onJavac(c, options(c, level, true, CompilerFrontend.JAVAC));
-            if (!reference.accepted() || !javac.accepted()) {
-                if (reference.accepted() != javac.accepted()) moved.add(level + " only one compiles with a source map");
-                continue;
-            }
-            compared = true;
-            var left = located(reference.result());
-            var right = located(javac.result());
-            if (!left.keySet().equals(right.keySet())) moved.add(level + " located terms " + left.keySet() + " / " + right.keySet());
-            for (var entry : left.entrySet()) {
-                var l = entry.getValue();
-                var r = right.get(entry.getKey());
-                if (r == null) continue;
-                if (l.line() != r.line() || l.column() != r.column()) {
-                    moved.add(level + " term " + entry.getKey() + " " + l.line() + ":" + l.column() + " / " + r.line() + ":" + r.column());
-                }
-                if (!Objects.equals(fileName(l.fileName()), fileName(r.fileName()))) {
-                    moved.add(level + " term " + entry.getKey() + " file " + l.fileName() + " / " + r.fileName());
-                }
-                fragment |= !l.fragment().equals(r.fragment());
-            }
-        }
-        if (!moved.isEmpty()) return "location: " + String.join("; ", moved);
-        return !compared ? "-" : fragment ? "fragment" : "same";
-    }
-
-    private static String fileName(String name) {
-        return name == null ? null : Path.of(name).getFileName().toString();
-    }
-
-    private static Map<Integer, org.julclang.core.source.SourceLocation> located(CompileResult result) {
-        return new TreeMap<>(result.sourceMap().toIndexed(result.program().term()));
-    }
-
-    private record Method(PirType type, PirTerm body) {
-    }
-
-    /** I1b: how far the javac frontend's lowering of each method goes, and whether it equals the reference's. */
-    private record Coverage(int covered, int total, String construct, String mismatch, List<String> pir) {
-    }
-
-    /**
-     * A binder name the reference lowers more than once (a root offered as its own library has its helper twice) is compared
-     * observation by observation, when the javac frontend lowers it as often: the reference's map keeps the last, the
-     * attempts keep the first, and those are different methods. Overloads keep the rule below.
-     */
-    private Coverage coverage(Adr068Corpus.Case c, Map<String, Method> reference, Map<String, List<Method>> observed,
-            boolean referenceAccepted) {
-        if (!Adr068Ledger.isProgramEntry(c.entry) || c.main == null) return new Coverage(0, reference.size(), "-", null, List.of());
-        List<JavacEvidence.Attempt> attempts;
-        try {
-            attempts = javac.attempts(c, options(c, OptimizationLevel.DEFAULT, c.sourceMap, CompilerFrontend.JAVAC));
-        } catch (CompilerException e) {
-            attempts = List.of();   // Rejected before its methods: the compilation's own row says how.
-        }
-        int covered = 0;
-        String construct = "-";
-        String mismatch = null;
-        var pir = new ArrayList<String>();
-        var differing = new StringBuilder();
-        var attempted = new LinkedHashMap<String, JavacEvidence.Attempt>();
-        // Overloads share a binder. The reference stops at the first it cannot accept, having recorded the one before it.
-        for (var attempt : attempts) attempted.putIfAbsent(attempt.binder(), attempt);
-        for (var entry : reference.entrySet()) {
-            var seen = observed.getOrDefault(entry.getKey(), List.of());
-            var repeated = attempts.stream().filter(a -> a.binder().equals(entry.getKey())).toList();
-            if (seen.size() > 1 && repeated.size() == seen.size() && repeated.stream().allMatch(a -> a.term() != null)) {
-                attempted.remove(entry.getKey());
-                boolean equal = true;
-                for (int i = 0; i < seen.size() && equal; i++) {
-                    equal = PirCanonical.of(seen.get(i).body()).equals(PirCanonical.of(repeated.get(i).term()))
-                            && seen.get(i).type().equals(repeated.get(i).type());
-                }
-                if (!equal) {
-                    if (mismatch == null) mismatch = entry.getKey() + " differs from the reference";
-                    for (var a : repeated) differing.append(entry.getKey()).append('\n').append(a.type()).append('\n')
-                            .append(PirCanonical.of(a.term())).append('\n');
-                    continue;
-                }
-                covered++;
-                pir.add(PirCanonical.of(entry.getValue().body()));
-                continue;
-            }
-            var attempt = attempted.remove(entry.getKey());
-            if (attempt == null || attempt.term() == null) {
-                // No attempt at all means the source was rejected first, and its row says how; it stopped at no construct.
-                if (construct.equals("-") && !attempts.isEmpty()) {
-                    construct = attempt == null ? "a library method" : attempt.construct();
-                }
-                continue;
-            }
-            String expected = PirCanonical.of(entry.getValue().body());
-            String actual = PirCanonical.of(attempt.term());
-            if (!expected.equals(actual) || !entry.getValue().type().equals(attempt.type())) {
-                if (mismatch == null) mismatch = entry.getKey() + " differs from the reference";
-                differing.append(entry.getKey()).append('\n').append(attempt.type()).append('\n').append(actual).append('\n');
-                continue;
-            }
-            covered++;
-            pir.add(expected);
-        }
-        // Only a reference that lowered the whole program says what it did not lower.
-        if (mismatch == null && referenceAccepted) {
-            for (var extra : attempted.values()) {
-                if (extra.term() != null) {
-                    mismatch = extra.binder() + " is lowered here and not by the reference";
-                    differing.append(extra.type()).append('\n').append(PirCanonical.of(extra.term())).append('\n');
-                    break;
-                }
-            }
-        }
-        // The terms are in the row, so that a later change to a method that differs moves it.
-        return new Coverage(covered, reference.size(), construct, mismatch == null ? null : mismatch + ": " + digest(differing.toString()), pir);
+        frozen.forEach((key, line) -> {
+            if (!line.equals(lines.get(key))) moved.add(line + "  ->  " + lines.getOrDefault(key, "(not observed)"));
+        });
+        lines.forEach((key, line) -> {
+            if (!frozen.containsKey(key)) moved.add("(new)  ->  " + line);
+        });
+        return moved;
     }
 }

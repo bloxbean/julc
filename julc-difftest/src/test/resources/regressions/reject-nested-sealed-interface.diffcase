@@ -3,8 +3,9 @@ name: a nested sealed hierarchy (M3)
 class: Probe
 method: m
 arg: 05
-expect: REJECT none
+expect: REJECT JULC0109
 note: ADR-067 M3: out of scope.
+note: ADR-068 M6: on the only frontend, javac, REJECT JULC0109; the JavaParser frontend answered REJECT none.
 ---
 import java.math.BigInteger;
 

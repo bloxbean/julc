@@ -27,12 +27,11 @@ class Adr068RecordsHarnessTest {
 
     private static List<DiffConfig> configs() {
         var configs = new ArrayList<>(DiffConfig.allLevels());
-        configs.addAll(DiffConfig.allLevels(CompilerFrontend.JAVAC));
         return configs;
     }
 
     private static List<DiffConfig> javacConfigs() {
-        return DiffConfig.allLevels(CompilerFrontend.JAVAC);
+        return DiffConfig.allLevels();
     }
 
     private static final DiffRunner JAVAC_RUNNER = new DiffRunner(javacConfigs(), 10_000);
@@ -122,13 +121,8 @@ class Adr068RecordsHarnessTest {
     private static void assertAgree(String members, PlutusData... args) {
         var report = run(RUNNER, members, args);
         assertTrue(report.all(Verdict.Kind.AGREE), report::describe);
-        assertEquals(8, report.results().size());
+        assertEquals(4, report.results().size());
         report.results().forEach((config, result) -> {
-            if (config.frontend() == CompilerFrontend.JAVAPARSER) {
-                var javac = report.results().get(new DiffConfig(config.level(), "Java", CompilerFrontend.JAVAC));
-                assertEquals(result.uplc(), javac.uplc(), "the frontends disagree at " + config);
-                assertEquals(result.measurement(), javac.measurement(), "cost at " + config);
-            }
         });
     }
 
@@ -309,8 +303,8 @@ class Adr068RecordsHarnessTest {
         assertAgree("public static BigInteger m(BigInteger x, BigInteger y) { var p = new P(y, x); return p.x().subtract(x); }", integer(1), integer(5));
         // A record's static method is outside the subset on JAVAC (ADR-067 D9, JULC0080); the reference agrees with the JVM.
         var report = run(RUNNER, "public record R(BigInteger a) { static BigInteger a(BigInteger a) { return a; } } public static BigInteger m(BigInteger a) { var r = new R(a); return r.a(); }", integer(3));
-        report.results().forEach((config, result) -> assertEquals(config.frontend() == CompilerFrontend.JAVAC ? Verdict.Kind.REJECTED
-                : Verdict.Kind.AGREE, result.verdict().kind(), report::describe));
+        report.results().forEach((config, result) -> assertEquals(Verdict.Kind.REJECTED
+               , result.verdict().kind(), report::describe));
     }
 
     @Test

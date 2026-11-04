@@ -7,10 +7,9 @@ tag: Probe$B Probe$S 1
 tag: Probe$C Probe$T 0
 tag: Probe$D Probe$T 1
 arg: 05
-expect: DIVERGE T29 Value/Value
-jvm: Value 00 []
-uplc: Value 01 []
+expect: REJECT JULC0078
 note: ADR-067 E9.
+note: ADR-068 M6: on the only frontend, javac, REJECT JULC0078; the JavaParser frontend answered DIVERGE T29 Value/Value.
 ---
 import java.math.BigInteger;
 

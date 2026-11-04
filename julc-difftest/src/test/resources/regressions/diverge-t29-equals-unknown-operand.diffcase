@@ -4,10 +4,9 @@ class: Probe
 method: m
 arg: 05
 arg: 06
-expect: DIVERGE T29 Value/Value
-jvm: Value 00 []
-uplc: Value 01 []
+expect: REJECT JULC0078
 note: ADR-067 D5u: retained divergence.
+note: ADR-068 M6: on the only frontend, javac, REJECT JULC0078; the JavaParser frontend answered DIVERGE T29 Value/Value.
 ---
 import java.math.BigInteger;
 

@@ -3,11 +3,10 @@ name: a ledger hash from Data read as its bytes
 class: Case
 method: m
 arg: 4401020304
-expect: DIVERGE M5 Value/Failure
-jvm: Value 04 []
-uplc: Failure []
+expect: AGREE
 note: The reference reads a ledger hash's fromPlutusData as an identity, so the hash stays Data where bytes are read. Closed by M5.
 note: ADR-068 D13: on frontend=JAVAC this agrees with the JVM (Adr068SavedCasesOnJavacTest).
+note: ADR-068 M6: on the only frontend, javac, AGREE; the JavaParser frontend answered DIVERGE M5 Value/Failure.
 ---
 import org.julclang.core.PlutusData;
 import org.julclang.ledger.PubKeyHash;

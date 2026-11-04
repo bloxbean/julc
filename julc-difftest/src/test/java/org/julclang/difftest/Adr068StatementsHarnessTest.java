@@ -29,7 +29,6 @@ class Adr068StatementsHarnessTest {
 
     private static List<DiffConfig> configs() {
         var configs = new ArrayList<>(DiffConfig.allLevels());
-        configs.addAll(DiffConfig.allLevels(CompilerFrontend.JAVAC));
         return configs;
     }
 
@@ -103,13 +102,8 @@ class Adr068StatementsHarnessTest {
     private static void assertAgree(String members, PlutusData... args) {
         var report = run(members, List.of(args));
         assertTrue(report.all(Verdict.Kind.AGREE), report::describe);
-        assertEquals(8, report.results().size());
+        assertEquals(4, report.results().size());
         report.results().forEach((config, result) -> {
-            if (config.frontend() == CompilerFrontend.JAVAPARSER) {
-                var javac = report.results().get(new DiffConfig(config.level(), "Java", CompilerFrontend.JAVAC));
-                assertEquals(result.uplc(), javac.uplc(), "the frontends disagree at " + config);
-                assertEquals(result.measurement(), javac.measurement(), "cost at " + config);
-            }
         });
     }
 
@@ -126,25 +120,18 @@ class Adr068StatementsHarnessTest {
 
     private static void assertFixedOnJavac(String members, PlutusData... args) {
         var report = run(members, List.of(args));
-        boolean referenceDiverges = false;
         for (var entry : report.results().entrySet()) {
-            if (entry.getKey().frontend() == CompilerFrontend.JAVAC) {
                 assertEquals(Verdict.Kind.AGREE, entry.getValue().verdict().kind(), report::describe);
-            } else {
-                assertTrue(entry.getValue().verdict().kind() != Verdict.Kind.REJECTED, () -> "a rejection is no fix, it is a decision: " + report.describe());
-                referenceDiverges |= entry.getValue().verdict().kind() != Verdict.Kind.AGREE;
-            }
+            
         }
-        assertTrue(referenceDiverges, () -> "the reference no longer diverges, so this is no fix: " + report.describe());
     }
 
     private static void assertStopsOnJavac(String members, String code, PlutusData... args) {
         var report = run(members, List.of(args));
         report.results().forEach((config, result) -> {
-            if (config.frontend() == CompilerFrontend.JAVAC) {
                 assertEquals(Verdict.Kind.REJECTED, result.verdict().kind(), report::describe);
                 assertTrue(result.uplc().toString().contains(code), () -> code + " expected: " + report.describe());
-            }
+            
         });
     }
 
@@ -412,15 +399,10 @@ class Adr068StatementsHarnessTest {
         var tags = new TagTable(concat(TAGS, new TagTable.Entry("Case$Q$N", "Case$W", 0), new TagTable.Entry("Case$R$N", "Case$W", 1)));
         var report = RUNNER.run(new DiffCase("m3c", program(sum + "public static BigInteger m(W w) { if (w instanceof R.N n) { return n.a(); } return BigInteger.ZERO; }"),
                 "Case", "m", List.of(constr(1, integer(5))), tags, null));
-        boolean referenceDiverges = false;
         for (var entry : report.results().entrySet()) {
-            if (entry.getKey().frontend() == CompilerFrontend.JAVAC) {
                 assertEquals(Verdict.Kind.AGREE, entry.getValue().verdict().kind(), report::describe);
-            } else {
-                referenceDiverges |= entry.getValue().verdict().kind() != Verdict.Kind.AGREE;
-            }
+            
         }
-        assertTrue(referenceDiverges, report::describe);
     }
 
     private static List<TagTable.Entry> concat(TagTable table, TagTable.Entry... entries) {

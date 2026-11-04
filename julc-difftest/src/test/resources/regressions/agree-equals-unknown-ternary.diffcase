@@ -3,8 +3,9 @@ name: equals on a var from a ternary of two record types (F1a)
 class: Probe
 method: m
 arg: 24
-expect: AGREE
+expect: REJECT JULC0012
 note: ADR-067 F1a: must stay structural.
+note: ADR-068 M6: on the only frontend, javac, REJECT JULC0012; the JavaParser frontend answered AGREE.
 ---
 import java.math.BigInteger;
 

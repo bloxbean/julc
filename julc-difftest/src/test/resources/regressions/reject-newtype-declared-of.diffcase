@@ -3,8 +3,9 @@ name: #282 a @NewType declaring a static of (N6)
 class: Probe
 method: m
 arg: 05
-expect: REJECT JULC0101
+expect: REJECT JULC0080
 note: ADR-067 N6: legal Java (5).
+note: ADR-068 M6: on the only frontend, javac, REJECT JULC0080; the JavaParser frontend answered REJECT JULC0101.
 ---
 import java.math.BigInteger;
 import org.julclang.stdlib.annotation.NewType;

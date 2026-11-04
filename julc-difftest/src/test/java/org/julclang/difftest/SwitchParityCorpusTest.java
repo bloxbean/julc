@@ -431,7 +431,7 @@ class SwitchParityCorpusTest {
     /** The code JuLC rejects the program with ({@code "none"} when uncoded), or null when it compiles. */
     private static String julcRejection(String source) {
         try {
-            new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER).setOptimizationLevel(OptimizationLevel.NONE))
+            new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setOptimizationLevel(OptimizationLevel.NONE))
                     .compileMethod(source, "m");
             return null;
         } catch (CompilerException e) {

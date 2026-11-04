@@ -4,9 +4,8 @@ class: Probe
 method: m
 arg: 420102
 arg: 420102
-expect: DIVERGE T5 Value/Value
-jvm: Value d87980 []
-uplc: Value d87a80 []
+expect: REJECT JULC0087
+note: ADR-068 M6: on the only frontend, javac, REJECT JULC0087; the JavaParser frontend answered DIVERGE T5 Value/Value.
 ---
 import java.math.BigInteger;
 import org.julclang.core.types.JulcList;

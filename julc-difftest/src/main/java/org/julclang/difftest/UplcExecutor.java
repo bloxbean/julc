@@ -122,7 +122,7 @@ public final class UplcExecutor {
      * …")} (ADR-066 D4, G1-I10).
      */
     public Execution run(DiffCase diffCase, DiffConfig config, ExBudget budget, ValueMapping.Representation representation) {
-        String key = config.frontend() + "\0" + config.level() + "\0" + diffCase.method() + "\0" + diffCase.source();
+        String key = config.level() + "\0" + diffCase.method() + "\0" + diffCase.source();
         Compiled entry = cached(key);
         if (entry == null) {
             entry = compile(diffCase, config);
@@ -184,7 +184,7 @@ public final class UplcExecutor {
         Program program;
         try {
             program = new JulcCompiler(StdlibRegistry.defaultRegistry(),
-                    new CompilerOptions().setOptimizationLevel(config.level()).setFrontend(config.frontend()))
+                    new CompilerOptions().setOptimizationLevel(config.level()))
                     .compileMethod(diffCase.source(), diffCase.method()).program();
         } catch (CompilerException e) {
             var error = e.diagnostics().stream()

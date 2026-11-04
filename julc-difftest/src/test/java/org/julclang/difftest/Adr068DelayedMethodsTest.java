@@ -5,11 +5,9 @@ import net.jqwik.api.Arbitrary;
 import net.jqwik.api.ForAll;
 import net.jqwik.api.Property;
 import net.jqwik.api.Provide;
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.OptimizationLevel;
-import org.julclang.compiler.frontend.javac.JavacGateMode;
 import org.julclang.core.Constant;
 import org.julclang.core.PlutusData;
 import org.julclang.core.Term;
@@ -461,32 +459,20 @@ class Adr068DelayedMethodsTest {
             }
             """;
 
-    private static JulcCompiler compiler(CompilerFrontend frontend, OptimizationLevel level) {
-        return new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(frontend).setOptimizationLevel(level)
-                .setJavacGate(JavacGateMode.OFF));
+    private static JulcCompiler compiler(OptimizationLevel level) {
+        return new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setOptimizationLevel(level)
+                );
     }
 
     @ParameterizedTest
     @EnumSource(OptimizationLevel.class)
     void aMethodUsedOnlyInALibrary(OptimizationLevel level) {
         var vm = JulcVm.create("Java");
-        var f = compiler(CompilerFrontend.JAVAPARSER, level).compileMethod(ROOT, "f", List.of(LIBRARY)).program();
+        var f = compiler(level).compileMethod(ROOT, "f", List.of(LIBRARY)).program();
         var notTaken = assertInstanceOf(EvalResult.Success.class, vm.evaluateWithArgs(f, List.<PlutusData>of(bool(false))));
         assertEquals(Term.const_(Constant.integer(2)), notTaken.resultTerm());
         assertInstanceOf(EvalResult.Failure.class, vm.evaluateWithArgs(f, List.<PlutusData>of(bool(true))));
-        var g = compiler(CompilerFrontend.JAVAPARSER, level).compileMethod(ROOT, "g", List.of(LIBRARY)).program();
+        var g = compiler(level).compileMethod(ROOT, "g", List.of(LIBRARY)).program();
         assertEquals(List.of("T", "T"), assertInstanceOf(EvalResult.Success.class, vm.evaluateWithArgs(g, List.<PlutusData>of())).traces());
-    }
-
-    /** Group 3a: the library lowers on {@code JAVAC}, and its methods with no parameters are delayed as on the reference. */
-    @ParameterizedTest
-    @EnumSource(OptimizationLevel.class)
-    void aLibraryOnJavacIsTheReferences(OptimizationLevel level) {
-        for (var method : List.of("f", "g")) {
-            assertArrayEquals(
-                    UplcFlatEncoder.encodeProgram(compiler(CompilerFrontend.JAVAPARSER, level).compileMethod(ROOT, method, List.of(LIBRARY)).program()),
-                    UplcFlatEncoder.encodeProgram(compiler(CompilerFrontend.JAVAC, level).compileMethod(ROOT, method, List.of(LIBRARY)).program()),
-                    method + " at " + level);
-        }
     }
 }

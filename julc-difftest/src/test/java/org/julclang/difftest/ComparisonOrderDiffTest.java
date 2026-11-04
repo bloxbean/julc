@@ -146,7 +146,7 @@ class ComparisonOrderDiffTest {
         var report = run(declared, "boolean", "return new Amt(t(\"A\", a)).compareTo(new Amt(t(\"B\", b))) > 0;", 3, 1);
         assertTrue(report.all(Verdict.Kind.REJECTED), report.describe());
         report.results().values().forEach(result ->
-                assertEquals("JULC0101", ((Observation.Rejected) result.uplc()).code(), report.describe()));
+                assertEquals("JULC0080", ((Observation.Rejected) result.uplc()).code(), report.describe()));
     }
 
     /** The frozen frontend rejects a compareTo on a chained accessor of a call; the rule does not change that. */

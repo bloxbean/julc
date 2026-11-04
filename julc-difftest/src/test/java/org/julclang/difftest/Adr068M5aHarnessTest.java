@@ -22,11 +22,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class Adr068M5aHarnessTest {
 
     private static final DiffRunner BOTH = new DiffRunner(configs(), 20_000);
-    private static final DiffRunner REFERENCE = new DiffRunner(DiffConfig.allLevels(), 20_000);
 
     private static List<DiffConfig> configs() {
         var configs = new ArrayList<>(DiffConfig.allLevels());
-        configs.addAll(DiffConfig.allLevels(CompilerFrontend.JAVAC));
         return configs;
     }
 
@@ -72,7 +70,7 @@ class Adr068M5aHarnessTest {
             "public static BigInteger m(BigInteger a, boolean c) { Tuple3 t = new Tuple3(Builtins.iData(a), Builtins.iData(BigInteger.TWO), Builtins.iData(BigInteger.TEN)); return Builtins.unIData(t.third()).subtract(Builtins.unIData(t.first())); }"})
     void aRawTuplesComponentIsData(String members) {
         var inputs = List.of(List.of(integer(10), bool(true)), List.of(integer(-3), bool(false)));
-        assertEquals(16, agreeOnEveryInput("raw-tuple-component", members, TagTable.EMPTY, inputs));
+        assertEquals(8, agreeOnEveryInput("raw-tuple-component", members, TagTable.EMPTY, inputs));
     }
 
     /**
@@ -90,25 +88,10 @@ class Adr068M5aHarnessTest {
             var report = BOTH.run(new DiffCase("two-types", HEADER + members + "\n}\n", "Case", "m", args, TAGS, null));
             assertInstanceOf(Observation.Value.class, report.jvm(), report::describe);
             report.results().forEach((config, result) -> {
-                if (config.frontend() == CompilerFrontend.JAVAC) {
                     assertEquals("JULC0012", assertInstanceOf(Observation.Rejected.class, result.uplc(), report::describe).code());
-                }
+                
             });
         }
     }
 
-    /**
-     * Closed by M5 (D4's cap): the reference types a conditional by its then branch, so {@code JulcList.of(c ? a : d)} encodes
-     * the Data branch as an integer, and fails where the JVM's list holds the Data. {@code frontend=JAVAC} rejects it
-     * ({@code JULC0012}, in {@code JavacM5aTest}).
-     */
-    @Test
-    void theReferenceReadsAConditionalsElseBranchAsItsThenBranch() {
-        var source = HEADER + "public static long m(BigInteger a, boolean c) { return JulcList.of(c ? a : Builtins.iData(a)).size(); }\n}\n";
-        var then = REFERENCE.run(new DiffCase("conditional-then-typed", source, "Case", "m", List.of(integer(3), bool(true))));
-        assertTrue(then.all(Verdict.Kind.AGREE), then::describe);
-        var otherwise = REFERENCE.run(new DiffCase("conditional-then-typed", source, "Case", "m", List.of(integer(3), bool(false))));
-        assertInstanceOf(Observation.Value.class, otherwise.jvm(), otherwise::describe);
-        assertFalse(otherwise.all(Verdict.Kind.AGREE), otherwise::describe);
-    }
 }

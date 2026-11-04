@@ -38,7 +38,6 @@ class Adr068LoopsPropertyTest {
 
     private static List<DiffConfig> configs() {
         var configs = new ArrayList<>(DiffConfig.allLevels());
-        configs.addAll(DiffConfig.allLevels(CompilerFrontend.JAVAC));
         return configs;
     }
 
@@ -96,10 +95,6 @@ class Adr068LoopsPropertyTest {
         // A local that hides a field after a loop has its own name here, which saves a let: JavacLoopsTest states it.
         if (HIDES_THE_FIELD.matcher(program.source()).find()) return;
         report.results().forEach((config, result) -> {
-            if (config.frontend() == CompilerFrontend.JAVAPARSER) {
-                var javac = report.results().get(new DiffConfig(config.level(), "Java", CompilerFrontend.JAVAC));
-                assertEquals(result.measurement(), javac.measurement(), () -> config + "\n" + program.source());
-            }
         });
     }
 }

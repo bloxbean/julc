@@ -6,7 +6,6 @@ import net.jqwik.api.ForAll;
 import net.jqwik.api.Property;
 import net.jqwik.api.Provide;
 import org.julclang.compiler.CompilerException;
-import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.core.PlutusData;
@@ -88,10 +87,8 @@ class Adr068StringLengthTest {
             "byte[]:a.getBytes(\"UTF-16\")"})
     void theRestStop(String row) {
         var parts = row.split(":", 2);
-        for (var frontend : CompilerFrontend.values()) {
-            var source = "public class Case { public static " + parts[0] + " m(String a) throws Exception { return " + parts[1] + "; } }";
-            var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(frontend));
-            assertNotNull(assertThrows(CompilerException.class, () -> compiler.compileMethod(source, "m"), row));
-        }
+        var source = "public class Case { public static " + parts[0] + " m(String a) throws Exception { return " + parts[1] + "; } }";
+        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions());
+        assertNotNull(assertThrows(CompilerException.class, () -> compiler.compileMethod(source, "m"), row));
     }
 }
