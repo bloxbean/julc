@@ -19,8 +19,6 @@ dependencies {
     api project(':julc-core')
     api project(':julc-ledger-api')
     api project(':julc-vm')
-    implementation 'com.github.javaparser:javaparser-core:3.26.3'
-
     testImplementation project(':julc-stdlib')
     testImplementation project(':julc-testkit')
     testImplementation project(':julc-cardano-client-lib')

@@ -127,9 +127,11 @@ tasks.register('vmToolsJar', Jar) {
             args '--tool:svm-wasm', '-cp', files.collect { it.absolutePath }.join(File.pathSeparator),
                     '-o', new File(dir, name).absolutePath, '-H:+ReportExceptionStackTraces',
                     '-H:+PrintAnalysisCallTree', '-H:PrintAnalysisCallTreeType=CSV'
+            args '-H:AbortOnTypeReachable=com.github.javaparser.*'
             if (vmOnly) {
-                ['com.bloxbean.cardano.*', 'org.julclang.compiler.*', 'org.julclang.decompiler.*',
-                 'com.github.javaparser.*'].each { args "-H:AbortOnTypeReachable=${it}" }
+                ['com.bloxbean.cardano.*', 'org.julclang.compiler.*', 'org.julclang.decompiler.*'].each {
+                    args "-H:AbortOnTypeReachable=${it}"
+                }
             }
             args vmOnly ? 'org.julclang.wasm.JulcVmWasm' : 'org.julclang.wasm.JulcWasm'
         }

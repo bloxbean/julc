@@ -21,9 +21,6 @@ dependencies {
     implementation 'com.fasterxml.jackson.core:jackson-databind:2.18.2'
     implementation 'org.bouncycastle:bcprov-jdk18on:1.83'
 
-    // JavaParser for Java contract metadata extraction
-    implementation 'com.github.javaparser:javaparser-core:3.26.3'
-
     // Model records carry Jackson annotations; (de)serialization happens in the transports
     api 'com.fasterxml.jackson.core:jackson-annotations:2.18.2'
 

@@ -94,6 +94,43 @@ subprojects {
 //        options.compilerArgs.addAll(['--enable-preview'])
     }
 
+    // ADR-068 D12: no JavaParser, in a source, a build script or native-image metadata, or on a class path. CI's
+    // `./gradlew build` runs it through `check`. The one line allowed asks a native image to abort if the type is reachable.
+    def verifyNoJavaParser = tasks.register('verifyNoJavaParser') {
+        group = 'verification'
+        description = 'ADR-068 D12: fails on any JavaParser name in this module and on any class path that holds it'
+        def scanned = fileTree(projectDir) {
+            include 'src/**/*.java', 'src/**/reachability-metadata.json', 'build.gradle'
+        }
+        def classPaths = configurations.matching {
+            it.canBeResolved && it.name in ['compileClasspath', 'runtimeClasspath', 'testCompileClasspath', 'testRuntimeClasspath',
+                                            'annotationProcessor', 'testAnnotationProcessor', 'pairCaseBackend']
+        }
+        inputs.files(scanned)
+        outputs.upToDateWhen { false }
+        doLast {
+            def group = 'com.github.' + 'javaparser'
+            def offenders = []
+            scanned.each { file ->
+                file.eachLine { line, number ->
+                    if (line.contains(group) && !line.contains('AbortOnTypeReachable')) offenders << "${file}:${number}: ${line.trim()}"
+                }
+            }
+            classPaths.each { classPath ->
+                classPath.resolvedConfiguration.lenientConfiguration.allModuleDependencies.each { dependency ->
+                    if (dependency.moduleGroup == group) offenders << "${classPath.name} holds ${dependency.name}"
+                }
+            }
+            if (offenders) throw new GradleException("JavaParser left the build at ADR-068 M6:\n" + offenders.join('\n'))
+        }
+    }
+    pluginManager.withPlugin('base') {
+        tasks.named('check') { dependsOn verifyNoJavaParser }
+    }
+    pluginManager.withPlugin('java') {
+        tasks.named('check') { dependsOn verifyNoJavaParser }
+    }
+
     tasks.withType(Test).configureEach {
         useJUnitPlatform()
 //        jvmArgs '--enable-preview'

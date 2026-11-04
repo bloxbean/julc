@@ -36,11 +36,6 @@ dependencies {
     // agents (Claude Code, Cursor, Continue, ...). See ADR-020 Phase C.
     implementation 'io.modelcontextprotocol.sdk:mcp:1.1.2'
 
-    // JavaParser — used by the MCP lint rules. Already pulled in transitively
-    // by julc-compiler; adding the explicit dep so the cli module compiles
-    // against it directly (lint code lives under julc-cli/.../mcp/lint).
-    implementation 'com.github.javaparser:javaparser-core:3.26.3'
-
     // SLF4J no-op binding — silences the "No SLF4J providers found" warning
     // that the MCP SDK (via Reactor) prints to stderr at startup. MCP allows
     // stderr output, but clients/users read it as noise. Per Phase C review.
@@ -159,7 +154,7 @@ graalvmNative {
         main {
             imageName = 'julc'
             mainClass = application.mainClass.get()
-            buildArgs.addAll(['--no-fallback', '-H:+ReportExceptionStackTraces'])
+            buildArgs.addAll(['--no-fallback', '-H:+ReportExceptionStackTraces', '-H:AbortOnTypeReachable=com.github.javaparser.*'])
             sharedLibrary = false
         }
     }
