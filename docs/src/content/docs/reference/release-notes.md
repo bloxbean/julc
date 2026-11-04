@@ -30,6 +30,7 @@ fixed by the rewrites below. What opted back is removed:
 | Host | Removed | What a build that still names it gets |
 |---|---|---|
 | Compiler API | `CompilerFrontend`, `CompilerOptions.setFrontend`, `getFrontend`, `setJavacGate`, `getJavacGate`, `setMethodObserver` | A compile error |
+| Lint rules | `BigIntegerParamRule`, a retired no-op kept for code that referenced it | A compile error: remove the reference |
 | Gradle plugin | `julc { frontend = ... }` | `javac` builds; anything else stops, saying the option is gone |
 | Annotation processor | `-Ajulc.frontend` | `javac` compiles; anything else is an error, saying the option is gone |
 | CLI | `julc build --frontend` | `javac` builds; anything else stops, saying the option is gone |
@@ -202,11 +203,9 @@ An `@Entrypoint` method's last parameter is `ScriptContext` or `PlutusData`; any
 receives the script context there, undecoded, so a last parameter typed `BigInteger`, `int`, a record or a subtype of
 `PlutusData` read the context as that type, and the method's JVM test did not test the script. A spending entry point that
 needs two values takes them as datum and redeemer: `validate(BigInteger datum, BigInteger redeemer, ScriptContext ctx)`. An
-entry point with a parameter count its purpose does not take is still `JULC0008`. The rule holds on both frontends under the
-default gate (`enforce`); `-Djulc.javacGate=report` or `off` turns it off on the JavaParser frontend, with the other gate rules,
-until that frontend is removed. Scripts that compile do not change.
+entry point with a parameter count its purpose does not take is still `JULC0008`. Scripts that compile do not change.
 
-On the experimental `frontend=JAVAC`, the subset's rejections carry codes, with the JavaParser frontend's words and position:
+The subset's rejections carry codes:
 `JULC0104`–`JULC0122` for `synchronized`, method references, calls through a functional local, `this` and `super`, array
 access, inheritance, unsupported statements, the loop and switch-arm rules and unsupported operators, and `JULC0001`,
 `JULC0002`, `JULC0004`, `JULC0006`, `JULC0011`, `JULC0014`, `JULC0020`, `JULC0024` and `JULC0077` for the rest. A source with
@@ -230,7 +229,7 @@ functions whose bodies it can read. Any other body, including a read of a `@Para
 A library reached through a provider import stays as it was: its method with no parameters runs once
 when the program starts. A conversion in a helper that may fail is no longer shared with its callers.
 
-Both changes apply on both frontends. A script that uses `length` on a string that is not a constant, or
+A script that uses `length` on a string that is not a constant, or
 has such a method, changes its bytes and its script hash.
 
 On the JVM, these now do what the script does: `lessThanByteString` and `lessThanEqualsByteString`
@@ -244,7 +243,7 @@ result changes.
 ## Upcoming preview: `mod`, `take` and `drop` fail where Java throws
 
 `a.mod(b)` with `b` below 1, and `take(n)` and `drop(n)` with `n` below 0, throw in Java. They now
-fail in the script too, on both frontends. Before this change `mod` took a negative modulus and
+fail in the script too. Before this change `mod` took a negative modulus and
 `take` and `drop` took a negative count.
 
 A literal constant that passes, such as `x.mod(BigInteger.TEN)` or `take(3)`, takes no check and
@@ -258,10 +257,9 @@ order of traces, which failure shows, and cost differ.
 
 ## Upcoming preview: a `+` of string constants warns (`JULC0102`)
 
-`"a" + "b"` of string constants now warns on both frontends: Java joins them when it compiles, and
+`"a" + "b"` of string constants now warns: Java joins them when it compiles, and
 JuLC keeps the `+` as written, so the script joins them when it runs. The warning rejects nothing,
-and script bytes do not change. Write one literal. On the JavaParser frontend the warning comes
-from the javac gate, so a compilation with the gate off does not report it.
+and script bytes do not change. Write one literal.
 
 ## Upcoming preview: a conditional lowers to `Case` on a proven boolean
 
@@ -310,10 +308,6 @@ JuLC's dialect beyond Java is no longer accepted. Write it as Java:
   or label is now reported as `JULC0085` with javac's key.
 - **REPL:** javac types each expression. An `int` or `long` result is returned as a
   `BigInteger`. Integer arithmetic is still JuLC's, which is unbounded on-chain.
-- **Opting out (experimental, temporary):** set `-Djulc.javacGate=off` (javac does not run)
-  or `report` (javac runs and rejects nothing), or call `CompilerOptions.setJavacGate(...)`.
-  With `report`, `-Djulc.javacGate.report=<dir>` records each source javac would reject. The
-  default is `enforce`.
 - **Subset rules, with their codes:** an entry point returns `boolean` (`JULC0094`). A field
   initializer that nothing lowers holds only a constant, and an initializer block is empty
   (`JULC0095`). A value reaches `boolean` or `Boolean` through a cast only from a boolean
@@ -322,13 +316,12 @@ JuLC's dialect beyond Java is no longer accepted. Write it as Java:
   a variable does not take the name of a type of the compilation, a top-level type of the unnamed
   package takes no name of the ledger, of another type or of a package of the compilation, no class
   or record is named `Value`, `new` has no class body, and `instanceof` tests a variant of its
-  operand's sealed interface (`JULC0100`). A sealed interface with no `permits` clause holds its
+  operand's sealed interface (`JULC0100`, retired at ADR-068 M6: javac binds each name to its declaration). A sealed interface with no `permits` clause holds its
   variants (`JULC0092`). A method does not take a name JuLC reads in place of its body, and a
   `@NewType` takes no instance call but its accessor and no field read (`JULC0101`).
-- **Two fixes in the JavaParser frontend.** `instanceof` on a qualified variant reads that variant,
+- **Two fixes.** `instanceof` on a qualified variant reads that variant,
   and a library's unsupported statement or unknown method is a compile error, as in a root. The same rule covers a record component: a `@NewType` of `byte[]` names its
   component `value`, so rename `record MyHash(byte[] hash)` to `record MyHash(byte[] value)`.
-  They run on javac's trees, so they follow the gate's mode, and `off` turns them off with it.
   See [Compiler Limitations](/getting-started/#16-compiler-limitations).
 - **Value operations are key-based.** `ValuesLib.lovelaceOf` and `Value.lovelaceOf()` look up the
   empty policy and token name, as `assetOf` does, and give 0 for a Value without them.

@@ -86,7 +86,7 @@ BuildCommandJavacGateTest.java	anEmptyConstructorBuilds	removed or renamed	See t
 LintEngineOnJavacTest.java	varargsLabelsAndNestedSwitchesMatchJavaParser	removed or renamed	See the file's row in m6-test-table.tsv
 LintEngineOnJavacTest.java	aRuleWithoutAJavacReadingIsReportedAsNotRunning	removed or renamed	See the file's row in m6-test-table.tsv
 Adr068DiscoveryCorpusTest.java	javacReadsTheLibraryReferencesJavaParserReads	removed or renamed	See the file's row in m6-test-table.tsv
-BinderNamespaceCheckTest.java	javaFrontendNamespace	removed or renamed	See the file's row in m6-test-table.tsv
+BinderNamespaceCheckTest.java	javaFrontendNamespace	moved	To BinderNamespaceTest.onlyDeclaredNamesCount, on javac's trees (review F4)
 ComparisonLoweringTest.java	staticLibraryDispatchIsUnchanged	removed or renamed	See the file's row in m6-test-table.tsv
 CompileResultProvenanceTest.java	reportModeRecordsARejectionItDidNotEnforce	removed or renamed	See the file's row in m6-test-table.tsv
 CompileResultProvenanceTest.java	aGateThatDidNotRunSaysSo	removed or renamed	See the file's row in m6-test-table.tsv
@@ -167,7 +167,7 @@ JavacGateReviewTest.java	theGateDecidesOnTheMergedPoolWhileReportModeCompilesB0s
 JavacGateReviewTest.java	enforceModeCompilesTheMergedPoolInBothFrontends	removed or renamed	See the file's row in m6-test-table.tsv
 JavacGateReviewTest.java	anExplicitReportOptionWinsOverAGlobalEnforceProperty	removed or renamed	See the file's row in m6-test-table.tsv
 JavacGateReviewTest.java	anUnrelatedCompilationsTagsNeverChangeAResult	removed or renamed	See the file's row in m6-test-table.tsv
-JavacGateReviewTest.java	metadataTaskIsCachedPerProcessAndLocksItself	removed or renamed	See the file's row in m6-test-table.tsv
+JavacGateReviewTest.java	metadataTaskIsCachedPerProcessAndLocksItself	moved	To JavacFrontendTest, on JavacLibraryTypes.metadata() (review F11)
 JavacGateReviewTest.java	aSurrogateTextAndItsStoredFormNeverShareAKey	removed or renamed	See the file's row in m6-test-table.tsv
 JavacSeamTest.java	noFrontendSourceNamesTheResolverOrJavaParser	removed or renamed	See the file's row in m6-test-table.tsv
 JavacTypesTest.java	registryEqualsTheJavaParserPath	removed or renamed	See the file's row in m6-test-table.tsv
@@ -190,7 +190,6 @@ SubsetRulesTest.java	aLibraryTakesNoSpelledName	removed or renamed	See the file'
 SubsetRulesTest.java	theRuleNamesTheComponent	removed or renamed	See the file's row in m6-test-table.tsv
 SubsetRulesTest.java	theMethodRuleNamesTheMethod	removed or renamed	See the file's row in m6-test-table.tsv
 SubsetRulesTest.java	theTypeRuleNamesTheType	removed or renamed	See the file's row in m6-test-table.tsv
-PairDestructuringPassTest.java	pairMatchBindersTypeAndSourcePositionsArePreserved	removed or renamed	See the file's row in m6-test-table.tsv
 PirTermTest.java	listMatchRetainsResultTypeWithUnreachableEmptyBranch	removed or renamed	See the file's row in m6-test-table.tsv
 FqcnResolutionTest.java	explicitImportResolvesCorrectly	removed or renamed	See the file's row in m6-test-table.tsv
 FqcnResolutionTest.java	samePackageResolvesFirst	removed or renamed	See the file's row in m6-test-table.tsv

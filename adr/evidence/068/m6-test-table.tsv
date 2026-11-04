@@ -187,3 +187,4 @@ renamed	julc-wasm/src/test/java/org/julclang/wasm/FullApiJavacGateTest.java	julc
 renamed	julc-wasm/src/test/java/org/julclang/wasm/JavacGateProbe.java	julc-wasm/src/test/java/org/julclang/wasm/JavacProbe.java	0	0	Name said gate; ported
 renamed	julc-wasm/src/test/java/org/julclang/wasm/JavacGateProbeTest.java	julc-wasm/src/test/java/org/julclang/wasm/JavacProbeTest.java	1	1	Name said gate; ported
 added	julc-difftest/src/test/java/org/julclang/difftest/CampaignVerifierPolicyTest.java		0	2	Only a decision of ADR-068 passes a campaign over a rejection
+added	julc-compiler/src/test/java/org/julclang/compiler/frontend/javac/BinderNamespaceTest.java		0	1	G2's namespace on javac's trees, both ways (review F4)

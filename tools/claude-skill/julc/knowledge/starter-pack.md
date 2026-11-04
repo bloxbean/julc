@@ -148,7 +148,7 @@ In on-chain code, **always** prefer high-level ledger type classes:
 | Sealed interface with `record` variants (`switch` on it) | `ConstrData` with manual constructor-index checks |
 | `BigInteger`, `byte[]`, `boolean`, `String` | `PlutusData.IntData(...)`, `PlutusData.BytesData(...)` for values you own |
 
-The compiler infrastructure (TypeRegistrar, sealed-interface dispatch, named-record method dispatch, `JulcList`/`JulcMap` builtins) exists *precisely so you don't touch `PlutusData` directly*.
+The compiler infrastructure (the type registrar, sealed-interface dispatch, named-record method dispatch, `JulcList`/`JulcMap` builtins) exists *precisely so you don't touch `PlutusData` directly*.
 
 ### 5.2 When raw `PlutusData` is acceptable
 
