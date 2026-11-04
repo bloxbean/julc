@@ -33,10 +33,12 @@ The JavaParser frontend stays selectable explicitly until ADR-068 M6 removes it,
 | Gradle plugin | `julc { frontend = 'javaparser' }` (it also passes `-Ajulc.frontend=javaparser` to the annotation processor) |
 | Annotation processor | `-Ajulc.frontend=javaparser` |
 | CLI | `julc build --frontend javaparser` |
-| Testkit | `JulcEval.forSource(src).frontend(CompilerFrontend.JAVAPARSER)`, `ValidatorTest.compile(src, CompilerFrontend.JAVAPARSER)` |
+| Testkit | `JulcEval.forSource(src).frontend(...)` and `JulcEval.forClass(cls, root).frontend(...)` with `CompilerFrontend.JAVAPARSER`; `ValidatorTest.compile(src, frontend)`, `compileValidator(cls, root, frontend)`, `compileValidatorByName(fqcn, root, frontend)`; `ContractTest.compileValidator(cls, root, frontend)`; `SourceDiscovery.compile(cls, root, options)`, `compile(fqcn, root, options)` and `compileMethod(cls, root, method, options)` with `CompilerOptions.setFrontend` |
 | Source-reading tools | `-Djulc.tools.reader=JAVAPARSER` |
 
-The other hosts (`julc check`, the REPL, the MCP tools, the playground, `julc-wasm`) have no option and use javac.
+The other hosts (`julc check`, the REPL, the MCP tools, the playground, `julc-wasm`) have no option and use javac, and so
+do the testkit entries that take no frontend or options: `ValidatorTest.compileValidator(cls)`, `compileValidatorByName(fqcn)`,
+`compileValidatorWithSourceMap`, `compile(src, libraries...)`, `MethodEvaluator` and `ContractTest`'s other helpers.
 Opting back is a stopgap: the JavaParser frontend keeps the divergences from Java that this release closes, and it is
 removed at M6. The javac gate (`-Djulc.javacGate=off|report|enforce`, `CompilerOptions.setJavacGate`) runs only in front
 of the JavaParser frontend; the javac frontend has no gate to turn off. `JULC0100`, and the `JULC0101` rules other than a
@@ -131,15 +133,16 @@ and gets a new hash. Use `Builtins.equalsByteString` to keep a deployed script's
 migrated that way, and every hash stayed the same.
 
 A ledger hash (`PubKeyHash`, `ScriptHash`, `TxId`, `PolicyId`, `TokenName`, ...) compares by value, so `a.equals(b)` between
-two hashes of one type stays. A `@NewType` byte wrapper is a record, whose `equals` compares its component by identity, so
-compare its component:
+two hashes of one type stays. A `@NewType` byte wrapper is a record, whose `equals` compares its component by identity;
+JuLC never accepted it under the default gate, so compare its component:
 
 ```java
 @NewType record OrderId(byte[] value) { }
 
-// Before
+// Rejected: JULC0087 on the javac frontend, and JULC0101 on the JavaParser frontend's gate
+// (it compiled there only with the gate off)
 boolean same = a.equals(b);                            // OrderId a, b
-// After
+// Write
 boolean same = Builtins.equalsByteString(a.value(), b.value());
 ```
 
@@ -158,15 +161,17 @@ replacements, and how to select the JavaParser frontend until M6.
   javac reads them; their types and named definitions are equal to the JavaParser frontend's (ADR-068 M2).
 - `CompilerFrontend.DEFAULT` names the default.
 - **JRL support has been removed.** The experimental JRL rule language, its transpiler, `julc build`'s compilation of
-  `.jrl` files and the JRL guide are gone; `julc build` no longer reads `.jrl` files. Write the contract in Java, as
+  `.jrl` files and the JRL guide are gone; `julc build` warns that it ignores any `.jrl` file it finds. Write the contract in Java, as
   the [first contract](/first-contract/) guide shows. JRL was never published, so no Maven artifact disappears. The
   playground reads only `JULC_PLAYGROUND_PORT`, `JULC_MAX_COMPILE_THREADS` and `JULC_COMPILE_TIMEOUT_SECONDS`; the older
   names starting with `JRL_` are no longer read.
 - The annotation processor and the Gradle plugin's `compileJulc` print each diagnostic with its code, position and fix
   (`CompilerException.describe()`); before, a rejection made of one diagnostic showed its words alone.
-- A sealed interface whose permitted class is a class or a `@NewType` record is `JULC0127` wherever it is read (a
-  parameter, a datum and its blueprint schema, a record component, a library's exports), not only at `new`, `instanceof`
-  and `case`: such a variant has no layout, and the compiler dropped its value.
+- A sealed interface whose permitted class is a class or a `@NewType` record is `JULC0127` wherever it is declared in
+  a unit the compilation reads, whether or not the program uses it: such a variant has no layout, and the compiler
+  dropped its value wherever the sum was read (a parameter, a datum and its blueprint schema, a record component, a
+  library's exports). Before, only a `new`, `instanceof` or `case` of the variant was rejected. The JavaParser
+  frontend still accepts these shapes, a reason not to opt back.
 
 ## Upcoming preview: an entry point takes the script context last
 

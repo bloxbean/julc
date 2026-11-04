@@ -973,7 +973,7 @@ A rule that depends on what javac resolved runs on javac's trees after `analyze(
 | `JULC0124` | A `byte`, `short`, `char`, `float` or `double` type, or a cast to one, but D6's narrowing of a literal (I2a) | `frontend=JAVAC` (r17); a Policy rejection where the reference accepted |
 | `JULC0125` | An expression the reference names unsupported, in its words (a `char` literal, a text block; I2a) | `frontend=JAVAC` (r17); a Policy rejection where the reference accepted |
 | `JULC0126` | An `instanceof` of a value whose type is not the variant's interface | `frontend=JAVAC` (r17); a Policy rejection where the reference accepted |
-| `JULC0127` | A variant that is not a plain record | `frontend=JAVAC` (r17); a Policy rejection where the reference accepted |
+| `JULC0127` | A variant that is not a plain record: at a `new`, an `instanceof` or a `case` of it, and (M5) at its declaration wherever its sealed interface is declared in a unit the compilation reads, used or not, since such a sum has no layout | `frontend=JAVAC` (r17); a Policy rejection where the reference accepted |
 | `JULC0128` | A value whose on-chain form is not the one the operation reads | `frontend=JAVAC` (r17); a Policy rejection where the reference accepted |
 | `JULC0129` | A `new` of a class that is not a record: "Cannot construct non-record type", the reference's words, which it gives uncoded (I2a) | `frontend=JAVAC` (r17) |
 | `JULC0012` | A type parameter no call specializes: the reference's "Unknown type", which it gives uncoded (I2a) | `frontend=JAVAC` (r17) |
@@ -1069,6 +1069,10 @@ A rule that depends on what javac resolved runs on javac's trees after `analyze(
 - **Whole units type-check:** a test source that used an undeclared helper, a missing import, or another invalid
   construct JuLC never looked at, is now a javac error.
 - **API:** I5; `CompilerOptions.frontend` is new, experimental, and removed in M6.
+- **JRL removed (M5, the maintainer's decision of 2026-11-04).** The JRL rule language (`julc-jrl`), `julc build`'s `.jrl`
+  compilation and the playground's JRL parts are deleted: its transpiler wrote `==` between references, which the javac
+  frontend rejects (`JULC0086`). `julc build` warns once and ignores `.jrl` files. JRL was never published
+  (`068-m5b.md`, section 9).
 - **Runtime:** compiling needs `jdk.compiler` from JDK 25 (D3); native and Web images embed it. The CLI grows by
   about 16 MB and the full Wasm image by about 2.6 MB brotli (spike), less JavaParser's share.
 
@@ -1636,6 +1640,9 @@ rest on the rule's own tests and on V146 showing it is the only byte change. Dev
     row class `DIFFERENT-pir-unaccepted`, which "Accepted by decision" (only `JAVAC` accepts) or "Policy rejection" (only
     `JAVAC` rejects) explains, never "Semantic fix" (the M5a re-confirmation's G1). Script size is part of the budgets of
     "Cost change" and "Representation only".
+  - JRL is removed (addendum, M5, the maintainer's decision of 2026-11-04; Compatibility).
+  - `JULC0127` at the declaration of a sum with a `@NewType` or class variant, wherever it is declared in a unit the
+    compilation reads (addendum, M5, the maintainer's delegated decision on the review's F4; D15).
   - D6's remedy for `JULC0086` and `JULC0087` on bytes (clarification, M5): `Builtins.equalsByteString(a, b)`, which keeps
     a script's bytes where it replaces `a.equals(b)`; `ByteStringLib.equals(a, b)` is equivalent but let-bound, a few
     bytes larger (`068-m5b.md`).
