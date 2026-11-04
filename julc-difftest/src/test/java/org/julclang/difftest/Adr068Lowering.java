@@ -398,6 +398,55 @@ final class Adr068Lowering {
                 atDefault.result() == null ? "-" : digest(atDefault.result().params().toString()), located, digests);
     }
 
+    /**
+     * ADR-068 M6: what the javac frontend gives for one case, on its own, as a line of {@code lowering-javac.tsv}: every level
+     * with and without a map, the diagnostics and {@code @Param} infos at the default level, the located terms at every level
+     * with their fragments, and each method's binder, type and canonical term. Whatever {@link #classify} read of the javac
+     * side is here, so that with the reference frozen an equal line is an equal row of {@code lowering-i1.tsv}.
+     */
+    String observation(Adr068Corpus.Case c) {
+        if (c.entry.equals("ledger-source")) return c.key + "\tledger-source";
+        String unreplayable = Adr068Ledger.unreplayableReason(c);
+        if (unreplayable != null) return c.key + "\tunreplayable\t" + unreplayable.replace(' ', '-');
+        var cells = new ArrayList<String>();
+        for (boolean sourceMap : sourceMapSettings(c)) {
+            for (var level : Adr068Ledger.LEVELS) {
+                cells.add(onJavac(c, options(c, level, sourceMap, CompilerFrontend.JAVAC)).outcome().cell());
+            }
+        }
+        var atDefault = onJavac(c, options(c, OptimizationLevel.DEFAULT, c.sourceMap, CompilerFrontend.JAVAC));
+        var located = new ArrayList<String>();
+        if (Adr068Ledger.isProgramEntry(c.entry)) {
+            for (var level : Adr068Ledger.LEVELS) {
+                var mapped = onJavac(c, options(c, level, true, CompilerFrontend.JAVAC));
+                located.add(mapped.accepted() ? locations(mapped.result()) : "-");
+            }
+        }
+        var methods = new ArrayList<String>();
+        if (Adr068Ledger.isProgramEntry(c.entry) && c.main != null) {
+            try {
+                for (var attempt : javac.attempts(c, options(c, OptimizationLevel.DEFAULT, c.sourceMap, CompilerFrontend.JAVAC))) {
+                    methods.add(attempt.term() == null ? "stop:" + attempt.construct()
+                            : digest(attempt.binder() + "\n" + attempt.type() + "\n" + PirCanonical.of(attempt.term())));
+                }
+            } catch (CompilerException e) {
+                methods.add("rejected");   // Rejected before its methods: the cells say how.
+            }
+        }
+        return c.key + "\tcompiled\t" + String.join("\t", cells) + "\t" + atDefault.outcome().diagnosticsCell() + "\t"
+                + (atDefault.result() == null ? "-" : digest(atDefault.result().params().toString())) + "\t"
+                + (located.isEmpty() ? "-" : String.join(",", located)) + "\t" + (methods.isEmpty() ? "-" : String.join(",", methods));
+    }
+
+    /** The located terms, by index, with their file names, lines, columns and fragments. */
+    private static String locations(CompileResult result) {
+        var text = new StringBuilder();
+        located(result).forEach((index, location) -> text.append(index).append('\t').append(fileName(location.fileName()))
+                .append('\t').append(location.line()).append('\t').append(location.column()).append('\t')
+                .append(location.fragment()).append('\n'));
+        return digest(text.toString());
+    }
+
     /** The source map's located terms, by index, without the text javac and the reference spell differently. */
     private static String positions(CompileResult result) {
         var text = new StringBuilder();

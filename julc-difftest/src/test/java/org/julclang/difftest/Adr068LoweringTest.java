@@ -61,6 +61,7 @@ class Adr068LoweringTest {
         var rows = new ConcurrentHashMap<String, Adr068Lowering.Row>();
         var references = new ConcurrentHashMap<String, String>();
         var parts = new ConcurrentHashMap<String, Integer>();
+        var observations = new ConcurrentHashMap<String, String>();
         int threads = Integer.parseInt(System.getProperty("adr068.threads",
                 String.valueOf(Math.max(1, Runtime.getRuntime().availableProcessors() - 2))));
         var pool = new ForkJoinPool(threads);
@@ -70,6 +71,7 @@ class Adr068LoweringTest {
                 var row = classified.row();
                 rows.put(c.key, row);
                 references.put(c.key, classified.reference().line());
+                observations.put(c.key, tool.observation(c));
                 for (String part : c.parts()) parts.merge(part + "\t" + row.kind(), 1, Integer::sum);
             })).get();
         } finally {
@@ -92,6 +94,7 @@ class Adr068LoweringTest {
         Files.write(written, lines.values());
         Files.write(writtenTotals, summary);
         Files.write(writtenReference, referenceLines);
+        Files.write(OUT.resolve("lowering-javac.tsv"), new TreeMap<>(observations).values());
         summary.stream().filter(line -> !line.startsWith("part")).forEach(System.out::println);
 
         var frozen = frozen();

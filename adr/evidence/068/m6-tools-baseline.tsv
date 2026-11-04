@@ -1,0 +1,10 @@
+# ADR-068 M6: the javac readings of the four tool gates at 41bee0eb, the post-deletion gates' baseline. The outputs are under <M0>/work/m6/baseline-tools.
+# The corpus is <M0>/work/m6/tools-corpus: 23,486 .java files, sources (union of julc-corpus and m5-corpus-head-3), ext-examples, repo (git archive 41bee0eb); sha256 over its sorted file digests 71e7b290f6693ad23807798b58b4371be9f1082e7f6ea3c339c0fd3b086b3867.
+annotations-outputs.tsv	23484	deb56b6593ff04ee0fc9d4a19dae4c90b28fb97a13e2c36a76e8b6455a72b9fe
+cli-outputs.tsv	137671	bbf55c011a6ca8a2b27166e280574a30f20a2c2d5bd2cf30d4f2409c1bba6181
+discovery-outputs.tsv	46968	d69d6eed72c8ae93f159e888f2d9f6b556c70fe7856bf2be3353ae890b363494
+metadata-outputs.tsv	23484	85d26286f3ca73e8b2b823268cf5cad0dd412895980c47c803cbc42a8f477601
+annotations-summary.tsv	7	fb5cfa573978e1c80dfc18d57d39363d2a618e671823b2fe31f042c75906400f
+discovery-summary.tsv	7	52b5d0c924dcaf1e731bdb100bbb2c98325ca832c49678e71716b0882a7fffd0
+metadata-summary.tsv	17	2972edfb4db337ea42573e239aa541a5481bfbeba22cc978595e8f4fcd5b6ce3
+summary.tsv	34	7e6f2c1131177de75ac54084679f2f8b700339602fc74aa4a4530eab7814d5a0

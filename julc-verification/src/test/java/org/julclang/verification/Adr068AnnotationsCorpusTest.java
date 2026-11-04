@@ -59,6 +59,7 @@ class Adr068AnnotationsCorpusTest {
         }
         var counts = new TreeMap<String, Integer>();
         var differences = new ArrayList<String>();
+        var outputs = new ArrayList<String>();
         for (Path file : files) {
             String text;
             try {
@@ -69,6 +70,7 @@ class Adr068AnnotationsCorpusTest {
             count(counts, "files");
             String expected = read(text, SourceReader.JAVAPARSER);
             String actual = read(text, SourceReader.JAVAC);
+            outputs.add(output("annotations", sources, file, actual));
             String kind;
             if (expected.equals(actual)) {
                 kind = "annotations:same";
@@ -92,10 +94,20 @@ class Adr068AnnotationsCorpusTest {
         counts.forEach((k, v) -> summary.add(k + "\t" + v));
         Files.write(out.resolve("annotations-summary.tsv"), summary);
         Files.write(out.resolve("annotations-differences.tsv"), differences);
+        Files.write(out.resolve("annotations-outputs.tsv"), outputs);
         var unexplained = counts.keySet().stream()
                 .filter(k -> k.startsWith("annotations:") && !k.equals("annotations:same") && !ALLOWED.containsKey(k))
                 .toList();
         assertEquals(List.of(), unexplained, () -> String.join("\n", differences.stream().limit(30).toList()));
+    }
+
+    /** What this reading gives for a corpus file, one line: ADR-068 M6's frozen baseline. */
+    private static String output(String tool, String sources, Path file, Object value) {
+        String key = file.toString();
+        for (String dir : sources.split(File.pathSeparator)) {
+            if (file.startsWith(dir)) key = Path.of(dir).getFileName() + "/" + Path.of(dir).relativize(file);
+        }
+        return tool + "\t" + key + "\t" + String.valueOf(value).replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
     }
 
     private static String read(String text, SourceReader reader) {

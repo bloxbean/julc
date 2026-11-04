@@ -66,6 +66,7 @@ class Adr068MetadataCorpusTest {
         }
         var counts = new TreeMap<String, Integer>();
         var differences = new ArrayList<String>();
+        var outputs = new ArrayList<String>();
         for (Path file : files) {
             String text;
             try {
@@ -76,6 +77,7 @@ class Adr068MetadataCorpusTest {
             count(counts, "files");
             var expected = JavaMetadataExtractor.extract(text, SourceReader.JAVAPARSER, COMPILER, List.of());
             var actual = JavaMetadataExtractor.extract(text, SourceReader.JAVAC, COMPILER, List.of());
+            outputs.add(output("metadata", sources, file, actual));
             if (expected.contractName() != null) count(counts, "validators");
             var javaParserSubset = javaParserSubset(text);
             if (!javaParserSubset.isEmpty()) count(counts, "javaparser-subset-diagnostics-files");
@@ -108,11 +110,21 @@ class Adr068MetadataCorpusTest {
         counts.forEach((k, v) -> summary.add(k + "\t" + v));
         Files.write(out.resolve("metadata-summary.tsv"), summary);
         Files.write(out.resolve("metadata-differences.tsv"), differences);
+        Files.write(out.resolve("metadata-outputs.tsv"), outputs);
         var unexplained = counts.keySet().stream()
                 .filter(k -> k.startsWith("metadata:") || k.startsWith("subset:"))
                 .filter(k -> !k.equals("metadata:same") && !ALLOWED.containsKey(k))
                 .toList();
         assertEquals(List.of(), unexplained, () -> String.join("\n", differences.stream().limit(30).toList()));
+    }
+
+    /** What this reading gives for a corpus file, one line: ADR-068 M6's frozen baseline. */
+    private static String output(String tool, String sources, Path file, Object value) {
+        String key = file.toString();
+        for (String dir : sources.split(File.pathSeparator)) {
+            if (file.startsWith(dir)) key = Path.of(dir).getFileName() + "/" + Path.of(dir).relativize(file);
+        }
+        return tool + "\t" + key + "\t" + String.valueOf(value).replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
     }
 
     /** The JavaParser frontend's validator's diagnostics, which its reading puts first. */

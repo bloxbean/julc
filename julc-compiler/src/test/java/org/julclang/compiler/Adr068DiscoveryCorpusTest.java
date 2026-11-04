@@ -55,6 +55,7 @@ class Adr068DiscoveryCorpusTest {
         }
         var counts = new TreeMap<String, Integer>();
         var differences = new ArrayList<String>();
+        var outputs = new ArrayList<String>();
         for (Path file : files) {
             String text;
             try {
@@ -69,6 +70,7 @@ class Adr068DiscoveryCorpusTest {
 
             String context = LibrarySourceResolver.describeSourceContext(text, SourceReader.JAVAPARSER);
             String contextOnJavac = LibrarySourceResolver.describeSourceContext(text, SourceReader.JAVAC);
+            outputs.add(output("context", sources, file, contextOnJavac));
             if (context.contains("ClassReference[")) count(counts, "files-with-references");
             if (!context.equals(contextOnJavac) && other.equals(":DIFFERENT")
                     && onlyCommentedQualifiersAdded(text, context, contextOnJavac)) {
@@ -80,16 +82,27 @@ class Adr068DiscoveryCorpusTest {
 
             String top = String.valueOf(LibrarySourceResolver.extractTopLevelTypeName(text, SourceReader.JAVAPARSER));
             String topOnJavac = String.valueOf(LibrarySourceResolver.extractTopLevelTypeName(text, SourceReader.JAVAC));
+            outputs.add(output("top-level", sources, file, topOnJavac));
             compare(counts, differences, file, "top-level", top, topOnJavac, other);
         }
         var summary = new ArrayList<String>();
         counts.forEach((k, v) -> summary.add(k + "\t" + v));
         Files.write(out.resolve("discovery-summary.tsv"), summary);
         Files.write(out.resolve("discovery-differences.tsv"), differences);
+        Files.write(out.resolve("discovery-outputs.tsv"), outputs);
         var unexplained = counts.keySet().stream()
                 .filter(k -> k.contains(":") && !k.endsWith(":same") && !ALLOWED.containsKey(k))
                 .toList();
         assertEquals(List.of(), unexplained, () -> String.join("\n", differences.stream().limit(30).toList()));
+    }
+
+    /** What this reading gives for a corpus file, one line: ADR-068 M6's frozen baseline. */
+    private static String output(String tool, String sources, Path file, Object value) {
+        String key = file.toString();
+        for (String dir : sources.split(File.pathSeparator)) {
+            if (file.startsWith(dir)) key = Path.of(dir).getFileName() + "/" + Path.of(dir).relativize(file);
+        }
+        return tool + "\t" + key + "\t" + String.valueOf(value).replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
     }
 
     /**

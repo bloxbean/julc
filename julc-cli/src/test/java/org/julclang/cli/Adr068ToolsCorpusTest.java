@@ -45,26 +45,28 @@ class Adr068ToolsCorpusTest {
             + " problem";
 
     /** The differences a reason accounts for, by class (the evidence names each file). */
-    private static final Map<String, String> ALLOWED = Map.of(
-            "lint:javac-rejects",
-            "javac's parser rejects the source, so it has no findings; JavaParser lints the tree it recovered",
-            "arity:javac-rejects",
-            "javac's parser rejects the source, so the arity is unknown (-1) and the compiler reports the error",
-            "lint:reader-rejects", READER_REJECTS,
-            "arity:reader-rejects", READER_REJECTS,
-            "introspection:reader-rejects", READER_REJECTS,
-            "introspection:javac-rejects", "javac's parser rejects a source JavaParser's reading accepted (a lexical"
-                    + " error, such as an int literal out of range): the compiler rejects it too (D5)",
-            "introspection:javac-reads-later-java", "both reject, and javac's errors are only of language level (Java 22+"
+    private static final Map<String, String> ALLOWED = Map.ofEntries(
+            Map.entry("lint:javaparser-crashes", "a rule's JavaParser reading throws an AssertionError from JavaParser's own"
+                    + " API on a declarator with its own array brackets; javac's reading has an answer"),
+            Map.entry("lint:javac-rejects",
+            "javac's parser rejects the source, so it has no findings; JavaParser lints the tree it recovered"),
+            Map.entry("arity:javac-rejects",
+            "javac's parser rejects the source, so the arity is unknown (-1) and the compiler reports the error"),
+            Map.entry("lint:reader-rejects", READER_REJECTS),
+            Map.entry("arity:reader-rejects", READER_REJECTS),
+            Map.entry("introspection:reader-rejects", READER_REJECTS),
+            Map.entry("introspection:javac-rejects", "javac's parser rejects a source JavaParser's reading accepted (a lexical"
+                    + " error, such as an int literal out of range): the compiler rejects it too (D5)"),
+            Map.entry("introspection:javac-reads-later-java", "both reject, and javac's errors are only of language level (Java 22+"
                     + " syntax JavaParser 3.26 cannot read): javac's tree is whole and shows no JuLC role, so the source"
-                    + " is skipped where JavaParser's reading failed",
-            "introspection:javac-fails-closed", "both reject; JavaParser's lenient reading found no role, javac's error is"
+                    + " is skipped where JavaParser's reading failed"),
+            Map.entry("introspection:javac-fails-closed", "both reject; JavaParser's lenient reading found no role, javac's error is"
                     + " lexical (an illegal escape), so the role cannot be read and the scan reports the error, as javac"
-                    + " compiling the project would",
-            "discovery:javac-reads-later-java", "javac's discovery skips a source of later Java that declares no Test"
-                    + " method, as JavaParser's lenient reading did",
-            "discovery:reader-rejects", READER_REJECTS
-                    + " (a literal with an unpaired surrogate: the test is found and its compilation reports JULC0093)");
+                    + " compiling the project would"),
+            Map.entry("discovery:javac-reads-later-java", "javac's discovery skips a source of later Java that declares no Test"
+                    + " method, as JavaParser's lenient reading did"),
+            Map.entry("discovery:reader-rejects", READER_REJECTS
+                    + " (a literal with an unpaired surrogate: the test is found and its compilation reports JULC0093)"));
 
     private final LintEngine lintJavaParser = new LintEngine(LintEngine.DEFAULT_RULES, SourceReader.JAVAPARSER);
     private final LintEngine lintJavac = new LintEngine(LintEngine.DEFAULT_RULES, SourceReader.JAVAC);
@@ -85,6 +87,7 @@ class Adr068ToolsCorpusTest {
 
         var counts = new TreeMap<String, Integer>();
         var differences = new ArrayList<String>();
+        var outputs = new ArrayList<String>();
         for (Path file : files) {
             String text;
             try {
@@ -102,8 +105,16 @@ class Adr068ToolsCorpusTest {
             String other = syntax.hasErrors() ? ":javac-rejects" : readerRejects ? ":reader-rejects" : ":DIFFERENT";
 
             // Lint
-            var expected = lintJavaParser.lint(text);
             var actual = lintJavac.lint(text);
+            outputs.add(output("lint", sources, file, actual));
+            List<LintFinding> expected;
+            try {
+                expected = lintJavaParser.lint(text);
+            } catch (AssertionError e) {
+                // JavaParser's getCommonType asserts on `byte a = 1, b[] = ...`: its reading has no output to compare.
+                record(counts, differences, file, "lint:javaparser-crashes", e.getMessage(), actual);
+                expected = actual;
+            }
             for (LintFinding f : expected) count(counts, "lint-findings:" + f.ruleId());
             if (expected.equals(actual)) {
                 count(counts, "lint:same");
@@ -120,6 +131,7 @@ class Adr068ToolsCorpusTest {
             // julc check's discovery
             String found = discovery(file, text, SourceReader.JAVAPARSER);
             String foundOnJavac = discovery(file, text, SourceReader.JAVAC);
+            outputs.add(output("discovery", sources, file, foundOnJavac));
             if (found.equals(foundOnJavac)) {
                 count(counts, found.equals("[]") ? "discovery:same-none" : "discovery:same");
             } else {
@@ -132,6 +144,7 @@ class Adr068ToolsCorpusTest {
             // The project scan's introspection (ProjectScanner, the gradle plugin, the testkit)
             String inspected = introspection(text, SourceReader.JAVAPARSER);
             String inspectedOnJavac = introspection(text, SourceReader.JAVAC);
+            outputs.add(output("introspection", sources, file, inspectedOnJavac));
             if (inspected.equals(inspectedOnJavac)) {
                 count(counts, "introspection:same");
             } else if (inspected.equals("ERROR noRole=false") && inspectedOnJavac.equals("ERROR noRole=true")) {
@@ -152,6 +165,7 @@ class Adr068ToolsCorpusTest {
             for (String name : names) {
                 int arity = EvaluateToolAccess.arity(text, name, SourceReader.JAVAPARSER);
                 int arityOnJavac = EvaluateToolAccess.arity(text, name, SourceReader.JAVAC);
+                outputs.add(output("arity", sources, file, name + "=" + arityOnJavac));
                 if (arity == arityOnJavac) {
                     count(counts, "arity:same");
                 } else {
@@ -164,6 +178,7 @@ class Adr068ToolsCorpusTest {
         counts.forEach((k, v) -> summary.add(k + "\t" + v));
         Files.write(out.resolve("summary.tsv"), summary);
         Files.write(out.resolve("differences.tsv"), differences);
+        Files.write(out.resolve("cli-outputs.tsv"), outputs);
 
         var unexplained = counts.keySet().stream()
                 .filter(k -> k.startsWith("lint:") || k.startsWith("discovery:") || k.startsWith("arity:")
@@ -171,6 +186,15 @@ class Adr068ToolsCorpusTest {
                 .filter(k -> !k.endsWith(":same") && !k.endsWith(":same-none") && !ALLOWED.containsKey(k))
                 .toList();
         assertEquals(List.of(), unexplained, () -> String.join("\n", differences.stream().limit(40).toList()));
+    }
+
+    /** What this reading gives for a corpus file, one line: ADR-068 M6's frozen baseline. */
+    private static String output(String tool, String sources, Path file, Object value) {
+        String key = file.toString();
+        for (String dir : sources.split(File.pathSeparator)) {
+            if (file.startsWith(dir)) key = Path.of(dir).getFileName() + "/" + Path.of(dir).relativize(file);
+        }
+        return tool + "\t" + key + "\t" + String.valueOf(value).replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
     }
 
     /** The source's {@code SourceInfo}, or its parse failure and whether the source then declares no JuLC role. */
