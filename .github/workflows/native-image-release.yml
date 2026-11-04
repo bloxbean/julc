@@ -501,7 +501,7 @@ jobs:
         mkdir -p Formula
         cat > Formula/julc-playground.rb << FORMULA
         class JulcPlayground < Formula
-          desc "JuLC Playground - Web-based JRL editor and compiler"
+          desc "JuLC Playground - Web-based JuLC editor and compiler"
           homepage "https://github.com/bloxbean/julc"
           version "${VERSION}"
           license "MIT"
@@ -531,7 +531,7 @@ jobs:
             # Start server in background, check health endpoint, then stop
             port = free_port
             pid = fork do
-              ENV["JRL_PLAYGROUND_PORT"] = port.to_s
+              ENV["JULC_PLAYGROUND_PORT"] = port.to_s
               exec bin/"julc-playground"
             end
             sleep 3
