@@ -122,6 +122,16 @@ class JulcPluginFrontendTest {
         assertTrue(byDefault.getOutput().contains("JULC0124"), byDefault.getOutput());
     }
 
+    /** ADR-068 M5: a rejection of javac's frontend shows its code and fix, here {@code byte[].equals}'s remedy. */
+    @Test
+    void aRejectionShowsItsCodeAndFix() throws IOException {
+        write("byte[] a = new byte[]{1}; return a.equals(new byte[]{1});");
+        configure(null);
+        var output = runner().buildAndFail().getOutput();
+        assertTrue(output.contains("JULC0087") && output.contains("Builtins.equalsByteString(a, b)")
+                && output.contains("--frontend javaparser"), output);
+    }
+
     /** Validators under src/main/java go through the processor, which must compile on the frontend the project chose. */
     @Test
     void theProcessorIsToldTheFrontend() throws IOException {

@@ -27,9 +27,13 @@ class JulcPluginJavacGateTest {
     @BeforeEach
     void setUp() throws IOException {
         Files.writeString(project.resolve("settings.gradle"), "rootProject.name = 'gate-project'\n");
+        // The gate runs before the JavaParser frontend, which is selected explicitly from ADR-068 M5.
         Files.writeString(project.resolve("build.gradle"), """
                 plugins {
                     id 'org.julclang.julc'
+                }
+                julc {
+                    frontend = 'javaparser'
                 }
                 """);
         sources = project.resolve("src/main/plutus/com/example");

@@ -91,6 +91,15 @@ class JulcAnnotationProcessorFrontendTest {
         }
     }
 
+    /** ADR-068 M5: a rejection of javac's frontend shows its code and fix, here {@code byte[].equals}'s remedy. */
+    @Test
+    void aRejectionShowsItsCodeAndFix(@TempDir Path out) throws Exception {
+        String source = validator("byte[] a = new byte[]{1}; return a.equals(new byte[]{1});");
+        var errors = errors(process(out, source));
+        assertTrue(errors.stream().anyMatch(message -> message.contains("JULC0087")
+                && message.contains("Builtins.equalsByteString(a, b)") && message.contains("--frontend javaparser")), errors::toString);
+    }
+
     /** A cast to {@code short} has no representation on {@code JAVAC}: {@code JULC0124} (until ADR-068 M5 a stop, {@code JULC0084}). */
     @Test
     void theOptionReachesTheCompilation(@TempDir Path out) throws Exception {

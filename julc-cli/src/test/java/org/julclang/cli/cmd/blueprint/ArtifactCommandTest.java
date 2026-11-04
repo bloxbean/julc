@@ -107,7 +107,7 @@ class ArtifactCommandTest {
                     record Redeemer(BigInteger value) {}
                     @Entrypoint
                     static boolean validate(Datum datum, Redeemer redeemer, ScriptContext ctx) {
-                        return datum.value() == redeemer.value();
+                        return datum.value().equals(redeemer.value());
                     }
                 }
                 """;

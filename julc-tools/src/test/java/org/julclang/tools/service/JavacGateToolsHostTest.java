@@ -120,10 +120,12 @@ class JavacGateToolsHostTest {
     void theToolsMeetTheCastAndNameRules() {
         System.clearProperty(JavacGate.MODE_PROPERTY);
         var tools = new ToolsService(ToolsService.compilerFor(classpath), classpath, JulcVm::create);
+        // These hosts compile on javac, the default from ADR-068 M5, and have no frontend option: the gate's name rules
+        // (JULC0100, the gate-only JULC0101) are the JavaParser frontend's (D15). javac binds a record named Boolean to
+        // the record, and a record's static method is ADR-067 D9's JULC0080.
         for (String[] rule : List.of(
                 new String[]{"JULC0098", VALIDATOR.replace("Rates.rate().add(Fees.fee()).signum() > 0", "PlutusData.cast(ctx.txInfo().fee(), Boolean.class)")},
-                new String[]{"JULC0100", VALIDATOR.replace("    @Entrypoint", "    record Boolean(BigInteger a) { }\n    @Entrypoint")},
-                new String[]{"JULC0101", VALIDATOR.replace("    @Entrypoint", "    record R(long a) { static boolean fromPlutusData(long x) { return false; } }\n    @Entrypoint")})) {
+                new String[]{"JULC0080", VALIDATOR.replace("    @Entrypoint", "    record R(long a) { static boolean fromPlutusData(long x) { return false; } }\n    @Entrypoint")})) {
             var compiled = tools.compile(new CompileRequest(rule[1], "java", EDITOR_LIBRARY)).body();
             assertTrue(String.valueOf(compiled).contains(rule[0]), String.valueOf(compiled));
             var opened = new SourceDebugService(classpath).open(new OpenRequest(rule[1], EDITOR_LIBRARY, List.of(),

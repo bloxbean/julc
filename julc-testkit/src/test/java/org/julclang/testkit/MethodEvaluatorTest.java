@@ -109,7 +109,7 @@ class MethodEvaluatorTest {
                     }
 
                     static boolean isEqual(BigInteger x, BigInteger y) {
-                        return x == y;
+                        return x.equals(y);
                     }
 
                     static boolean not(boolean b) {

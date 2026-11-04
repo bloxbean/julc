@@ -1,6 +1,7 @@
 package org.julclang.testkit;
 
 import org.julclang.compiler.CompilerException;
+import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.frontend.javac.JavacGate;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -117,9 +118,18 @@ class JavacGateSourceDiscoveryTest {
                 new String[]{"JULC0098", CAST.replace("(boolean) (Object) redeemer", "org.julclang.core.PlutusData.cast(redeemer, Boolean.class)")},
                 new String[]{"JULC0100", CAST.replace("    @Entrypoint", "    record Boolean(BigInteger a) { }\n    @Entrypoint").replace("(boolean) (Object) redeemer", "true")},
                 new String[]{"JULC0101", CAST.replace("    @Entrypoint", "    record R(long a) { static boolean fromPlutusData(long x) { return false; } }\n    @Entrypoint").replace("(boolean) (Object) redeemer", "true")})) {
-            var e = assertThrows(CompilerException.class, () -> ValidatorTest.compile(rule[1]));
+            // The gate's rules (JULC0100, the gate-only JULC0101) are the JavaParser frontend's, selected explicitly from
+            // ADR-068 M5; javac binds names by element, so on the default only the cast rule and ADR-067 D9 apply.
+            var e = assertThrows(CompilerException.class, () -> ValidatorTest.compile(rule[1], CompilerFrontend.JAVAPARSER));
             assertEquals(rule[0], e.diagnostics().getFirst().code(), e.diagnostics().toString());
         }
+        var cast = assertThrows(CompilerException.class, () -> ValidatorTest.compile(
+                CAST.replace("(boolean) (Object) redeemer", "org.julclang.core.PlutusData.cast(redeemer, Boolean.class)")));
+        assertEquals("JULC0098", cast.diagnostics().getFirst().code(), cast.diagnostics().toString());
+        var member = assertThrows(CompilerException.class, () -> ValidatorTest.compile(CAST.replace("    @Entrypoint",
+                "    record R(long a) { static boolean fromPlutusData(long x) { return false; } }\n    @Entrypoint")
+                .replace("(boolean) (Object) redeemer", "true")));
+        assertEquals("JULC0080", member.diagnostics().getFirst().code(), member.diagnostics().toString());
     }
 
     @Test

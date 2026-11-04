@@ -20,7 +20,8 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * ADR-068 D8, M1: the CLI's host adapter. {@code julc build} keeps its pool (the class loader's bundled sources and
- * the project's library sources); with {@code julc.javacGate=enforce} a javac error fails the build.
+ * the project's library sources); with {@code julc.javacGate=enforce} a javac error fails the build. The gate runs before
+ * the JavaParser frontend, selected explicitly ({@code --frontend javaparser}) from ADR-068 M5.
  */
 class BuildCommandJavacGateTest {
 
@@ -75,7 +76,7 @@ class BuildCommandJavacGateTest {
     @Test
     void javaProjectWithALibraryAndTheStdlibBuilds(@TempDir Path dir) throws Exception {
         Path project = project(dir, "MathLib.max(ctx.txInfo().fee(), Fees.minimum()).signum() > 0");
-        assertEquals(0, new CommandLine(new BuildCommand()).execute(project.toString()));
+        assertEquals(0, new CommandLine(new BuildCommand()).execute(project.toString(), "--frontend", "javaparser"));
         assertTrue(Files.isRegularFile(ProjectLayout.plutusDir(project).resolve("plutus.json")));
     }
 
@@ -111,7 +112,7 @@ class BuildCommandJavacGateTest {
     void anEmptyConstructorBuilds(@TempDir Path dir) throws Exception {
         System.clearProperty(JavacGate.MODE_PROPERTY);
         Path project = withMember(project(dir, "true"), "record R(java.math.BigInteger a) { R { } }");
-        assertEquals(0, new CommandLine(new BuildCommand()).execute(project.toString()));
+        assertEquals(0, new CommandLine(new BuildCommand()).execute(project.toString(), "--frontend", "javaparser"));
     }
 
     private static Path withMember(Path project, String member) throws Exception {
@@ -125,7 +126,7 @@ class BuildCommandJavacGateTest {
         var written = new ByteArrayOutputStream();
         System.setErr(new PrintStream(written, true));
         try {
-            assertEquals(1, new CommandLine(new BuildCommand()).execute(project.toString()));
+            assertEquals(1, new CommandLine(new BuildCommand()).execute(project.toString(), "--frontend", "javaparser"));
         } finally {
             System.setErr(err);
         }
@@ -135,6 +136,6 @@ class BuildCommandJavacGateTest {
     @Test
     void javacErrorFailsTheBuild(@TempDir Path dir) throws Exception {
         Path project = project(dir, "ctx.txInfo().fee() > Fees.minimum()");
-        assertEquals(1, new CommandLine(new BuildCommand()).execute(project.toString()));
+        assertEquals(1, new CommandLine(new BuildCommand()).execute(project.toString(), "--frontend", "javaparser"));
     }
 }

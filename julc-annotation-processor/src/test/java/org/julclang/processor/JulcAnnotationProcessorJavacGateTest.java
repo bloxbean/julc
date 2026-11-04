@@ -87,8 +87,9 @@ class JulcAnnotationProcessorJavacGateTest {
                     return e.getValue();
                 }
             }).toList();
+            // The gate runs before the JavaParser frontend, which is selected explicitly from ADR-068 M5.
             javac.getTask(null, fileManager, diagnostics, List.of("-proc:only", "-processor",
-                    JulcAnnotationProcessor.class.getName()), null, files).call();
+                    JulcAnnotationProcessor.class.getName(), "-Ajulc.frontend=javaparser"), null, files).call();
         }
         return diagnostics.getDiagnostics();
     }

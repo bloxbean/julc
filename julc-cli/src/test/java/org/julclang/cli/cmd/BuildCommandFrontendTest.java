@@ -115,8 +115,9 @@ class BuildCommandFrontendTest {
     @Test
     void aBlueprintBuildsOnTheDefault(@TempDir Path dir) throws Exception {
         String body = "return ctx.txInfo().fee().compareTo(BigInteger.TWO) > 0;";
-        Path reference = project(dir, "reference", body);
-        Path javac = project(dir, "javac", body);
+        // One project name, so the blueprints' titles agree.
+        Path reference = project(dir.resolve("reference"), "blueprint", body);
+        Path javac = project(dir.resolve("javac"), "blueprint", body);
         assertEquals(0, new CommandLine(new BuildCommand()).execute(reference.toString(), "--frontend", "javaparser"));
         assertEquals(0, new CommandLine(new BuildCommand()).execute(javac.toString()));
         var artifacts = artifacts(javac);

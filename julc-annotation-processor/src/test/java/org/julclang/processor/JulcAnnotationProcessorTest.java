@@ -36,7 +36,7 @@ class JulcAnnotationProcessorTest {
                 class SimpleValidator {
                     @Entrypoint
                     static boolean validate(BigInteger datum, BigInteger redeemer, PlutusData ctx) {
-                        return datum == redeemer;
+                        return datum.equals(redeemer);
                     }
                 }
                 """;
@@ -216,7 +216,7 @@ class JulcAnnotationProcessorTest {
                 class BpValidator {
                     @Entrypoint
                     static boolean validate(BigInteger datum, BigInteger redeemer, PlutusData ctx) {
-                        return datum == redeemer;
+                        return datum.equals(redeemer);
                     }
                 }
                 """;
