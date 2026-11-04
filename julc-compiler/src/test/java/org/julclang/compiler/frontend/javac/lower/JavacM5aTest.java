@@ -218,4 +218,15 @@ class JavacM5aTest {
         assertEquals("JULC0124", rejected("static long m(long a) { long q = (char) (a + 1); return q; }").code());
         compiler(CompilerFrontend.JAVAC).compileMethod(source("static long m(long a) { long q = (char) 97; return q; }"), "m", List.of());
     }
+
+    /**
+     * {@code PlutusData} is no sum of records for the mixed-arm rule: a choice of {@code PlutusData} and {@code ConstrData} is
+     * two Java types, {@code JULC0012}, although both arms are Data here (M32 of the second review, fail closed).
+     */
+    @Test
+    void plutusDataIsNoSumOfItsViews() {
+        var diagnostic = rejected("static boolean m(BigInteger a, boolean c) { PlutusData x = c ? Builtins.iData(a) : Builtins.constrData(0, Builtins.mkNilData()); return Builtins.equalsData(x, Builtins.iData(a)); }");
+        assertEquals("JULC0012", diagnostic.code(), diagnostic::message);
+        assertTrue(diagnostic.message().contains("arms have different types"), diagnostic.message());
+    }
 }

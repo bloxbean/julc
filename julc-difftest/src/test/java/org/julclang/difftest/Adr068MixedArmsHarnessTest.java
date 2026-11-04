@@ -132,6 +132,18 @@ class Adr068MixedArmsHarnessTest {
         p.add(new P("M10d a lambda's returns, two Data views", "public static long m(BigInteger a, boolean c) { " + xs + "return xs.map(x -> { if (c) return Builtins.iData(x); return Builtins.mkNilData(); }).size(); }", AC, TagTable.EMPTY));
         p.add(new P("a method's returns, two Data views", "static PlutusData f(BigInteger a, boolean c) { if (c) return Builtins.iData(a); return Builtins.mkNilData(); }\n"
                 + "public static boolean m(BigInteger a, boolean c) { return Builtins.equalsData(f(a, c), Builtins.iData(a)); }", AC, TagTable.EMPTY));
+        // Arms of one Java type are held two ways in a switch as in a conditional: no Java rule sees them.
+        p.add(new P("M43s a switch of one Java type, ListData", S + "public static boolean m(BigInteger a, boolean c) { " + nil
+                + "S s = c ? new A(a) : new B(a); PlutusData.ListData x = switch (s) { case A q -> Builtins.unListData(l); case B q -> JulcList.of(a).toPlutusData(); }; return Builtins.equalsData(x, l); }", AC, TAGS));
+        // A builtin list and a builtin list of pairs are two forms.
+        p.add(new P("a method's returns, a list and a pair list", "static PlutusData f(boolean c) { if (c) return Builtins.mkNilData(); return Builtins.mkNilPairData(); }\n"
+                + "public static boolean m(BigInteger a, boolean c) { return Builtins.equalsData(f(c), Builtins.listData(Builtins.mkNilData())); }", AC, TagTable.EMPTY));
+        // A value of no known form first does not end the check: the later two still differ.
+        p.add(new P("a method's returns, an undecided value first", "static PlutusData f(PlutusData d, boolean c, BigInteger a) { if (c) return d; if (a.signum() > 0) return Builtins.iData(a); return Builtins.mkNilData(); }\n"
+                + "public static boolean m(BigInteger a, boolean c) { return Builtins.equalsData(f(Builtins.iData(a), c, a), Builtins.iData(a)); }", AC, TagTable.EMPTY));
+        // Data that is no PlutusData view (a raw tuple's component) is decided as Data, against a builtin list.
+        p.add(new P("a lambda's returns, a raw tuple's component and a list", "public static long m(BigInteger a, boolean c) { " + xs
+                + "Tuple2 t = new Tuple2(Builtins.iData(a), Builtins.iData(a)); return xs.map(x -> { if (c) return t.first(); return Builtins.mkNilData(); }).size(); }", AC, TagTable.EMPTY));
         return p;
     }
 
@@ -161,7 +173,8 @@ class Adr068MixedArmsHarnessTest {
                 new P("M49 a record and Data", S + "public static long m(BigInteger a, boolean c) { " + xs + "return xs.map(x -> { if (c) return new A(x); return Builtins.iData(x); }).size(); }", AC, TAGS),
                 new P("M18 a sum in a record", S + "record H(S s) { }\npublic static boolean m(BigInteger a, boolean c) { return new H(c ? new A(a) : new B(a)).equals(new H(new B(a))); }", AC, TAGS),
                 new P("G02 (char) 97", "public static long m(BigInteger a, boolean c) { long q = (char) 97; return q; }", AC, TagTable.EMPTY),
-                new P("(char) -1 and (byte) 200", "public static long m(BigInteger a, boolean c) { long q = (char) -1; long r = (byte) 200; long s = (short) -32769; return q + r + s; }", AC, TagTable.EMPTY))) {
+                new P("(char) -1 and (byte) 200", "public static long m(BigInteger a, boolean c) { long q = (char) -1; long r = (byte) 200; long s = (short) -32769; return q + r + s; }", AC, TagTable.EMPTY),
+                new P("(char) -0x1 and (byte) -0x81, negations javac does not fold", "public static long m(BigInteger a, boolean c) { long q = (char) -0x1; long r = (byte) -0x81; return q + r; }", AC, TagTable.EMPTY))) {
             for (var args : probe.inputs()) {
                 var report = BOTH.run(new DiffCase(probe.name(), HEADER + probe.members() + "\n}\n", "Case", "m", args, probe.tags(), null));
                 report.results().forEach((config, result) -> {
