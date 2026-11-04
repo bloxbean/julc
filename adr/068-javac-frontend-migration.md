@@ -823,8 +823,9 @@ by name, and the gate rejects that shape on the default frontend.
 case has a verdict per level. The rest of the set stands: every saved `.diffcase`, G0, the G1 fixed-seed campaign, ADR-066's
 rediscovery checks, `Javac21ParityTest` until D11 retires it, and I1, on `frontend=JAVAC` against a frozen table
 (`lowering-javac.tsv`, D13). A saved case's `expect` is its answer on javac, and its note says what the JavaParser frontend
-answered; 72 moved, none to a mismatch (`068-m6.md`). G1 passes over a rejection only for a code `CampaignVerifier` lists with its
-decision (`JULC0078`, D6); any other rejection stays a failure.
+answered; 72 moved, none to a mismatch (`068-m6.md`). G1 passes over a rejection only for one `CampaignVerifier` lists with its
+decision (`JULC0078`, D6; `JULC0012` for arms of two types, r17); any other rejection stays a failure. `REDISCOVER_162` is ADR-066's must-reject
+evidence and needs no reference: it stops at `JULC0120`, by design. The other five profiles pass.
 
 ### D11. ADR-067 on the javac frontend
 

@@ -72,11 +72,23 @@ final class CampaignVerifier {
 
     /**
      * What a generated program may meet where the JVM returns (ADR-068 M6): a rejection by a decision of ADR-068, so that a
-     * script never disagrees where it never existed. Any other rejection stays a failure. A code here is not a value's answer,
-     * so these count as no agreement towards a quota.
+     * script never disagrees where it never existed. Any other rejection stays a failure, another of the code's rejections too.
+     * A rejection here is not a value's answer, so these count as no agreement towards a quota.
      */
-    private static final Map<String, String> POLICY_REJECTIONS = Map.of(
-            "JULC0078", "D6: equals between types Java keeps distinct");
+    private record PolicyRejection(String code, String words, String decision) {
+    }
+
+    private static final List<PolicyRejection> POLICY_REJECTIONS = List.of(
+            new PolicyRejection("JULC0078", "", "D6: equals between types Java keeps distinct"),
+            new PolicyRejection("JULC0012", "whose arms have different types", "D6 (r17): a choice of arms of two types"));
+
+    /** The decision that rejects this, or null. */
+    static String policyDecision(String code, String message) {
+        for (var rule : POLICY_REJECTIONS) {
+            if (rule.code().equals(code) && message.contains(rule.words())) return rule.decision();
+        }
+        return null;
+    }
 
     /**
      * Runs one generated case. {@code finder} names the test for the provenance; {@code generator} is the
@@ -119,9 +131,12 @@ final class CampaignVerifier {
                 confirmations.add(new Confirmation(config, factor, execution, agrees, (System.nanoTime() - start) / 1_000_000));
                 return execution;
             };
-            if (result.uplc() instanceof Observation.Rejected rejected && POLICY_REJECTIONS.containsKey(rejected.code())) {
-                explained.add(rejected.code() + " " + POLICY_REJECTIONS.get(rejected.code()));
-                continue;
+            if (result.uplc() instanceof Observation.Rejected rejected) {
+                String decision = policyDecision(rejected.code(), rejected.message());
+                if (decision != null) {
+                    explained.add(rejected.code() + " " + decision);
+                    continue;
+                }
             }
             var known = KNOWN.explain(diffCase, config, features, result, rerun);
             if (known.isPresent()) explained.add(known.get());
