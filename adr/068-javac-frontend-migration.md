@@ -1694,6 +1694,8 @@ rest on the rule's own tests and on V146 showing it is the only byte change. Dev
   - D15: `JULC0100` and the gate-only rows of `JULC0101` go; `JULC0084` and `JULC0100` are `retired` in the catalog, which keeps a code from
     reuse and generates no constant. D4's option and the gate go on every host; a host that still names another frontend stops, saying so.
   - The table moved 23 rows, one column each, a contract's rejection text: `JULC0087`'s fix no longer names the way back. No byte moved.
+  - G1 on javac passes over `JULC0078` and `JULC0012`'s arms of two types by their decisions; any other rejection fails. Elci's exit criterion is
+    closed on its API read as source-compatible, with its pin and metadata listed for its own change. Image sizes: full Wasm 33.1 MB, native CLI 97.8 MB.
 - **r19** (2026-11-05, on the review of r18 and the maintainer's decision): `JULC0130` rejects a compound assignment of a `long` to an `int` on `frontend=JAVAC`, whose JVM and on-chain values differ past 32 bits. The fix text leads with declaring a `long`. Plain `int` arithmetic keeps its documented rule: an on-chain integer has no width, and values that can get large belong in a `long` or a `BigInteger`.
 - **r18** (2026-11-04, M5's close, on repository evidence, the maintainer's delegation of 2026-11-04 and the cost report,
   `068-m5-cost-size.md`):
