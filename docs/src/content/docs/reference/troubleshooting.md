@@ -1301,8 +1301,10 @@ if (total.compareTo(limit) > 0) { ... }
 BigInteger one = BigInteger.ONE;
 ```
 
-The [release notes](/reference/release-notes/) list the rewrites.
-`-Djulc.javacGate=report` or `off` turns the check off for now; this is experimental.
+The [release notes](/reference/release-notes/) list the rewrites. On the javac frontend, the
+default from ADR-068 M5, javac reads every compilation and the check cannot be turned off. On the
+JavaParser frontend (`frontend=javaparser`, until ADR-068 M6) it runs as a gate, and
+`-Djulc.javacGate=report` or `off` turns it off; this is experimental.
 
 A runtime without a supported javac (JDK 25 with the `jdk.compiler` module) is `JULC0089`.
 
@@ -1374,6 +1376,10 @@ More forms read a name:
 - The operand of `instanceof` on a variant has the variant's type or its sealed interface's as its static type. A cast to
   `Object` is rejected there.
 
+**Which frontend:** only the JavaParser frontend (`frontend=javaparser`) reads names by their spelling, so `JULC0100` is a
+rule of its javac gate (ADR-068 D15) and goes with that frontend at ADR-068 M6. The javac frontend, the default from M5,
+binds every name to the declaration Java binds it to and does not report it.
+
 **Fix:** Rename the declaration, or write the type JuLC reads.
 
 ### `JULC0101` `<method or component> has a name JuLC reads in place of its body, so a program does not declare it`
@@ -1389,6 +1395,10 @@ method such as `hashCode` on one. A `@NewType` takes no instance call but its ac
 `isPresent`. A call named `headList`, `tailList`, `mkCons`, `mkNilData`, `mkNilPairData`,
 `mkPairData`, `unMapData`, `fstPair` or `sndPair` is `Builtins`' own: a method or component of a program does not take
 those names.
+
+**Which frontend:** a declared `toPlutusData` and an explicit accessor of a record are `JULC0101` on every frontend, since
+JuLC compiles a record as its components. The other forms describe the JavaParser frontend (`frontend=javaparser`): they
+are rules of its javac gate (ADR-068 D15) and go with that frontend at ADR-068 M6.
 
 **Fix:** Give the method or component another name. `value`, and on a `BigInteger` `intValue` and `longValue`, are
 names of the value itself. Name a `@NewType` of `byte[]`'s component `value`.
@@ -1419,152 +1429,189 @@ built from its components alone, so the statement would not run on-chain.
 
 ### `JULC0096` `<source or class> declares more than one <validator class or @Entrypoint method>`
 
-**Cause:** With `frontend=JAVAC`: a source declares two validator classes, or a single-purpose
+**Cause:** On the javac frontend (the default from ADR-068 M5): a source declares two validator classes, or a single-purpose
 validator has two `@Entrypoint` methods.
 
 **Fix:** Keep one. A `@MultiValidator` is how a script has several entry points.
 
 ### `JULC0097` `Entrypoint <method> of <class> is not static`
 
-**Cause:** With `frontend=JAVAC`: an entry point is not `static`.
+**Cause:** On the javac frontend (the default from ADR-068 M5): an entry point is not `static`.
 
 **Fix:** Declare the entry point `static`.
 
 ### `JULC0103` `Entrypoint <method> of <class> takes <type> as its last parameter; the last parameter is the script context, ScriptContext or PlutusData`
 
-**Cause:** An `@Entrypoint` method of a validator declares its last parameter with a type other than `org.julclang.ledger.ScriptContext` or `org.julclang.core.PlutusData`. The script receives the script context there, undecoded, so a parameter typed `BigInteger`, a record or a subtype of `PlutusData` reads the context as that type, and the method's JVM test does not test the script. A type of your own named `ScriptContext` is not the ledger's. An entry point with a parameter count its purpose does not take is `JULC0008` instead. This rule holds on both frontends under the default gate (`enforce`); `-Djulc.javacGate=report` or `off` turns it off on the default frontend, as it does the other gate rules.
+**Cause:** An `@Entrypoint` method of a validator declares its last parameter with a type other than `org.julclang.ledger.ScriptContext` or `org.julclang.core.PlutusData`. The script receives the script context there, undecoded, so a parameter typed `BigInteger`, a record or a subtype of `PlutusData` reads the context as that type, and the method's JVM test does not test the script. A type of your own named `ScriptContext` is not the ledger's. An entry point with a parameter count its purpose does not take is `JULC0008` instead. This rule holds on both frontends. On the JavaParser frontend (`frontend=javaparser`) it is a rule of the javac gate (`enforce` by default); `-Djulc.javacGate=report` or `off` turns it off there, as it does the other gate rules. The javac frontend has no gate to turn off.
 
 **Fix:** Declare the last parameter `ScriptContext`, or `PlutusData` to keep the context as Data. Take other values from the redeemer, or, for a spending validator, from the datum: `validate(BigInteger datum, BigInteger redeemer, ScriptContext ctx)`.
 
 ### `JULC0079` `Record <record> implements sealed interfaces <interface> and <interface>; a record may have at most one sealed parent`
 
-**Cause:** With `frontend=JAVAC`: a record implements two sealed interfaces. A Data value has one constructor tag, so one of the two families would read the record as another of its variants (ADR-067 D6). On the javac frontend every sealed interface counts.
+**Cause:** On the javac frontend (the default from ADR-068 M5): a record implements two sealed interfaces. A Data value has one constructor tag, so one of the two families would read the record as another of its variants (ADR-067 D6). On the javac frontend every sealed interface counts.
 
 **Fix:** Give the record one sealed parent. For the second family, wrap it in a variant of its own: `record InT(A a) implements T { }`.
 
 ### `JULC0080` `Record <record> declares <member>, which JuLC does not compile; a record body may contain only nested type declarations`
 
-**Cause:** With `frontend=JAVAC`: a record declares a member other than a nested type: a method, `equals`, `hashCode`, `toString`, a compact or other constructor, a static field or an initializer block. JuLC compiles a record as its components only, so such a member is never what the script runs (ADR-067 D9). A declared accessor or `toPlutusData` is `JULC0101`, and a constructor with a statement `JULC0099`, on both frontends.
+**Cause:** On the javac frontend (the default from ADR-068 M5): a record declares a member other than a nested type: a method, `equals`, `hashCode`, `toString`, a compact or other constructor, a static field or an initializer block. JuLC compiles a record as its components only, so such a member is never what the script runs (ADR-067 D9). A declared accessor or `toPlutusData` is `JULC0101`, and a constructor with a statement `JULC0099`, on both frontends.
 
 **Fix:** Move the logic into a static method of the enclosing class, which takes the record as a parameter, and let the record hold its components alone.
 
+### `JULC0087` `<operation> compares <type>, whose equality on the JVM compares an array by identity`
+
+**Cause:** On the javac frontend (the default from ADR-068 M5): an `equals`, or a collection operation that compares
+elements or keys (`contains`, `get`, `lookup`, `containsKey`, `delete`), at a type whose JVM equality compares a `byte[]`
+by reference: `byte[].equals`, a record or sealed variant with a `byte[]` component, or an `Optional`, tuple or
+`java.util` collection of one. On-chain the comparison is by content, so the script and the method's JVM test disagree
+(ADR-068 D6). A type the check cannot read (a raw collection, `Object`, a type variable) is rejected the same way, as is
+`equals` between two containers of unrelated arguments, which Java answers both ways.
+
+**Fix:** Compare the bytes with `Builtins.equalsByteString(a, b)`, which keeps the script the JavaParser frontend made for
+`a.equals(b)`; `ByteStringLib.equals(a, b)` is equivalent, a few bytes larger. For a `@NewType` byte wrapper, compare its
+components: `Builtins.equalsByteString(a.value(), b.value())`. The [release notes](/reference/release-notes/) have a
+migration guide. Until ADR-068 M6, `julc build --frontend javaparser` (Gradle: `julc { frontend = 'javaparser' }`)
+compiles the old form, comparing by content on-chain but by reference on the JVM.
+
+```java
+// WRONG: identity on the JVM
+return signer.equals(expected);
+// CORRECT
+return Builtins.equalsByteString(signer, expected);
+```
+
+### `JULC0086` `<expression> compares <type> by reference; use equals`
+
+**Cause:** On the javac frontend (the default from ADR-068 M5): `==` or `!=` between references (`BigInteger`, `byte[]`,
+`String`, boxed values, records) is reference equality in Java and value equality on-chain (ADR-068 D6). Constant
+strings built from literals and `+` alone keep their meaning.
+
+**Fix:** `a.equals(b)`, or `Builtins.equalsByteString(a, b)` for bytes.
+
+### `JULC0084` `The javac frontend does not compile <construct> yet`
+
+**Cause:** The javac frontend has not ported the construct. No program of the ADR-068 corpus reaches it.
+
+**Fix:** Write the construct another way within the subset, or report it. Until ADR-068 M6, the JavaParser frontend
+(`--frontend javaparser`) may compile it.
+
 ### `JULC0104` `synchronized is not supported on-chain`
 
-**Cause:** With `frontend=JAVAC`: a synchronized block has no on-chain meaning. The default frontend reports the same words without a code.
+**Cause:** On the javac frontend (the default from ADR-068 M5): a synchronized block has no on-chain meaning. The JavaParser frontend (`frontend=javaparser`, until ADR-068 M6) reports the same words without a code.
 
 **Fix:** On-chain code is single-threaded; remove synchronized blocks.
 
 ### `JULC0105` `Method references (::) are not supported on-chain`
 
-**Cause:** With `frontend=JAVAC`: a method reference has no on-chain lowering. The default frontend reports the same words without a code.
+**Cause:** On the javac frontend (the default from ADR-068 M5): a method reference has no on-chain lowering. The JavaParser frontend (`frontend=javaparser`, until ADR-068 M6) reports the same words without a code.
 
 **Fix:** Use a regular static method call instead.
 
 ### `JULC0106` `Functional interface .<method>() is not supported on-chain`
 
-**Cause:** With `frontend=JAVAC`: a function exists on-chain only as the argument of the list method that applies it, so a local of a functional interface type cannot be called. The default frontend reports the same words without a code.
+**Cause:** On the javac frontend (the default from ADR-068 M5): a function exists on-chain only as the argument of the list method that applies it, so a local of a functional interface type cannot be called. The JavaParser frontend (`frontend=javaparser`, until ADR-068 M6) reports the same words without a code.
 
 **Fix:** Call the method directly instead of through a function reference.
 
 ### `JULC0107` `'this or super' is not supported on-chain`
 
-**Cause:** With `frontend=JAVAC`: On-chain code has no objects and no inheritance, so this and super name nothing. The default frontend reports the same words without a code.
+**Cause:** On the javac frontend (the default from ADR-068 M5): On-chain code has no objects and no inheritance, so this and super name nothing. The JavaParser frontend (`frontend=javaparser`, until ADR-068 M6) reports the same words without a code.
 
 **Fix:** On-chain validators are stateless; use static methods, and sealed interfaces with record variants instead of inheritance.
 
 ### `JULC0108` `array access is not supported on-chain`
 
-**Cause:** With `frontend=JAVAC`: an array element read or write has no on-chain lowering. The default frontend reports the same words without a code.
+**Cause:** On the javac frontend (the default from ADR-068 M5): an array element read or write has no on-chain lowering. The JavaParser frontend (`frontend=javaparser`, until ADR-068 M6) reports the same words without a code.
 
 **Fix:** Use List<T> with list operations instead.
 
 ### `JULC0109` `class inheritance is not supported on-chain`
 
-**Cause:** With `frontend=JAVAC`: a class that extends another class, or an interface that extends another, has no on-chain meaning. The default frontend reports the same words without a code.
+**Cause:** On the javac frontend (the default from ADR-068 M5): a class that extends another class, or an interface that extends another, has no on-chain meaning. The JavaParser frontend (`frontend=javaparser`, until ADR-068 M6) reports the same words without a code.
 
 **Fix:** Use sealed interfaces with record variants instead.
 
 ### `JULC0110` `Unsupported statement: <statement>`
 
-**Cause:** With `frontend=JAVAC`: a bare block, an empty statement or a switch statement among a method's statements has no lowering. The default frontend reports the same words without a code.
+**Cause:** On the javac frontend (the default from ADR-068 M5): a bare block, an empty statement or a switch statement among a method's statements has no lowering. The JavaParser frontend (`frontend=javaparser`, until ADR-068 M6) reports the same words without a code.
 
 **Fix:** Only variable declarations, if/else, for-each, while, return, and expression statements are supported on-chain.
 
 ### `JULC0111` `'return' is not supported inside for-each loop body`
 
-**Cause:** With `frontend=JAVAC`: a for-each loop is compiled to a fold whose result is the variables the loop updates, so its body cannot return from the method. The default frontend reports the same words without a code.
+**Cause:** On the javac frontend (the default from ADR-068 M5): a for-each loop is compiled to a fold whose result is the variables the loop updates, so its body cannot return from the method. The JavaParser frontend (`frontend=javaparser`, until ADR-068 M6) reports the same words without a code.
 
 **Fix:** Use 'break' to exit the loop early, then return after the loop. Or use the accumulator pattern: result = value; (continue iterating) then return result; after the loop.
 
 ### `JULC0112` `'yield' is not supported inside for-each or while loop body`
 
-**Cause:** With `frontend=JAVAC`: a loop body cannot yield a value of an enclosing switch expression. The default frontend reports the same words without a code.
+**Cause:** On the javac frontend (the default from ADR-068 M5): a loop body cannot yield a value of an enclosing switch expression. The JavaParser frontend (`frontend=javaparser`, until ADR-068 M6) reports the same words without a code.
 
 **Fix:** Use 'break' to exit the loop early, then yield after the loop. Or use the accumulator pattern: result = value; (continue iterating) then yield result; after the loop.
 
 ### `JULC0113` `Conditional update to loop-body local '<local>' is not supported`
 
-**Cause:** With `frontend=JAVAC`: an if/else branch in a loop carries only the loop's accumulators out of the branch, so an update of a local declared in the loop body would be lost. The default frontend reports the same words without a code.
+**Cause:** On the javac frontend (the default from ADR-068 M5): an if/else branch in a loop carries only the loop's accumulators out of the branch, so an update of a local declared in the loop body would be lost. The JavaParser frontend (`frontend=javaparser`, until ADR-068 M6) reports the same words without a code.
 
 **Fix:** An if/else branch carries only loop accumulators out of the branch. Use a conditional initializer (condition ? value : otherValue), or declare the variable before the loop so it is an accumulator (reset it each iteration if needed), or declare it inside the branch if its value is only needed there.
 
 ### `JULC0114` `Assignment to <variable> is not supported at this position`
 
-**Cause:** With `frontend=JAVAC`: Inside a loop, an assignment is lowered only as a statement directly in the loop body or in an if/else branch of it. The default frontend reports the same words without a code.
+**Cause:** On the javac frontend (the default from ADR-068 M5): Inside a loop, an assignment is lowered only as a statement directly in the loop body or in an if/else branch of it. The JavaParser frontend (`frontend=javaparser`, until ADR-068 M6) reports the same words without a code.
 
 **Fix:** Inside a loop, assign an accumulator or a loop-body local as a statement directly in the loop body. In an if/else branch, assign an accumulator or a local declared within that branch; an assignment inside another expression or statement is not supported.
 
 ### `JULC0115` `Unsupported <loop kind> body: <statement>`
 
-**Cause:** With `frontend=JAVAC`: a loop that breaks, or that updates several variables declared before it, lowers only declarations, assignments, if/else and break in its body. The default frontend reports the same words without a code.
+**Cause:** On the javac frontend (the default from ADR-068 M5): a loop that breaks, or that updates several variables declared before it, lowers only declarations, assignments, if/else and break in its body. The JavaParser frontend (`frontend=javaparser`, until ADR-068 M6) reports the same words without a code.
 
 **Fix:** Inside loops with break or several accumulators, only variable declarations, assignments, if/else, and break are supported.
 
 ### `JULC0116` `Assignment to undeclared variable '<variable>'`
 
-**Cause:** With `frontend=JAVAC`: a loop assigns a name that is neither an accumulator of the loop nor a local of its body, such as a field. The default frontend reports the same words without a code.
+**Cause:** On the javac frontend (the default from ADR-068 M5): a loop assigns a name that is neither an accumulator of the loop nor a local of its body, such as a field. The JavaParser frontend (`frontend=javaparser`, until ADR-068 M6) reports the same words without a code.
 
 **Fix:** Declare the variable before assigning it: before the loop for an accumulator, in the loop body for a local.
 
 ### `JULC0117` `Compound assignment <operator> to '<variable>' <what it needs>`
 
-**Cause:** With `frontend=JAVAC`: Compound assignment is lowered on integer variables, and += on String variables with a String operand. The default frontend reports the same words without a code.
+**Cause:** On the javac frontend (the default from ADR-068 M5): Compound assignment is lowered on integer variables, and += on String variables with a String operand. The JavaParser frontend (`frontend=javaparser`, until ADR-068 M6) reports the same words without a code.
 
 **Fix:** Write the update explicitly, e.g. x = x.add(y), or convert the right-hand side to the variable's type first.
 
 ### `JULC0118` `Unsupported operator: <operator>`
 
-**Cause:** With `frontend=JAVAC`: a binary operator with no on-chain lowering, such as a shift or a bitwise operator. The default frontend reports the same words without a code.
+**Cause:** On the javac frontend (the default from ADR-068 M5): a binary operator with no on-chain lowering, such as a shift or a bitwise operator. The JavaParser frontend (`frontend=javaparser`, until ADR-068 M6) reports the same words without a code.
 
 **Fix:** Supported operators: +, -, *, /, %, ==, !=, <, <=, >, >=, &&, ||.
 
 ### `JULC0119` `Unsupported unary operator: <operator>`
 
-**Cause:** With `frontend=JAVAC`: a unary operator with no on-chain lowering, such as ~, + or an increment outside a loop update. The default frontend reports the same words without a code.
+**Cause:** On the javac frontend (the default from ADR-068 M5): a unary operator with no on-chain lowering, such as ~, + or an increment outside a loop update. The JavaParser frontend (`frontend=javaparser`, until ADR-068 M6) reports the same words without a code.
 
 **Fix:** Supported unary operators: ! (logical NOT) and - (negation).
 
 ### `JULC0120` `Reassignment of switch case-pattern variable '<variable>' is not supported`
 
-**Cause:** With `frontend=JAVAC`: an arm of a switch reads a pattern variable through projections of the matched record, so an assignment to it would not be seen. The default frontend reports the same words without a code.
+**Cause:** On the javac frontend (the default from ADR-068 M5): an arm of a switch reads a pattern variable through projections of the matched record, so an assignment to it would not be seen. The JavaParser frontend (`frontend=javaparser`, until ADR-068 M6) reports the same words without a code.
 
 **Fix:** Copy the pattern variable to a fresh local accumulator inside the arm, update that local, and yield its result instead.
 
 ### `JULC0121` `Switch-expression arm cannot update enclosing variable '<variable>'`
 
-**Cause:** With `frontend=JAVAC`: a switch expression exports only its yielded value, so an update of a variable declared outside the arm would be lost. The default frontend reports the same words without a code.
+**Cause:** On the javac frontend (the default from ADR-068 M5): a switch expression exports only its yielded value, so an update of a variable declared outside the arm would be lost. The JavaParser frontend (`frontend=javaparser`, until ADR-068 M6) reports the same words without a code.
 
 **Fix:** A switch expression exports only its yielded value. Declare an accumulator inside the arm, yield its result, and use the switch value outside the arm instead of mutating an enclosing variable.
 
 ### `JULC0122` `Generic library method <class.method> cannot be called from Java yet: generic @OnchainLibrary methods are specialized only by language-neutral library providers (ADR-059). Provide a concrete overload-free method for Java callers.`
 
-**Cause:** With `frontend=JAVAC`: a generic @OnchainLibrary method is a template that only a language-neutral producer instantiates (ADR-059), so Java code cannot call it. The default frontend reports the same words without a code.
+**Cause:** On the javac frontend (the default from ADR-068 M5): a generic @OnchainLibrary method is a template that only a language-neutral producer instantiates (ADR-059), so Java code cannot call it. The JavaParser frontend (`frontend=javaparser`, until ADR-068 M6) reports the same words without a code.
 
 **Fix:** Provide a concrete overload-free method for Java callers.
 
 ### Codes the javac frontend gives the reference's uncoded words
 
-With `frontend=JAVAC`, these rejections carry a code, with the default frontend's words and position: `JULC0001` (a method
+On the javac frontend, the default from ADR-068 M5, these rejections carry a code, with the JavaParser frontend's words and position: `JULC0001` (a method
 with no body), `JULC0002` (a local with no initializer), `JULC0004` (`break` outside a loop), `JULC0006` (a method that may not
 return), `JULC0011` (`Undefined variable`), `JULC0014` (an array other than a `byte[]` literal), `JULC0020` (`float` or
 `double`), `JULC0024` (`Unknown method`) and `JULC0077` (an `instanceof` with a record pattern). Their causes and fixes are those

@@ -3,6 +3,11 @@ title: "JuLC Compiler Design"
 description: "JuLC Compiler Design - JuLC documentation"
 ---
 
+> **Frontend note (ADR-068 M5).** JuLC reads Java with javac by default: javac parses and attributes the sources, and
+> `frontend/javac` lowers javac's trees to PIR. The parsing and validation stages below describe the JavaParser
+> frontend, which stays selectable (`CompilerOptions.setFrontend(CompilerFrontend.JAVAPARSER)`) until ADR-068 M6 removes
+> it; the PIR, UPLC and backend stages are shared. See [ADR-068](https://github.com/bloxbean/julc/blob/main/adr/068-javac-frontend-migration.md).
+
 A progressive guide to the JuLC compiler architecture — from high-level overview to internal implementation details. Intended for anyone from first-time contributors to seasoned compiler engineers.
 
 

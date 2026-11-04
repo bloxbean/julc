@@ -3,6 +3,11 @@ title: "JuLC Compiler Developer Guide"
 description: "JuLC Compiler Developer Guide - JuLC documentation"
 ---
 
+> **Frontend note (ADR-068 M5).** JuLC reads Java with javac by default: javac parses and attributes the sources, and
+> `frontend/javac` lowers javac's trees to PIR. The parsing and validation stages below describe the JavaParser
+> frontend, which stays selectable (`CompilerOptions.setFrontend(CompilerFrontend.JAVAPARSER)`) until ADR-068 M6 removes
+> it; the PIR, UPLC and backend stages are shared. See [ADR-068](https://github.com/bloxbean/julc/blob/main/adr/068-javac-frontend-migration.md).
+
 A comprehensive guide for developers who maintain, debug, or extend the JuLC compiler — the Java-to-UPLC compiler for Cardano smart contracts.
 
 

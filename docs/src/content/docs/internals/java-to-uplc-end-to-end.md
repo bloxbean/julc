@@ -3,6 +3,11 @@ title: "Java to UPLC End to End"
 description: "A beginner-friendly deep dive into how JuLC compiles Java to PIR, UPLC, FLAT bytes, and Cardano script CBOR."
 ---
 
+> **Frontend note (ADR-068 M5).** JuLC reads Java with javac by default: javac parses and attributes the sources, and
+> `frontend/javac` lowers javac's trees to PIR. The parsing and validation stages below describe the JavaParser
+> frontend, which stays selectable (`CompilerOptions.setFrontend(CompilerFrontend.JAVAPARSER)`) until ADR-068 M6 removes
+> it; the PIR, UPLC and backend stages are shared. See [ADR-068](https://github.com/bloxbean/julc/blob/main/adr/068-javac-frontend-migration.md).
+
 This guide is for JuLC developers who want to work on the core language, PIR generation, UPLC lowering, encoding, or compiler tests.
 
 It starts from the basic concepts and then follows the real JuLC pipeline:

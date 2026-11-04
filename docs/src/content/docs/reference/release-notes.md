@@ -3,6 +3,161 @@ title: "Release Notes"
 description: "JuLC release notes and migration guidance"
 ---
 
+## Upcoming preview: javac is the default frontend (ADR-068 M5)
+
+JuLC now reads every Java source with javac. `CompilerOptions.frontend` defaults to `JAVAC` on every host: the compiler
+API, the Gradle plugin, the annotation processor, the testkit (`JulcEval`, `ValidatorTest`, `ContractTest`), the CLI
+(`julc build`, `julc check`, the REPL, the MCP tools), the playground and `julc-wasm`, and Elci's
+`JavaLibraryProvider` and `LedgerTypeProvider`. javac resolves every name, type, overload and literal, and JuLC lowers
+javac's attributed trees. The tools that read Java source without compiling it (lint, test discovery, the MCP tools'
+arity check, the metadata extractor, the verification resolvers) read it with javac's parser too.
+
+### Script hashes can change
+
+A validator whose bytes change gets a new script hash, so a new address or policy ID. Rebuild every validator you have
+deployed, compare its hash with the deployed one, and treat a change as a new script: funds locked at the old address
+and tokens minted under the old policy stay with the old script.
+
+On ADR-068's migration corpus (24,167 compilations), 14,405 give the JavaParser frontend's bytes exactly; 396 give other
+bytes, each classified in the ADR's ledger (a semantic fix, a cost change or a representation change); and 1,075 that the
+JavaParser frontend accepted are rejected with a code (below). Of the 102 external example programs in that corpus, 43
+keep their bytes, 11 change them, and 48 are rejected until rewritten; the examples held 125 `byte[].equals` call sites.
+
+### Opting back, until ADR-068 M6
+
+The JavaParser frontend stays selectable explicitly until ADR-068 M6 removes it, with the option:
+
+| Host | Option |
+|---|---|
+| Compiler API | `new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)` |
+| Gradle plugin | `julc { frontend = 'javaparser' }` (it also passes `-Ajulc.frontend=javaparser` to the annotation processor) |
+| Annotation processor | `-Ajulc.frontend=javaparser` |
+| CLI | `julc build --frontend javaparser` |
+| Testkit | `JulcEval.forSource(src).frontend(CompilerFrontend.JAVAPARSER)`, `ValidatorTest.compile(src, CompilerFrontend.JAVAPARSER)` |
+| Source-reading tools | `-Djulc.tools.reader=JAVAPARSER` |
+
+The other hosts (`julc check`, the REPL, the MCP tools, the playground, `julc-wasm`) have no option and use javac.
+Opting back is a stopgap: the JavaParser frontend keeps the divergences from Java that this release closes, and it is
+removed at M6. The javac gate (`-Djulc.javacGate=off|report|enforce`, `CompilerOptions.setJavacGate`) runs only in front
+of the JavaParser frontend; the javac frontend has no gate to turn off. `JULC0100`, and the `JULC0101` rules other than a
+record's declared `toPlutusData` or accessor, are rules of that gate and do not apply on javac.
+
+### Source javac's frontend rejects
+
+Each of these compiled on the JavaParser frontend, which read it otherwise than Java does or produced a script that fails
+where the Java code returns. Each now stops with a code and a fix:
+
+| Code | Rejected | Write instead |
+|---|---|---|
+| `JULC0087` | An `equals`, `contains`, `get`, `lookup`, `containsKey` or `delete` whose JVM equality compares an array by identity: `byte[].equals`, and a record, variant, `Optional`, tuple or `java.util` collection that holds a `byte[]`; a comparison at a type the check cannot read (a raw collection, `Object`, a type variable); `equals` between two containers of unrelated arguments | `Builtins.equalsByteString(a, b)`, or compare the components; see the guide below |
+| `JULC0086` | `==` or `!=` on `BigInteger`, `byte[]`, `String`, boxed values or records (reference equality in Java), and a comparison of constant strings that is not built from literals and `+` alone | `a.equals(b)`; `Builtins.equalsByteString(a, b)` for bytes |
+| `JULC0078` | `equals` or a collection operation between two types Java keeps distinct (`PubKeyHash.equals(BigInteger)`, `Optional<R1>.equals(Optional<R2>)`'s records) | Compare through one typed value, or compare the components |
+| `JULC0090` | String `+` with a non-`String` operand (`"a" + 1`, #296) | Concatenate `String`s only |
+| `JULC0012` | A conditional, `switch` expression or set of `return`s whose values have two types, or two on-chain representations; a type parameter no call specializes | Give the arms one type, or convert explicitly |
+| `JULC0014` | An array type other than a `byte[]` literal, including a varargs record component (`record R(BigInteger... a)`) | `JulcList` |
+| `JULC0123` | A static call through a package-qualified class name (`java.math.BigInteger.valueOf(1)`) | Import the class and use its simple name |
+| `JULC0124` | A `byte`, `short`, `char`, `float` or `double` type, or a cast to one; `(char)`, `(short)` or `(byte)` of an integer literal stays, with its Java value | `int`, `long` or `BigInteger` |
+| `JULC0125` | A `char` literal, a text block, a class literal outside `PlutusData.cast`, a function that is not a lambda at the call | A string literal, a lambda at the call |
+| `JULC0126` | `instanceof` of a variant on a value whose static type is not the variant's sealed interface (`(Object) x instanceof V v`) | Test a value of the sealed interface's type |
+| `JULC0127` | A variant of a sealed interface that is a class or a `@NewType` record | Make the variant a plain record |
+| `JULC0128` | A value whose on-chain form is not the one the operation reads (Data where a builtin takes bytes, a native list in a Data component, a `new Value(...)` of a map) | Convert explicitly (`Builtins.unBData`, `listData`, `mapData`) or use `ValuesLib` and `MapLib` |
+| `JULC0129` | `new` of a class that is not a record | Declare a record |
+| `JULC0079`, `JULC0080` | A record with two sealed parents; a record member other than a nested type (ADR-067) | One sealed parent; move logic to a static method |
+| `JULC0088` | A `@Param` field that is a Java constant variable (`static final boolean P = true`) | Drop `final`, or `Boolean.valueOf(true)` |
+| `JULC0092` | A sealed interface with no `permits` clause whose permitted classes are not exactly its nested records | Add a `permits` clause in tag order |
+| `JULC0093` | A string literal with an unpaired surrogate | A surrogate pair, or remove it |
+| `JULC0096`, `JULC0097` | Two validator classes in a source, two entry points in a single-purpose validator, a non-static entry point | One validator; a `static` entry point |
+| `JULC0104`–`JULC0122`, and `JULC0001`, `JULC0002`, `JULC0004`, `JULC0006`, `JULC0011`, `JULC0020`, `JULC0024`, `JULC0077` | The subset's rejections the JavaParser frontend made without a code, in its words | As before |
+| `JULC0055` | `equals` on a value read as Data whose decoded type has no `equals` (a `boolean`, a list or a map read from a generic `head()`) | Compare at the value's declared type |
+
+[Troubleshooting](/reference/troubleshooting/) has the codes' causes and fixes. A few shapes the JavaParser frontend ran
+correctly also stop, failing closed, until a rule for them is written: a for-each variable wider than the element, such as
+`for (Number o : xs)` with `o.longValue()` (`JULC0055`), and `r.a().abs()` where `a` is an integer `@NewType` read from a
+record (`JULC0055`).
+
+### Programs that now do what their Java does
+
+Each of these compiled on the JavaParser frontend to a script that disagreed with its Java code; on javac it agrees:
+
+- A name binds to the declaration Java binds it to: a local, a field, a type of your own named like a ledger type (`TxId`,
+  `PubKeyHash`, ...), a library class named like a variable (#209, #284, #286, #291).
+- Types are Java's (#287, #290, #292): a method dispatches on its resolved declaration; a conditional's arms are typed by
+  both branches, not by the first.
+- A ledger type's `fromPlutusData` checks the shape of its Data on-chain; `contains` on a nested collection encodes its
+  target (#297); a reference `==` in a guard, a lambda or an argument is `JULC0086` as anywhere else.
+- `(int)` of a `long` keeps Java's low 32 bits, where it was the whole value.
+- A constant field read in a `switch` guard has Java's value; a local that shadows a constant field reads the local.
+- `PlutusData` accumulators that hold lists in loops, and an element read as javac types it, no longer cons or read the
+  list as Data.
+
+The ADR-068 ledger (`adr/evidence/068/lowering-accepted-differences.tsv`) gives each difference its class and test.
+
+### The narrowing cast costs a little
+
+`(int) x` of a non-constant `long` now computes Java's value, with three builtins at each such cast. Where the value is
+always in range, that is pure cost: in the stdlib's `MerklePatriciaForestry`, whose `nibble` narrows, the script is 26
+bytes larger, and each read costs about 1.05M CPU and 2.4k memory more. Programs that narrow change their bytes and their
+hash. The alternative, keeping the old erasure, would have been a silent difference from Java; rejecting `(int)` of a
+non-constant `long` is the other option the maintainers may take later.
+
+### Migrating `byte[].equals` (`JULC0087`)
+
+On the JVM, `byte[].equals` is `Object.equals`: it compares references, so two arrays with the same bytes are not equal.
+The JavaParser frontend compiled it to a byte comparison, so a JVM test of the validator and the script disagreed. javac's
+frontend rejects it with `JULC0087`:
+
+```
+JULC0087: Object.equals compares byte[], whose equality on the JVM compares an array by identity
+```
+
+Compare the bytes with `Builtins.equalsByteString`, which compares contents on the JVM and is the same builtin call the
+JavaParser frontend made for `a.equals(b)`, so the script keeps its bytes and its hash:
+
+```java
+// Before: identity on the JVM, a byte comparison on-chain
+boolean signed = signer.equals(expected);              // byte[] signer, expected
+boolean same   = !txId.equals(utxoRef.txId().hash());
+
+// After: the same script, and a JVM test that tests it
+import org.julclang.stdlib.Builtins;
+
+boolean signed = Builtins.equalsByteString(signer, expected);
+boolean same   = !Builtins.equalsByteString(txId, utxoRef.txId().hash());
+```
+
+`ByteStringLib.equals(a, b)` is equivalent on the JVM and on-chain, but it is a library method the compiler binds once
+and calls through a variable, so a script that uses it is a few bytes larger (2 to 30 bytes on the external examples)
+and gets a new hash. Use `Builtins.equalsByteString` to keep a deployed script's hash. The external examples were
+migrated that way, and every hash stayed the same.
+
+A ledger hash (`PubKeyHash`, `ScriptHash`, `TxId`, `PolicyId`, `TokenName`, ...) compares by value, so `a.equals(b)` between
+two hashes of one type stays. A `@NewType` byte wrapper is a record, whose `equals` compares its component by identity, so
+compare its component:
+
+```java
+@NewType record OrderId(byte[] value) { }
+
+// Before
+boolean same = a.equals(b);                            // OrderId a, b
+// After
+boolean same = Builtins.equalsByteString(a.value(), b.value());
+```
+
+A record or sealed variant with a `byte[]` component has the same problem through its generated `equals`, and so does
+`contains`, `get` or `containsKey` on a `java.util` collection of `byte[]`: compare the components, or keep the bytes in a
+`JulcList`, `JulcMap` or `JulcArray`, whose JVM equality compares `byte[]` by content (since ADR-068 M1). A source with
+the old form stops at compile time, so there is nothing to look for at run time. The diagnostic's fix names the same
+replacements, and how to select the JavaParser frontend until M6.
+
+### Also in this release
+
+- **The tools read with javac.** Lint, `julc check`'s test discovery, the MCP tools, the metadata extractor and the
+  verification resolvers read sources with javac's parser. Lint and test discovery read the corpus alike on both
+  parsers; the metadata extractor (the playground's check) now reports the javac frontend's diagnostics (ADR-068 M6a).
+- **`LedgerTypeProvider()`** and `JavaLibraryProvider(..., new CompilerOptions())` describe the ledger and libraries as
+  javac reads them; their types and named definitions are equal to the JavaParser frontend's (ADR-068 M2).
+- `CompilerFrontend.DEFAULT` names the default.
+
 ## Upcoming preview: an entry point takes the script context last
 
 An `@Entrypoint` method's last parameter is `ScriptContext` or `PlutusData`; anything else is `JULC0103`. The script
@@ -10,10 +165,10 @@ receives the script context there, undecoded, so a last parameter typed `BigInte
 `PlutusData` read the context as that type, and the method's JVM test did not test the script. A spending entry point that
 needs two values takes them as datum and redeemer: `validate(BigInteger datum, BigInteger redeemer, ScriptContext ctx)`. An
 entry point with a parameter count its purpose does not take is still `JULC0008`. The rule holds on both frontends under the
-default gate (`enforce`); `-Djulc.javacGate=report` or `off` turns it off on the default frontend, with the other gate rules,
+default gate (`enforce`); `-Djulc.javacGate=report` or `off` turns it off on the JavaParser frontend, with the other gate rules,
 until that frontend is removed. Scripts that compile do not change.
 
-On the experimental `frontend=JAVAC`, the subset's rejections carry codes, with the default frontend's words and position:
+On the experimental `frontend=JAVAC`, the subset's rejections carry codes, with the JavaParser frontend's words and position:
 `JULC0104`–`JULC0122` for `synchronized`, method references, calls through a functional local, `this` and `super`, array
 access, inheritance, unsupported statements, the loop and switch-arm rules and unsupported operators, and `JULC0001`,
 `JULC0002`, `JULC0004`, `JULC0006`, `JULC0011`, `JULC0014`, `JULC0020`, `JULC0024` and `JULC0077` for the rest. A source with
