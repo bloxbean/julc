@@ -15,6 +15,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
 import java.math.BigInteger;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -24,6 +25,7 @@ import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -232,6 +234,24 @@ class Adr068LoweringToolTest {
         injected.attempts = attempts -> Adr068Lowering.frontend().attempts(other, new CompilerOptions());
         var row = injected.row(method("class P { static long m(long a, long b) { return a; } }"));
         assertEquals("DIFFERENT-pir", row.kind(), row::line);
+    }
+
+    /**
+     * A PIR that differs where a frontend rejects the program is its own row class, which "Representation only" cannot explain:
+     * with no budgets or values compared, nothing shows them equal (r17, the M5a confirmation review's O9).
+     */
+    @Test
+    void aMethodLoweredToAnotherTermWhereJavacRejectsIsUnaccepted() {
+        var injected = new Injected();
+        var other = method("class P { static long m(long a, long b) { return b; } }");
+        injected.attempts = attempts -> Adr068Lowering.frontend().attempts(other, new CompilerOptions());
+        injected.program = c -> method("class P { static long m(long a, long b) { long q = (short) a; return q; } }");
+        var row = injected.row(method("class P { static long m(long a, long b) { return a; } }"));
+        assertEquals("DIFFERENT-pir-unaccepted", row.kind(), row::line);
+        assertThrows(IllegalArgumentException.class, () -> Adr068Lowering.acceptedDifferences(
+                List.of("k\tDIFFERENT-pir-unaccepted\tRepresentation only: the PIR diff")));
+        assertEquals(Map.of("k", "DIFFERENT-pir"), Adr068Lowering.acceptedDifferences(
+                List.of("k\tDIFFERENT-pir\tRepresentation only: the PIR diff, and every level's bytes equal")));
     }
 
     private static Adr068Lowering.Row loweredTo(String body) {
@@ -730,6 +750,48 @@ class Adr068LoweringToolTest {
                 List.of("k\tDIFFERENT-bytes\tDiagnostic change: not this")));
         assertThrows(IllegalArgumentException.class, () -> Adr068Lowering.acceptedDifferences(
                 List.of("k\tDIFFERENT-root-alone\tAccepted by decision (D8): not this")));
+    }
+
+    /**
+     * "Policy rejection at run time" (r17) explains a bytes row only under a decision of the closed list, with a control
+     * program cited; any other decision, none, or no control is refused.
+     */
+    @Test
+    void aRunTimePolicyRejectionNamesAListedDecisionAndAControl() {
+        assertEquals(Map.of("k", "DIFFERENT-bytes"), Adr068Lowering.acceptedDifferences(List.of(
+                "k\tDIFFERENT-bytes\tPolicy rejection at run time (M3f decision 1; Adr068LambdasHarnessTest#x): a miss; control Adr068LambdasHarnessTest#y")));
+        for (String line : List.of(
+                "k\tDIFFERENT-bytes\tPolicy rejection at run time (M3f decision 2): a miss; control A#b",
+                "k\tDIFFERENT-bytes\tPolicy rejection at run time: a miss; control A#b",
+                "k\tDIFFERENT-bytes\tPolicy rejection at run time (M3f decision 1): a miss, and no control",
+                "k\tDIFFERENT-pir\tPolicy rejection at run time (M3f decision 1): a miss; control A#b",
+                "k\tDIFFERENT-javac-rejects\tPolicy rejection at run time (M3f decision 1): a miss; control A#b")) {
+            assertThrows(IllegalArgumentException.class, () -> Adr068Lowering.acceptedDifferences(List.of(line)), line);
+        }
+    }
+
+    /**
+     * The M5a tables hold the tool's classes, and each run-time policy rejection cites a control that is a test method of
+     * this module.
+     */
+    @Test
+    void theM5aTablesCiteControlsThatExist() throws Exception {
+        var evidence = Path.of(System.getProperty("adr068.repo", "..")).toAbsolutePath().normalize().resolve("adr/evidence/068");
+        int controls = 0;
+        for (String table : List.of("m5a-accepted-differences.tsv", "m5a-head2-accepted-differences.tsv")) {
+            var lines = Files.readAllLines(evidence.resolve(table));
+            Adr068Lowering.acceptedDifferences(lines);
+            for (String line : lines) {
+                if (line.startsWith("#") || !line.contains("\tPolicy rejection at run time")) continue;
+                var control = Adr068Lowering.CONTROL.matcher(line);
+                assertTrue(control.find(), line);
+                var type = Class.forName("org.julclang.difftest." + control.group(1));
+                assertNotNull(type.getDeclaredMethod(control.group(2)), line);
+                assertNotNull(type.getDeclaredMethod(control.group(2)).getAnnotation(Test.class), line);
+                controls++;
+            }
+        }
+        assertTrue(controls > 0, "no run-time policy rejection listed");
     }
 
     @Test

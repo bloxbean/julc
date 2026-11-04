@@ -502,13 +502,65 @@ class Adr068LambdasHarnessTest {
         assertMissFailsOnJavac("public static long m(" + BIG_LIST + " xs) { PlutusData d = PlutusData.cast(xs.find(x -> x.signum() > 5), PlutusData.class); return 1; }", integers(1));
     }
 
+    /**
+     * The controls of the two tests above, which the head corpus's rows of them cite (r17, "Policy rejection at run time" under
+     * M3f decision 1): the same programs, first with a find that cannot miss, where the decision's trigger cannot fire and
+     * both frontends give the JVM's answer at every level; then with a predicate that can hold, where {@code JAVAC} gives the
+     * JVM's answer on every hit and fails only on a miss, at the miss's {@code HeadList}. So the failure is the decision's and
+     * no other, and it is never a value. The cast's control casts an element that is Data: a {@code BigInteger} cast to
+     * {@code PlutusData} is D6's unchecked view, which the JVM refuses on a hit and both scripts pass alike.
+     */
+    @Test
+    void aFindThatCannotMissAgreesWhereAMissFails() {
+        var inputs = List.of(integers(), integers(-3), integers(-1, 0), integers(2, -5), integers(0, 4, 1));
+        for (String find : List.of("xs.prepend(BigInteger.ONE).find(x -> x.signum() > 0)", "xs.find(x -> x.signum() > 0)")) {
+            var shapes = List.of(
+                    "public static long m(" + BIG_LIST + " xs, boolean c) { var r = " + find + "; return 1; }",
+                    "public static long m(" + BIG_LIST + " xs, boolean c) { BigInteger r = " + find + "; if (c) { return r.longValue(); } return 1; }",
+                    "static long h(BigInteger v) { return 1; } public static long m(" + BIG_LIST + " xs, boolean c) { return h(" + find + "); }",
+                    "public static long m(" + BIG_LIST + " xs, boolean c) { JulcList<PlutusData> ds = xs.map(x -> Builtins.iData(x)); PlutusData d = PlutusData.cast("
+                            + find.replace("xs.", "ds.").replace("BigInteger.ONE", "Builtins.iData(BigInteger.ONE)").replace("x.signum()", "Builtins.unIData(x).signum()")
+                            + ", PlutusData.class); return 1; }");
+            for (String shape : shapes) {
+                for (var xs : inputs) {
+                    boolean hits = find.contains("prepend") || ((PlutusData.ListData) xs).items().stream()
+                            .anyMatch(x -> ((PlutusData.IntData) x).value().signum() > 0);
+                    for (boolean c : List.of(true, false)) {
+                        boolean read = c && shape.contains("r.longValue()");
+                        if (read) {
+                            // The read: JAVAC gives the JVM's answer, its value on a hit and a failure on a miss, as Java's null
+                            // fails; the reference returns the Optional find leaves (r17's review, O7b).
+                            var report = run(shape, List.of(xs, bool(c)));
+                            assertJavacAgrees(report);
+                            PlutusData optional = !hits ? constr(1) : constr(0, find.contains("prepend") ? integer(1)
+                                    : ((PlutusData.ListData) xs).items().stream()
+                                            .filter(x -> ((PlutusData.IntData) x).value().signum() > 0).findFirst().orElseThrow());
+                            report.results().forEach((config, result) -> {
+                                if (config.frontend() == CompilerFrontend.JAVAPARSER) {
+                                    assertEquals(new Observation.Value(optional, List.of()), result.uplc(), report::describe);
+                                }
+                            });
+                        } else if (hits) {
+                            assertBothAgree(shape, xs, bool(c));
+                        } else {
+                            assertMissFailsOnJavac(shape, xs, bool(c));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private static void assertMissFailsOnJavac(String members, PlutusData... args) {
         var report = run(members, List.of(args));
         assertEquals(new Observation.Value(integer(1), List.of()), report.jvm());
         report.results().forEach((config, result) -> {
             var expected = config.frontend() == CompilerFrontend.JAVAC ? Verdict.Kind.MISMATCH : Verdict.Kind.AGREE;
             assertEquals(expected, result.verdict().kind(), report::describe);
-            if (config.frontend() == CompilerFrontend.JAVAC) assertTrue(result.uplc() instanceof Observation.Failure, report::describe);
+            if (config.frontend() == CompilerFrontend.JAVAC) {
+                // The miss's read, where the decision says the script fails: the head of the empty list find leaves.
+                assertTrue(result.uplc() instanceof Observation.Failure f && f.detail().contains("HeadList"), report::describe);
+            }
         });
     }
 
@@ -532,6 +584,23 @@ class Adr068LambdasHarnessTest {
         assertAgree("static JulcList<S> ids(JulcList<S> s) { return s; } public static boolean m(JulcList<S> xs) { return ids(xs)" + body, xs);
         assertAgree(field + "public static boolean m(F f) { return f.ss()" + body, constr(0, xs));
         assertBothAgree(field + "public static long m(F f) { S r = f.ss().find(v -> switch (v) { case S.A q -> true; default -> false; }); return 1; }", constr(0, xs));
+    }
+
+    /**
+     * The last program above with a list that holds no {@code S.A}: the find misses, its unread binding is computed, and
+     * {@code JAVAC}'s script fails where the JVM returns (M3f decision 1). Its control, which the head corpus's row cites:
+     * with an {@code S.A} put first, the find cannot miss, and both frontends give the JVM's answer at every level on every list.
+     */
+    @Test
+    void aSwitchFindThatCannotMissAgreesWhereAMissFails() {
+        String field = "record F(JulcList<S> ss) { } ";
+        String find = ".find(v -> switch (v) { case S.A q -> true; default -> false; }); return 1; }";
+        for (var xs : List.of(list(), list(constr(2)), list(b(1, 2), constr(2)), list(a(1), b(1, 2)), list(b(3, 4), a(-1)))) {
+            assertBothAgree(field + "public static long m(F f) { S r = f.ss().prepend(new S.A(BigInteger.ONE))" + find, constr(0, xs));
+            boolean hits = ((PlutusData.ListData) xs).items().stream().anyMatch(x -> ((PlutusData.ConstrData) x).tag() == 0);
+            if (hits) assertBothAgree(field + "public static long m(F f) { S r = f.ss()" + find, constr(0, xs));
+            else assertMissFailsOnJavac(field + "public static long m(F f) { S r = f.ss()" + find, constr(0, xs));
+        }
     }
 
     /** A rejection of the reference's discarded pass, which {@code JAVAC} does not make: the JVM's answer at every level (D13, Accepted by decision). */

@@ -220,6 +220,18 @@ class JavacM5aTest {
     }
 
     /**
+     * A conditional of two narrowed literals is an expression of type {@code char} that is no cast, so the type's rule in
+     * {@code Typing.of} gives it {@code JULC0124}, where the reference compiles it to 97 or 98 (M5a confirmation review, F4:
+     * without the rule it is {@code JULC0012}).
+     */
+    @Test
+    void aCharOfNoCastIsTheTypesRejection() {
+        var diagnostic = rejected("public static long m(boolean c) { return c ? (char) 97 : (char) 98; }");
+        assertEquals("JULC0124", diagnostic.code(), diagnostic::message);
+        assertTrue(diagnostic.message().contains("Unsupported primitive type: char"), diagnostic.message());
+    }
+
+    /**
      * {@code PlutusData} is no sum of records for the mixed-arm rule: a choice of {@code PlutusData} and {@code ConstrData} is
      * two Java types, {@code JULC0012}, although both arms are Data here (M32 of the second review, fail closed).
      */

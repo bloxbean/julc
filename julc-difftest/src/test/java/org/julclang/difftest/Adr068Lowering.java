@@ -169,7 +169,8 @@ final class Adr068Lowering {
     static int rank(String kind) {
         return switch (kind) {
             case "i1a-identical" -> 5;
-            case "both-reject", "DIFFERENT-bytes", "DIFFERENT-diagnostics", "DIFFERENT-pir", "DIFFERENT-coverage", "DIFFERENT-provenance",
+            case "both-reject", "DIFFERENT-bytes", "DIFFERENT-diagnostics", "DIFFERENT-pir", "DIFFERENT-pir-unaccepted", "DIFFERENT-coverage",
+                 "DIFFERENT-provenance",
                  "DIFFERENT-rejection", "DIFFERENT-javac-rejects", "DIFFERENT-javac-accepts", "DIFFERENT-root-alone" -> 4;
             case "both-reject-javac-first" -> 3;
             case "not-ported", "reference-rejects-not-ported" -> 2;
@@ -181,22 +182,40 @@ final class Adr068Lowering {
 
     private static final String DIAGNOSTICS = "diagnostics ";
 
-    /** D13's classes, each with the rows it can explain. A row class not listed under one cannot be accepted. */
+    /**
+     * D13's classes, each with the rows it can explain. A row class not listed under one cannot be accepted. "Representation
+     * only" explains a {@code DIFFERENT-pir} row only where both frontends accept: there {@link #differences} found every
+     * level's bytes, size, diagnostics and params equal, so values and budgets are equal by construction (r17). A PIR that
+     * differs where a frontend rejects is {@code DIFFERENT-pir-unaccepted}, which it cannot explain.
+     */
     private static final Map<String, Set<String>> D13 = Map.of(
-            "Semantic fix", Set.of("DIFFERENT-bytes", "DIFFERENT-pir"),
+            "Semantic fix", Set.of("DIFFERENT-bytes", "DIFFERENT-pir", "DIFFERENT-pir-unaccepted"),
             "UPLC-only semantic fix", Set.of("DIFFERENT-bytes"),
             "Policy rejection", Set.of("DIFFERENT-javac-rejects"),
+            "Policy rejection at run time", Set.of("DIFFERENT-bytes"),
             "Accepted by decision", Set.of("DIFFERENT-javac-accepts"),
             "Diagnostic change", Set.of("DIFFERENT-rejection", "DIFFERENT-diagnostics"),
             "Provenance change", Set.of("DIFFERENT-provenance"),
-            "Representation only", Set.of("DIFFERENT-bytes"),
+            "Representation only", Set.of("DIFFERENT-bytes", "DIFFERENT-pir"),
             "Cost change", Set.of("DIFFERENT-bytes", "DIFFERENT-pir"));
 
-    private static final Pattern ACCEPTED_CLASS = Pattern.compile("([^:(]+?)(?: \\(.*?\\))?: \\S.*");
+    /**
+     * The decisions of this ADR under which a script may fail where the JVM returns (r17, "Policy rejection at run time"). A
+     * closed list: a new one needs an ADR revision. M3f decision 1: a {@code find} that finds nothing fails where any read of
+     * it is computed.
+     */
+    static final Set<String> RUN_TIME_DECISIONS = Set.of("M3f decision 1");
+
+    /** A control program a "Policy rejection at run time" entry cites: a test method, in which the trigger cannot fire. */
+    static final Pattern CONTROL = Pattern.compile("\\bcontrol (\\w+)#(\\w+)");
+
+    private static final Pattern ACCEPTED_CLASS = Pattern.compile("([^:(]+?)(?: \\((.*?)\\))?: (\\S.*)");
 
     /**
      * {@code lowering-accepted-differences.tsv}: each entry's row class, by case. The table says why a difference is
-     * accepted, so an entry must name a D13 class that can explain its row, and a case has one entry.
+     * accepted, so an entry must name a D13 class that can explain its row, and a case has one entry. A "Policy rejection at
+     * run time" entry must also name, first in its parenthesis, a decision of {@link #RUN_TIME_DECISIONS}, and cite its
+     * control program ({@link #CONTROL}).
      *
      * @throws IllegalArgumentException for an entry that does not
      */
@@ -211,6 +230,15 @@ final class Adr068Lowering {
             var rows = D13.get(written.group(1));
             if (rows == null) throw new IllegalArgumentException("not a D13 class of a lowering row: " + line);
             if (!rows.contains(cells[1])) throw new IllegalArgumentException(written.group(1) + " cannot explain " + line);
+            if (written.group(1).equals("Policy rejection at run time")) {
+                String decision = written.group(2) == null ? "" : written.group(2).split("[;,]")[0].trim();
+                if (!RUN_TIME_DECISIONS.contains(decision)) {
+                    throw new IllegalArgumentException("a run-time policy rejection names no decision of " + RUN_TIME_DECISIONS + ": " + line);
+                }
+                if (!CONTROL.matcher(written.group(3)).find()) {
+                    throw new IllegalArgumentException("a run-time policy rejection cites no control program: " + line);
+                }
+            }
             if (accepted.put(cells[0], cells[1]) != null) throw new IllegalArgumentException("listed twice: " + line);
         }
         return accepted;
@@ -359,7 +387,8 @@ final class Adr068Lowering {
             return new Row(c.key, "i1a-identical", coverage.covered(), coverage.total(), "-", sourceMap, "",
                     coverage.pir(), reference.outcome().digest());
         }
-        if (coverage.mismatch() != null) return row(c, "DIFFERENT-pir", coverage, construct, "-", coverage.mismatch());
+        // A frontend rejects: no budgets or values to compare, so never "Representation only" (r17).
+        if (coverage.mismatch() != null) return row(c, "DIFFERENT-pir-unaccepted", coverage, construct, "-", coverage.mismatch());
         var javacError = javac.outcome().error();
         if (reference.accepted()) {
             if (javac.construct() != null) return row(c, "not-ported", coverage, construct, "-", "");
