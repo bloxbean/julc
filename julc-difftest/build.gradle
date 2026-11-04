@@ -96,6 +96,7 @@ tasks.register('adr068G1Capture', Test) {
 //   ./gradlew :julc-difftest:adr068Lowering -Padr068.corpus=<M0 recording> [-Padr068.corpus.external=<dir>]
 //       [-Padr068.corpus.elci=<dir>] [-Padr068.corpus.head=<a recording of this head>] [-Padr068.threads=<n>]
 //       [-Padr068.out=<dir>] [-Padr068.freeze=true] [-Padr068.allowShrink=true] --offline --no-watch-fs
+// A migration gate, which ends with M6's merge (ADR-068 r21); the corpora are archived, as M6's evidence says.
 // -Padr068.freeze writes the table instead of comparing with it, for a change of the compiler's output that is meant; it
 // refuses to lose a case without allowShrink.
 tasks.register('adr068Lowering', Test) {

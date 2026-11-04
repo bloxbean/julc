@@ -38,8 +38,10 @@ fixed by the rewrites below. What opted back is removed:
 | Source-reading tools | `-Djulc.tools.reader` | Ignored |
 | The javac gate | `-Djulc.javacGate`, `-Pjulc.javacGate`, `CompilerOptions.setJavacGate` | Ignored, or a compile error for the method: javac reads every compilation |
 
-**Retired codes,** never reused: `JULC0084` (a construct the javac frontend had not ported; nothing reaches it) and `JULC0100`
-(a name the JavaParser frontend read by its spelling). A compilation no longer reports them. `JULC0101` now holds only a
+**Retired codes,** never reused: `JULC0084` (a construct the javac frontend had not ported; nothing reaches it), `JULC0100`
+(a name the JavaParser frontend read by its spelling), and `JULC0005`, `JULC0071`, `JULC0073` and `JULC0082` (a switch that is not
+exhaustive, a dominated label, a guard's variable that is reassigned and a second `default`, which javac rejects itself, as `JULC0085`).
+A compilation no longer reports them. `JULC0101` now holds only a
 record's declared `toPlutusData` or explicit accessor, and a generated accessor that implements `ToPlutusData.toPlutusData`;
 its other rows were rules of the JavaParser frontend's gate. So these compile on javac, where each name binds to its
 declaration, and give Java's answer: a method or component named `fromPlutusData`, `of` or like a method of the type a

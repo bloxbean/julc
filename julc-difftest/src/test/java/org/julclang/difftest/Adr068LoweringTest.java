@@ -21,6 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * directions. A moved row fails, and a case that leaves the corpus fails. Run by {@code ./gradlew :julc-difftest:adr068Lowering};
  * never part of {@code test}, since it needs the recorded corpora.
  * <p>
+ * This gate belongs to the migration and ends with M6's merge (ADR-068 r21); its corpora are archived, as M6's evidence says.
  * {@code -Padr068.freeze=true} writes the table, for a change of the compiler's output that is meant: the diff of the table
  * shows every row it moved, and a review reads it as the release's change of bytes. It refuses to lose a case without
  * {@code -Padr068.allowShrink=true}.

@@ -2343,4 +2343,5 @@ static boolean spend(Optional<PlutusData> datum, PlutusData redeemer, ScriptCont
 
 These codes are retired and never reused. No compilation reports them. `JULC0084` said the javac frontend had not ported a
 construct, and `JULC0100` that a name read by its spelling bound to something else; both went with the JavaParser frontend
-(ADR-068 M6).
+(ADR-068 M6). `JULC0005`, `JULC0071`, `JULC0073` and `JULC0082` covered a switch that is not exhaustive, a dominated label, a guard's
+variable that is reassigned and a second `default`: javac rejects each of those itself, and you see `JULC0085` with javac's key.
