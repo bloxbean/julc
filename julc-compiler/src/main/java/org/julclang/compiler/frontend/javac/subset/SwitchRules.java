@@ -70,10 +70,10 @@ public final class SwitchRules {
             requireOneLabel(entry);
             if (isDefault(entry)) defaultEntry = entry;
             if (!(entry.getLabels().getFirst() instanceof PatternCaseLabelTree label)) continue;
-            if (label.getPattern() instanceof DeconstructionPatternTree) {
-                throw facts.rejection(DiagnosticCodes.CASE_PATTERN_UNSUPPORTED, entry, facts.text(label),
-                        "not yet supported: record patterns are implemented by ADR-067 M2a; match the type pattern "
-                                + "and read the components with their accessors");
+            if (label.getPattern() instanceof DeconstructionPatternTree recordPattern) {
+                throw facts.rejectionWithFix(DiagnosticCodes.CASE_PATTERN_UNSUPPORTED,
+                        RecordPatternFix.of(facts, recordPattern, "case "), entry, facts.text(label),
+                        "JuLC does not support record patterns yet");
             }
             var pattern = (BindingPatternTree) label.getPattern();
             var guard = entry.getGuard();

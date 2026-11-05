@@ -181,6 +181,8 @@ replacements.
 
 ### Also in this release
 
+- **Clearer record pattern errors.** `JULC0076` and `JULC0077` now show the rewrite with your own names: `case A(var amount)`
+  on `record A(BigInteger v)` suggests ``write `case A a`, then use `a.v()` for `amount` ``. Script bytes do not change.
 - **The tools read with javac.** Lint, `julc check`'s test discovery, the MCP tools, the metadata extractor and the
   verification resolvers read sources with javac's parser. Lint and test discovery read the corpus as JavaParser read it;
   the metadata extractor (the playground's check) now reports the javac frontend's diagnostics (ADR-068 M6a).

@@ -859,6 +859,23 @@ for (var x : xs) {
 
 ---
 
+### 1.27 `JULC0076` `Unsupported case pattern '<pattern>'`
+
+**Cause:** The most common case is a record pattern, which is valid Java but which JuLC does not compile yet. A case pattern must
+also name a permitted variant of the selector's sealed interface. `case S s` on a selector of type `S` is reported with this code too.
+
+**Fix:** Bind the record and read its fields. The error shows this rewrite with your own names:
+
+```java
+// Rejected
+case A(var v) -> v;
+
+// Means the same thing
+case A a -> a.v();
+```
+
+An `instanceof` with a record pattern is `JULC0077`, and the same rewrite applies: `s instanceof A a`, then `a.v()`.
+
 ## 2. Validation Errors (subset rules)
 
 These errors are emitted during the subset validation pass, before PIR generation

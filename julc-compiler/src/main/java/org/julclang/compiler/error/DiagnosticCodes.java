@@ -115,7 +115,7 @@ public final class DiagnosticCodes {
             CompilerDiagnostic.Level.ERROR,
             "CONTROL_FLOW",
             "Unsupported case pattern ''{0}'': {1}",
-            "Name a permitted variant in each case label, and use `default` for the remaining ones.");
+            "Name a permitted variant in each case label, and use `default` for the remaining ones. For a record pattern, bind the record and read its fields: `case A a -> a.v()`.");
 
     public static final DiagnosticInfo CIRCULAR_TYPE_DEPENDENCY = new DiagnosticInfo(
             "JULC0030",

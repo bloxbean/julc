@@ -998,12 +998,12 @@ class SwitchDiagnosticsTest {
         rejected(switchOver("""
                             case A(var v) -> v;
                             default -> BigInteger.ZERO;
-                """), "JULC0076", "not yet supported");
+                """), "JULC0076", "does not support record patterns");
         rejected(switchOver("""
                             case A(var v) when v.signum() > 0 -> v;
                             case A x -> BigInteger.ONE;
                             case B y -> BigInteger.ZERO;
-                """), "JULC0076", "not yet supported");
+                """), "JULC0076", "does not support record patterns");
     }
 
     @Test

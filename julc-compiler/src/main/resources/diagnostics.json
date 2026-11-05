@@ -915,8 +915,8 @@
       "category": "CONTROL_FLOW",
       "severity": "error",
       "template": "Unsupported case pattern ''{0}'': {1}",
-      "summary": "A case pattern must name a permitted variant of the selector's sealed interface. A pattern for a type that is not a variant is not applicable; the total type pattern `case S s` on a selector of type S is valid Java but not supported (ADR-067 D3, D4).",
-      "fix": "Name a permitted variant in each case label, and use `default` for the remaining ones.",
+      "summary": "A case pattern must name a permitted variant of the selector's sealed interface. A pattern for a type that is not a variant is not applicable; the total type pattern `case S s` on a selector of type S and a record pattern such as `case A(var v)` are valid Java but not supported (ADR-067 D3, D4).",
+      "fix": "Name a permitted variant in each case label, and use `default` for the remaining ones. For a record pattern, bind the record and read its fields: `case A a -> a.v()`.",
       "example": {
         "bad": "case S t -> 2;",
         "good": "default -> 2;"

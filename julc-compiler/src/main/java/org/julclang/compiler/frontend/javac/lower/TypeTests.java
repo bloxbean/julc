@@ -1,6 +1,7 @@
 package org.julclang.compiler.frontend.javac.lower;
 
 import com.sun.source.tree.BindingPatternTree;
+import com.sun.source.tree.DeconstructionPatternTree;
 import com.sun.source.tree.InstanceOfTree;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.error.DiagnosticCodes;
@@ -8,6 +9,7 @@ import org.julclang.compiler.frontend.javac.ArrayIdentityEquality;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacNames;
 import org.julclang.compiler.frontend.javac.subset.RecordDeclarations;
+import org.julclang.compiler.frontend.javac.subset.RecordPatternFix;
 import org.julclang.compiler.pir.PirHelpers;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
@@ -148,6 +150,9 @@ final class TypeTests {
 
     private CompilerException unsupported(InstanceOfTree tree) {
         // The source's words: javac's tree text would print a var component as the type it inferred.
-        return facts.rejection(DiagnosticCodes.INSTANCEOF_RECORD_PATTERN_UNSUPPORTED, tree, facts.location(tree).fragment());
+        String fix = tree.getPattern() instanceof DeconstructionPatternTree recordPattern
+                ? RecordPatternFix.of(facts, recordPattern, tree.getExpression() + " instanceof ")
+                : null;
+        return facts.rejectionWithFix(DiagnosticCodes.INSTANCEOF_RECORD_PATTERN_UNSUPPORTED, fix, tree, facts.location(tree).fragment());
     }
 }
