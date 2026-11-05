@@ -54,10 +54,14 @@ class O3ListCaseBenchmarkTest {
                 if ((c.fixtureId().endsWith("-recursive") || c.fixtureId().endsWith("-mutualA")) && after.caseId().equals("three")) {
                     assertEquals(Term.const_(Constant.integer(18)), after.resultTerm(), label);
                 }
-                if (c.fixtureId().endsWith("-aggregate") && !after.caseId().equals("visit-malformed")) {
+                // JulcList.drop throws on a negative count, and the script fails there (ADR-068 B3).
+                if (c.fixtureId().endsWith("-aggregate") && after.caseId().equals("negative-drop")) {
+                    assertNotNull(after.failure(), label);
+                }
+                if (c.fixtureId().endsWith("-aggregate") && !after.caseId().equals("visit-malformed")
+                        && !after.caseId().equals("negative-drop")) {
                     long expected = switch (after.caseId()) {
                         case "accept" -> 11;
-                        case "negative-drop" -> 12;
                         case "skip-malformed" -> 8;
                         default -> 0;
                     };

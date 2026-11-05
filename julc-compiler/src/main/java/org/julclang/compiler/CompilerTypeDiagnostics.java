@@ -39,6 +39,44 @@ public final class CompilerTypeDiagnostics {
     }
 
     /**
+     * JULC0091 (ADR-068 D6, #298): a native array in a Data-encoded position. It has no Data
+     * encoding, so the script would fail where the Java code succeeds.
+     */
+    public static CompilerException nativeArrayNotDataEncodable(
+            String position,
+            PirType array,
+            SourceLocation location) {
+        var info = DiagnosticCodes.NATIVE_ARRAY_NOT_DATA_ENCODABLE;
+        var message = info.format(position, LibraryMethodRegistry.pirTypeName(array));
+        return exception(info.code(), info.level(), info.fix(), message, location);
+    }
+
+    /** The message of {@link #unknownTypeEncoded}, by which the lowering places it. */
+    public static final String UNKNOWN_TYPE_ENCODED = "the type of this value, a switch expression whose arms have different types";
+
+    /**
+     * JULC0012 (review F710): a value whose type the lowering does not know would be Data-encoded or
+     * be a diamond tuple's component, and encoding it as Data could be wrong.
+     */
+    public static CompilerException unknownTypeEncoded(SourceLocation location) {
+        var info = DiagnosticCodes.TYPE_RESOLUTION_FAILED;
+        var message = info.format(UNKNOWN_TYPE_ENCODED + ", which it would Data-encode. Give the arms one type, or "
+                + "assign the switch to a typed local first");
+        return exception(info.code(), info.level(), info.fix(), message, location);
+    }
+
+    /**
+     * JULC0012 (#299): a non-Data component of a raw {@code Tuple2} or {@code Tuple3}. javac types
+     * its components {@code Object}, so it has no on-chain encoding and its reads no on-chain type.
+     */
+    public static CompilerException rawTupleUnsupported(String typeName, SourceLocation location) {
+        var info = DiagnosticCodes.TYPE_RESOLUTION_FAILED;
+        var message = info.format("a component of a raw " + typeName + ", which Java types as Object and JuLC cannot encode"
+                + " unless it is already PlutusData. Write the type arguments, as in " + typeName + "<BigInteger, byte[]>");
+        return exception(info.code(), info.level(), info.fix(), message, location);
+    }
+
+    /**
      * JULC0012: {@code var a = JulcArray.of(...)} whose elements have different types. javac
      * would type the local by a common supertype the on-chain subset cannot represent, and the
      * access needs one element type to choose its decode.
@@ -101,6 +139,177 @@ public final class CompilerTypeDiagnostics {
     public static CompilerException loopReassignmentWithoutAccumulator(String kind, String name, SourceLocation location) {
         var info = DiagnosticCodes.LOOP_REASSIGNMENT_WITHOUT_ACCUMULATOR;
         return exception(info.code(), info.level(), info.fix(), info.format(kind, name), location);
+    }
+
+    /** JULC0003: a {@code return} directly in a while loop body; {@code location} is the return (ADR-062 T20). */
+    public static CompilerException returnInsideWhile(SourceLocation location) {
+        var info = DiagnosticCodes.RETURN_INSIDE_WHILE;
+        return exception(info.code(), info.level(), info.fix(), info.format(), location);
+    }
+
+    /** JULC0062: {@code JulcMap.of(...)}, which exists off-chain only (ADR-062 T20). */
+    public static CompilerException julcMapOfOffChainOnly(SourceLocation location) {
+        var info = DiagnosticCodes.JULCMAP_OF_OFF_CHAIN_ONLY;
+        return exception(info.code(), info.level(), info.fix(), info.format(), location);
+    }
+
+    /**
+     * JULC0063: a {@code break} in a loop that updates no variable declared before it. Such a
+     * loop compiles its body as plain statements, which cannot stop the loop (ADR-062 T20).
+     */
+    public static CompilerException breakInLoopWithoutAccumulator(SourceLocation location) {
+        var info = DiagnosticCodes.BREAK_IN_LOOP_WITHOUT_ACCUMULATOR;
+        return exception(info.code(), info.level(), info.fix(), info.format(), location);
+    }
+
+    /**
+     * JULC0060: a {@code continue} in a loop the compiler lowers. It is reported at loop lowering,
+     * not by subset validation, so code JuLC never compiles is unaffected (ADR-062 T20).
+     */
+    public static CompilerException continueUnsupported(SourceLocation location) {
+        var info = DiagnosticCodes.CONTINUE_UNSUPPORTED;
+        return exception(info.code(), info.level(), info.fix(), info.format(), location);
+    }
+
+    /**
+     * JULC0065: an update of {@code name}, a variable declared before the loop, in a position the
+     * loop lowering does not carry; {@code position} says where, for example
+     * {@code "inside a switch statement"} (ADR-062 T20).
+     */
+    public static CompilerException loopUpdatePositionUnsupported(String name, String position, SourceLocation location) {
+        var info = DiagnosticCodes.LOOP_UPDATE_POSITION_UNSUPPORTED;
+        return exception(info.code(), info.level(), info.fix(), info.format(name, position), location);
+    }
+
+    /**
+     * JULC0064: a nested loop in the break-aware body of a single-accumulator loop;
+     * {@code statement} is {@code "A nested while loop"} or {@code "A nested for-each loop"} (ADR-062 T20).
+     */
+    public static CompilerException breakLoopStatementUnsupported(String statement, SourceLocation location) {
+        var info = DiagnosticCodes.BREAK_LOOP_STATEMENT_UNSUPPORTED;
+        return exception(info.code(), info.level(), info.fix(), info.format(statement), location);
+    }
+
+    /**
+     * JULC0066: a labelled statement, or a {@code break} or {@code continue} that names a label;
+     * {@code construct} is the construct as written, for example {@code "break outer"} or
+     * {@code "outer:"} (#201).
+     */
+    public static CompilerException labelUnsupported(String construct, SourceLocation location) {
+        var info = DiagnosticCodes.LABEL_UNSUPPORTED;
+        return exception(info.code(), info.level(), info.fix(), info.format(construct), location);
+    }
+
+    /** JULC0088: a {@code @Param} field that is a constant variable to Java (ADR-068 D14). */
+    public static CompilerException paramConstantVariable(String field, SourceLocation location) {
+        var info = DiagnosticCodes.PARAM_CONSTANT_VARIABLE;
+        return exception(info.code(), info.level(), info.fix(), info.format(field), location);
+    }
+
+    /** JULC0095: an initializer that is not lowered and holds more than a constant. */
+    public static CompilerException initializerNotLowered(String what, String rule, SourceLocation location) {
+        var info = DiagnosticCodes.INITIALIZER_NOT_LOWERED;
+        return exception(info.code(), info.level(), info.fix(), info.format(what, rule), location);
+    }
+
+    /** JULC0094: an entry point that does not return {@code boolean}. */
+    public static CompilerException entrypointReturnType(String method, String owner, String type, SourceLocation location) {
+        var info = DiagnosticCodes.ENTRYPOINT_RETURN_TYPE;
+        return exception(info.code(), info.level(), info.fix(), info.format(method, owner, type), location);
+    }
+
+    /** JULC0103: an entry point's last parameter, which the wrapper gives the script context's Data, is of another type. */
+    public static CompilerException entrypointContextParameter(String method, String owner, String type, SourceLocation location) {
+        var info = DiagnosticCodes.ENTRYPOINT_CONTEXT_PARAMETER;
+        return exception(info.code(), info.level(), info.fix(), info.format(method, owner, type), location);
+    }
+
+    /** JULC0011: a name with no binder; {@code location} is null where the reference's own message has no position. */
+    public static CompilerException undefinedVariable(String name, SourceLocation location) {
+        var info = DiagnosticCodes.UNDEFINED_VARIABLE;
+        return exception(info.code(), info.level(), info.fix(), info.format(name), location);
+    }
+
+    /** JULC0096: a second entry point, or a second validator class. */
+    public static CompilerException entrypointNotUnique(String owner, String what, SourceLocation location) {
+        var info = DiagnosticCodes.ENTRYPOINT_NOT_UNIQUE;
+        return exception(info.code(), info.level(), info.fix(), info.format(owner, what), location);
+    }
+
+    /** JULC0101: a method or component a record declares in place of what its Data is. */
+    public static CompilerException methodNameReadBySpelling(String method, SourceLocation location) {
+        var info = DiagnosticCodes.METHOD_NAME_READ_BY_SPELLING;
+        return exception(info.code(), info.level(), info.fix(), info.format(method), location);
+    }
+
+    /** JULC0102, a warning: a {@code +} of string constants. */
+    public static CompilerDiagnostic constantStringJoin(SourceLocation location) {
+        var info = DiagnosticCodes.CONSTANT_STRING_JOIN;
+        return new CompilerDiagnostic(info.level(), info.format(), location.fileName(), location.line(), location.column(), info.fix(), info.code());
+    }
+
+    /** JULC0092: a sealed interface with no permits clause whose permitted subclasses are not the records nested in it. */
+    public static CompilerException sealedPermitsRequired(String sealed, List<String> permitted, SourceLocation location) {
+        var info = DiagnosticCodes.SEALED_PERMITS_REQUIRED;
+        return exception(info.code(), info.level(), info.fix(), info.format(sealed, String.join(", ", permitted)), location);
+    }
+
+    /** JULC0099: a constructor that holds a statement. */
+    public static CompilerException constructorBody(String constructor, SourceLocation location) {
+        var info = DiagnosticCodes.CONSTRUCTOR_BODY;
+        return exception(info.code(), info.level(), info.fix(), info.format(constructor), location);
+    }
+
+    /** JULC0098: a cast to {@code boolean} or {@code Boolean} of what is neither of them nor Data. */
+    public static CompilerException booleanCastOperand(String target, String operand, SourceLocation location) {
+        var info = DiagnosticCodes.BOOLEAN_CAST_OPERAND;
+        return exception(info.code(), info.level(), info.fix(), info.format(target, operand), location);
+    }
+
+    /** JULC0097: an entry point that is not {@code static}. */
+    public static CompilerException entrypointNotStatic(String method, String owner, SourceLocation location) {
+        var info = DiagnosticCodes.ENTRYPOINT_NOT_STATIC;
+        return exception(info.code(), info.level(), info.fix(), info.format(method, owner), location);
+    }
+
+    /** JULC0093: a string literal holding an unpaired surrogate, which a UPLC string cannot hold. */
+    public static CompilerException unpairedSurrogate(char surrogate, SourceLocation location) {
+        var info = DiagnosticCodes.STRING_LITERAL_UNPAIRED_SURROGATE;
+        return exception(info.code(), info.level(), info.fix(), info.format(String.format("%04X", (int) surrogate)), location);
+    }
+
+    /** JULC0086: {@code ==} or {@code !=} between references, which is identity in Java and value equality on-chain. */
+    public static CompilerException referenceEquality(String expression, String type, SourceLocation location) {
+        var info = DiagnosticCodes.REFERENCE_EQUALITY_UNSUPPORTED;
+        return exception(info.code(), info.level(), info.fix(), info.format(expression, type), location);
+    }
+
+    /** JULC0087: an operation whose JVM equality reaches an array compared by identity, along {@code path}. */
+    public static CompilerException arrayEquals(String operation, String path, SourceLocation location) {
+        var info = DiagnosticCodes.ARRAY_EQUALS_UNSUPPORTED;
+        return exception(info.code(), info.level(), info.fix(), info.format(operation, path, "compares an array by identity"), location);
+    }
+
+    /**
+     * JULC0087 where the check cannot read the compared type, along {@code path}: a raw collection, a type with no rule, an
+     * operand of no readable type. It cannot be shown to compare by value, so it fails closed, and says that, not "an array".
+     */
+    public static CompilerException equalityUnread(String operation, String path, SourceLocation location) {
+        var info = DiagnosticCodes.ARRAY_EQUALS_UNSUPPORTED;
+        return exception(info.code(), info.level(), info.fix(),
+                info.format(operation, path, "cannot be shown to compare by value"), location);
+    }
+
+    /** JULC0078: an operation that compares two types Java keeps distinct, whose representations can still be equal. */
+    public static CompilerException equalsAlwaysFalse(String operation, String left, String right, SourceLocation location) {
+        var info = DiagnosticCodes.EQUALS_ALWAYS_FALSE;
+        return exception(info.code(), info.level(), info.fix(), info.format(operation, left, right), location);
+    }
+
+    /** JULC0090: string {@code +} with an operand that is not a {@code String} (#296). */
+    public static CompilerException stringConcatNonString(String expression, String type, SourceLocation location) {
+        var info = DiagnosticCodes.STRING_CONCAT_NON_STRING;
+        return exception(info.code(), info.level(), info.fix(), info.format(expression, type), location);
     }
 
     /** JULC0057: a static field initializer that calls a method of its class. */

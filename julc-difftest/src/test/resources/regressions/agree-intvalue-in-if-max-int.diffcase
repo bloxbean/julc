@@ -1,0 +1,18 @@
+format: 2
+name: intValue() at Integer.MAX_VALUE in an if (F81, #294)
+class: Probe
+method: m
+arg: 1a7fffffff
+expect: AGREE
+note: ADR-067 M1 round 4, F81 (#294), outside guards: JuLC lowers intValue() to the identity; at 2147483647 Java does not narrow either (2).
+---
+import java.math.BigInteger;
+
+public class Probe {
+    public static BigInteger m(BigInteger a) {
+        if (a.intValue() < 0) {
+            return BigInteger.ONE;
+        }
+        return BigInteger.TWO;
+    }
+}

@@ -206,7 +206,9 @@ class LoopFieldUpdateTest {
         // Java reads the field before the local is declared and after the local's block ends.
         rejected("static long K = 0; static long helper(long v) { long a = K; long K = 7; return a + K; }\n" + ENTRY_UPDATES_K,
                 "'helper' reads it");
-        rejected("static long K = 0; static long helper(long v) { long a = 0; if (v > 0) { long K = 7; a = K; } return a + K; }\n"
+        // ADR-068 D13 (F946): the reference collects the reassignment of 'a' (JULC0061) and goes on to this rule, and javac's
+        // frontend, the default from M5, stops at the first; so the block that ends is written without a second error.
+        rejected("static long K = 0; static long helper(long v) { if (v > 0) { long K = 7; return K; } return K; }\n"
                 + ENTRY_UPDATES_K, "'helper' reads it");
         // Whichever method is generated first, the error points at the loop assignment. The class
         // body starts on line 4.
@@ -289,12 +291,17 @@ class LoopFieldUpdateTest {
         var field = new JulcCompiler(StdlibRegistry.defaultRegistry()).compile("""
                 import java.math.BigInteger;
                 import org.julclang.core.types.JulcList;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.Builtins;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
                 @SpendingValidator
                 class Tally {
                     static BigInteger total = BigInteger.ZERO;
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                        JulcList<PlutusData> items = Builtins.unListData(redeemer);
+                        JulcList<PlutusData> items = PlutusData.cast(Builtins.unListData(redeemer), JulcList.class);
                         for (var item : items) { total = total.add(Builtins.unIData(item)); }
                         return total.compareTo(BigInteger.TEN) > 0;
                     }
@@ -304,12 +311,18 @@ class LoopFieldUpdateTest {
         var param = new JulcCompiler(StdlibRegistry.defaultRegistry()).compile("""
                 import java.math.BigInteger;
                 import org.julclang.core.types.JulcList;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.Builtins;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.Param;
+                import org.julclang.stdlib.annotation.SpendingValidator;
                 @SpendingValidator
                 class Budget {
-                    @Param BigInteger limit;
+                    @Param static BigInteger limit;
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                        JulcList<PlutusData> items = Builtins.unListData(redeemer);
+                        JulcList<PlutusData> items = PlutusData.cast(Builtins.unListData(redeemer), JulcList.class);
                         for (var item : items) { limit = limit.subtract(Builtins.unIData(item)); }
                         return limit.compareTo(BigInteger.ZERO) >= 0;
                     }
@@ -323,16 +336,22 @@ class LoopFieldUpdateTest {
         var error = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry()).compile("""
                 import java.math.BigInteger;
                 import org.julclang.core.types.JulcList;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.Builtins;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.Param;
+                import org.julclang.stdlib.annotation.SpendingValidator;
                 @SpendingValidator
                 class Budget {
-                    @Param BigInteger limit;
+                    @Param static BigInteger limit;
                     static BigInteger spend(JulcList<PlutusData> items) {
                         for (var item : items) { limit = limit.subtract(Builtins.unIData(item)); }
                         return limit;
                     }
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                        return spend(Builtins.unListData(redeemer)).compareTo(BigInteger.ZERO) >= 0;
+                        return spend(PlutusData.cast(Builtins.unListData(redeemer), JulcList.class)).compareTo(BigInteger.ZERO) >= 0;
                     }
                 }"""));
         assertEquals("JULC0056", error.diagnostics().getFirst().code());
@@ -345,6 +364,8 @@ class LoopFieldUpdateTest {
         String library = """
                 import java.math.BigInteger;
                 import org.julclang.core.types.JulcList;
+                import org.julclang.core.PlutusData;
+                import org.julclang.stdlib.annotation.OnchainLibrary;
                 @OnchainLibrary
                 class Counter {
                     static BigInteger seen = BigInteger.ZERO;
@@ -355,11 +376,17 @@ class LoopFieldUpdateTest {
                 }""";
         String validator = """
                 import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.Builtins;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.types.JulcList;
                 @SpendingValidator
                 class UsesCounter {
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                        return Counter.count(Builtins.unListData(redeemer)).compareTo(BigInteger.ONE) > 0;
+                        return Counter.count(PlutusData.cast(Builtins.unListData(redeemer), JulcList.class)).compareTo(BigInteger.ONE) > 0;
                     }
                 }""";
         var error = assertThrows(CompilerException.class,
@@ -375,12 +402,16 @@ class LoopFieldUpdateTest {
                 import org.julclang.core.types.JulcList;
                 import org.julclang.stdlib.annotation.MultiValidator;
                 import org.julclang.stdlib.annotation.Purpose;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.Builtins;
+                import org.julclang.stdlib.annotation.Entrypoint;
                 @MultiValidator
                 class Handlers {
                     static BigInteger total = BigInteger.ZERO;
                     @Entrypoint(purpose = Purpose.MINT)
                     static boolean mint(PlutusData redeemer, ScriptContext ctx) {
-                        JulcList<PlutusData> items = Builtins.unListData(redeemer);
+                        JulcList<PlutusData> items = PlutusData.cast(Builtins.unListData(redeemer), JulcList.class);
                         for (var item : items) { total = total.add(Builtins.unIData(item)); }
                         return total.compareTo(BigInteger.TEN) > 0;
                     }

@@ -1,0 +1,72 @@
+agree-equals-failing-operand.diffcase	AGREE	REJECT JULC0078	Policy rejection
+agree-equals-record-variant-tag-1.diffcase	AGREE	REJECT JULC0078	Policy rejection
+agree-equals-two-variants.diffcase	AGREE	REJECT JULC0078	Policy rejection
+agree-equals-unknown-switch.diffcase	AGREE	REJECT JULC0012	Policy rejection
+agree-equals-unknown-ternary.diffcase	AGREE	REJECT JULC0012	Policy rejection
+agree-record-unused-tostring-hashcode.diffcase	AGREE	REJECT JULC0080	Policy rejection
+agree-two-sealed-parents-equal-positions.diffcase	AGREE	REJECT JULC0079	Policy rejection
+diverge-068-assigned-element-in-a-tuple.diffcase	DIVERGE M5 Value/Failure	AGREE	Semantic fix or accepted by decision
+diverge-068-boolean-explicit-lambda-parameter.diffcase	DIVERGE M5 Value/Failure	AGREE	Semantic fix or accepted by decision
+diverge-068-boolean-found-element.diffcase	DIVERGE M5 Value/Failure	AGREE	Semantic fix or accepted by decision
+diverge-068-boolean-list-head.diffcase	DIVERGE M5 Value/Failure	AGREE	Semantic fix or accepted by decision
+diverge-068-cursor-alias.diffcase	DIVERGE M5 Value/Failure	AGREE	Semantic fix or accepted by decision
+diverge-068-cursor-conditional.diffcase	DIVERGE M5 Value/Failure	AGREE	Semantic fix or accepted by decision
+diverge-068-cursor-for-each.diffcase	DIVERGE M5 Value/Failure	AGREE	Semantic fix or accepted by decision
+diverge-068-cursor-helper.diffcase	DIVERGE M5 Value/Failure	AGREE	Semantic fix or accepted by decision
+diverge-068-cursor-nested-loop.diffcase	DIVERGE M5 Value/Failure	AGREE	Semantic fix or accepted by decision
+diverge-068-cursor-parentheses.diffcase	DIVERGE M5 Value/Failure	AGREE	Semantic fix or accepted by decision
+diverge-068-cursor-while-in-for-each.diffcase	DIVERGE M5 Value/Failure	AGREE	Semantic fix or accepted by decision
+diverge-068-found-element-in-a-tuple.diffcase	DIVERGE M5 Value/Value	AGREE	Semantic fix or accepted by decision
+diverge-068-ledger-from-data-refused.diffcase	DIVERGE M5 Failure/Value	AGREE	Semantic fix or accepted by decision
+diverge-068-ledger-hash-from-data.diffcase	DIVERGE M5 Value/Failure	AGREE	Semantic fix or accepted by decision
+diverge-068-narrowing-cast.diffcase	DIVERGE M5 Value/Value	AGREE	Semantic fix or accepted by decision
+diverge-068-pair-list-in-a-for-each.diffcase	DIVERGE M5 Value/Failure	AGREE	Semantic fix or accepted by decision
+diverge-t29-equals-hash-and-bytes.diffcase	DIVERGE T29 Value/Value	REJECT JULC0078	Policy rejection
+diverge-t29-equals-hash-types.diffcase	DIVERGE T29 Value/Value	REJECT JULC0078	Policy rejection
+diverge-t29-equals-nested-optional.diffcase	DIVERGE T29 Value/Value	REJECT JULC0087	Policy rejection
+diverge-t29-equals-nested-tuple.diffcase	DIVERGE T29 Value/Value	REJECT JULC0078	Policy rejection
+diverge-t29-equals-r1-r2.diffcase	DIVERGE T29 Value/Value	REJECT JULC0078	Policy rejection
+diverge-t29-equals-record-plutusdata.diffcase	DIVERGE T29 Value/Value	REJECT JULC0078	Policy rejection
+diverge-t29-equals-record-variant-tag-0.diffcase	DIVERGE T29 Value/Value	REJECT JULC0078	Policy rejection
+diverge-t29-equals-sealed-record.diffcase	DIVERGE T29 Value/Value	REJECT JULC0078	Policy rejection
+diverge-t29-equals-two-sealed-families.diffcase	DIVERGE T29 Value/Value	REJECT JULC0078	Policy rejection
+diverge-t29-equals-unknown-operand.diffcase	DIVERGE T29 Value/Value	REJECT JULC0078	Policy rejection
+diverge-t3-biginteger-reference-equality.diffcase	DIVERGE T3 Value/Value	REJECT JULC0086	Policy rejection
+diverge-t30-two-sealed-parents-equals.diffcase	DIVERGE T30 Value/Value	REJECT JULC0079	Policy rejection
+diverge-t30-two-sealed-parents.diffcase	DIVERGE T30 Value/Value	REJECT JULC0079	Policy rejection
+diverge-t34-string-equals-other-type.diffcase	DIVERGE T34 Value/Failure	REJECT JULC0078	Policy rejection
+diverge-t5-byte-array-reference-equality.diffcase	DIVERGE T5 Value/Value	REJECT JULC0086	Policy rejection
+diverge-t5-record-with-byte-array-equals.diffcase	DIVERGE T5 Value/Value	REJECT JULC0087	Policy rejection
+diverge-t6-narrowing-cast-in-if.diffcase	DIVERGE T6 Value/Value	AGREE	Semantic fix or accepted by decision
+reject-068-escape-shape-1.diffcase	REJECT none	AGREE	Semantic fix or accepted by decision
+reject-068-escape-shape-2.diffcase	REJECT none	AGREE	Semantic fix or accepted by decision
+reject-068-escape-shape-3.diffcase	REJECT none	AGREE	Semantic fix or accepted by decision
+reject-068-escape-shape-4.diffcase	REJECT none	AGREE	Semantic fix or accepted by decision
+reject-068-escape-shape-5.diffcase	REJECT none	AGREE	Semantic fix or accepted by decision
+reject-068-escape-shape-6.diffcase	REJECT none	AGREE	Semantic fix or accepted by decision
+reject-068-escape-shape-comment-1.diffcase	REJECT none	AGREE	Semantic fix or accepted by decision
+reject-068-escape-shape-comment-2.diffcase	REJECT none	AGREE	Semantic fix or accepted by decision
+reject-068-nested-user-policy-id.diffcase	REJECT JULC0100	AGREE	Semantic fix or accepted by decision
+reject-068-var-lambda-parameter.diffcase	REJECT JULC0055	AGREE	Semantic fix or accepted by decision
+reject-equals-newtypes.diffcase	REJECT JULC0101	REJECT JULC0078	Diagnostic change
+reject-explicit-equals-always-true.diffcase	REJECT JULC0101	REJECT JULC0080	Diagnostic change
+reject-explicit-equals-by-sign.diffcase	REJECT JULC0101	REJECT JULC0080	Diagnostic change
+reject-g1-291-local-after-loop.diffcase	AGREE	REJECT JULC0012	Policy rejection
+reject-generic-record.diffcase	REJECT none	REJECT JULC0012	Diagnostic change
+reject-guard-instanceof-across-families.diffcase	REJECT JULC0100	REJECT JULC0072	Diagnostic change
+reject-guard-qualifier-is-a-local.diffcase	REJECT JULC0100	REJECT JULC0072	Diagnostic change
+reject-guards-in-switch-statement.diffcase	REJECT none	REJECT JULC0006	Diagnostic change
+reject-instanceof-record-pattern.diffcase	REJECT none	REJECT JULC0077	Diagnostic change
+reject-nested-sealed-interface-pattern.diffcase	REJECT none	REJECT JULC0109	Diagnostic change
+reject-nested-sealed-interface.diffcase	REJECT none	REJECT JULC0109	Diagnostic change
+reject-newtype-declared-of.diffcase	REJECT JULC0101	REJECT JULC0080	Diagnostic change
+reject-packageless-pubkeyhash-record.diffcase	REJECT JULC0100	AGREE	Semantic fix or accepted by decision
+reject-packageless-rational-record-wildcard.diffcase	REJECT JULC0100	AGREE	Semantic fix or accepted by decision
+reject-packageless-rational-record.diffcase	REJECT JULC0100	AGREE	Semantic fix or accepted by decision
+reject-record-instance-method.diffcase	REJECT JULC0055	REJECT JULC0080	Diagnostic change
+reject-record-static-method.diffcase	REJECT none	REJECT JULC0080	Diagnostic change
+reject-top-level-user-value-on-constructor.diffcase	REJECT JULC0100	REJECT JULC0055	Diagnostic change
+reject-top-level-user-value-on-local.diffcase	REJECT JULC0100	AGREE	Semantic fix or accepted by decision
+reject-user-value-accessor-on-constructor.diffcase	REJECT JULC0100	REJECT JULC0055	Diagnostic change
+reject-user-value-accessor-on-local.diffcase	REJECT JULC0100	AGREE	Semantic fix or accepted by decision
+reject-variant-instance-method.diffcase	REJECT JULC0055	REJECT JULC0080	Diagnostic change

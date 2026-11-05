@@ -32,6 +32,12 @@ class TypedMultiSigValidatorE2ETest extends PluginTestBase {
 
     static final String TYPED_MULTI_SIG_VALIDATOR = """
             import org.julclang.core.PlutusData;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.ledger.TxInfo;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
+            import org.julclang.ledger.PubKeyHash;
+            import org.julclang.stdlib.Builtins;
 
             @SpendingValidator
             class TypedMultiSigValidator {
@@ -41,8 +47,8 @@ class TypedMultiSigValidatorE2ETest extends PluginTestBase {
                 static boolean validate(Keys datum, PlutusData redeemer, ScriptContext ctx) {
                     TxInfo txInfo = ctx.txInfo();
                     var sigs = txInfo.signatories();
-                    boolean sig1 = sigs.contains(datum.key1());
-                    boolean sig2 = sigs.contains(datum.key2());
+                    boolean sig1 = sigs.contains(PubKeyHash.of(Builtins.unBData(datum.key1())));
+                    boolean sig2 = sigs.contains(PubKeyHash.of(Builtins.unBData(datum.key2())));
                     if (sig1) {
                         return sig2;
                     } else {

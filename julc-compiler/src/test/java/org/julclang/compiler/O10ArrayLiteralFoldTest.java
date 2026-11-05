@@ -395,17 +395,17 @@ class O10ArrayLiteralFoldTest {
         // compileMethod compiles the whole class, so the rejected shape lives in its own class.
         var mixedSource = O10ArrayLiteralFixtures.IMPORTS + """
                 class MixedArray {
-                    static PlutusData mixed() {
+                    static boolean mixed() {
                         var m = JulcArray.of(BigInteger.ONE, new byte[]{1});
-                        return m.get(0);
+                        return m.length() == 2;
                     }
                 }
                 """;
         var mixedNestedSource = O10ArrayLiteralFixtures.IMPORTS + """
                 class MixedNestedArray {
-                    static PlutusData mixedNested() {
+                    static boolean mixedNested() {
                         var m = JulcArray.of(JulcList.of(BigInteger.ONE), JulcList.of(new byte[]{1}));
-                        return m.get(0).get(0);
+                        return m.length() == 2;
                     }
                 }
                 """;

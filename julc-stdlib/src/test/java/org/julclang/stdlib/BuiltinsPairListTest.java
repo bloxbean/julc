@@ -1,0 +1,145 @@
+package org.julclang.stdlib;
+
+import org.julclang.core.PlutusData;
+import org.julclang.stdlib.lib.ValuesLib;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
+
+import java.math.BigInteger;
+import java.util.ArrayList;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+/** A pair list stays a map on the JVM, as on-chain: {@code tailList}, {@code mkCons} and {@code mkNilPairData} leave a {@code MapData}. */
+class BuiltinsPairListTest {
+
+    private static PlutusData integer(long value) {
+        return new PlutusData.IntData(BigInteger.valueOf(value));
+    }
+
+    private static PlutusData.MapData map(long... keys) {
+        var entries = new ArrayList<PlutusData.Pair>();
+        for (long key : keys) entries.add(new PlutusData.Pair(integer(key), integer(key + 10)));
+        return new PlutusData.MapData(entries);
+    }
+
+    @Test
+    void tailOfAMapIsAMap() {
+        assertEquals(map(2, 3), Builtins.tailList(map(1, 2, 3)));
+        assertEquals(map(), Builtins.tailList(map(1)));
+        assertEquals(map(2), Builtins.tailList((Object) map(1, 2)));
+        assertThrows(IllegalArgumentException.class, () -> Builtins.tailList(map()));
+    }
+
+    @Test
+    void tailOfAListIsAList() {
+        var list = new PlutusData.ListData(List.of(integer(1), integer(2)));
+        PlutusData.ListData typed = Builtins.tailList(list);
+        assertEquals(new PlutusData.ListData(List.of(integer(2))), typed);
+        PlutusData data = list;
+        assertEquals(new PlutusData.ListData(List.of(integer(2))), Builtins.tailList(data));
+    }
+
+    @Test
+    void consOntoAMapIsAMap() {
+        assertEquals(map(1, 2), Builtins.mkCons(Builtins.mkPairData(integer(1), integer(11)), map(2)));
+        assertEquals(map(1), Builtins.mkCons(Builtins.mkPairData(integer(1), integer(11)), Builtins.mkNilPairData()));
+    }
+
+    @Test
+    void consOfWhatIsNotAPairOntoAMapFails() {
+        assertThrows(IllegalArgumentException.class, () -> Builtins.mkCons(integer(1), map(2)));
+        assertThrows(IllegalArgumentException.class, () -> Builtins.mkCons(new PlutusData.ConstrData(0, List.of(integer(1))), map()));
+    }
+
+    @Test
+    void consOntoAListIsAList() {
+        var pair = Builtins.mkPairData(integer(1), integer(11));
+        assertEquals(new PlutusData.ListData(List.of(pair)), Builtins.mkCons(pair, Builtins.mkNilData()));
+        PlutusData.ListData typed = Builtins.mkCons(integer(1), Builtins.mkNilData());
+        assertEquals(new PlutusData.ListData(List.of(integer(1))), typed);
+        PlutusData data = Builtins.mkNilData();
+        assertEquals(new PlutusData.ListData(List.of(integer(1))), Builtins.mkCons(integer(1), data));
+        assertEquals(new PlutusData.ListData(List.of(integer(1), integer(2))), Builtins.mkCons(integer(1), new PlutusData.ListData(List.of(integer(2)))));
+    }
+
+    /** A pair is what {@code mkPairData} makes: a {@code Constr} of tag 0 with two fields. */
+    @Test
+    void consOntoAMapTakesOnlyAPair() {
+        var five = new PlutusData.ConstrData(5, List.of(integer(7), integer(8)));
+        var three = new PlutusData.ConstrData(0, List.of(integer(7), integer(8), integer(9)));
+        assertThrows(IllegalArgumentException.class, () -> Builtins.mkCons(five, map(1)));
+        assertThrows(IllegalArgumentException.class, () -> Builtins.mkCons(three, map(1)));
+        PlutusData data = map(1);
+        assertThrows(IllegalArgumentException.class, () -> Builtins.mkCons(five, data));
+        assertThrows(IllegalArgumentException.class, () -> Builtins.mkCons(three, data));
+        assertThrows(IllegalArgumentException.class, () -> Builtins.mkCons(three, Builtins.mkNilPairData()));
+    }
+
+    /** javac's choice: a map stays typed as a map, a list as a list, and a {@code PlutusData} or another subtype gets {@code PlutusData}. */
+    @Test
+    void whatEachArgumentTypeBinds() {
+        PlutusData.MapData typed = Builtins.tailList(map(1, 2));
+        assertEquals(map(2), typed);
+        var pairs = Builtins.mkNilPairData();
+        pairs = Builtins.mkCons(Builtins.mkPairData(integer(1), integer(11)), pairs);
+        pairs = Builtins.tailList(Builtins.mkCons(Builtins.mkPairData(integer(2), integer(12)), pairs));
+        assertEquals(map(1), pairs);
+        PlutusData data = map(1, 2);
+        PlutusData tail = Builtins.tailList(data);
+        assertEquals(map(2), tail);
+        var list = Builtins.mkNilData();
+        list = Builtins.mkCons(integer(1), list);
+        list = Builtins.tailList(list);
+        assertEquals(new PlutusData.ListData(List.of()), list);
+        assertThrows(IllegalArgumentException.class, () -> Builtins.tailList(integer(1)));
+        assertThrows(IllegalArgumentException.class, () -> Builtins.tailList(new PlutusData.ConstrData(0, List.of(integer(1)))));
+        assertThrows(IllegalArgumentException.class, () -> Builtins.mkCons(integer(1), new PlutusData.BytesData(new byte[]{1})));
+    }
+
+    @Test
+    void anEmptyPairListIsAnEmptyMap() {
+        assertEquals(map(), Builtins.mkNilPairData());
+    }
+
+    @Test
+    void whatReadsAListReadsAMap() {
+        assertEquals(Builtins.mkPairData(integer(1), integer(11)), Builtins.headList(map(1, 2)));
+        assertTrue(Builtins.nullList(Builtins.tailList(map(1))));
+        assertFalse(Builtins.nullList(map(1)));
+    }
+
+    @Test
+    void mapDataTakesAMapAndAListOfPairs() {
+        assertEquals(map(1), Builtins.mapData(map(1)));
+        assertEquals(map(1), Builtins.mapData(Builtins.mkCons(Builtins.mkPairData(integer(1), integer(11)), Builtins.mkNilData())));
+        assertEquals(map(2), Builtins.mapData(Builtins.tailList(map(1, 2))));
+    }
+
+    /** What the libraries walk and build, called on the JVM with a map. Their loops end on an empty map, so a wrong one runs on. */
+    @Test
+    @Timeout(value = 30, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    void theLibrariesOnAMap() {
+        var token = new PlutusData.BytesData(new byte[]{1});
+        var tokens = new PlutusData.MapData(List.of(new PlutusData.Pair(new PlutusData.BytesData(new byte[]{9}), integer(0)), new PlutusData.Pair(token, integer(7))));
+        assertEquals(BigInteger.valueOf(7), ValuesLib.findTokenAmount(tokens, token));
+        assertEquals(BigInteger.ZERO, ValuesLib.findTokenAmount(tokens, new PlutusData.BytesData(new byte[]{2})));
+        assertFalse(ValuesLib.isTokenMapZero(tokens));
+        assertTrue(ValuesLib.isTokenMapZero(new PlutusData.MapData(List.of(new PlutusData.Pair(token, integer(0))))));
+        var negated = ValuesLib.negateTokenMap(tokens);
+        assertEquals(new PlutusData.MapData(List.of(new PlutusData.Pair(new PlutusData.BytesData(new byte[]{9}), integer(0)), new PlutusData.Pair(token, integer(-7)))), negated);
+        var added = ValuesLib._addTokens(tokens, tokens);
+        assertEquals(BigInteger.valueOf(14), ValuesLib.findTokenAmount(added, token));
+    }
+
+    @Test
+    void aMapIsNotAListToUnListData() {
+        assertThrows(IllegalArgumentException.class, () -> Builtins.unListData(Builtins.tailList(map(1, 2))));
+        assertInstanceOf(PlutusData.MapData.class, Builtins.unMapData(Builtins.tailList(map(1, 2))));
+    }
+}

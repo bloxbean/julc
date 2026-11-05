@@ -25,6 +25,9 @@ import static org.junit.jupiter.api.Assertions.*;
 class MintingE2ETest extends E2ETestBase {
 
     static final String ALWAYS_TRUE_MINT = """
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.MintingValidator;
             @MintingValidator
             class AlwaysTrueMint {
                 @Entrypoint

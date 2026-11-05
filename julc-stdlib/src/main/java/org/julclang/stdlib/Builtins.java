@@ -16,6 +16,8 @@ import org.julclang.core.types.JulcScalars;
 import org.julclang.core.types.JulcValue;
 
 import java.math.BigInteger;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -68,9 +70,23 @@ public final class Builtins {
         return toList(list).getFirst();
     }
 
-    /** Return all elements except the first. */
-    public static PlutusData.ListData tailList(PlutusData list) {
+    /** Return all elements except the first. A map stays a map, as a pair list on-chain does. */
+    public static PlutusData tailList(PlutusData list) {
+        if (list instanceof PlutusData.MapData map) {
+            return new PlutusData.MapData(new ArrayList<>(map.entries().subList(1, map.entries().size())));
+        }
         var items = toList(list);
+        return new PlutusData.ListData(new ArrayList<>(items.subList(1, items.size())));
+    }
+
+    /** {@link #tailList(PlutusData)}: what Java has as a map stays one. */
+    public static PlutusData.MapData tailList(PlutusData.MapData map) {
+        return new PlutusData.MapData(new ArrayList<>(map.entries().subList(1, map.entries().size())));
+    }
+
+    /** {@link #tailList(PlutusData)}: what Java has as a list stays one. */
+    public static PlutusData.ListData tailList(PlutusData.ListData list) {
+        var items = list.items();
         return new PlutusData.ListData(new ArrayList<>(items.subList(1, items.size())));
     }
 
@@ -79,11 +95,34 @@ public final class Builtins {
         return toList(list).isEmpty();
     }
 
-    /** Prepend an element to a Data list. */
-    public static PlutusData.ListData mkCons(PlutusData elem, PlutusData list) {
+    /** Prepend an element to a Data list. Onto a map the element must be a pair, and a map stays a map, as a pair list on-chain does. */
+    public static PlutusData mkCons(PlutusData elem, PlutusData list) {
+        if (list instanceof PlutusData.MapData map) return mkCons(elem, map);
         var items = new ArrayList<PlutusData>();
         items.add(elem);
         items.addAll(toList(list));
+        return new PlutusData.ListData(items);
+    }
+
+    /**
+     * {@link #mkCons(PlutusData, PlutusData)} onto a map: the element must be a pair as {@link #mkPairData} makes one, a
+     * {@code Constr} of tag 0 with two fields, since on-chain it is a native pair. Anything else fails, as on-chain.
+     */
+    public static PlutusData.MapData mkCons(PlutusData elem, PlutusData.MapData map) {
+        if (!(elem instanceof PlutusData.ConstrData pair && pair.tag() == 0 && pair.fields().size() == 2)) {
+            throw new IllegalArgumentException("mkCons: a map takes a pair, got " + elem);
+        }
+        var entries = new ArrayList<PlutusData.Pair>();
+        entries.add(new PlutusData.Pair(pair.fields().get(0), pair.fields().get(1)));
+        entries.addAll(map.entries());
+        return new PlutusData.MapData(entries);
+    }
+
+    /** {@link #mkCons(PlutusData, PlutusData)}: what Java has as a list stays one. */
+    public static PlutusData.ListData mkCons(PlutusData elem, PlutusData.ListData list) {
+        var items = new ArrayList<PlutusData>();
+        items.add(elem);
+        items.addAll(list.items());
         return new PlutusData.ListData(items);
     }
 
@@ -117,9 +156,9 @@ public final class Builtins {
         return new PlutusData.ConstrData(0, List.of(fst, snd)); // Pair encoding
     }
 
-    /** Create an empty list of pairs (for map construction). */
-    public static PlutusData.ListData mkNilPairData() {
-        return new PlutusData.ListData(List.of()); // Empty pair list
+    /** Create an empty list of pairs: an empty map. */
+    public static PlutusData.MapData mkNilPairData() {
+        return new PlutusData.MapData(List.of());
     }
 
     // =========================================================================
@@ -172,9 +211,22 @@ public final class Builtins {
         return PlutusDataConversions.listToPlutusData(list);
     }
 
-    /** Wrap a map as MapData. */
+    /**
+     * Wrap a list of pairs as MapData, as the builtin does. A pair list is a MapData here, as on-chain. A ListData of pairs,
+     * which {@code mkCons} builds onto {@code mkNilData}, is one too.
+     */
     public static PlutusData.MapData mapData(PlutusData map) {
-        return (PlutusData.MapData) map; // already a MapData
+        if (map instanceof PlutusData.MapData md) {
+            return md;
+        }
+        if (map instanceof PlutusData.ListData list) {
+            var entries = new ArrayList<PlutusData.Pair>();
+            for (var pair : list.items()) {
+                entries.add(new PlutusData.Pair(fstPair(pair), sndPair(pair)));
+            }
+            return new PlutusData.MapData(entries);
+        }
+        throw new IllegalArgumentException("mapData: expected a list of pairs, got " + map);
     }
 
     // =========================================================================
@@ -267,11 +319,16 @@ public final class Builtins {
 
     /** Get the byte at a given index in a bytestring. Returns 0-255. */
     public static long indexByteString(PlutusData.BytesData bs, long index) {
-        return toBytes(bs)[(int) index] & 0xFF;
+        var bytes = toBytes(bs);
+        if (index < 0 || index >= bytes.length) {
+            throw new IndexOutOfBoundsException("indexByteString: index " + index + " of " + bytes.length + " bytes");
+        }
+        return bytes[(int) index] & 0xFF;
     }
 
-    /** Prepend a byte (0-255) to a bytestring. */
+    /** Prepend a byte (0-255) to a bytestring. Any other value throws, as it fails on Plutus V3. */
     public static PlutusData.BytesData consByteString(long byte_, PlutusData.BytesData bs) {
+        requireByte(byte_);
         var bytes = toBytes(bs);
         var result = new byte[bytes.length + 1];
         result[0] = (byte) byte_;
@@ -279,11 +336,11 @@ public final class Builtins {
         return new PlutusData.BytesData(result);
     }
 
-    /** Extract a slice of a bytestring: slice(start, length, bs). */
+    /** Extract a slice of a bytestring: slice(start, length, bs). Both counts clamp to the bytes there are. */
     public static PlutusData.BytesData sliceByteString(long start, long length, PlutusData.BytesData bs) {
         var bytes = toBytes(bs);
-        int s = Math.max(0, (int) start);
-        int len = Math.max(0, Math.min((int) length, bytes.length - s));
+        int s = Math.clamp(start, 0, bytes.length);
+        int len = Math.clamp(length, 0, bytes.length - s);
         var result = new byte[len];
         if (len > 0) System.arraycopy(bytes, s, result, 0, len);
         return new PlutusData.BytesData(result);
@@ -309,14 +366,14 @@ public final class Builtins {
         return Arrays.equals(toBytes(a), toBytes(b));
     }
 
-    /** Lexicographic comparison: a < b. */
+    /** Lexicographic comparison of unsigned bytes: a < b. */
     public static boolean lessThanByteString(PlutusData.BytesData a, PlutusData.BytesData b) {
-        return Arrays.compare(toBytes(a), toBytes(b)) < 0;
+        return Arrays.compareUnsigned(toBytes(a), toBytes(b)) < 0;
     }
 
-    /** Lexicographic comparison: a <= b. */
+    /** Lexicographic comparison of unsigned bytes: a <= b. */
     public static boolean lessThanEqualsByteString(PlutusData.BytesData a, PlutusData.BytesData b) {
-        return Arrays.compare(toBytes(a), toBytes(b)) <= 0;
+        return Arrays.compareUnsigned(toBytes(a), toBytes(b)) <= 0;
     }
 
     /** Convert integer to bytestring with given endianness and width. Accepts arbitrary-precision BigInteger. */
@@ -387,15 +444,20 @@ public final class Builtins {
         return new PlutusData.BytesData(s.getBytes(StandardCharsets.UTF_8));
     }
 
-    /** Decode a UTF-8 bytestring to a string. */
+    /** Decode a UTF-8 bytestring to a string. Bytes that are not valid UTF-8 throw. */
     public static PlutusData decodeUtf8(PlutusData.BytesData bs) {
+        decodeUtf8String(bs);
         // Return as BytesData — on-chain strings are ByteStrings
         return bs;
     }
 
-    /** Decode a UTF-8 bytestring to a Java String. */
+    /** Decode a UTF-8 bytestring to a Java String. Bytes that are not valid UTF-8 throw. */
     public static String decodeUtf8String(PlutusData.BytesData bs) {
-        return new String(toBytes(bs), StandardCharsets.UTF_8);
+        try {
+            return StandardCharsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(toBytes(bs))).toString();
+        } catch (CharacterCodingException e) {
+            throw new IllegalArgumentException("decodeUtf8: invalid UTF-8", e);
+        }
     }
 
     /** Serialise a Data value to its CBOR-encoded bytestring. */
@@ -403,11 +465,17 @@ public final class Builtins {
         return org.julclang.core.cbor.PlutusDataCborEncoder.encode(d);
     }
 
-    /** Create a bytestring of n copies of a given byte value. */
+    /** Create a bytestring of n copies of a given byte value (0-255). A count outside 0..8192 throws. */
     public static byte[] replicateByte(long n, long byte_) {
+        if (n < 0 || n > 8192) throw new IllegalArgumentException("replicateByte: length " + n + " is outside 0..8192");
+        requireByte(byte_);
         byte[] result = new byte[(int) n];
         Arrays.fill(result, (byte) byte_);
         return result;
+    }
+
+    private static void requireByte(long value) {
+        if (value < 0 || value > 255) throw new IllegalArgumentException("not a byte: " + value);
     }
 
     /** Return an empty bytestring. */
@@ -598,17 +666,20 @@ public final class Builtins {
     // Bitwise operations
     // =========================================================================
 
-    /** Bitwise AND of two bytestrings with padding semantics. */
+    /**
+     * Bitwise AND of two bytestrings, byte by byte from the first. With {@code padding} the result is as long as the longer,
+     * which keeps the bytes past the shorter's end; without it, as long as the shorter.
+     */
     public static PlutusData.BytesData andByteString(boolean padding, PlutusData.BytesData a, PlutusData.BytesData b) {
         return bitwiseBinaryOp(padding, toBytes(a), toBytes(b), (x, y) -> (byte)(x & y));
     }
 
-    /** Bitwise OR of two bytestrings with padding semantics. */
+    /** Bitwise OR, with {@link #andByteString(boolean, PlutusData.BytesData, PlutusData.BytesData)}'s alignment and padding. */
     public static PlutusData.BytesData orByteString(boolean padding, PlutusData.BytesData a, PlutusData.BytesData b) {
         return bitwiseBinaryOp(padding, toBytes(a), toBytes(b), (x, y) -> (byte)(x | y));
     }
 
-    /** Bitwise XOR of two bytestrings with padding semantics. */
+    /** Bitwise XOR, with {@link #andByteString(boolean, PlutusData.BytesData, PlutusData.BytesData)}'s alignment and padding. */
     public static PlutusData.BytesData xorByteString(boolean padding, PlutusData.BytesData a, PlutusData.BytesData b) {
         return bitwiseBinaryOp(padding, toBytes(a), toBytes(b), (x, y) -> (byte)(x ^ y));
     }
@@ -1092,7 +1163,7 @@ public final class Builtins {
     }
 
     /** @see #tailList(PlutusData) */
-    public static PlutusData.ListData tailList(Object list) {
+    public static PlutusData tailList(Object list) {
         return tailList(asPlutusData(list));
     }
 
@@ -1234,17 +1305,10 @@ public final class Builtins {
     }
 
     private static PlutusData.BytesData bitwiseBinaryOp(boolean padding, byte[] a, byte[] b, ByteOp op) {
-        int maxLen = Math.max(a.length, b.length);
-        int minLen = Math.min(a.length, b.length);
-        int resultLen = padding ? maxLen : minLen;
-        var result = new byte[resultLen];
-        // Align from the right (LSB)
-        for (int i = 0; i < resultLen; i++) {
-            int ai = a.length - 1 - i;
-            int bi = b.length - 1 - i;
-            byte av = (ai >= 0) ? a[ai] : 0;
-            byte bv = (bi >= 0) ? b[bi] : 0;
-            result[resultLen - 1 - i] = op.apply(av, bv);
+        int common = Math.min(a.length, b.length);
+        var result = padding ? (a.length < b.length ? b : a).clone() : Arrays.copyOf(a, common);
+        for (int i = 0; i < common; i++) {
+            result[i] = op.apply(a[i], b[i]);
         }
         return new PlutusData.BytesData(result);
     }

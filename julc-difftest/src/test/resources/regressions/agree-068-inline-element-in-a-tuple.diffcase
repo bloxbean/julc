@@ -1,0 +1,17 @@
+format: 3
+name: an element of an inline list, copied to a var that a tuple of accumulators carries
+class: Case
+method: m
+arg: 01
+expect: AGREE
+note: A variable holds one type, so a tuple of accumulators encodes what was decoded.
+note: ADR-068 D13: on frontend=JAVAC this agrees with the JVM (Adr068SavedCasesOnJavacTest).
+---
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.core.types.JulcList;
+import org.julclang.stdlib.Builtins;
+
+public class Case {
+    public static long m(BigInteger a) { long s = 0; for (var x : JulcList.of(a, BigInteger.TWO)) { var y = x; long n = 0; while (n < 2) { n = n + 1; y = x; } s = s + n; } return s; }
+}

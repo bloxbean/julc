@@ -22,8 +22,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * {@code get} lowering that was recorded but not adopted. This is the reproducible harness for
  * those numbers: under the pinned PV11 profile at the safe level, {@code xs.drop(i).head()}
  * costs a small constant per index step where the recursive {@code get} costs a traversal
- * step, and the unguarded form is not a valid replacement because {@code DropList} treats a
- * negative count as zero.
+ * step. {@code DropList} treats a negative count as zero, so {@code drop} checks its count
+ * (ADR-068 B3).
  */
 class O9DropListAlternativeTest {
 
@@ -34,22 +34,22 @@ class O9DropListAlternativeTest {
             import java.math.BigInteger;
             class DropListForms {
                 static BigInteger dropHead(JulcList<BigInteger> xs, BigInteger i) {
-                    return xs.drop(i).head();
+                    return xs.drop(i.longValue()).head();
                 }
                 static BigInteger guardedDropHead(JulcList<BigInteger> xs, BigInteger i) {
                     if (i.compareTo(BigInteger.ZERO) < 0) {
                         return Builtins.unIData(Builtins.error());
                     }
-                    return xs.drop(i).head();
+                    return xs.drop(i.longValue()).head();
                 }
                 static BigInteger recursiveGet(JulcList<BigInteger> xs, BigInteger i) {
-                    return xs.get(i);
+                    return xs.get(i.longValue());
                 }
             }
             """;
 
     @Test
-    void dropListIndexingIsAffineWithASmallStepAndDiffersOnlyOnNegativeAndOverLengthIndexes() {
+    void dropListIndexingIsAffineWithASmallStepAndDiffersOnlyOnFailureText() {
         var dropHead = compile("dropHead");
         var guarded = compile("guardedDropHead");
         var recursive = compile("recursiveGet");
@@ -81,10 +81,9 @@ class O9DropListAlternativeTest {
         assertEquals("TailList: empty list", failure(recursive, 9));
         assertEquals("HeadList: empty list", failure(dropHead, 9));
         assertEquals("HeadList: empty list", failure(guarded, 9));
-        // Negative: the unguarded form silently returns element 0, which is why it is not a
-        // valid replacement; the guard restores a failure with its own text.
+        // Negative: drop's own check fails as JulcList.drop throws (ADR-068 B3), and the guard does the same.
         assertEquals("TailList: empty list", failure(recursive, -1));
-        assertEquals(result(recursive, 0), result(dropHead, -1));
+        assertEquals("Error term encountered", failure(dropHead, -1));
         assertEquals("Error term encountered", failure(guarded, -1));
     }
 

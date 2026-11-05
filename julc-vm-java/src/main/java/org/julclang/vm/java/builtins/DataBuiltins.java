@@ -35,8 +35,13 @@ public final class DataBuiltins {
         return mkData(new PlutusData.ConstrData(tag, dataFields));
     }
 
+    /** The element type the builtin takes is the list's type, which Plutus checks whole, so an empty list of another type fails too. */
+    private static final DefaultUni PAIR_OF_DATA = DefaultUni.pairOf(DefaultUni.DATA, DefaultUni.DATA);
+
     public static CekValue mapData(List<CekValue> args) {
-        var list = asList(args.get(0), "MapData");
+        var typed = asListConst(args.get(0), "MapData");
+        if (!PAIR_OF_DATA.equals(typed.elemType())) throw new BuiltinException("MapData: list element is not a pair");
+        var list = typed.values();
         var entries = new ArrayList<PlutusData.Pair>();
         for (var elem : list) {
             if (elem instanceof Constant.PairConst pc) {
@@ -53,7 +58,9 @@ public final class DataBuiltins {
     }
 
     public static CekValue listData(List<CekValue> args) {
-        var list = asList(args.get(0), "ListData");
+        var typed = asListConst(args.get(0), "ListData");
+        if (!DefaultUni.DATA.equals(typed.elemType())) throw new BuiltinException("ListData: list element is not Data");
+        var list = typed.values();
         var items = new ArrayList<PlutusData>();
         for (var elem : list) {
             if (elem instanceof Constant.DataConst dc) {

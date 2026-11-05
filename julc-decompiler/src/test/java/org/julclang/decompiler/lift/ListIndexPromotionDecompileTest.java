@@ -34,7 +34,7 @@ class ListIndexPromotionDecompileTest {
                 import java.math.BigInteger;
                 class Two {
                     static BigInteger two(JulcList<BigInteger> xs, BigInteger i, BigInteger j) {
-                        return xs.get(i).add(xs.get(j));
+                        return xs.get(i.longValue()).add(xs.get(j.longValue()));
                     }
                 }
                 """;

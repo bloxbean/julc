@@ -25,16 +25,19 @@ class WithdrawValidatorTest {
      */
     static final String AUTHORIZED_WITHDRAW = """
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.WithdrawValidator;
+            import org.julclang.core.PlutusData;
 
             @WithdrawValidator
             class AuthorizedWithdraw {
                 static boolean isAuthorized(BigInteger pkh, BigInteger expected) {
-                    return pkh == expected;
+                    return pkh.equals(expected);
                 }
 
                 @Entrypoint
-                static boolean validate(BigInteger redeemer, BigInteger ctx) {
-                    return isAuthorized(12345, 12345);
+                static boolean validate(BigInteger redeemer, PlutusData ctx) {
+                    return isAuthorized(BigInteger.valueOf(12345), BigInteger.valueOf(12345));
                 }
             }
             """;
@@ -44,16 +47,19 @@ class WithdrawValidatorTest {
      */
     static final String REJECTING_WITHDRAW = """
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.WithdrawValidator;
+            import org.julclang.core.PlutusData;
 
             @WithdrawValidator
             class RejectingWithdraw {
                 static boolean isAuthorized(BigInteger pkh, BigInteger expected) {
-                    return pkh == expected;
+                    return pkh.equals(expected);
                 }
 
                 @Entrypoint
-                static boolean validate(BigInteger redeemer, BigInteger ctx) {
-                    return isAuthorized(99999, 12345);
+                static boolean validate(BigInteger redeemer, PlutusData ctx) {
+                    return isAuthorized(BigInteger.valueOf(99999), BigInteger.valueOf(12345));
                 }
             }
             """;
@@ -63,11 +69,14 @@ class WithdrawValidatorTest {
      */
     static final String ALWAYS_ALLOW_WITHDRAW = """
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.WithdrawValidator;
+            import org.julclang.core.PlutusData;
 
             @WithdrawValidator
             class AlwaysAllowWithdraw {
                 @Entrypoint
-                static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                static boolean validate(BigInteger redeemer, PlutusData ctx) {
                     return true;
                 }
             }

@@ -1,0 +1,170 @@
+package org.julclang.compiler.frontend.javac;
+
+import org.julclang.compiler.CompileResult;
+import org.julclang.compiler.CompilerOptions;
+import org.julclang.compiler.JulcCompiler;
+import org.julclang.compiler.OptimizationLevel;
+import org.julclang.compiler.frontend.javac.lower.FrozenReference;
+import org.julclang.compiler.frontend.javac.lower.LoweringFixture;
+import org.julclang.core.flat.UplcFlatEncoder;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+/** ADR-068 M3a's walking skeleton: {@code return true} through {@code frontend=JAVAC}, to the reference's FLAT bytes. */
+class JavacWalkingSkeletonTest {
+
+    private static final String RETURN_TRUE = """
+            import org.julclang.core.PlutusData;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
+
+            @SpendingValidator
+            class V {
+                @Entrypoint
+                public static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                    return true;
+                }
+            }
+            """;
+
+
+    @Test
+    void returnTrueCompilesToTheReferencesBytesAtEveryLevel() {
+        for (var level : OptimizationLevel.values()) {
+            FrozenReference.assertSameBytes("return true|" + level, compile(RETURN_TRUE, level).program());
+        }
+    }
+
+    @Test
+    void theJavacFrontendRecordsWhatJavacSaw() {
+        var provenance = compile(RETURN_TRUE, OptimizationLevel.DEFAULT).javacProvenance();
+        assertEquals(JavacProvenance.Outcome.ACCEPTED, provenance.outcome());
+        assertEquals(JavacFrontend.javacVersion(), provenance.javacVersion());
+        assertTrue(provenance.platformDigest() != null && provenance.stubsDigest() != null);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"MintingValidator", "WithdrawValidator", "CertifyingValidator", "VotingValidator", "ProposingValidator"})
+    void everySinglePurposeWrapper(String annotation) {
+        LoweringFixture.assertSameAsReference("""
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.*;
+
+                @%s
+                class V {
+                    @Entrypoint
+                    static boolean validate(PlutusData redeemer, ScriptContext ctx) { return false; }
+                }
+                """.formatted(annotation));
+    }
+
+    @Test
+    void spendingWithADatum() {
+        LoweringFixture.assertSameAsReference("""
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.*;
+
+                @SpendingValidator
+                class V {
+                    @Entrypoint
+                    static boolean validate(PlutusData datum, PlutusData redeemer, ScriptContext ctx) { return true; }
+                }
+                """);
+    }
+
+    @Test
+    void spendingWithAnOptionalDatum() {
+        LoweringFixture.assertSameAsReference("""
+                import java.util.Optional;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.*;
+
+                @SpendingValidator
+                class V {
+                    @Entrypoint
+                    static boolean validate(Optional<PlutusData> datum, PlutusData redeemer, ScriptContext ctx) { return true; }
+                }
+                """);
+    }
+
+    @Test
+    void multiValidatorsDispatchedByHandAndByPurpose() {
+        LoweringFixture.assertSameAsReference("""
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.*;
+
+                @MultiValidator
+                class V {
+                    @Entrypoint
+                    static boolean validate(PlutusData redeemer, ScriptContext ctx) { return true; }
+                }
+                """);
+        LoweringFixture.assertSameAsReference("""
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.*;
+
+                @MultiValidator
+                class V {
+                    static final long K = 7;
+
+                    @Entrypoint(purpose = Purpose.MINT)
+                    static boolean mint(PlutusData redeemer, ScriptContext ctx) { return true; }
+
+                    @Entrypoint(purpose = Purpose.SPEND)
+                    static boolean spend(PlutusData datum, PlutusData redeemer, ScriptContext ctx) { return false; }
+
+                    @Entrypoint(purpose = Purpose.WITHDRAW)
+                    static boolean withdraw(PlutusData redeemer, ScriptContext ctx) { return true; }
+                }
+                """);
+    }
+
+    /** The source-map guard is on {@code boolean} returns: a {@code Boolean} keeps its value, as in the reference. */
+    @Test
+    void anEntrypointReturningBooleanTheClass() {
+        LoweringFixture.assertSameAsReference("""
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.*;
+
+                @SpendingValidator
+                class V {
+                    @Entrypoint
+                    static Boolean validate(PlutusData redeemer, ScriptContext ctx) { return true; }
+                }
+                """);
+    }
+
+    @Test
+    void aMissingBodyIsReportedAsTheReferenceDoes() {
+        LoweringFixture.assertSameRejectionAsReference("""
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.*;
+
+                @SpendingValidator
+                interface V {
+                    @Entrypoint
+                    boolean validate(PlutusData redeemer, ScriptContext ctx);
+                }
+                """);
+    }
+
+    private static CompileResult compile(String source, OptimizationLevel level) {
+        return new JulcCompiler(null, new CompilerOptions().setOptimizationLevel(level))
+                .compile(source, List.of());
+    }
+}

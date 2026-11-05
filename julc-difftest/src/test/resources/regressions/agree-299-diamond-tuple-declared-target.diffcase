@@ -1,0 +1,22 @@
+format: 2
+name: a diamond Tuple3 with a declared target type encodes its components (#299)
+class: Probe
+method: m
+arg: 03
+arg: 04
+expect: AGREE
+note: ADR-068 D4 exception 2 (#299): with a typed target the diamond's components failed the same way (MkCons) where
+note: the JVM returns; they now take the target's component types. recorded.base is the reference frontend at B0.
+recorded.jvm: Value 420102 []
+recorded.base: Failure [] "MkCons: element type Bool[] does not match list element type Data[]"
+---
+import java.math.BigInteger;
+import org.julclang.core.types.Tuple3;
+
+public class Probe {
+
+    public static byte[] m(BigInteger x, BigInteger y) {
+        Tuple3<BigInteger, byte[], Boolean> t = new Tuple3<>(y, new byte[]{1, 2}, x.compareTo(y) < 0);
+        return t.third() ? t.second() : new byte[]{};
+    }
+}

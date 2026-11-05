@@ -1,0 +1,19 @@
+format: 2
+name: the same record nested in Probe (F19c)
+class: Probe
+method: m
+arg: 05
+arg: 07
+expect: AGREE
+note: ADR-067 F19c.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    record Rational(BigInteger denominator, BigInteger numerator) {}
+
+    public static BigInteger m(BigInteger a, BigInteger b) {
+        Rational r = new Rational(a, b);
+        return r.numerator();
+    }
+}

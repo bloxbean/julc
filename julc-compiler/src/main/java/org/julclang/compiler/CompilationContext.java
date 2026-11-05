@@ -1,14 +1,20 @@
 package org.julclang.compiler;
 
 import org.julclang.compiler.error.CompilerDiagnostic;
+import org.julclang.compiler.frontend.javac.JavacProvenance;
 import org.julclang.compiler.pir.ArrayLiteralFoldPass;
 import org.julclang.compiler.pir.ListIndexPromotionPass;
+import org.julclang.compiler.pir.PirTerm;
+import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.pir.ValueConversionSharingPass;
 import org.julclang.compiler.pir.ValueLiteralFoldPass;
 import org.julclang.vm.OptimizationCostProfile;
 import org.julclang.vm.ProtocolCapability;
 
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
@@ -50,6 +56,9 @@ public final class CompilationContext {
     private final List<CompilerDiagnostic> diagnostics = new ArrayList<>();
     private final LinkedHashSet<String> appliedOptimizationRules = new LinkedHashSet<>();
     private Predicate<String> binderNamespace;
+    private JavacProvenance javacProvenance = JavacProvenance.UNAVAILABLE;
+    /** The sources this compilation's class-path scan found, by identity (ADR-068 D8). */
+    private final Set<String> jarSources = Collections.newSetFromMap(new IdentityHashMap<>());
 
     private CompilationContext(
             ResolvedCompilerTarget resolvedTarget,
@@ -94,6 +103,15 @@ public final class CompilationContext {
                 costProfile,
                 effectiveOptions.getDisabledOptimizationRules(),
                 effectiveOptions.getLogger());
+    }
+
+    /** Marks sources this compilation's class-path scan found: on the javac frontend they rank as JAR sources (D8). */
+    void markJarSources(Collection<String> sources) {
+        jarSources.addAll(sources);
+    }
+
+    boolean isJarSource(String source) {
+        return jarSources.contains(source);
     }
 
     /** The rule ids that can be disabled individually, in catalog order. */
@@ -143,6 +161,11 @@ public final class CompilationContext {
         return optimizationCostProfile;
     }
 
+    /** The optimization rules this compilation disabled (an immutable snapshot). */
+    public Set<String> disabledOptimizationRules() {
+        return disabledOptimizationRules;
+    }
+
     /** Record one stable rule identity in first-application order. */
     public void recordOptimizationRule(String ruleId) {
         if (ruleId == null || ruleId.isBlank()) {
@@ -154,6 +177,15 @@ public final class CompilationContext {
     public void recordOptimizationRules(Iterable<String> ruleIds) {
         Objects.requireNonNull(ruleIds, "ruleIds");
         ruleIds.forEach(this::recordOptimizationRule);
+    }
+
+    /** What javac saw of this compilation (ADR-068 D3). */
+    public JavacProvenance javacProvenance() {
+        return javacProvenance;
+    }
+
+    public void setJavacProvenance(JavacProvenance provenance) {
+        javacProvenance = provenance;
     }
 
     public OptimizationReport optimizationReport() {
@@ -172,13 +204,14 @@ public final class CompilationContext {
         return resolvedTarget.featureProfile().supports(capability);
     }
 
+    /** Records {@code diagnostic} on this compilation. */
+    public void report(CompilerDiagnostic diagnostic) {
+        diagnostics.add(diagnostic);
+    }
+
     /** Return an immutable snapshot of diagnostics reported in this compilation. */
     public List<CompilerDiagnostic> diagnostics() {
         return List.copyOf(diagnostics);
-    }
-
-    List<CompilerDiagnostic> diagnosticBuffer() {
-        return diagnostics;
     }
 
     public void log(String message) {
@@ -199,9 +232,9 @@ public final class CompilationContext {
 
     /**
      * ADR-060 G2: require every binder that reaches UPLC generation to be accepted by
-     * {@code allowed}. The Java frontend enables this in tests; other frontends own their names.
+     * {@code allowed}. The Java frontend enables this in tests.
      */
-    void verifyBinderNames(Predicate<String> allowed) {
+    public void verifyBinderNames(Predicate<String> allowed) {
         this.binderNamespace = Objects.requireNonNull(allowed, "allowed");
     }
 

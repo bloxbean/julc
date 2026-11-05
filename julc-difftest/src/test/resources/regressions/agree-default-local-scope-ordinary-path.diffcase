@@ -1,0 +1,28 @@
+format: 3
+name: a default local named like a field, read after the switch (#291)
+class: Probe
+method: m
+tag: Probe$A Probe$S 0
+tag: Probe$B Probe$S 1
+arg: 05
+expect: AGREE
+recorded.jvm: Value 01 []
+recorded.base: Value 02 []
+note: ADR-067 M1 round 3, #291: the default local's type outlived the switch, so p.v() read the field at R1's layout (JVM 1, JuLC 2 at a4a7d834); every arm body now has its own scope.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    sealed interface S permits A, B {}
+    record A(BigInteger v) implements S {}
+    record B(BigInteger v) implements S {}
+    record R0(BigInteger v, BigInteger w) {}
+    record R1(BigInteger w, BigInteger v) {}
+    static final R0 p = new R0(BigInteger.ONE, BigInteger.TWO);
+
+    public static BigInteger m(BigInteger a) {
+        S s = a.signum() > 0 ? new A(a) : new B(a);
+        BigInteger r = switch (s) { case A q -> a; default -> { R1 p = new R1(a, a); yield a; } };
+        return p.v();
+    }
+}

@@ -1,0 +1,1542 @@
+arrow[A]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+colon[A]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[A?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+colon[A?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[B]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+colon[B]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[B?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+colon[B?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[D]	NONE	bytes d91b7a7d857a7ff21c93210b5c263ff89471e5bdba3832e8926b6622c359199f
+arrow[D]	BASELINE	bytes b747a2d77f8c4ca6559fab287338313f9dac69dfdf9259ade2ca5ceeb8e75a59
+arrow[D]	PV11_SAFE	bytes c52d8de695afbefc568c35acd1a9b39ba385440ad445e65f04a8165f166eaa3c
+arrow[D]	PV11_COSTED	bytes c52d8de695afbefc568c35acd1a9b39ba385440ad445e65f04a8165f166eaa3c
+colon[D]	NONE	bytes d91b7a7d857a7ff21c93210b5c263ff89471e5bdba3832e8926b6622c359199f
+colon[D]	BASELINE	bytes b747a2d77f8c4ca6559fab287338313f9dac69dfdf9259ade2ca5ceeb8e75a59
+colon[D]	PV11_SAFE	bytes c52d8de695afbefc568c35acd1a9b39ba385440ad445e65f04a8165f166eaa3c
+colon[D]	PV11_COSTED	bytes c52d8de695afbefc568c35acd1a9b39ba385440ad445e65f04a8165f166eaa3c
+arrow[A,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+colon[A,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+colon[A,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,B]	NONE	bytes 28648c5e84f114d989dae72f0f049342d1ad06b80546a3a14931eac33b8eac41
+arrow[A,B]	BASELINE	bytes bc091f8dc680e032eb8bb7684c487a2adf8f45abf1bc2157be6a54567836dd50
+arrow[A,B]	PV11_SAFE	bytes 5eb4d4b9866eb2f54db5cc808e41fdf2b3961f536b0b12e7ac81ff75a882b601
+arrow[A,B]	PV11_COSTED	bytes 5eb4d4b9866eb2f54db5cc808e41fdf2b3961f536b0b12e7ac81ff75a882b601
+colon[A,B]	NONE	bytes 28648c5e84f114d989dae72f0f049342d1ad06b80546a3a14931eac33b8eac41
+colon[A,B]	BASELINE	bytes bc091f8dc680e032eb8bb7684c487a2adf8f45abf1bc2157be6a54567836dd50
+colon[A,B]	PV11_SAFE	bytes 5eb4d4b9866eb2f54db5cc808e41fdf2b3961f536b0b12e7ac81ff75a882b601
+colon[A,B]	PV11_COSTED	bytes 5eb4d4b9866eb2f54db5cc808e41fdf2b3961f536b0b12e7ac81ff75a882b601
+arrow[A,B?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+colon[A,B?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[A,D]	NONE	bytes 5ee31c350a5101e686607e3b3e39cb3d34d78ddb88485140066000164705ea1d
+arrow[A,D]	BASELINE	bytes 2120c336165535d51755500c547ef906774401b93cf466b3e1f3ec9723a3167d
+arrow[A,D]	PV11_SAFE	bytes 024f3c367d1186c883843bf059916542e83d6f864e7172dcb2dc624de506a494
+arrow[A,D]	PV11_COSTED	bytes 024f3c367d1186c883843bf059916542e83d6f864e7172dcb2dc624de506a494
+colon[A,D]	NONE	bytes 5ee31c350a5101e686607e3b3e39cb3d34d78ddb88485140066000164705ea1d
+colon[A,D]	BASELINE	bytes 2120c336165535d51755500c547ef906774401b93cf466b3e1f3ec9723a3167d
+colon[A,D]	PV11_SAFE	bytes 024f3c367d1186c883843bf059916542e83d6f864e7172dcb2dc624de506a494
+colon[A,D]	PV11_COSTED	bytes 024f3c367d1186c883843bf059916542e83d6f864e7172dcb2dc624de506a494
+arrow[A?,A]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+colon[A?,A]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[A?,A?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+colon[A?,A?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[A?,B]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+colon[A?,B]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[A?,B?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+colon[A?,B?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[A?,D]	NONE	bytes 6c939766f38f16768ceb90517e511d33a5b6d80ec82b481c521b6ac9bb7ca8c8
+arrow[A?,D]	BASELINE	bytes ec76060ea5e58c2ff2dfee7ef5775119a05ddcc9570fe8ad18d0dae2b6ea17cb
+arrow[A?,D]	PV11_SAFE	bytes 6276dcd5b78c8b79dd67d822091d144c102c20fb62ceafe05b1034ecfe5bf412
+arrow[A?,D]	PV11_COSTED	bytes 6276dcd5b78c8b79dd67d822091d144c102c20fb62ceafe05b1034ecfe5bf412
+colon[A?,D]	NONE	bytes 6c939766f38f16768ceb90517e511d33a5b6d80ec82b481c521b6ac9bb7ca8c8
+colon[A?,D]	BASELINE	bytes ec76060ea5e58c2ff2dfee7ef5775119a05ddcc9570fe8ad18d0dae2b6ea17cb
+colon[A?,D]	PV11_SAFE	bytes 6276dcd5b78c8b79dd67d822091d144c102c20fb62ceafe05b1034ecfe5bf412
+colon[A?,D]	PV11_COSTED	bytes 6276dcd5b78c8b79dd67d822091d144c102c20fb62ceafe05b1034ecfe5bf412
+arrow[B,A]	NONE	bytes f2564ced53b654d6e3d38ec32fed08d781b54e2a64f303d9f2e078c262c39a1b
+arrow[B,A]	BASELINE	bytes c4005f278a6f5d9dac445846374cc0edd1265e26f79e487d2052abd836f0bb14
+arrow[B,A]	PV11_SAFE	bytes c92c52dcb6d0188b9e12acc69b1b5f8353d4bd56737f3d9fc4014b7cc8ac9bfa
+arrow[B,A]	PV11_COSTED	bytes c92c52dcb6d0188b9e12acc69b1b5f8353d4bd56737f3d9fc4014b7cc8ac9bfa
+colon[B,A]	NONE	bytes f2564ced53b654d6e3d38ec32fed08d781b54e2a64f303d9f2e078c262c39a1b
+colon[B,A]	BASELINE	bytes c4005f278a6f5d9dac445846374cc0edd1265e26f79e487d2052abd836f0bb14
+colon[B,A]	PV11_SAFE	bytes c92c52dcb6d0188b9e12acc69b1b5f8353d4bd56737f3d9fc4014b7cc8ac9bfa
+colon[B,A]	PV11_COSTED	bytes c92c52dcb6d0188b9e12acc69b1b5f8353d4bd56737f3d9fc4014b7cc8ac9bfa
+arrow[B,A?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+colon[B,A?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[B,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+colon[B,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+colon[B,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,D]	NONE	bytes 07c6a99323e5e85bbc3b13d94a0f97bdbd59eb433654db1069fc02a5535f5783
+arrow[B,D]	BASELINE	bytes b5e225cf2323abdfbd5cff38128256f7f31ab51f7d5c392a802e46421cb5610b
+arrow[B,D]	PV11_SAFE	bytes c0daa9436d422a7ec7a1ded0f35e89f49d6a300e8c422e7a47bdb9ca0deeb7bf
+arrow[B,D]	PV11_COSTED	bytes c0daa9436d422a7ec7a1ded0f35e89f49d6a300e8c422e7a47bdb9ca0deeb7bf
+colon[B,D]	NONE	bytes 07c6a99323e5e85bbc3b13d94a0f97bdbd59eb433654db1069fc02a5535f5783
+colon[B,D]	BASELINE	bytes b5e225cf2323abdfbd5cff38128256f7f31ab51f7d5c392a802e46421cb5610b
+colon[B,D]	PV11_SAFE	bytes c0daa9436d422a7ec7a1ded0f35e89f49d6a300e8c422e7a47bdb9ca0deeb7bf
+colon[B,D]	PV11_COSTED	bytes c0daa9436d422a7ec7a1ded0f35e89f49d6a300e8c422e7a47bdb9ca0deeb7bf
+arrow[B?,A]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+colon[B?,A]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[B?,A?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+colon[B?,A?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[B?,B]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+colon[B?,B]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[B?,B?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+colon[B?,B?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[B?,D]	NONE	bytes 2bfced35f5b90c08af4d7a991985e590d0e8aa1c488de01998bef3ca69356b4f
+arrow[B?,D]	BASELINE	bytes 1e8e856ecc3e265ccc57e2476e7159d289b87b4531f8c6ab549aad33a6bdbcfe
+arrow[B?,D]	PV11_SAFE	bytes 2fd8046d47691e2ab7ea72958bc96b5dfe946754a3d9fe01f372d3bc050cddab
+arrow[B?,D]	PV11_COSTED	bytes 2fd8046d47691e2ab7ea72958bc96b5dfe946754a3d9fe01f372d3bc050cddab
+colon[B?,D]	NONE	bytes 2bfced35f5b90c08af4d7a991985e590d0e8aa1c488de01998bef3ca69356b4f
+colon[B?,D]	BASELINE	bytes 1e8e856ecc3e265ccc57e2476e7159d289b87b4531f8c6ab549aad33a6bdbcfe
+colon[B?,D]	PV11_SAFE	bytes 2fd8046d47691e2ab7ea72958bc96b5dfe946754a3d9fe01f372d3bc050cddab
+colon[B?,D]	PV11_COSTED	bytes 2fd8046d47691e2ab7ea72958bc96b5dfe946754a3d9fe01f372d3bc050cddab
+arrow[D,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+colon[D,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+colon[D,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+colon[D,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+colon[D,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @16:13
+colon[D,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @16:13
+arrow[A,A,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+colon[A,A,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+colon[A,A,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+colon[A,A,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+colon[A,A,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A,D]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+colon[A,A,D]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A?,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+colon[A,A?,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A?,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+colon[A,A?,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A?,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+colon[A,A?,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A?,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+colon[A,A?,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A?,D]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+colon[A,A?,D]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,B,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+colon[A,B,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,B,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+colon[A,B,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,B,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+colon[A,B,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,B,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+colon[A,B,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,B,D]	NONE	bytes 28648c5e84f114d989dae72f0f049342d1ad06b80546a3a14931eac33b8eac41
+arrow[A,B,D]	BASELINE	bytes bc091f8dc680e032eb8bb7684c487a2adf8f45abf1bc2157be6a54567836dd50
+arrow[A,B,D]	PV11_SAFE	bytes 5eb4d4b9866eb2f54db5cc808e41fdf2b3961f536b0b12e7ac81ff75a882b601
+arrow[A,B,D]	PV11_COSTED	bytes 5eb4d4b9866eb2f54db5cc808e41fdf2b3961f536b0b12e7ac81ff75a882b601
+colon[A,B,D]	NONE	bytes 28648c5e84f114d989dae72f0f049342d1ad06b80546a3a14931eac33b8eac41
+colon[A,B,D]	BASELINE	bytes bc091f8dc680e032eb8bb7684c487a2adf8f45abf1bc2157be6a54567836dd50
+colon[A,B,D]	PV11_SAFE	bytes 5eb4d4b9866eb2f54db5cc808e41fdf2b3961f536b0b12e7ac81ff75a882b601
+colon[A,B,D]	PV11_COSTED	bytes 5eb4d4b9866eb2f54db5cc808e41fdf2b3961f536b0b12e7ac81ff75a882b601
+arrow[A,B?,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+colon[A,B?,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,B?,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+colon[A,B?,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,B?,B]	NONE	bytes 81c181dabd9d2f644f6f6a65f295a2283ebb727db8df2ffc6cf7514e9204c6bf
+arrow[A,B?,B]	BASELINE	bytes b3e51adc493d811150d7210590b3bba1030544372d7b9b3bb35f4439e513e690
+arrow[A,B?,B]	PV11_SAFE	bytes b45360a1f4352ad49f7185e561f507ef2a8eb119f3b5d929df88c3940360bf58
+arrow[A,B?,B]	PV11_COSTED	bytes b45360a1f4352ad49f7185e561f507ef2a8eb119f3b5d929df88c3940360bf58
+colon[A,B?,B]	NONE	bytes 81c181dabd9d2f644f6f6a65f295a2283ebb727db8df2ffc6cf7514e9204c6bf
+colon[A,B?,B]	BASELINE	bytes b3e51adc493d811150d7210590b3bba1030544372d7b9b3bb35f4439e513e690
+colon[A,B?,B]	PV11_SAFE	bytes b45360a1f4352ad49f7185e561f507ef2a8eb119f3b5d929df88c3940360bf58
+colon[A,B?,B]	PV11_COSTED	bytes b45360a1f4352ad49f7185e561f507ef2a8eb119f3b5d929df88c3940360bf58
+arrow[A,B?,B?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+colon[A,B?,B?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[A,B?,D]	NONE	bytes c2ea89f3c30378fcdf181e981b252a2580a668020dd5766017202c0c568efa3a
+arrow[A,B?,D]	BASELINE	bytes 38bbbb920a44cd9adb688f04f4bc249c75fa13139a220eb59b2aa683e35b127b
+arrow[A,B?,D]	PV11_SAFE	bytes be7e1611ca2a2356d3bdb058cd4987403f9c637ce431e26680747adc092677fb
+arrow[A,B?,D]	PV11_COSTED	bytes be7e1611ca2a2356d3bdb058cd4987403f9c637ce431e26680747adc092677fb
+colon[A,B?,D]	NONE	bytes c2ea89f3c30378fcdf181e981b252a2580a668020dd5766017202c0c568efa3a
+colon[A,B?,D]	BASELINE	bytes 38bbbb920a44cd9adb688f04f4bc249c75fa13139a220eb59b2aa683e35b127b
+colon[A,B?,D]	PV11_SAFE	bytes be7e1611ca2a2356d3bdb058cd4987403f9c637ce431e26680747adc092677fb
+colon[A,B?,D]	PV11_COSTED	bytes be7e1611ca2a2356d3bdb058cd4987403f9c637ce431e26680747adc092677fb
+arrow[A,D,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+colon[A,D,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,D,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+colon[A,D,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,D,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+colon[A,D,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,D,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+colon[A,D,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,D,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+colon[A,D,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+arrow[A?,A,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+colon[A?,A,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A?,A,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+colon[A?,A,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A?,A,B]	NONE	bytes 2f22cd953dc82d079d55d5deaf4596e641019e3870079afb88709a6d8b56b647
+arrow[A?,A,B]	BASELINE	bytes 0d520f66daec94fd0605b80e62ac68cabf4c9be38698fe50e9303ae830bb0ebc
+arrow[A?,A,B]	PV11_SAFE	bytes c552829b90cb32b9e70156af44ce0f11ed920970d64ba3e3a05917bb05950d99
+arrow[A?,A,B]	PV11_COSTED	bytes c552829b90cb32b9e70156af44ce0f11ed920970d64ba3e3a05917bb05950d99
+colon[A?,A,B]	NONE	bytes 2f22cd953dc82d079d55d5deaf4596e641019e3870079afb88709a6d8b56b647
+colon[A?,A,B]	BASELINE	bytes 0d520f66daec94fd0605b80e62ac68cabf4c9be38698fe50e9303ae830bb0ebc
+colon[A?,A,B]	PV11_SAFE	bytes c552829b90cb32b9e70156af44ce0f11ed920970d64ba3e3a05917bb05950d99
+colon[A?,A,B]	PV11_COSTED	bytes c552829b90cb32b9e70156af44ce0f11ed920970d64ba3e3a05917bb05950d99
+arrow[A?,A,B?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+colon[A?,A,B?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[A?,A,D]	NONE	bytes d177e3247c9e95646a07f63c6ba8784adb3671d503f81a0659f3674678b201a2
+arrow[A?,A,D]	BASELINE	bytes 052ad1e6fae2a7f7a13023642eeecf65f1101376e2ae0663cb365f4d9a48f276
+arrow[A?,A,D]	PV11_SAFE	bytes 96bf1055622c3fd01f2f7995d0e496a5b5fbfcb4819a2e9b72f5f1571f7d8f34
+arrow[A?,A,D]	PV11_COSTED	bytes 96bf1055622c3fd01f2f7995d0e496a5b5fbfcb4819a2e9b72f5f1571f7d8f34
+colon[A?,A,D]	NONE	bytes d177e3247c9e95646a07f63c6ba8784adb3671d503f81a0659f3674678b201a2
+colon[A?,A,D]	BASELINE	bytes 052ad1e6fae2a7f7a13023642eeecf65f1101376e2ae0663cb365f4d9a48f276
+colon[A?,A,D]	PV11_SAFE	bytes 96bf1055622c3fd01f2f7995d0e496a5b5fbfcb4819a2e9b72f5f1571f7d8f34
+colon[A?,A,D]	PV11_COSTED	bytes 96bf1055622c3fd01f2f7995d0e496a5b5fbfcb4819a2e9b72f5f1571f7d8f34
+arrow[A?,A?,A]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+colon[A?,A?,A]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[A?,A?,A?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+colon[A?,A?,A?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[A?,A?,B]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+colon[A?,A?,B]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[A?,A?,B?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+colon[A?,A?,B?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[A?,A?,D]	NONE	bytes 576f344c24c1ef66a714f3e3bf0995ed8f78104cd12849adb622b22233225115
+arrow[A?,A?,D]	BASELINE	bytes df97438f2c048d3f4164cdf0620c1dd79d81cb8ed7e9dc54081fe1bf8e73ac91
+arrow[A?,A?,D]	PV11_SAFE	bytes 6b4e881c10e2d38e28879be5e334d576b079ba088db8b16619994b5a688bc57c
+arrow[A?,A?,D]	PV11_COSTED	bytes 6b4e881c10e2d38e28879be5e334d576b079ba088db8b16619994b5a688bc57c
+colon[A?,A?,D]	NONE	bytes 576f344c24c1ef66a714f3e3bf0995ed8f78104cd12849adb622b22233225115
+colon[A?,A?,D]	BASELINE	bytes df97438f2c048d3f4164cdf0620c1dd79d81cb8ed7e9dc54081fe1bf8e73ac91
+colon[A?,A?,D]	PV11_SAFE	bytes 6b4e881c10e2d38e28879be5e334d576b079ba088db8b16619994b5a688bc57c
+colon[A?,A?,D]	PV11_COSTED	bytes 6b4e881c10e2d38e28879be5e334d576b079ba088db8b16619994b5a688bc57c
+arrow[A?,B,A]	NONE	bytes 9706652a27abea33efb3ef35ab939906f564e5846d08b50a10add752d09725e9
+arrow[A?,B,A]	BASELINE	bytes ea25ec83327452f125e33db46d696a6be5bffed13917a77a4c162bbbd642cd72
+arrow[A?,B,A]	PV11_SAFE	bytes c2e6ed02beae5690dbf95464b99bf77f9f92fdd00eedaf3fbcc8463f4f50a1a1
+arrow[A?,B,A]	PV11_COSTED	bytes c2e6ed02beae5690dbf95464b99bf77f9f92fdd00eedaf3fbcc8463f4f50a1a1
+colon[A?,B,A]	NONE	bytes 9706652a27abea33efb3ef35ab939906f564e5846d08b50a10add752d09725e9
+colon[A?,B,A]	BASELINE	bytes ea25ec83327452f125e33db46d696a6be5bffed13917a77a4c162bbbd642cd72
+colon[A?,B,A]	PV11_SAFE	bytes c2e6ed02beae5690dbf95464b99bf77f9f92fdd00eedaf3fbcc8463f4f50a1a1
+colon[A?,B,A]	PV11_COSTED	bytes c2e6ed02beae5690dbf95464b99bf77f9f92fdd00eedaf3fbcc8463f4f50a1a1
+arrow[A?,B,A?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+colon[A?,B,A?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[A?,B,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+colon[A?,B,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A?,B,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+colon[A?,B,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A?,B,D]	NONE	bytes 44aa1073117c8a52eb91d556013e5590f91d235d252b4f0f0e9784cc6b2269b5
+arrow[A?,B,D]	BASELINE	bytes 960a829a6d2b51deabd9604ff515aa438820079bcb656280f7f32833d95e588e
+arrow[A?,B,D]	PV11_SAFE	bytes 8bf6da8a8ebf885df776ae23eed11ad10a9859d4572107c766b8127f69a44eea
+arrow[A?,B,D]	PV11_COSTED	bytes 8bf6da8a8ebf885df776ae23eed11ad10a9859d4572107c766b8127f69a44eea
+colon[A?,B,D]	NONE	bytes 44aa1073117c8a52eb91d556013e5590f91d235d252b4f0f0e9784cc6b2269b5
+colon[A?,B,D]	BASELINE	bytes 960a829a6d2b51deabd9604ff515aa438820079bcb656280f7f32833d95e588e
+colon[A?,B,D]	PV11_SAFE	bytes 8bf6da8a8ebf885df776ae23eed11ad10a9859d4572107c766b8127f69a44eea
+colon[A?,B,D]	PV11_COSTED	bytes 8bf6da8a8ebf885df776ae23eed11ad10a9859d4572107c766b8127f69a44eea
+arrow[A?,B?,A]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+colon[A?,B?,A]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[A?,B?,A?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+colon[A?,B?,A?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[A?,B?,B]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+colon[A?,B?,B]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[A?,B?,B?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+colon[A?,B?,B?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[A?,B?,D]	NONE	bytes 76496f946f4207581eededb0f7f2c25d98a568a28e729cd27f11d6626743b91f
+arrow[A?,B?,D]	BASELINE	bytes 5cccd5e758c45336778e9e41a66a5bdc0e368f6f03cbbeb9c365e80b5e6f502f
+arrow[A?,B?,D]	PV11_SAFE	bytes 5971bae2d4dbffa7e43f4ced2b9415661475f3008cc8b9a762c7454577f715d0
+arrow[A?,B?,D]	PV11_COSTED	bytes 5971bae2d4dbffa7e43f4ced2b9415661475f3008cc8b9a762c7454577f715d0
+colon[A?,B?,D]	NONE	bytes 76496f946f4207581eededb0f7f2c25d98a568a28e729cd27f11d6626743b91f
+colon[A?,B?,D]	BASELINE	bytes 5cccd5e758c45336778e9e41a66a5bdc0e368f6f03cbbeb9c365e80b5e6f502f
+colon[A?,B?,D]	PV11_SAFE	bytes 5971bae2d4dbffa7e43f4ced2b9415661475f3008cc8b9a762c7454577f715d0
+colon[A?,B?,D]	PV11_COSTED	bytes 5971bae2d4dbffa7e43f4ced2b9415661475f3008cc8b9a762c7454577f715d0
+arrow[A?,D,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+colon[A?,D,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A?,D,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+colon[A?,D,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A?,D,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+colon[A?,D,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A?,D,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+colon[A?,D,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A?,D,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+colon[A?,D,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+arrow[B,A,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+colon[B,A,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,A,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+colon[B,A,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,A,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+colon[B,A,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,A,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+colon[B,A,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,A,D]	NONE	bytes f2564ced53b654d6e3d38ec32fed08d781b54e2a64f303d9f2e078c262c39a1b
+arrow[B,A,D]	BASELINE	bytes c4005f278a6f5d9dac445846374cc0edd1265e26f79e487d2052abd836f0bb14
+arrow[B,A,D]	PV11_SAFE	bytes c92c52dcb6d0188b9e12acc69b1b5f8353d4bd56737f3d9fc4014b7cc8ac9bfa
+arrow[B,A,D]	PV11_COSTED	bytes c92c52dcb6d0188b9e12acc69b1b5f8353d4bd56737f3d9fc4014b7cc8ac9bfa
+colon[B,A,D]	NONE	bytes f2564ced53b654d6e3d38ec32fed08d781b54e2a64f303d9f2e078c262c39a1b
+colon[B,A,D]	BASELINE	bytes c4005f278a6f5d9dac445846374cc0edd1265e26f79e487d2052abd836f0bb14
+colon[B,A,D]	PV11_SAFE	bytes c92c52dcb6d0188b9e12acc69b1b5f8353d4bd56737f3d9fc4014b7cc8ac9bfa
+colon[B,A,D]	PV11_COSTED	bytes c92c52dcb6d0188b9e12acc69b1b5f8353d4bd56737f3d9fc4014b7cc8ac9bfa
+arrow[B,A?,A]	NONE	bytes 62ca5409f159ef3976069b80e4e41e963f86ec46d33f1351d9af89c66622da62
+arrow[B,A?,A]	BASELINE	bytes d746bb31133b4ba8b83fb22e54772f987d2364fee3713a48bd0a3809d4a75277
+arrow[B,A?,A]	PV11_SAFE	bytes 6cb1f1315570c9e6c0b61d7383ca9143a0f020d7dae09ab09df60681c6fdaa96
+arrow[B,A?,A]	PV11_COSTED	bytes 6cb1f1315570c9e6c0b61d7383ca9143a0f020d7dae09ab09df60681c6fdaa96
+colon[B,A?,A]	NONE	bytes 62ca5409f159ef3976069b80e4e41e963f86ec46d33f1351d9af89c66622da62
+colon[B,A?,A]	BASELINE	bytes d746bb31133b4ba8b83fb22e54772f987d2364fee3713a48bd0a3809d4a75277
+colon[B,A?,A]	PV11_SAFE	bytes 6cb1f1315570c9e6c0b61d7383ca9143a0f020d7dae09ab09df60681c6fdaa96
+colon[B,A?,A]	PV11_COSTED	bytes 6cb1f1315570c9e6c0b61d7383ca9143a0f020d7dae09ab09df60681c6fdaa96
+arrow[B,A?,A?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+colon[B,A?,A?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[B,A?,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+colon[B,A?,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,A?,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+colon[B,A?,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,A?,D]	NONE	bytes 8946d0c44502b2c935dd64c2849a1083a061c52aa7cff3d29501a8462f645e80
+arrow[B,A?,D]	BASELINE	bytes 832199f08911bfab794355909a8ffc791b8675937cab8246c5aad2329b85b06d
+arrow[B,A?,D]	PV11_SAFE	bytes 8961b7aaecc63a288a4d8cb0937759d8d3253978598d9c6f654a539755d236c5
+arrow[B,A?,D]	PV11_COSTED	bytes 8961b7aaecc63a288a4d8cb0937759d8d3253978598d9c6f654a539755d236c5
+colon[B,A?,D]	NONE	bytes 8946d0c44502b2c935dd64c2849a1083a061c52aa7cff3d29501a8462f645e80
+colon[B,A?,D]	BASELINE	bytes 832199f08911bfab794355909a8ffc791b8675937cab8246c5aad2329b85b06d
+colon[B,A?,D]	PV11_SAFE	bytes 8961b7aaecc63a288a4d8cb0937759d8d3253978598d9c6f654a539755d236c5
+colon[B,A?,D]	PV11_COSTED	bytes 8961b7aaecc63a288a4d8cb0937759d8d3253978598d9c6f654a539755d236c5
+arrow[B,B,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+colon[B,B,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+colon[B,B,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+colon[B,B,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+colon[B,B,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B,D]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+colon[B,B,D]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B?,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+colon[B,B?,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B?,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+colon[B,B?,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B?,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+colon[B,B?,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B?,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+colon[B,B?,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B?,D]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+colon[B,B?,D]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,D,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+colon[B,D,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,D,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+colon[B,D,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,D,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+colon[B,D,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,D,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+colon[B,D,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,D,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+colon[B,D,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+arrow[B?,A,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+colon[B?,A,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B?,A,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+colon[B?,A,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B?,A,B]	NONE	bytes b8da7c7022050e8426d227624bb21ff98f5c6f87e542a54e56394a84038a3239
+arrow[B?,A,B]	BASELINE	bytes fa5865f75baee3ea9bc66dad0e528afffe9ba327df54d04c6dc56a7d70bc4425
+arrow[B?,A,B]	PV11_SAFE	bytes 906de06d7aab2b21c3f5cad71f932c22585da4f723c12b5c631d1a3d553a1047
+arrow[B?,A,B]	PV11_COSTED	bytes 906de06d7aab2b21c3f5cad71f932c22585da4f723c12b5c631d1a3d553a1047
+colon[B?,A,B]	NONE	bytes b8da7c7022050e8426d227624bb21ff98f5c6f87e542a54e56394a84038a3239
+colon[B?,A,B]	BASELINE	bytes fa5865f75baee3ea9bc66dad0e528afffe9ba327df54d04c6dc56a7d70bc4425
+colon[B?,A,B]	PV11_SAFE	bytes 906de06d7aab2b21c3f5cad71f932c22585da4f723c12b5c631d1a3d553a1047
+colon[B?,A,B]	PV11_COSTED	bytes 906de06d7aab2b21c3f5cad71f932c22585da4f723c12b5c631d1a3d553a1047
+arrow[B?,A,B?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+colon[B?,A,B?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[B?,A,D]	NONE	bytes 1138ece4a9c307cf1da3e228906dd7fc5a46920285b03191906304fee55c07e0
+arrow[B?,A,D]	BASELINE	bytes 0ebf05055f3448be7c28dd36d9ece67a8f98368967e7c9e791cf81e8b4130379
+arrow[B?,A,D]	PV11_SAFE	bytes 4f24f4ecae1a31e376e9843201c50dcf2e8bacaca17385b0f63668b69c90908a
+arrow[B?,A,D]	PV11_COSTED	bytes 4f24f4ecae1a31e376e9843201c50dcf2e8bacaca17385b0f63668b69c90908a
+colon[B?,A,D]	NONE	bytes 1138ece4a9c307cf1da3e228906dd7fc5a46920285b03191906304fee55c07e0
+colon[B?,A,D]	BASELINE	bytes 0ebf05055f3448be7c28dd36d9ece67a8f98368967e7c9e791cf81e8b4130379
+colon[B?,A,D]	PV11_SAFE	bytes 4f24f4ecae1a31e376e9843201c50dcf2e8bacaca17385b0f63668b69c90908a
+colon[B?,A,D]	PV11_COSTED	bytes 4f24f4ecae1a31e376e9843201c50dcf2e8bacaca17385b0f63668b69c90908a
+arrow[B?,A?,A]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+colon[B?,A?,A]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[B?,A?,A?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+colon[B?,A?,A?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[B?,A?,B]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+colon[B?,A?,B]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[B?,A?,B?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+colon[B?,A?,B?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[B?,A?,D]	NONE	bytes a1dc30c34894775419d10ef2219d28aa56cb159e8a08e39e210576c09fc66cc9
+arrow[B?,A?,D]	BASELINE	bytes 2cea5ba641cfa2d7efe3070be5945f91467b1d0c58378c022352b228f3207836
+arrow[B?,A?,D]	PV11_SAFE	bytes ed2fbdd7429f0244e2bd95c431afbb8f74ad2d0136971f0e7cd611bfd64ee4a9
+arrow[B?,A?,D]	PV11_COSTED	bytes ed2fbdd7429f0244e2bd95c431afbb8f74ad2d0136971f0e7cd611bfd64ee4a9
+colon[B?,A?,D]	NONE	bytes a1dc30c34894775419d10ef2219d28aa56cb159e8a08e39e210576c09fc66cc9
+colon[B?,A?,D]	BASELINE	bytes 2cea5ba641cfa2d7efe3070be5945f91467b1d0c58378c022352b228f3207836
+colon[B?,A?,D]	PV11_SAFE	bytes ed2fbdd7429f0244e2bd95c431afbb8f74ad2d0136971f0e7cd611bfd64ee4a9
+colon[B?,A?,D]	PV11_COSTED	bytes ed2fbdd7429f0244e2bd95c431afbb8f74ad2d0136971f0e7cd611bfd64ee4a9
+arrow[B?,B,A]	NONE	bytes f64d70c31069eb6de0dac06b017546f4bcc1c4c7575b9f8f532a577b6122dc19
+arrow[B?,B,A]	BASELINE	bytes dc1d0e2f9623a1c6c8b65a92f106aacaaafeb29464f0f5045f05a418893d90b5
+arrow[B?,B,A]	PV11_SAFE	bytes 05c50db96065b7bbfbce4925824322e355bc099758a473001042faca0713c193
+arrow[B?,B,A]	PV11_COSTED	bytes 05c50db96065b7bbfbce4925824322e355bc099758a473001042faca0713c193
+colon[B?,B,A]	NONE	bytes f64d70c31069eb6de0dac06b017546f4bcc1c4c7575b9f8f532a577b6122dc19
+colon[B?,B,A]	BASELINE	bytes dc1d0e2f9623a1c6c8b65a92f106aacaaafeb29464f0f5045f05a418893d90b5
+colon[B?,B,A]	PV11_SAFE	bytes 05c50db96065b7bbfbce4925824322e355bc099758a473001042faca0713c193
+colon[B?,B,A]	PV11_COSTED	bytes 05c50db96065b7bbfbce4925824322e355bc099758a473001042faca0713c193
+arrow[B?,B,A?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+colon[B?,B,A?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[B?,B,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+colon[B?,B,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B?,B,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+colon[B?,B,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B?,B,D]	NONE	bytes f8713b0cad20b6b48ea8dad9a8047fb9f9c498f2bf0f0068255fb48957945bc3
+arrow[B?,B,D]	BASELINE	bytes 4e50380e7cfd6be1e0dc5e0a5dcfae33f6c2b100bcea1db93ab2bd894dbda90c
+arrow[B?,B,D]	PV11_SAFE	bytes c6a6022a92b59c6a3ea79d6b6f283b345beec4441bf0a98396176aa34139ddc8
+arrow[B?,B,D]	PV11_COSTED	bytes c6a6022a92b59c6a3ea79d6b6f283b345beec4441bf0a98396176aa34139ddc8
+colon[B?,B,D]	NONE	bytes f8713b0cad20b6b48ea8dad9a8047fb9f9c498f2bf0f0068255fb48957945bc3
+colon[B?,B,D]	BASELINE	bytes 4e50380e7cfd6be1e0dc5e0a5dcfae33f6c2b100bcea1db93ab2bd894dbda90c
+colon[B?,B,D]	PV11_SAFE	bytes c6a6022a92b59c6a3ea79d6b6f283b345beec4441bf0a98396176aa34139ddc8
+colon[B?,B,D]	PV11_COSTED	bytes c6a6022a92b59c6a3ea79d6b6f283b345beec4441bf0a98396176aa34139ddc8
+arrow[B?,B?,A]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+colon[B?,B?,A]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[B?,B?,A?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+colon[B?,B?,A?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[B?,B?,B]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+colon[B?,B?,B]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[B?,B?,B?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+colon[B?,B?,B?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[B?,B?,D]	NONE	bytes ec74628a4ea47173dae735910274f8e8ce69a5e389cbdb07566716e309717f3a
+arrow[B?,B?,D]	BASELINE	bytes 379488bb337cb90c3d0fd809596e667e5736c5c13da41075f9192515dfb375f5
+arrow[B?,B?,D]	PV11_SAFE	bytes b069487ba788b5637512d7edb0b022f8a039b4aa0f1d9fdafb4b748592a11001
+arrow[B?,B?,D]	PV11_COSTED	bytes b069487ba788b5637512d7edb0b022f8a039b4aa0f1d9fdafb4b748592a11001
+colon[B?,B?,D]	NONE	bytes ec74628a4ea47173dae735910274f8e8ce69a5e389cbdb07566716e309717f3a
+colon[B?,B?,D]	BASELINE	bytes 379488bb337cb90c3d0fd809596e667e5736c5c13da41075f9192515dfb375f5
+colon[B?,B?,D]	PV11_SAFE	bytes b069487ba788b5637512d7edb0b022f8a039b4aa0f1d9fdafb4b748592a11001
+colon[B?,B?,D]	PV11_COSTED	bytes b069487ba788b5637512d7edb0b022f8a039b4aa0f1d9fdafb4b748592a11001
+arrow[B?,D,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+colon[B?,D,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B?,D,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+colon[B?,D,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B?,D,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+colon[B?,D,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B?,D,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+colon[B?,D,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B?,D,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+colon[B?,D,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+arrow[D,A,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+colon[D,A,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,A,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+colon[D,A,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,A,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+colon[D,A,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,A,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+colon[D,A,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,A,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+colon[D,A,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+arrow[D,A?,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+colon[D,A?,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,A?,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+colon[D,A?,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,A?,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+colon[D,A?,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,A?,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+colon[D,A?,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,A?,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+colon[D,A?,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+arrow[D,B,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+colon[D,B,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,B,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+colon[D,B,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,B,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+colon[D,B,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,B,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+colon[D,B,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,B,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+colon[D,B,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+arrow[D,B?,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+colon[D,B?,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,B?,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+colon[D,B?,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,B?,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+colon[D,B?,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,B?,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+colon[D,B?,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,B?,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+colon[D,B?,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+arrow[D,D,A]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @16:13
+colon[D,D,A]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @16:13
+arrow[D,D,A?]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @16:13
+colon[D,D,A?]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @16:13
+arrow[D,D,B]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @16:13
+colon[D,D,B]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @16:13
+arrow[D,D,B?]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @16:13
+colon[D,D,B?]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @16:13
+arrow[D,D,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @16:13
+colon[D,D,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @16:13
+arrow[A,A,A,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A,A,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A,A,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A,A,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A,A,D]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A,A?,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A,A?,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A,A?,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A,A?,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A,A?,D]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A,B,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A,B,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A,B,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A,B,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A,B,D]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A,B?,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A,B?,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A,B?,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A,B?,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A,B?,D]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A,D,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A,D,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A,D,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A,D,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A,D,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @18:13
+arrow[A,A?,A,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A?,A,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A?,A,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A?,A,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A?,A,D]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A?,A?,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A?,A?,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A?,A?,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A?,A?,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A?,A?,D]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A?,B,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A?,B,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A?,B,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A?,B,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A?,B,D]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A?,B?,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A?,B?,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A?,B?,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A?,B?,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A?,B?,D]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A?,D,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A?,D,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A?,D,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A?,D,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[A,A?,D,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @18:13
+arrow[A,B,A,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,B,A,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,B,A,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,B,A,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,B,A,D]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,B,A?,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,B,A?,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,B,A?,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,B,A?,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,B,A?,D]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,B,B,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,B,B,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,B,B,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,B,B,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,B,B,D]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,B,B?,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,B,B?,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,B,B?,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,B,B?,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,B,B?,D]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,B,D,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[A,B,D,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[A,B,D,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[A,B,D,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[A,B,D,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @18:13
+arrow[A,B?,A,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,B?,A,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,B?,A,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,B?,A,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,B?,A,D]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,B?,A?,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,B?,A?,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,B?,A?,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,B?,A?,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,B?,A?,D]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,B?,B,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[A,B?,B,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[A,B?,B,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[A,B?,B,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[A,B?,B,D]	NONE	bytes 81c181dabd9d2f644f6f6a65f295a2283ebb727db8df2ffc6cf7514e9204c6bf
+arrow[A,B?,B,D]	BASELINE	bytes b3e51adc493d811150d7210590b3bba1030544372d7b9b3bb35f4439e513e690
+arrow[A,B?,B,D]	PV11_SAFE	bytes b45360a1f4352ad49f7185e561f507ef2a8eb119f3b5d929df88c3940360bf58
+arrow[A,B?,B,D]	PV11_COSTED	bytes b45360a1f4352ad49f7185e561f507ef2a8eb119f3b5d929df88c3940360bf58
+arrow[A,B?,B?,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[A,B?,B?,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[A,B?,B?,B]	NONE	bytes 43860a9204316468dc5a516102fbe8cfd4782e57622ebc44792f042c2b9a46d0
+arrow[A,B?,B?,B]	BASELINE	bytes 6e32fcc52707bd7eb8147e90122eb33f21546ccb3f74a3ab79821a6decd9a3f3
+arrow[A,B?,B?,B]	PV11_SAFE	bytes 8d86f0be4746035505a8975d3d27ded050d71a52835ec202d6cdaf4c006510db
+arrow[A,B?,B?,B]	PV11_COSTED	bytes 8d86f0be4746035505a8975d3d27ded050d71a52835ec202d6cdaf4c006510db
+arrow[A,B?,B?,B?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[A,B?,B?,D]	NONE	bytes cafb1984cf39db59812ec7c15f999c77d8cb18973c2630a7de3b8b16c9ccc377
+arrow[A,B?,B?,D]	BASELINE	bytes 5b960ccb18815e8891752791339d15c06be56f30c0980bb80a4e62dfdba13994
+arrow[A,B?,B?,D]	PV11_SAFE	bytes 041a2b0cff9df2cb48ffdf37ab559b6c0d6a285108d866349cfdaf50e08080c1
+arrow[A,B?,B?,D]	PV11_COSTED	bytes 041a2b0cff9df2cb48ffdf37ab559b6c0d6a285108d866349cfdaf50e08080c1
+arrow[A,B?,D,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[A,B?,D,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[A,B?,D,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[A,B?,D,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[A,B?,D,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @18:13
+arrow[A,D,A,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,D,A,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,D,A,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,D,A,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,D,A,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @18:13
+arrow[A,D,A?,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,D,A?,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,D,A?,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,D,A?,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,D,A?,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @18:13
+arrow[A,D,B,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,D,B,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,D,B,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,D,B,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,D,B,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @18:13
+arrow[A,D,B?,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,D,B?,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,D,B?,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,D,B?,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A,D,B?,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @18:13
+arrow[A,D,D,A]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+arrow[A,D,D,A?]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+arrow[A,D,D,B]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+arrow[A,D,D,B?]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+arrow[A,D,D,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+arrow[A?,A,A,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A?,A,A,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A?,A,A,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A?,A,A,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A?,A,A,D]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A?,A,A?,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A?,A,A?,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A?,A,A?,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A?,A,A?,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A?,A,A?,D]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A?,A,B,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[A?,A,B,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[A?,A,B,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[A?,A,B,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[A?,A,B,D]	NONE	bytes 2f22cd953dc82d079d55d5deaf4596e641019e3870079afb88709a6d8b56b647
+arrow[A?,A,B,D]	BASELINE	bytes 0d520f66daec94fd0605b80e62ac68cabf4c9be38698fe50e9303ae830bb0ebc
+arrow[A?,A,B,D]	PV11_SAFE	bytes c552829b90cb32b9e70156af44ce0f11ed920970d64ba3e3a05917bb05950d99
+arrow[A?,A,B,D]	PV11_COSTED	bytes c552829b90cb32b9e70156af44ce0f11ed920970d64ba3e3a05917bb05950d99
+arrow[A?,A,B?,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[A?,A,B?,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[A?,A,B?,B]	NONE	bytes 63d4685d1aa4b8fa5ce66c0b714c7202f79517ffe19ff010d6bb51692bef0cbf
+arrow[A?,A,B?,B]	BASELINE	bytes c4d779a040a0a24bc1b8f1e98a97d1559408ccc53f645675c099cddb81e956e0
+arrow[A?,A,B?,B]	PV11_SAFE	bytes 3fec3adf5ceb09acb7eb3019d46f162f72c3b45223e55e4db2483ac30db82f91
+arrow[A?,A,B?,B]	PV11_COSTED	bytes 3fec3adf5ceb09acb7eb3019d46f162f72c3b45223e55e4db2483ac30db82f91
+arrow[A?,A,B?,B?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[A?,A,B?,D]	NONE	bytes 95512300667930638318763ad399692e0b8e82412aab6ddfe7e77bc61ebed800
+arrow[A?,A,B?,D]	BASELINE	bytes 8e3dd6f74a1a2d3c7efe5f3d6d79dcd948d97fd55f84cba9d3fccfdd2a58b488
+arrow[A?,A,B?,D]	PV11_SAFE	bytes 694089954c0f3996be8535fc4f2acbffc44922b5f236ac1eb9301ca4ab8d846a
+arrow[A?,A,B?,D]	PV11_COSTED	bytes 694089954c0f3996be8535fc4f2acbffc44922b5f236ac1eb9301ca4ab8d846a
+arrow[A?,A,D,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[A?,A,D,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[A?,A,D,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[A?,A,D,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[A?,A,D,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @18:13
+arrow[A?,A?,A,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[A?,A?,A,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[A?,A?,A,B]	NONE	bytes 4acd3ca4b1d086c2806c525fdadf1b4a52fa55d76724cc63553d4c429d97debe
+arrow[A?,A?,A,B]	BASELINE	bytes f96bdcd1128e7bb205757dffb41a6c4daa20babc26a664335031f801e5c50570
+arrow[A?,A?,A,B]	PV11_SAFE	bytes f9598c839747aeb6e185dd30cd84dd589b34c475b4b4939d71c3ccb4c5248f5c
+arrow[A?,A?,A,B]	PV11_COSTED	bytes f9598c839747aeb6e185dd30cd84dd589b34c475b4b4939d71c3ccb4c5248f5c
+arrow[A?,A?,A,B?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[A?,A?,A,D]	NONE	bytes 75f42d83c363ab5e9f18b901a2ccac81822156ba2b0eb86a14b3443e0324ef8b
+arrow[A?,A?,A,D]	BASELINE	bytes 2a7875c75567b379b186a189b89d1e298f867aaacaeec78e1719bd181016d72a
+arrow[A?,A?,A,D]	PV11_SAFE	bytes 9c1790803fcf8dba346ac101c0a793da919f975f48c1db52991cca49cf77ca60
+arrow[A?,A?,A,D]	PV11_COSTED	bytes 9c1790803fcf8dba346ac101c0a793da919f975f48c1db52991cca49cf77ca60
+arrow[A?,A?,A?,A]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[A?,A?,A?,A?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[A?,A?,A?,B]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[A?,A?,A?,B?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[A?,A?,A?,D]	NONE	bytes b67cb475d1b49a0cc4405c239d9a98c1c5889d0169078f7d2eddf7cc2f0535c2
+arrow[A?,A?,A?,D]	BASELINE	bytes 3036c6fca4cf83b6c3bab41df213a5e401bfa0a1f79b08daa0f46bc52c273476
+arrow[A?,A?,A?,D]	PV11_SAFE	bytes cd4e2f6a4c2372581b0996c359e5d2774902545187624cf44711b5f9a25af5b1
+arrow[A?,A?,A?,D]	PV11_COSTED	bytes cd4e2f6a4c2372581b0996c359e5d2774902545187624cf44711b5f9a25af5b1
+arrow[A?,A?,B,A]	NONE	bytes 9e3a1cea443ae12301dc4ae8099262aa231e2b71bd25e02d2c63ec1e40e7fdfd
+arrow[A?,A?,B,A]	BASELINE	bytes abea11e1852a3f405ad1b0b816f8e75e443be9d20c6093cd927e6b8214b5b278
+arrow[A?,A?,B,A]	PV11_SAFE	bytes a5e4327939bf85898ae5b2bb559bb46f30afe58d49241863afcaa9c4b1c314ee
+arrow[A?,A?,B,A]	PV11_COSTED	bytes a5e4327939bf85898ae5b2bb559bb46f30afe58d49241863afcaa9c4b1c314ee
+arrow[A?,A?,B,A?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[A?,A?,B,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[A?,A?,B,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[A?,A?,B,D]	NONE	bytes 7db39694c9eb0ceb6553c7911fd989ac80c0a6b9e976f64a2d648cc18ab643d0
+arrow[A?,A?,B,D]	BASELINE	bytes 99b56c6ac47182fd2c628ccb22c8305d1b3137e9ad17fe314f3ba347bed40149
+arrow[A?,A?,B,D]	PV11_SAFE	bytes 770a9b2f13ce1b8fba058b91b8821105d0ebb812db9b80df8861d57de111230f
+arrow[A?,A?,B,D]	PV11_COSTED	bytes 770a9b2f13ce1b8fba058b91b8821105d0ebb812db9b80df8861d57de111230f
+arrow[A?,A?,B?,A]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[A?,A?,B?,A?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[A?,A?,B?,B]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[A?,A?,B?,B?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[A?,A?,B?,D]	NONE	bytes 78720423bcec316ead17495a6d34e907a2c62cd8ab678bf25ae24eaac58d63ca
+arrow[A?,A?,B?,D]	BASELINE	bytes f4ed7c2eb1eee4ed5969afd1c638d3dc01d0b9e1f929682b6e1bcc3d61e5732d
+arrow[A?,A?,B?,D]	PV11_SAFE	bytes c1240f954c7e029810b55eb147fd8116c453b2f9fdb64c0b98c3f246c1260569
+arrow[A?,A?,B?,D]	PV11_COSTED	bytes c1240f954c7e029810b55eb147fd8116c453b2f9fdb64c0b98c3f246c1260569
+arrow[A?,A?,D,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[A?,A?,D,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[A?,A?,D,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[A?,A?,D,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[A?,A?,D,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @18:13
+arrow[A?,B,A,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[A?,B,A,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[A?,B,A,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[A?,B,A,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[A?,B,A,D]	NONE	bytes 9706652a27abea33efb3ef35ab939906f564e5846d08b50a10add752d09725e9
+arrow[A?,B,A,D]	BASELINE	bytes ea25ec83327452f125e33db46d696a6be5bffed13917a77a4c162bbbd642cd72
+arrow[A?,B,A,D]	PV11_SAFE	bytes c2e6ed02beae5690dbf95464b99bf77f9f92fdd00eedaf3fbcc8463f4f50a1a1
+arrow[A?,B,A,D]	PV11_COSTED	bytes c2e6ed02beae5690dbf95464b99bf77f9f92fdd00eedaf3fbcc8463f4f50a1a1
+arrow[A?,B,A?,A]	NONE	bytes 2993f248196691d5046ee59cec179b915555516e82e5f108cd670de5ce42d7a1
+arrow[A?,B,A?,A]	BASELINE	bytes a6ea90d600ef6ac31cbcf205bb113c5ad91b13e3175a1fb457ae368a5ffdd77e
+arrow[A?,B,A?,A]	PV11_SAFE	bytes 868eb1017eb0c4f42b4dd7f5b361ddd7cf51ee9feabb71bc3cd44c3090d25314
+arrow[A?,B,A?,A]	PV11_COSTED	bytes 868eb1017eb0c4f42b4dd7f5b361ddd7cf51ee9feabb71bc3cd44c3090d25314
+arrow[A?,B,A?,A?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[A?,B,A?,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[A?,B,A?,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[A?,B,A?,D]	NONE	bytes 808ea14ca4aeea2b73f61d543286490c83216bb4899f9bb6e35f2199e30efa17
+arrow[A?,B,A?,D]	BASELINE	bytes 120f5e93ed3f03f186d9c8ea337c99c8edf34f1e377b58bdf87cd0157b2b5e3c
+arrow[A?,B,A?,D]	PV11_SAFE	bytes d9c68c60b38015c01d3977206ccdbdab152bff8f82be2ef8bd603034b746b97f
+arrow[A?,B,A?,D]	PV11_COSTED	bytes d9c68c60b38015c01d3977206ccdbdab152bff8f82be2ef8bd603034b746b97f
+arrow[A?,B,B,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A?,B,B,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A?,B,B,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A?,B,B,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A?,B,B,D]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A?,B,B?,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A?,B,B?,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A?,B,B?,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A?,B,B?,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A?,B,B?,D]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A?,B,D,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[A?,B,D,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[A?,B,D,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[A?,B,D,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[A?,B,D,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @18:13
+arrow[A?,B?,A,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[A?,B?,A,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[A?,B?,A,B]	NONE	bytes 8d35bc966c3f0773a6b2fec74ba2bcf24a22702fe7364c265049c5e0ad5fee40
+arrow[A?,B?,A,B]	BASELINE	bytes 5dbb0018bea586e20a432919295fd9d08625a64b04f1dccba25e510ddd2994d1
+arrow[A?,B?,A,B]	PV11_SAFE	bytes c07cc9868c649dbde8f2fa0f39dade8750b020e736895d1f8b9c47d3d1eac28f
+arrow[A?,B?,A,B]	PV11_COSTED	bytes c07cc9868c649dbde8f2fa0f39dade8750b020e736895d1f8b9c47d3d1eac28f
+arrow[A?,B?,A,B?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[A?,B?,A,D]	NONE	bytes 97a44ff71d6f270042096bdeb271bb6b60cb5552dfa157668761fcdea6b81715
+arrow[A?,B?,A,D]	BASELINE	bytes 2ebfef82a320eb6f9bc11375bcb6a58995ac1a65368b7a42a6c468fabc5deeaa
+arrow[A?,B?,A,D]	PV11_SAFE	bytes c04d4ff9ed48011f07cf9a807e9a5c4b4c0ad1e0dc4c30a6e72c743fe6b3a008
+arrow[A?,B?,A,D]	PV11_COSTED	bytes c04d4ff9ed48011f07cf9a807e9a5c4b4c0ad1e0dc4c30a6e72c743fe6b3a008
+arrow[A?,B?,A?,A]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[A?,B?,A?,A?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[A?,B?,A?,B]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[A?,B?,A?,B?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[A?,B?,A?,D]	NONE	bytes 5c1a3f63e74fef2c94227789ea513dc282d4e378f6a117f222e3dbd3491bfc03
+arrow[A?,B?,A?,D]	BASELINE	bytes 75b45c31e58d3b55fd3efe7a219aec866c5ff40058d86ec7b9da0b4e2a81a6ec
+arrow[A?,B?,A?,D]	PV11_SAFE	bytes db071bdd722439bae735614691374e03457716cc56982f22dc60997f5964d164
+arrow[A?,B?,A?,D]	PV11_COSTED	bytes db071bdd722439bae735614691374e03457716cc56982f22dc60997f5964d164
+arrow[A?,B?,B,A]	NONE	bytes de3936c9cd3c67ecc5291e36aa863e2da7af47db0653cf9fb9383d0072acee14
+arrow[A?,B?,B,A]	BASELINE	bytes 07bcbb02ef1778a4649106f2394f5cc18f017bbf0d809a13677e0787f2992533
+arrow[A?,B?,B,A]	PV11_SAFE	bytes 1702cb2f723cd8847ded29d6fd3b69a329ce3a27dab4ce1a8f9ae38a8c1375fc
+arrow[A?,B?,B,A]	PV11_COSTED	bytes 1702cb2f723cd8847ded29d6fd3b69a329ce3a27dab4ce1a8f9ae38a8c1375fc
+arrow[A?,B?,B,A?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[A?,B?,B,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[A?,B?,B,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[A?,B?,B,D]	NONE	bytes 3891facbd250678b2fb15cf26cb7b7ebbed285c701d08af106bf9e415ab94482
+arrow[A?,B?,B,D]	BASELINE	bytes 3372baa433398c68867a42c1599f395279e879f226c9964cfa8849907e9f5553
+arrow[A?,B?,B,D]	PV11_SAFE	bytes 3fae47d081734460662332f3553348b6f0c25d216b6e13afb1aab5cf706f183b
+arrow[A?,B?,B,D]	PV11_COSTED	bytes 3fae47d081734460662332f3553348b6f0c25d216b6e13afb1aab5cf706f183b
+arrow[A?,B?,B?,A]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[A?,B?,B?,A?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[A?,B?,B?,B]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[A?,B?,B?,B?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[A?,B?,B?,D]	NONE	bytes b0d4b1503c08541c2a47bc8b1447561c1b1ebe1d1bf252afa662b88fe076dfc7
+arrow[A?,B?,B?,D]	BASELINE	bytes 23c0eda54b2cd1ffbba073995620ed4d56f0452c941fe3af05fb8536361e6d35
+arrow[A?,B?,B?,D]	PV11_SAFE	bytes 3cbb24096dfce45caca202f12b9d2a8980ed9ddae72e51551c07775aa6c99196
+arrow[A?,B?,B?,D]	PV11_COSTED	bytes 3cbb24096dfce45caca202f12b9d2a8980ed9ddae72e51551c07775aa6c99196
+arrow[A?,B?,D,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[A?,B?,D,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[A?,B?,D,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[A?,B?,D,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[A?,B?,D,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @18:13
+arrow[A?,D,A,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A?,D,A,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A?,D,A,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A?,D,A,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A?,D,A,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @18:13
+arrow[A?,D,A?,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A?,D,A?,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A?,D,A?,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A?,D,A?,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A?,D,A?,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @18:13
+arrow[A?,D,B,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A?,D,B,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A?,D,B,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A?,D,B,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A?,D,B,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @18:13
+arrow[A?,D,B?,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A?,D,B?,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A?,D,B?,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A?,D,B?,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[A?,D,B?,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @18:13
+arrow[A?,D,D,A]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+arrow[A?,D,D,A?]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+arrow[A?,D,D,B]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+arrow[A?,D,D,B?]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+arrow[A?,D,D,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+arrow[B,A,A,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,A,A,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,A,A,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,A,A,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,A,A,D]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,A,A?,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,A,A?,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,A,A?,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,A,A?,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,A,A?,D]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,A,B,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,A,B,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,A,B,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,A,B,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,A,B,D]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,A,B?,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,A,B?,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,A,B?,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,A,B?,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,A,B?,D]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,A,D,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[B,A,D,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[B,A,D,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[B,A,D,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[B,A,D,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @18:13
+arrow[B,A?,A,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[B,A?,A,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[B,A?,A,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[B,A?,A,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[B,A?,A,D]	NONE	bytes 62ca5409f159ef3976069b80e4e41e963f86ec46d33f1351d9af89c66622da62
+arrow[B,A?,A,D]	BASELINE	bytes d746bb31133b4ba8b83fb22e54772f987d2364fee3713a48bd0a3809d4a75277
+arrow[B,A?,A,D]	PV11_SAFE	bytes 6cb1f1315570c9e6c0b61d7383ca9143a0f020d7dae09ab09df60681c6fdaa96
+arrow[B,A?,A,D]	PV11_COSTED	bytes 6cb1f1315570c9e6c0b61d7383ca9143a0f020d7dae09ab09df60681c6fdaa96
+arrow[B,A?,A?,A]	NONE	bytes f784c049cf2011964f3f39e3cc25593daab995d57825bc5c3b21abf6e2e44879
+arrow[B,A?,A?,A]	BASELINE	bytes a36cb8f737974d1e04adf8641989f63f30cf37a091f5d7e1c6048a4d8bb1fd47
+arrow[B,A?,A?,A]	PV11_SAFE	bytes 38b4b9c845b9cc8185affff72527b04aef9c3a3d3792281cb224e6b00b48a82d
+arrow[B,A?,A?,A]	PV11_COSTED	bytes 38b4b9c845b9cc8185affff72527b04aef9c3a3d3792281cb224e6b00b48a82d
+arrow[B,A?,A?,A?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[B,A?,A?,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[B,A?,A?,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[B,A?,A?,D]	NONE	bytes d5ffbaa86e9f0a13299b16b36f34ef29322231d3eafc55ff7e4c33cae5b8b323
+arrow[B,A?,A?,D]	BASELINE	bytes 871e78bd5ebb1c489f1263c0fed0a2fa6ee5e16739dd5c31ce3b3d437b598503
+arrow[B,A?,A?,D]	PV11_SAFE	bytes 00dd9652ac0501019557c6eb17cbb96f86df8e0799445f539891daff8cde5fc1
+arrow[B,A?,A?,D]	PV11_COSTED	bytes 00dd9652ac0501019557c6eb17cbb96f86df8e0799445f539891daff8cde5fc1
+arrow[B,A?,B,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,A?,B,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,A?,B,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,A?,B,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,A?,B,D]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,A?,B?,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,A?,B?,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,A?,B?,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,A?,B?,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,A?,B?,D]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,A?,D,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[B,A?,D,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[B,A?,D,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[B,A?,D,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[B,A?,D,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @18:13
+arrow[B,B,A,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B,A,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B,A,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B,A,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B,A,D]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B,A?,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B,A?,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B,A?,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B,A?,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B,A?,D]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B,B,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B,B,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B,B,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B,B,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B,B,D]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B,B?,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B,B?,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B,B?,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B,B?,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B,B?,D]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B,D,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B,D,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B,D,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B,D,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B,D,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @18:13
+arrow[B,B?,A,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B?,A,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B?,A,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B?,A,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B?,A,D]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B?,A?,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B?,A?,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B?,A?,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B?,A?,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B?,A?,D]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B?,B,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B?,B,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B?,B,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B?,B,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B?,B,D]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B?,B?,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B?,B?,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B?,B?,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B?,B?,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B?,B?,D]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B?,D,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B?,D,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B?,D,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B?,D,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[B,B?,D,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @18:13
+arrow[B,D,A,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,D,A,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,D,A,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,D,A,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,D,A,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @18:13
+arrow[B,D,A?,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,D,A?,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,D,A?,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,D,A?,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,D,A?,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @18:13
+arrow[B,D,B,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,D,B,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,D,B,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,D,B,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,D,B,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @18:13
+arrow[B,D,B?,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,D,B?,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,D,B?,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,D,B?,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B,D,B?,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @18:13
+arrow[B,D,D,A]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+arrow[B,D,D,A?]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+arrow[B,D,D,B]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+arrow[B,D,D,B?]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+arrow[B,D,D,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+arrow[B?,A,A,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B?,A,A,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B?,A,A,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B?,A,A,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B?,A,A,D]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B?,A,A?,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B?,A,A?,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B?,A,A?,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B?,A,A?,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B?,A,A?,D]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B?,A,B,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[B?,A,B,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[B?,A,B,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[B?,A,B,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[B?,A,B,D]	NONE	bytes b8da7c7022050e8426d227624bb21ff98f5c6f87e542a54e56394a84038a3239
+arrow[B?,A,B,D]	BASELINE	bytes fa5865f75baee3ea9bc66dad0e528afffe9ba327df54d04c6dc56a7d70bc4425
+arrow[B?,A,B,D]	PV11_SAFE	bytes 906de06d7aab2b21c3f5cad71f932c22585da4f723c12b5c631d1a3d553a1047
+arrow[B?,A,B,D]	PV11_COSTED	bytes 906de06d7aab2b21c3f5cad71f932c22585da4f723c12b5c631d1a3d553a1047
+arrow[B?,A,B?,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[B?,A,B?,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[B?,A,B?,B]	NONE	bytes 2ccaa924bddc3882b15bc9a97a8554c35f26f0e73503d058812bfe7b32a3dfbc
+arrow[B?,A,B?,B]	BASELINE	bytes 958b0af268bc9f7e408f50acfd4c045b9c9b9da05de2adf215a1fa93c9e2fcb3
+arrow[B?,A,B?,B]	PV11_SAFE	bytes 07577d242675f1108f354b84b78042b0738ab3ae772cd69360afeee4f0378945
+arrow[B?,A,B?,B]	PV11_COSTED	bytes 07577d242675f1108f354b84b78042b0738ab3ae772cd69360afeee4f0378945
+arrow[B?,A,B?,B?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[B?,A,B?,D]	NONE	bytes ed22aeea8e04d2d9af37e39159df2278648e2f3434508dbc219e83174882a43d
+arrow[B?,A,B?,D]	BASELINE	bytes 9bab3f35649a4bed6038fd6420f9468fca19845fc08147311386c6499299608e
+arrow[B?,A,B?,D]	PV11_SAFE	bytes d04f1f87cf7f8c0983180278059574c81f5c6f11afbdbddb8bd9d6d5ee9683c8
+arrow[B?,A,B?,D]	PV11_COSTED	bytes d04f1f87cf7f8c0983180278059574c81f5c6f11afbdbddb8bd9d6d5ee9683c8
+arrow[B?,A,D,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[B?,A,D,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[B?,A,D,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[B?,A,D,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[B?,A,D,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @18:13
+arrow[B?,A?,A,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[B?,A?,A,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[B?,A?,A,B]	NONE	bytes 5632cf447535b25e894a2278bf2117fce6608578c56ee15b51e298481cf261c4
+arrow[B?,A?,A,B]	BASELINE	bytes 65a6c4aa96dc4f6397024f5bea852beee19ce0288c8ae91f4d8394486c99c25e
+arrow[B?,A?,A,B]	PV11_SAFE	bytes ce520a9fce9c303191f32662980bd56f2743e5c2ef97676277d6a4e17aede7da
+arrow[B?,A?,A,B]	PV11_COSTED	bytes ce520a9fce9c303191f32662980bd56f2743e5c2ef97676277d6a4e17aede7da
+arrow[B?,A?,A,B?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[B?,A?,A,D]	NONE	bytes 9a40e03abe586aff701f94b18dfa5f9f84047cb45d0d8ff658b8bf3538156f01
+arrow[B?,A?,A,D]	BASELINE	bytes 86baf4e26d21c879ba82a20fda6ce5d07f18ff8d6f13bebc47333cb658a0aad7
+arrow[B?,A?,A,D]	PV11_SAFE	bytes 62e99c6bcf3975cae4e39dc29c34cc30fdad08096c69b57b3e1534c625d83fb2
+arrow[B?,A?,A,D]	PV11_COSTED	bytes 62e99c6bcf3975cae4e39dc29c34cc30fdad08096c69b57b3e1534c625d83fb2
+arrow[B?,A?,A?,A]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[B?,A?,A?,A?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[B?,A?,A?,B]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[B?,A?,A?,B?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[B?,A?,A?,D]	NONE	bytes 1d5ee6e5b2ac0035a01eb24383b07f9cf8e2f317f465b20f400771acd69f97dd
+arrow[B?,A?,A?,D]	BASELINE	bytes 9b0b49590e5ebc9030d77c12f1e26ace9f725e930b1621d64ca4151742ac7c8d
+arrow[B?,A?,A?,D]	PV11_SAFE	bytes a1a80b53380c74918792d4c1f8fcf894d5e4c9a1d22161cd1d6ae2451090dd7e
+arrow[B?,A?,A?,D]	PV11_COSTED	bytes a1a80b53380c74918792d4c1f8fcf894d5e4c9a1d22161cd1d6ae2451090dd7e
+arrow[B?,A?,B,A]	NONE	bytes 7115bb0a8b9ea5d65562a19c571811a78f1f94c19abb312c6cf2df7cca0335bb
+arrow[B?,A?,B,A]	BASELINE	bytes 50f27228a525e1e5ed6c0ef1ff1c07a20f366eed1f49482f64962e4573b07117
+arrow[B?,A?,B,A]	PV11_SAFE	bytes 37f89ff3f19372f2341aa1838df9de7fb1941b324558e3d21191b419ac74ef77
+arrow[B?,A?,B,A]	PV11_COSTED	bytes 37f89ff3f19372f2341aa1838df9de7fb1941b324558e3d21191b419ac74ef77
+arrow[B?,A?,B,A?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[B?,A?,B,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[B?,A?,B,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[B?,A?,B,D]	NONE	bytes 724ddb5c11703c61c345bf27c34ea3f5feef8757865f30f77027ed8fdd9f0597
+arrow[B?,A?,B,D]	BASELINE	bytes 8844ae9a4e4749c677edb3ada87ce1f0dcb649fca1af37876390a97878a2e918
+arrow[B?,A?,B,D]	PV11_SAFE	bytes 88950f39c8ef72ff506fd288cf57e92fa1092d09125d90a9e11a7778cb472d8e
+arrow[B?,A?,B,D]	PV11_COSTED	bytes 88950f39c8ef72ff506fd288cf57e92fa1092d09125d90a9e11a7778cb472d8e
+arrow[B?,A?,B?,A]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[B?,A?,B?,A?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[B?,A?,B?,B]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[B?,A?,B?,B?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[B?,A?,B?,D]	NONE	bytes 7e2256b8e42de794a1133c1a64d41f3a7c4b55ac77355b05df0f9eb8ba4b4380
+arrow[B?,A?,B?,D]	BASELINE	bytes a5e6165870e9314af39798d917eeea36f4eed84f3132fe35a5bcf0b6be40e513
+arrow[B?,A?,B?,D]	PV11_SAFE	bytes c04f0e98ca2f990ea81bf621a24a6d4466c8b1e6224cdbb70876672dea020467
+arrow[B?,A?,B?,D]	PV11_COSTED	bytes c04f0e98ca2f990ea81bf621a24a6d4466c8b1e6224cdbb70876672dea020467
+arrow[B?,A?,D,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[B?,A?,D,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[B?,A?,D,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[B?,A?,D,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[B?,A?,D,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @18:13
+arrow[B?,B,A,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[B?,B,A,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[B?,B,A,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[B?,B,A,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[B?,B,A,D]	NONE	bytes f64d70c31069eb6de0dac06b017546f4bcc1c4c7575b9f8f532a577b6122dc19
+arrow[B?,B,A,D]	BASELINE	bytes dc1d0e2f9623a1c6c8b65a92f106aacaaafeb29464f0f5045f05a418893d90b5
+arrow[B?,B,A,D]	PV11_SAFE	bytes 05c50db96065b7bbfbce4925824322e355bc099758a473001042faca0713c193
+arrow[B?,B,A,D]	PV11_COSTED	bytes 05c50db96065b7bbfbce4925824322e355bc099758a473001042faca0713c193
+arrow[B?,B,A?,A]	NONE	bytes 15cab267ccd079c381f27a7d44f8f900e9d97ad51870ce164180cd03c9a58e49
+arrow[B?,B,A?,A]	BASELINE	bytes 2c1fb2db9cd573ef382b83af95cc4f48ff348a3b0229c70e2f1c46a5809f4476
+arrow[B?,B,A?,A]	PV11_SAFE	bytes 1739dd85eabc935f1695384cab91f03a80d44b1a409b16620f71f2c24f589c4d
+arrow[B?,B,A?,A]	PV11_COSTED	bytes 1739dd85eabc935f1695384cab91f03a80d44b1a409b16620f71f2c24f589c4d
+arrow[B?,B,A?,A?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[B?,B,A?,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[B?,B,A?,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[B?,B,A?,D]	NONE	bytes cfaae78277d845d246bb871a19c2f3c7d1cb26ea7ced7f8bbdf89cda639bc3f7
+arrow[B?,B,A?,D]	BASELINE	bytes 99f584b19a0e49c4f39e393a850584aaea9b090686fa7da24749d53347a610dd
+arrow[B?,B,A?,D]	PV11_SAFE	bytes 2c663a2d705e42e38913044d1138984f3a807c2fd7d8a6e09b2d4572329364e3
+arrow[B?,B,A?,D]	PV11_COSTED	bytes 2c663a2d705e42e38913044d1138984f3a807c2fd7d8a6e09b2d4572329364e3
+arrow[B?,B,B,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B?,B,B,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B?,B,B,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B?,B,B,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B?,B,B,D]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B?,B,B?,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B?,B,B?,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B?,B,B?,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B?,B,B?,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B?,B,B?,D]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B?,B,D,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[B?,B,D,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[B?,B,D,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[B?,B,D,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[B?,B,D,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @18:13
+arrow[B?,B?,A,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[B?,B?,A,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[B?,B?,A,B]	NONE	bytes 2a7768dc19c11a186a1d4b6a404a07f803c200299bd42995be25361a87c98187
+arrow[B?,B?,A,B]	BASELINE	bytes 745bac3479bae21c0637d518d149ce1222e5524d5642b1accabb4fbdf89d9e48
+arrow[B?,B?,A,B]	PV11_SAFE	bytes 6bf069647fdbfc39f3ddddc1baefc4234114b0c2ea98bc74282f8b3a06f588fe
+arrow[B?,B?,A,B]	PV11_COSTED	bytes 6bf069647fdbfc39f3ddddc1baefc4234114b0c2ea98bc74282f8b3a06f588fe
+arrow[B?,B?,A,B?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[B?,B?,A,D]	NONE	bytes 2ffeb10137ca4fedf3904c62e741d1bbd1b1312eab43f3c9e5073ac767b9b690
+arrow[B?,B?,A,D]	BASELINE	bytes 64ab4cf067f882577228674e88253c422a58b35ce0eba112c7a76195dd4715d8
+arrow[B?,B?,A,D]	PV11_SAFE	bytes a77e8f20deaa622f5bdb963692d86246eee908a3136283bf7c695e0c970f54a1
+arrow[B?,B?,A,D]	PV11_COSTED	bytes a77e8f20deaa622f5bdb963692d86246eee908a3136283bf7c695e0c970f54a1
+arrow[B?,B?,A?,A]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[B?,B?,A?,A?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[B?,B?,A?,B]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[B?,B?,A?,B?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[B?,B?,A?,D]	NONE	bytes 61d3448e07acf58f9deb231a69a234b0ae8631dd31abef7af66de3ad374d9502
+arrow[B?,B?,A?,D]	BASELINE	bytes 5b4c29f01dbc876c54fba9d38f4a4941c392c2bfd5dd73a4499c3c730182ca4d
+arrow[B?,B?,A?,D]	PV11_SAFE	bytes d1300b2036c7f79794c1a4701fe64aede272a2ba0b3e5d62bb37d3059e112d2b
+arrow[B?,B?,A?,D]	PV11_COSTED	bytes d1300b2036c7f79794c1a4701fe64aede272a2ba0b3e5d62bb37d3059e112d2b
+arrow[B?,B?,B,A]	NONE	bytes 89b9d6fdc67278b599bd78100e3becc39e4708aa7c08fd1c18d36351c822eedd
+arrow[B?,B?,B,A]	BASELINE	bytes d6e30af106c46092a88c8f88be4486e2f3cffb07fbd7e667560a907e3989d904
+arrow[B?,B?,B,A]	PV11_SAFE	bytes 25961783bdf6878478801bea97cac01ac5b6663fcd5e87c2e3f291ef241c69a9
+arrow[B?,B?,B,A]	PV11_COSTED	bytes 25961783bdf6878478801bea97cac01ac5b6663fcd5e87c2e3f291ef241c69a9
+arrow[B?,B?,B,A?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[B?,B?,B,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[B?,B?,B,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[B?,B?,B,D]	NONE	bytes f9aaa42f29948bd5e03a93a605cc64e7a86fd3beb61443fd9c1df3928925fde1
+arrow[B?,B?,B,D]	BASELINE	bytes e94895156effce5e76a029c57b22ad2e2295b713c278368ca208d308cdce828e
+arrow[B?,B?,B,D]	PV11_SAFE	bytes bbb68d08ec5e461fd27fbdb31b3db681bfac2996575fcb07e310a48b166ba737
+arrow[B?,B?,B,D]	PV11_COSTED	bytes bbb68d08ec5e461fd27fbdb31b3db681bfac2996575fcb07e310a48b166ba737
+arrow[B?,B?,B?,A]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[B?,B?,B?,A?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[B?,B?,B?,B]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[B?,B?,B?,B?]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+arrow[B?,B?,B?,D]	NONE	bytes ef07a3e412ce8fd8f3ee4c6c4900d34b70a76e294d32f82e165b9f898ef4d69a
+arrow[B?,B?,B?,D]	BASELINE	bytes d7aa42389276117c0c959a798002bfa2d18ba8c93fe6a491ce35a3ddb2786bf4
+arrow[B?,B?,B?,D]	PV11_SAFE	bytes 4f08629fabe8ef237eeb52775c9f644151b9183317b6694eb9142c52b1ee9ec2
+arrow[B?,B?,B?,D]	PV11_COSTED	bytes 4f08629fabe8ef237eeb52775c9f644151b9183317b6694eb9142c52b1ee9ec2
+arrow[B?,B?,D,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[B?,B?,D,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[B?,B?,D,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[B?,B?,D,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @18:18
+arrow[B?,B?,D,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @18:13
+arrow[B?,D,A,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B?,D,A,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B?,D,A,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B?,D,A,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B?,D,A,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @18:13
+arrow[B?,D,A?,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B?,D,A?,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B?,D,A?,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B?,D,A?,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B?,D,A?,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @18:13
+arrow[B?,D,B,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B?,D,B,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B?,D,B,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B?,D,B,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B?,D,B,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @18:13
+arrow[B?,D,B?,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B?,D,B?,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B?,D,B?,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B?,D,B?,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+arrow[B?,D,B?,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @18:13
+arrow[B?,D,D,A]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+arrow[B?,D,D,A?]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+arrow[B?,D,D,B]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+arrow[B?,D,D,B?]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+arrow[B?,D,D,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+arrow[D,A,A,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,A,A,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,A,A,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,A,A,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,A,A,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @18:13
+arrow[D,A,A?,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,A,A?,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,A,A?,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,A,A?,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,A,A?,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @18:13
+arrow[D,A,B,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,A,B,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,A,B,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,A,B,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,A,B,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @18:13
+arrow[D,A,B?,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,A,B?,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,A,B?,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,A,B?,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,A,B?,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @18:13
+arrow[D,A,D,A]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+arrow[D,A,D,A?]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+arrow[D,A,D,B]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+arrow[D,A,D,B?]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+arrow[D,A,D,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+arrow[D,A?,A,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,A?,A,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,A?,A,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,A?,A,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,A?,A,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @18:13
+arrow[D,A?,A?,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,A?,A?,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,A?,A?,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,A?,A?,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,A?,A?,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @18:13
+arrow[D,A?,B,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,A?,B,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,A?,B,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,A?,B,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,A?,B,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @18:13
+arrow[D,A?,B?,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,A?,B?,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,A?,B?,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,A?,B?,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,A?,B?,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @18:13
+arrow[D,A?,D,A]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+arrow[D,A?,D,A?]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+arrow[D,A?,D,B]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+arrow[D,A?,D,B?]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+arrow[D,A?,D,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+arrow[D,B,A,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,B,A,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,B,A,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,B,A,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,B,A,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @18:13
+arrow[D,B,A?,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,B,A?,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,B,A?,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,B,A?,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,B,A?,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @18:13
+arrow[D,B,B,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,B,B,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,B,B,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,B,B,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,B,B,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @18:13
+arrow[D,B,B?,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,B,B?,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,B,B?,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,B,B?,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,B,B?,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @18:13
+arrow[D,B,D,A]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+arrow[D,B,D,A?]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+arrow[D,B,D,B]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+arrow[D,B,D,B?]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+arrow[D,B,D,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+arrow[D,B?,A,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,B?,A,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,B?,A,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,B?,A,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,B?,A,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @18:13
+arrow[D,B?,A?,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,B?,A?,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,B?,A?,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,B?,A?,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,B?,A?,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @18:13
+arrow[D,B?,B,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,B?,B,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,B?,B,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,B?,B,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,B?,B,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @18:13
+arrow[D,B?,B?,A]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,B?,B?,A?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,B?,B?,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,B?,B?,B?]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+arrow[D,B?,B?,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @18:13
+arrow[D,B?,D,A]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+arrow[D,B?,D,A?]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+arrow[D,B?,D,B]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+arrow[D,B?,D,B?]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+arrow[D,B?,D,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @17:13
+arrow[D,D,A,A]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @16:13
+arrow[D,D,A,A?]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @16:13
+arrow[D,D,A,B]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @16:13
+arrow[D,D,A,B?]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @16:13
+arrow[D,D,A,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @16:13
+arrow[D,D,A?,A]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @16:13
+arrow[D,D,A?,A?]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @16:13
+arrow[D,D,A?,B]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @16:13
+arrow[D,D,A?,B?]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @16:13
+arrow[D,D,A?,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @16:13
+arrow[D,D,B,A]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @16:13
+arrow[D,D,B,A?]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @16:13
+arrow[D,D,B,B]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @16:13
+arrow[D,D,B,B?]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @16:13
+arrow[D,D,B,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @16:13
+arrow[D,D,B?,A]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @16:13
+arrow[D,D,B?,A?]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @16:13
+arrow[D,D,B?,B]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @16:13
+arrow[D,D,B?,B?]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @16:13
+arrow[D,D,B?,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @16:13
+arrow[D,D,D,A]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @16:13
+arrow[D,D,D,A?]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @16:13
+arrow[D,D,D,B]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @16:13
+arrow[D,D,D,B?]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @16:13
+arrow[D,D,D,D]	NONE	rejected JULC0085 duplicate default label (compiler.err.duplicate.default.label) @16:13
+guard[true][A?,B]	NONE	bytes 79101762a9776c40cdc41fd2f580e8237fd159f03cbc31590aac937bc4ce8f8e
+guard[true][A?,B]	BASELINE	bytes bc091f8dc680e032eb8bb7684c487a2adf8f45abf1bc2157be6a54567836dd50
+guard[true][A?,B]	PV11_SAFE	bytes 5eb4d4b9866eb2f54db5cc808e41fdf2b3961f536b0b12e7ac81ff75a882b601
+guard[true][A?,B]	PV11_COSTED	bytes 5eb4d4b9866eb2f54db5cc808e41fdf2b3961f536b0b12e7ac81ff75a882b601
+guard[true][A?,A,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+guard[true][A?,D]	NONE	bytes ea394c3986f39aca67502339dff9948601de16389f1b4838266584e2b4a4b0c1
+guard[true][A?,D]	BASELINE	bytes 9efc01fdf8b4705a72cc30794e8318267ad3904117140dfeaa47dc4d40c926c6
+guard[true][A?,D]	PV11_SAFE	bytes 4fe2f0af9404235377aba8b5e2abe32b0f55852352b2a762b86eebe9e360a287
+guard[true][A?,D]	PV11_COSTED	bytes 4fe2f0af9404235377aba8b5e2abe32b0f55852352b2a762b86eebe9e360a287
+guard[false][A?,B]	NONE	rejected JULC0085 this case label has a guard that is a constant expression with value 'false' (compiler.err.guard.has.constant.expression.false) @15:28
+guard[false][A?,A,B]	NONE	rejected JULC0085 this case label has a guard that is a constant expression with value 'false' (compiler.err.guard.has.constant.expression.false) @15:28
+guard[false][A?,D]	NONE	rejected JULC0085 this case label has a guard that is a constant expression with value 'false' (compiler.err.guard.has.constant.expression.false) @15:28
+guard[ON][A?,B]	NONE	bytes 79101762a9776c40cdc41fd2f580e8237fd159f03cbc31590aac937bc4ce8f8e
+guard[ON][A?,B]	BASELINE	bytes bc091f8dc680e032eb8bb7684c487a2adf8f45abf1bc2157be6a54567836dd50
+guard[ON][A?,B]	PV11_SAFE	bytes 5eb4d4b9866eb2f54db5cc808e41fdf2b3961f536b0b12e7ac81ff75a882b601
+guard[ON][A?,B]	PV11_COSTED	bytes 5eb4d4b9866eb2f54db5cc808e41fdf2b3961f536b0b12e7ac81ff75a882b601
+guard[ON][A?,A,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+guard[ON][A?,D]	NONE	bytes ea394c3986f39aca67502339dff9948601de16389f1b4838266584e2b4a4b0c1
+guard[ON][A?,D]	BASELINE	bytes 9efc01fdf8b4705a72cc30794e8318267ad3904117140dfeaa47dc4d40c926c6
+guard[ON][A?,D]	PV11_SAFE	bytes 4fe2f0af9404235377aba8b5e2abe32b0f55852352b2a762b86eebe9e360a287
+guard[ON][A?,D]	PV11_COSTED	bytes 4fe2f0af9404235377aba8b5e2abe32b0f55852352b2a762b86eebe9e360a287
+guard[OFF][A?,B]	NONE	rejected JULC0085 this case label has a guard that is a constant expression with value 'false' (compiler.err.guard.has.constant.expression.false) @15:28
+guard[OFF][A?,A,B]	NONE	rejected JULC0085 this case label has a guard that is a constant expression with value 'false' (compiler.err.guard.has.constant.expression.false) @15:28
+guard[OFF][A?,D]	NONE	rejected JULC0085 this case label has a guard that is a constant expression with value 'false' (compiler.err.guard.has.constant.expression.false) @15:28
+guard[Probe.OFF][A?,B]	NONE	rejected JULC0085 this case label has a guard that is a constant expression with value 'false' (compiler.err.guard.has.constant.expression.false) @15:33
+guard[Probe.OFF][A?,A,B]	NONE	rejected JULC0085 this case label has a guard that is a constant expression with value 'false' (compiler.err.guard.has.constant.expression.false) @15:33
+guard[Probe.OFF][A?,D]	NONE	rejected JULC0085 this case label has a guard that is a constant expression with value 'false' (compiler.err.guard.has.constant.expression.false) @15:33
+guard[final local true][A?,B]	NONE	bytes b738b506272973ae0ec06af727c5742e28d6dca5fa4f9eaf33663811e225c5f7
+guard[final local true][A?,B]	BASELINE	bytes bc091f8dc680e032eb8bb7684c487a2adf8f45abf1bc2157be6a54567836dd50
+guard[final local true][A?,B]	PV11_SAFE	bytes 5eb4d4b9866eb2f54db5cc808e41fdf2b3961f536b0b12e7ac81ff75a882b601
+guard[final local true][A?,B]	PV11_COSTED	bytes 5eb4d4b9866eb2f54db5cc808e41fdf2b3961f536b0b12e7ac81ff75a882b601
+guard[final local true][A?,A,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @17:18
+guard[final local true][A?,D]	NONE	bytes 7413bf8913edd2a70d15096a2ce8b2036216d01c615a738162787b08da0d6db0
+guard[final local true][A?,D]	BASELINE	bytes 9efc01fdf8b4705a72cc30794e8318267ad3904117140dfeaa47dc4d40c926c6
+guard[final local true][A?,D]	PV11_SAFE	bytes 4fe2f0af9404235377aba8b5e2abe32b0f55852352b2a762b86eebe9e360a287
+guard[final local true][A?,D]	PV11_COSTED	bytes 4fe2f0af9404235377aba8b5e2abe32b0f55852352b2a762b86eebe9e360a287
+guard[final local false][A?,B]	NONE	rejected JULC0085 this case label has a guard that is a constant expression with value 'false' (compiler.err.guard.has.constant.expression.false) @16:28
+guard[final local false][A?,A,B]	NONE	rejected JULC0085 this case label has a guard that is a constant expression with value 'false' (compiler.err.guard.has.constant.expression.false) @16:28
+guard[final local false][A?,D]	NONE	rejected JULC0085 this case label has a guard that is a constant expression with value 'false' (compiler.err.guard.has.constant.expression.false) @16:28
+guard[1 == 1][A?,B]	NONE	bytes 79101762a9776c40cdc41fd2f580e8237fd159f03cbc31590aac937bc4ce8f8e
+guard[1 == 1][A?,B]	BASELINE	bytes bc091f8dc680e032eb8bb7684c487a2adf8f45abf1bc2157be6a54567836dd50
+guard[1 == 1][A?,B]	PV11_SAFE	bytes 5eb4d4b9866eb2f54db5cc808e41fdf2b3961f536b0b12e7ac81ff75a882b601
+guard[1 == 1][A?,B]	PV11_COSTED	bytes 5eb4d4b9866eb2f54db5cc808e41fdf2b3961f536b0b12e7ac81ff75a882b601
+guard[1 == 1][A?,A,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+guard[1 == 1][A?,D]	NONE	bytes ea394c3986f39aca67502339dff9948601de16389f1b4838266584e2b4a4b0c1
+guard[1 == 1][A?,D]	BASELINE	bytes 9efc01fdf8b4705a72cc30794e8318267ad3904117140dfeaa47dc4d40c926c6
+guard[1 == 1][A?,D]	PV11_SAFE	bytes 4fe2f0af9404235377aba8b5e2abe32b0f55852352b2a762b86eebe9e360a287
+guard[1 == 1][A?,D]	PV11_COSTED	bytes 4fe2f0af9404235377aba8b5e2abe32b0f55852352b2a762b86eebe9e360a287
+guard[1 == 2][A?,B]	NONE	rejected JULC0085 this case label has a guard that is a constant expression with value 'false' (compiler.err.guard.has.constant.expression.false) @15:30
+guard[1 == 2][A?,A,B]	NONE	rejected JULC0085 this case label has a guard that is a constant expression with value 'false' (compiler.err.guard.has.constant.expression.false) @15:30
+guard[1 == 2][A?,D]	NONE	rejected JULC0085 this case label has a guard that is a constant expression with value 'false' (compiler.err.guard.has.constant.expression.false) @15:30
+guard[!(2 > 3)][A?,B]	NONE	bytes 79101762a9776c40cdc41fd2f580e8237fd159f03cbc31590aac937bc4ce8f8e
+guard[!(2 > 3)][A?,B]	BASELINE	bytes bc091f8dc680e032eb8bb7684c487a2adf8f45abf1bc2157be6a54567836dd50
+guard[!(2 > 3)][A?,B]	PV11_SAFE	bytes 5eb4d4b9866eb2f54db5cc808e41fdf2b3961f536b0b12e7ac81ff75a882b601
+guard[!(2 > 3)][A?,B]	PV11_COSTED	bytes 5eb4d4b9866eb2f54db5cc808e41fdf2b3961f536b0b12e7ac81ff75a882b601
+guard[!(2 > 3)][A?,A,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+guard[!(2 > 3)][A?,D]	NONE	bytes ea394c3986f39aca67502339dff9948601de16389f1b4838266584e2b4a4b0c1
+guard[!(2 > 3)][A?,D]	BASELINE	bytes 9efc01fdf8b4705a72cc30794e8318267ad3904117140dfeaa47dc4d40c926c6
+guard[!(2 > 3)][A?,D]	PV11_SAFE	bytes 4fe2f0af9404235377aba8b5e2abe32b0f55852352b2a762b86eebe9e360a287
+guard[!(2 > 3)][A?,D]	PV11_COSTED	bytes 4fe2f0af9404235377aba8b5e2abe32b0f55852352b2a762b86eebe9e360a287
+guard[3][A?,B]	NONE	rejected JULC0085 incompatible types: int cannot be converted to boolean (compiler.err.prob.found.req) @15:28
+guard[3][A?,A,B]	NONE	rejected JULC0085 incompatible types: int cannot be converted to boolean (compiler.err.prob.found.req) @15:28
+guard[3][A?,D]	NONE	rejected JULC0085 incompatible types: int cannot be converted to boolean (compiler.err.prob.found.req) @15:28
+guard[parameter][A?,B]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+guard[parameter][A?,A,B]	NONE	bytes 2f22cd953dc82d079d55d5deaf4596e641019e3870079afb88709a6d8b56b647
+guard[parameter][A?,A,B]	BASELINE	bytes 0d520f66daec94fd0605b80e62ac68cabf4c9be38698fe50e9303ae830bb0ebc
+guard[parameter][A?,A,B]	PV11_SAFE	bytes c552829b90cb32b9e70156af44ce0f11ed920970d64ba3e3a05917bb05950d99
+guard[parameter][A?,A,B]	PV11_COSTED	bytes c552829b90cb32b9e70156af44ce0f11ed920970d64ba3e3a05917bb05950d99
+guard[parameter][A?,D]	NONE	bytes 6c939766f38f16768ceb90517e511d33a5b6d80ec82b481c521b6ac9bb7ca8c8
+guard[parameter][A?,D]	BASELINE	bytes ec76060ea5e58c2ff2dfee7ef5775119a05ddcc9570fe8ad18d0dae2b6ea17cb
+guard[parameter][A?,D]	PV11_SAFE	bytes 6276dcd5b78c8b79dd67d822091d144c102c20fb62ceafe05b1034ecfe5bf412
+guard[parameter][A?,D]	PV11_COSTED	bytes 6276dcd5b78c8b79dd67d822091d144c102c20fb62ceafe05b1034ecfe5bf412
+guard[binding][A?,B]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+guard[binding][A?,A,B]	NONE	bytes fd376c7e570734d287008f3bbe3bc07997480f229d91c2d6bc59d18132b92315
+guard[binding][A?,A,B]	BASELINE	bytes 548f6c480437afb15dbe14679050f3081b278377ed1e49dc6543842e4b6d676b
+guard[binding][A?,A,B]	PV11_SAFE	bytes 16edd065d04cb6e5f183c93310bf543b16ce1d5c5b3a0f2f55a89f43f14c8ca2
+guard[binding][A?,A,B]	PV11_COSTED	bytes 16edd065d04cb6e5f183c93310bf543b16ce1d5c5b3a0f2f55a89f43f14c8ca2
+guard[binding][A?,D]	NONE	bytes e76fb5b721f6d11287900244ab66e5b26dd8bd0e211626028f5d11b0660e8845
+guard[binding][A?,D]	BASELINE	bytes d6e7d7a328c52324b06b4923a2c1ef0ba734db355c17fc84b33cab0e66ba0f77
+guard[binding][A?,D]	PV11_SAFE	bytes 733e4536aa6991664ad5ad1eca6c581de9ad446bcd1855f81f47c2d68b77adbf
+guard[binding][A?,D]	PV11_COSTED	bytes 733e4536aa6991664ad5ad1eca6c581de9ad446bcd1855f81f47c2d68b77adbf
+guard[effectively final local][A?,B]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @15:16
+guard[effectively final local][A?,A,B]	NONE	bytes 3aebc4ffa094b18007a359465bd67fc731a2431f23830fc2964c2f771929c1a1
+guard[effectively final local][A?,A,B]	BASELINE	bytes 0da8c5f80fea8cc1aa89855193532cf2602f46f807d50427e75298277446e7ea
+guard[effectively final local][A?,A,B]	PV11_SAFE	bytes 8a64236d3384c63f1cf1527d5e02de8e1317d8cb6e80a62f4e9ad3d51cbd417b
+guard[effectively final local][A?,A,B]	PV11_COSTED	bytes 8a64236d3384c63f1cf1527d5e02de8e1317d8cb6e80a62f4e9ad3d51cbd417b
+guard[effectively final local][A?,D]	NONE	bytes 1eadcd75db3348e928c01c9ebba695591778d3cf6f6e7fa40e4eaaf0f1f91893
+guard[effectively final local][A?,D]	BASELINE	bytes da433a287b4be9605fec560e1c2778cbe05a7c91f60693408efa3a88fb2f31f9
+guard[effectively final local][A?,D]	PV11_SAFE	bytes c1174dd879b16fbf3083ce5ba197261858675c6f3e89723f3d9989438c400049
+guard[effectively final local][A?,D]	PV11_COSTED	bytes c1174dd879b16fbf3083ce5ba197261858675c6f3e89723f3d9989438c400049
+guard[reassigned local][A?,B]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @16:16
+guard[reassigned local][A?,A,B]	NONE	rejected JULC0085 local variables referenced from a guard must be final or effectively final (compiler.err.cant.ref.non.effectively.final.var) @17:28
+guard[reassigned local][A?,D]	NONE	rejected JULC0085 local variables referenced from a guard must be final or effectively final (compiler.err.cant.ref.non.effectively.final.var) @17:28
+guard[Boolean method][A?,B]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+guard[Boolean method][A?,A,B]	NONE	bytes 0e54ddb1155fdf272414ff32be10af17c15d2f1541a204b4e0c6fcbf2a685b0f
+guard[Boolean method][A?,A,B]	BASELINE	bytes 8fc089b45e10aab2dffb3c9a84b542b7c95eba51a2f2c8e432e2504125191629
+guard[Boolean method][A?,A,B]	PV11_SAFE	bytes d51b19ce5c2a23fe7ef580c7484a65ad08e394b7f2d2259fc90504258a40c3d8
+guard[Boolean method][A?,A,B]	PV11_COSTED	bytes d51b19ce5c2a23fe7ef580c7484a65ad08e394b7f2d2259fc90504258a40c3d8
+guard[Boolean method][A?,D]	NONE	bytes a90983919335f114e7949af03ed9015f5b2d66622337a5bd961380e0d6ba5cfc
+guard[Boolean method][A?,D]	BASELINE	bytes f1df516c021440b26ebf3f526543d442c9aa3d15e2eaa214f7399f77b7d84871
+guard[Boolean method][A?,D]	PV11_SAFE	bytes 69b32a547ddf1bdabf6b641f7187793c3a6392818267ccc4ec7f873e855128bc
+guard[Boolean method][A?,D]	PV11_COSTED	bytes 69b32a547ddf1bdabf6b641f7187793c3a6392818267ccc4ec7f873e855128bc
+guard[(boolean) true][A?,B]	NONE	bytes 79101762a9776c40cdc41fd2f580e8237fd159f03cbc31590aac937bc4ce8f8e
+guard[(boolean) true][A?,B]	BASELINE	bytes bc091f8dc680e032eb8bb7684c487a2adf8f45abf1bc2157be6a54567836dd50
+guard[(boolean) true][A?,B]	PV11_SAFE	bytes 5eb4d4b9866eb2f54db5cc808e41fdf2b3961f536b0b12e7ac81ff75a882b601
+guard[(boolean) true][A?,B]	PV11_COSTED	bytes 5eb4d4b9866eb2f54db5cc808e41fdf2b3961f536b0b12e7ac81ff75a882b601
+guard[(boolean) true][A?,A,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+guard[(boolean) true][A?,D]	NONE	bytes ea394c3986f39aca67502339dff9948601de16389f1b4838266584e2b4a4b0c1
+guard[(boolean) true][A?,D]	BASELINE	bytes 9efc01fdf8b4705a72cc30794e8318267ad3904117140dfeaa47dc4d40c926c6
+guard[(boolean) true][A?,D]	PV11_SAFE	bytes 4fe2f0af9404235377aba8b5e2abe32b0f55852352b2a762b86eebe9e360a287
+guard[(boolean) true][A?,D]	PV11_COSTED	bytes 4fe2f0af9404235377aba8b5e2abe32b0f55852352b2a762b86eebe9e360a287
+guard[(boolean) false][A?,B]	NONE	rejected JULC0085 this case label has a guard that is a constant expression with value 'false' (compiler.err.guard.has.constant.expression.false) @15:28
+guard[(boolean) false][A?,A,B]	NONE	rejected JULC0085 this case label has a guard that is a constant expression with value 'false' (compiler.err.guard.has.constant.expression.false) @15:28
+guard[(boolean) false][A?,D]	NONE	rejected JULC0085 this case label has a guard that is a constant expression with value 'false' (compiler.err.guard.has.constant.expression.false) @15:28
+guard[(1 << 1) == 2][A?,B]	NONE	bytes 79101762a9776c40cdc41fd2f580e8237fd159f03cbc31590aac937bc4ce8f8e
+guard[(1 << 1) == 2][A?,B]	BASELINE	bytes bc091f8dc680e032eb8bb7684c487a2adf8f45abf1bc2157be6a54567836dd50
+guard[(1 << 1) == 2][A?,B]	PV11_SAFE	bytes 5eb4d4b9866eb2f54db5cc808e41fdf2b3961f536b0b12e7ac81ff75a882b601
+guard[(1 << 1) == 2][A?,B]	PV11_COSTED	bytes 5eb4d4b9866eb2f54db5cc808e41fdf2b3961f536b0b12e7ac81ff75a882b601
+guard[(1 << 1) == 2][A?,A,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+guard[(1 << 1) == 2][A?,D]	NONE	bytes ea394c3986f39aca67502339dff9948601de16389f1b4838266584e2b4a4b0c1
+guard[(1 << 1) == 2][A?,D]	BASELINE	bytes 9efc01fdf8b4705a72cc30794e8318267ad3904117140dfeaa47dc4d40c926c6
+guard[(1 << 1) == 2][A?,D]	PV11_SAFE	bytes 4fe2f0af9404235377aba8b5e2abe32b0f55852352b2a762b86eebe9e360a287
+guard[(1 << 1) == 2][A?,D]	PV11_COSTED	bytes 4fe2f0af9404235377aba8b5e2abe32b0f55852352b2a762b86eebe9e360a287
+guard["a" == "a"][A?,B]	NONE	bytes 79101762a9776c40cdc41fd2f580e8237fd159f03cbc31590aac937bc4ce8f8e
+guard["a" == "a"][A?,B]	BASELINE	bytes bc091f8dc680e032eb8bb7684c487a2adf8f45abf1bc2157be6a54567836dd50
+guard["a" == "a"][A?,B]	PV11_SAFE	bytes 5eb4d4b9866eb2f54db5cc808e41fdf2b3961f536b0b12e7ac81ff75a882b601
+guard["a" == "a"][A?,B]	PV11_COSTED	bytes 5eb4d4b9866eb2f54db5cc808e41fdf2b3961f536b0b12e7ac81ff75a882b601
+guard["a" == "a"][A?,A,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+guard["a" == "a"][A?,D]	NONE	bytes ea394c3986f39aca67502339dff9948601de16389f1b4838266584e2b4a4b0c1
+guard["a" == "a"][A?,D]	BASELINE	bytes 9efc01fdf8b4705a72cc30794e8318267ad3904117140dfeaa47dc4d40c926c6
+guard["a" == "a"][A?,D]	PV11_SAFE	bytes 4fe2f0af9404235377aba8b5e2abe32b0f55852352b2a762b86eebe9e360a287
+guard["a" == "a"][A?,D]	PV11_COSTED	bytes 4fe2f0af9404235377aba8b5e2abe32b0f55852352b2a762b86eebe9e360a287
+guard["a" == "b"][A?,B]	NONE	rejected JULC0085 this case label has a guard that is a constant expression with value 'false' (compiler.err.guard.has.constant.expression.false) @15:32
+guard["a" == "b"][A?,A,B]	NONE	rejected JULC0085 this case label has a guard that is a constant expression with value 'false' (compiler.err.guard.has.constant.expression.false) @15:32
+guard["a" == "b"][A?,D]	NONE	rejected JULC0085 this case label has a guard that is a constant expression with value 'false' (compiler.err.guard.has.constant.expression.false) @15:32
+guard[promoted conditional][A?,B]	NONE	bytes 79101762a9776c40cdc41fd2f580e8237fd159f03cbc31590aac937bc4ce8f8e
+guard[promoted conditional][A?,B]	BASELINE	bytes bc091f8dc680e032eb8bb7684c487a2adf8f45abf1bc2157be6a54567836dd50
+guard[promoted conditional][A?,B]	PV11_SAFE	bytes 5eb4d4b9866eb2f54db5cc808e41fdf2b3961f536b0b12e7ac81ff75a882b601
+guard[promoted conditional][A?,B]	PV11_COSTED	bytes 5eb4d4b9866eb2f54db5cc808e41fdf2b3961f536b0b12e7ac81ff75a882b601
+guard[promoted conditional][A?,A,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+guard[promoted conditional][A?,D]	NONE	bytes ea394c3986f39aca67502339dff9948601de16389f1b4838266584e2b4a4b0c1
+guard[promoted conditional][A?,D]	BASELINE	bytes 9efc01fdf8b4705a72cc30794e8318267ad3904117140dfeaa47dc4d40c926c6
+guard[promoted conditional][A?,D]	PV11_SAFE	bytes 4fe2f0af9404235377aba8b5e2abe32b0f55852352b2a762b86eebe9e360a287
+guard[promoted conditional][A?,D]	PV11_COSTED	bytes 4fe2f0af9404235377aba8b5e2abe32b0f55852352b2a762b86eebe9e360a287
+guard[int conditional overflow][A?,B]	NONE	rejected JULC0085 this case label has a guard that is a constant expression with value 'false' (compiler.err.guard.has.constant.expression.false) @15:58
+guard[int conditional overflow][A?,A,B]	NONE	rejected JULC0085 this case label has a guard that is a constant expression with value 'false' (compiler.err.guard.has.constant.expression.false) @15:58
+guard[int conditional overflow][A?,D]	NONE	rejected JULC0085 this case label has a guard that is a constant expression with value 'false' (compiler.err.guard.has.constant.expression.false) @15:58
+guard[(byte) cast][A?,B]	NONE	rejected JULC0072 Invalid guard on 'case A x0 when (byte) 200 == -56': char, byte and short values are not supported in a guard (their constant narrowing, JLS 15.25.2, is not modelled); use int or long @15:28
+guard[(byte) cast][A?,A,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+guard[(byte) cast][A?,D]	NONE	rejected JULC0072 Invalid guard on 'case A x0 when (byte) 200 == -56': char, byte and short values are not supported in a guard (their constant narrowing, JLS 15.25.2, is not modelled); use int or long @15:28
+guard[(Object) true][A?,B]	NONE	rejected JULC0085 incompatible types: java.lang.Object cannot be converted to boolean (compiler.err.prob.found.req) @15:28
+guard[(Object) true][A?,A,B]	NONE	rejected JULC0085 incompatible types: java.lang.Object cannot be converted to boolean (compiler.err.prob.found.req) @15:28
+guard[(Object) true][A?,D]	NONE	rejected JULC0085 incompatible types: java.lang.Object cannot be converted to boolean (compiler.err.prob.found.req) @15:28
+guard[true ? true : 0][A?,B]	NONE	rejected JULC0085 incompatible types: java.lang.Object&java.io.Serializable&java.lang.Comparable<? extends java.lang.Object&java.io.Serializable&java.lang.Comparable<?>&java.lang.constant.Constable>&java.lang.constant.Constable cannot be converted to boolean (compiler.err.prob.found.req) @15:34
+guard[true ? true : 0][A?,A,B]	NONE	rejected JULC0085 incompatible types: java.lang.Object&java.io.Serializable&java.lang.Comparable<? extends java.lang.Object&java.io.Serializable&java.lang.Comparable<?>&java.lang.constant.Constable>&java.lang.constant.Constable cannot be converted to boolean (compiler.err.prob.found.req) @15:34
+guard[true ? true : 0][A?,D]	NONE	rejected JULC0085 incompatible types: java.lang.Object&java.io.Serializable&java.lang.Comparable<? extends java.lang.Object&java.io.Serializable&java.lang.Comparable<?>&java.lang.constant.Constable>&java.lang.constant.Constable cannot be converted to boolean (compiler.err.prob.found.req) @15:34
+guard[binding when false][A?,B]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+guard[binding when false][A?,A,B]	NONE	bytes 62cf9dc4029e4ece35e340be247ffc53af3c41a004ed305ca75279588d570c1e
+guard[binding when false][A?,A,B]	BASELINE	bytes 5de35ce0d9a03df73f4d39c39e5570c5fba983cdca11984b5d173e068ade1f7d
+guard[binding when false][A?,A,B]	PV11_SAFE	bytes 2d5658d63c5fbed3c79dd16785b1ce99df657db060be5b427d7d4fcfcbd68f99
+guard[binding when false][A?,A,B]	PV11_COSTED	bytes 2d5658d63c5fbed3c79dd16785b1ce99df657db060be5b427d7d4fcfcbd68f99
+guard[binding when false][A?,D]	NONE	bytes 574d5d5800226715ca89ec94b826ed9e6e4fc3e17ea5cabbb21ed1758055a4e0
+guard[binding when false][A?,D]	BASELINE	bytes 803752780266b15f7e25ff0ed6ee01afedbc2ea4f0d4e4e2d8587d11c63aa4ca
+guard[binding when false][A?,D]	PV11_SAFE	bytes 2036a7da55bfdfbd62b53345743b54bc4159737cd686cf2b19e730992af987b7
+guard[binding when false][A?,D]	PV11_COSTED	bytes 2036a7da55bfdfbd62b53345743b54bc4159737cd686cf2b19e730992af987b7
+guard[binding when true][A?,B]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+guard[binding when true][A?,A,B]	NONE	rejected JULC0074 Guard on 'case A x0 when s instanceof A a2' declares pattern variable 'a2', which is not supported @15:28
+guard[binding when true][A?,D]	NONE	rejected JULC0074 Guard on 'case A x0 when s instanceof A a2' declares pattern variable 'a2', which is not supported @15:28
+guard[floating constant][A?,B]	NONE	rejected JULC0072 Invalid guard on 'case A x0 when 1.5 > 1.0': a guard must have type boolean or Boolean, but the type of '1.5 > 1.0' is not boolean, or not established as legal Java (a comparison of references, an operand of the wrong type). Assign the condition to a boolean local first, or call a helper declared to return boolean @15:28
+guard[floating constant][A?,A,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+guard[floating constant][A?,D]	NONE	rejected JULC0072 Invalid guard on 'case A x0 when 1.5 > 1.0': a guard must have type boolean or Boolean, but the type of '1.5 > 1.0' is not boolean, or not established as legal Java (a comparison of references, an operand of the wrong type). Assign the condition to a boolean local first, or call a helper declared to return boolean @15:28
+guard[char conditional][A?,B]	NONE	rejected JULC0072 Invalid guard on 'case A x0 when ("x" + (true ? 'a' : 98)) == "xa"': char, byte and short values are not supported in a guard (their constant narrowing, JLS 15.25.2, is not modelled); use int or long @15:28
+guard[char conditional][A?,A,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+guard[char conditional][A?,D]	NONE	rejected JULC0072 Invalid guard on 'case A x0 when ("x" + (true ? 'a' : 98)) == "xa"': char, byte and short values are not supported in a guard (their constant narrowing, JLS 15.25.2, is not modelled); use int or long @15:28
+guard[char comparison][A?,B]	NONE	rejected JULC0072 Invalid guard on 'case A x0 when 'a' < 'b'': char, byte and short values are not supported in a guard (their constant narrowing, JLS 15.25.2, is not modelled); use int or long @15:28
+guard[char comparison][A?,A,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+guard[char comparison][A?,D]	NONE	rejected JULC0072 Invalid guard on 'case A x0 when 'a' < 'b'': char, byte and short values are not supported in a guard (their constant narrowing, JLS 15.25.2, is not modelled); use int or long @15:28
+guard[int condition][A?,B]	NONE	rejected JULC0085 incompatible types: int cannot be converted to boolean (compiler.err.prob.found.req) @15:29
+guard[int condition][A?,A,B]	NONE	rejected JULC0085 incompatible types: int cannot be converted to boolean (compiler.err.prob.found.req) @15:29
+guard[int condition][A?,D]	NONE	rejected JULC0085 incompatible types: int cannot be converted to boolean (compiler.err.prob.found.req) @15:29
+guard[== on a mixed conditional][A?,B]	NONE	rejected JULC0085 bad operand types for binary operator '=='\n  first type:  java.lang.Object&java.io.Serializable&java.lang.Comparable<? extends java.lang.Object&java.io.Serializable&java.lang.Comparable<?>&java.lang.constant.Constable>&java.lang.constant.Constable\n  second type: boolean (compiler.err.operator.cant.be.applied.1) @15:61
+guard[== on a mixed conditional][A?,A,B]	NONE	rejected JULC0085 bad operand types for binary operator '=='\n  first type:  java.lang.Object&java.io.Serializable&java.lang.Comparable<? extends java.lang.Object&java.io.Serializable&java.lang.Comparable<?>&java.lang.constant.Constable>&java.lang.constant.Constable\n  second type: boolean (compiler.err.operator.cant.be.applied.1) @15:61
+guard[== on a mixed conditional][A?,D]	NONE	rejected JULC0085 bad operand types for binary operator '=='\n  first type:  java.lang.Object&java.io.Serializable&java.lang.Comparable<? extends java.lang.Object&java.io.Serializable&java.lang.Comparable<?>&java.lang.constant.Constable>&java.lang.constant.Constable\n  second type: boolean (compiler.err.operator.cant.be.applied.1) @15:61
+guard[non-constant String ==][A?,B]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+guard[non-constant String ==][A?,A,B]	NONE	rejected JULC0072 Invalid guard on 'case A x0 when (n + "b") == "3b"': a guard must have type boolean or Boolean, but the type of '(n + "b") == "3b"' is not boolean, or not established as legal Java (a comparison of references, an operand of the wrong type). Assign the condition to a boolean local first, or call a helper declared to return boolean @15:28
+guard[non-constant String ==][A?,D]	NONE	rejected JULC0072 Invalid guard on 'case A x0 when (n + "b") == "3b"': a guard must have type boolean or Boolean, but the type of '(n + "b") == "3b"' is not boolean, or not established as legal Java (a comparison of references, an operand of the wrong type). Assign the condition to a boolean local first, or call a helper declared to return boolean @15:28
+guard[constant String concatenation ==][A?,B]	NONE	bytes 79101762a9776c40cdc41fd2f580e8237fd159f03cbc31590aac937bc4ce8f8e
+guard[constant String concatenation ==][A?,B]	BASELINE	bytes bc091f8dc680e032eb8bb7684c487a2adf8f45abf1bc2157be6a54567836dd50
+guard[constant String concatenation ==][A?,B]	PV11_SAFE	bytes 5eb4d4b9866eb2f54db5cc808e41fdf2b3961f536b0b12e7ac81ff75a882b601
+guard[constant String concatenation ==][A?,B]	PV11_COSTED	bytes 5eb4d4b9866eb2f54db5cc808e41fdf2b3961f536b0b12e7ac81ff75a882b601
+guard[constant String concatenation ==][A?,A,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+guard[constant String concatenation ==][A?,D]	NONE	bytes ea394c3986f39aca67502339dff9948601de16389f1b4838266584e2b4a4b0c1
+guard[constant String concatenation ==][A?,D]	BASELINE	bytes 9efc01fdf8b4705a72cc30794e8318267ad3904117140dfeaa47dc4d40c926c6
+guard[constant String concatenation ==][A?,D]	PV11_SAFE	bytes 4fe2f0af9404235377aba8b5e2abe32b0f55852352b2a762b86eebe9e360a287
+guard[constant String concatenation ==][A?,D]	PV11_COSTED	bytes 4fe2f0af9404235377aba8b5e2abe32b0f55852352b2a762b86eebe9e360a287
+guard[reference cast][A?,B]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+guard[reference cast][A?,A,B]	NONE	rejected JULC0072 Invalid guard on 'case A x0 when ((S) (Object) new A(n)) instanceof A': '(S) (Object) new A(n)' casts to a reference type, and JuLC erases the cast's run-time check (#288); a guard may cast only to a primitive type or to Boolean @15:29
+guard[reference cast][A?,D]	NONE	rejected JULC0072 Invalid guard on 'case A x0 when ((S) (Object) new A(n)) instanceof A': '(S) (Object) new A(n)' casts to a reference type, and JuLC erases the cast's run-time check (#288); a guard may cast only to a primitive type or to Boolean @15:29
+guard[sibling instanceof][A?,B]	NONE	rejected JULC0085 incompatible types: Probe.A cannot be converted to Probe.B (compiler.err.prob.found.req) @15:28
+guard[sibling instanceof][A?,A,B]	NONE	rejected JULC0085 incompatible types: Probe.A cannot be converted to Probe.B (compiler.err.prob.found.req) @15:28
+guard[sibling instanceof][A?,D]	NONE	rejected JULC0085 incompatible types: Probe.A cannot be converted to Probe.B (compiler.err.prob.found.req) @15:28
+guard[same-family instanceof][A?,B]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+guard[same-family instanceof][A?,A,B]	NONE	bytes 6fdf8bf035948bfad7e95e32f4ff6dd142448d4810507f8ee53fd380b57f48c8
+guard[same-family instanceof][A?,A,B]	BASELINE	bytes 4188ccf056cab207bba7a9f88556c97a850c414d9cf45cfbcf0b7f116dac22b5
+guard[same-family instanceof][A?,A,B]	PV11_SAFE	bytes ed71b00fd098e1bb54530448aa2994a4bb50204c277c3854ad39c39acc21ba45
+guard[same-family instanceof][A?,A,B]	PV11_COSTED	bytes ed71b00fd098e1bb54530448aa2994a4bb50204c277c3854ad39c39acc21ba45
+guard[same-family instanceof][A?,D]	NONE	bytes 081ef4e1484f366b5e03e0b531016f78d858b84c27a068a87006d65e6c430c86
+guard[same-family instanceof][A?,D]	BASELINE	bytes 9e2fbbcd5d1fdb822f96506e3f59368f89c8d7eb6b4c12044b6f7884810d955f
+guard[same-family instanceof][A?,D]	PV11_SAFE	bytes 4de7006263378730a1199d67ab6f1e33048b91f4db4fd181b06750e3c85be45c
+guard[same-family instanceof][A?,D]	PV11_COSTED	bytes 4de7006263378730a1199d67ab6f1e33048b91f4db4fd181b06750e3c85be45c
+guard[BigInteger relational][A?,B]	NONE	rejected JULC0085 bad operand types for binary operator '<'\n  first type:  java.math.BigInteger\n  second type: java.math.BigInteger (compiler.err.operator.cant.be.applied.1) @15:35
+guard[BigInteger relational][A?,A,B]	NONE	rejected JULC0085 bad operand types for binary operator '<'\n  first type:  java.math.BigInteger\n  second type: java.math.BigInteger (compiler.err.operator.cant.be.applied.1) @15:35
+guard[BigInteger relational][A?,D]	NONE	rejected JULC0085 bad operand types for binary operator '<'\n  first type:  java.math.BigInteger\n  second type: java.math.BigInteger (compiler.err.operator.cant.be.applied.1) @15:35
+guard[record ==][A?,B]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+guard[record ==][A?,A,B]	NONE	rejected JULC0072 Invalid guard on 'case A x0 when x0 == x0': a guard must have type boolean or Boolean, but the type of 'x0 == x0' is not boolean, or not established as legal Java (a comparison of references, an operand of the wrong type). Assign the condition to a boolean local first, or call a helper declared to return boolean @15:28
+guard[record ==][A?,D]	NONE	rejected JULC0072 Invalid guard on 'case A x0 when x0 == x0': a guard must have type boolean or Boolean, but the type of 'x0 == x0' is not boolean, or not established as legal Java (a comparison of references, an operand of the wrong type). Assign the condition to a boolean local first, or call a helper declared to return boolean @15:28
+guard[long constant widening][A?,B]	NONE	rejected JULC0085 this case label has a guard that is a constant expression with value 'false' (compiler.err.guard.has.constant.expression.false) @16:39
+guard[long constant widening][A?,A,B]	NONE	rejected JULC0085 this case label has a guard that is a constant expression with value 'false' (compiler.err.guard.has.constant.expression.false) @16:39
+guard[long constant widening][A?,D]	NONE	rejected JULC0085 this case label has a guard that is a constant expression with value 'false' (compiler.err.guard.has.constant.expression.false) @16:39
+guard[int constant overflow][A?,B]	NONE	bytes 79101762a9776c40cdc41fd2f580e8237fd159f03cbc31590aac937bc4ce8f8e
+guard[int constant overflow][A?,B]	BASELINE	bytes bc091f8dc680e032eb8bb7684c487a2adf8f45abf1bc2157be6a54567836dd50
+guard[int constant overflow][A?,B]	PV11_SAFE	bytes 5eb4d4b9866eb2f54db5cc808e41fdf2b3961f536b0b12e7ac81ff75a882b601
+guard[int constant overflow][A?,B]	PV11_COSTED	bytes 5eb4d4b9866eb2f54db5cc808e41fdf2b3961f536b0b12e7ac81ff75a882b601
+guard[int constant overflow][A?,A,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+guard[int constant overflow][A?,D]	NONE	bytes ea394c3986f39aca67502339dff9948601de16389f1b4838266584e2b4a4b0c1
+guard[int constant overflow][A?,D]	BASELINE	bytes 9efc01fdf8b4705a72cc30794e8318267ad3904117140dfeaa47dc4d40c926c6
+guard[int constant overflow][A?,D]	PV11_SAFE	bytes 4fe2f0af9404235377aba8b5e2abe32b0f55852352b2a762b86eebe9e360a287
+guard[int constant overflow][A?,D]	PV11_COSTED	bytes 4fe2f0af9404235377aba8b5e2abe32b0f55852352b2a762b86eebe9e360a287
+guard[constant narrowing cast][A?,B]	NONE	bytes 79101762a9776c40cdc41fd2f580e8237fd159f03cbc31590aac937bc4ce8f8e
+guard[constant narrowing cast][A?,B]	BASELINE	bytes bc091f8dc680e032eb8bb7684c487a2adf8f45abf1bc2157be6a54567836dd50
+guard[constant narrowing cast][A?,B]	PV11_SAFE	bytes 5eb4d4b9866eb2f54db5cc808e41fdf2b3961f536b0b12e7ac81ff75a882b601
+guard[constant narrowing cast][A?,B]	PV11_COSTED	bytes 5eb4d4b9866eb2f54db5cc808e41fdf2b3961f536b0b12e7ac81ff75a882b601
+guard[constant narrowing cast][A?,A,B]	NONE	rejected JULC0085 this case label is dominated by a preceding case label (compiler.err.pattern.dominated) @16:18
+guard[constant narrowing cast][A?,D]	NONE	bytes ea394c3986f39aca67502339dff9948601de16389f1b4838266584e2b4a4b0c1
+guard[constant narrowing cast][A?,D]	BASELINE	bytes 9efc01fdf8b4705a72cc30794e8318267ad3904117140dfeaa47dc4d40c926c6
+guard[constant narrowing cast][A?,D]	PV11_SAFE	bytes 4fe2f0af9404235377aba8b5e2abe32b0f55852352b2a762b86eebe9e360a287
+guard[constant narrowing cast][A?,D]	PV11_COSTED	bytes 4fe2f0af9404235377aba8b5e2abe32b0f55852352b2a762b86eebe9e360a287
+guard[guard binding named like a parameter][A?,B]	NONE	rejected JULC0085 variable n is already defined in method m(java.math.BigInteger,java.math.BigInteger) (compiler.err.already.defined) @15:45
+guard[guard binding named like a parameter][A?,A,B]	NONE	rejected JULC0085 variable n is already defined in method m(java.math.BigInteger,java.math.BigInteger) (compiler.err.already.defined) @15:45
+guard[guard binding named like a parameter][A?,D]	NONE	rejected JULC0085 variable n is already defined in method m(java.math.BigInteger,java.math.BigInteger) (compiler.err.already.defined) @15:45
+guard[guard binding twice][A?,B]	NONE	rejected JULC0085 illegal attempt to redefine an existing match binding (compiler.err.match.binding.exists) @15:48
+guard[guard binding twice][A?,A,B]	NONE	rejected JULC0085 illegal attempt to redefine an existing match binding (compiler.err.match.binding.exists) @15:48
+guard[guard binding twice][A?,D]	NONE	rejected JULC0085 illegal attempt to redefine an existing match binding (compiler.err.match.binding.exists) @15:48
+guard[constant overflow beside a binding][A?,B]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+guard[constant overflow beside a binding][A?,A,B]	NONE	bytes 3da23237247050e775dfe7db00e032384197ef52feea874217bfa0c19cb58719
+guard[constant overflow beside a binding][A?,A,B]	BASELINE	bytes 54b714acaa5fad48973c6d066b211fef9a806f05ed745dcdb02da0ad6350f7e5
+guard[constant overflow beside a binding][A?,A,B]	PV11_SAFE	bytes e01fe2f5f579003f6c0cce2d7bff6656df3ad4be20b3f1b69c9b2a29d60a1186
+guard[constant overflow beside a binding][A?,A,B]	PV11_COSTED	bytes e01fe2f5f579003f6c0cce2d7bff6656df3ad4be20b3f1b69c9b2a29d60a1186
+guard[constant overflow beside a binding][A?,D]	NONE	bytes c145d57614947b967b565ee710c10e19b151e55feddc34df2eabc76a08c536e3
+guard[constant overflow beside a binding][A?,D]	BASELINE	bytes c04546de881d5fd0bbc5bd5f42261e76139caff683f950cdf0080eee2276ac9d
+guard[constant overflow beside a binding][A?,D]	PV11_SAFE	bytes dfedf5d1be9739aff099f3fc4c280ede28141b545fb1ab2dd5bfc18aa7abc629
+guard[constant overflow beside a binding][A?,D]	PV11_COSTED	bytes dfedf5d1be9739aff099f3fc4c280ede28141b545fb1ab2dd5bfc18aa7abc629
+guard[constant narrowing beside a binding][A?,B]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+guard[constant narrowing beside a binding][A?,A,B]	NONE	bytes 3da23237247050e775dfe7db00e032384197ef52feea874217bfa0c19cb58719
+guard[constant narrowing beside a binding][A?,A,B]	BASELINE	bytes 54b714acaa5fad48973c6d066b211fef9a806f05ed745dcdb02da0ad6350f7e5
+guard[constant narrowing beside a binding][A?,A,B]	PV11_SAFE	bytes e01fe2f5f579003f6c0cce2d7bff6656df3ad4be20b3f1b69c9b2a29d60a1186
+guard[constant narrowing beside a binding][A?,A,B]	PV11_COSTED	bytes e01fe2f5f579003f6c0cce2d7bff6656df3ad4be20b3f1b69c9b2a29d60a1186
+guard[constant narrowing beside a binding][A?,D]	NONE	bytes c145d57614947b967b565ee710c10e19b151e55feddc34df2eabc76a08c536e3
+guard[constant narrowing beside a binding][A?,D]	BASELINE	bytes c04546de881d5fd0bbc5bd5f42261e76139caff683f950cdf0080eee2276ac9d
+guard[constant narrowing beside a binding][A?,D]	PV11_SAFE	bytes dfedf5d1be9739aff099f3fc4c280ede28141b545fb1ab2dd5bfc18aa7abc629
+guard[constant narrowing beside a binding][A?,D]	PV11_COSTED	bytes dfedf5d1be9739aff099f3fc4c280ede28141b545fb1ab2dd5bfc18aa7abc629
+guard[int arithmetic][A?,B]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+guard[int arithmetic][A?,A,B]	NONE	rejected JULC0072 Invalid guard on 'case A x0 when x0.v().signum() + 2147483647 < 0': 'x0.v().signum() + 2147483647' is int or long arithmetic, which JuLC evaluates without Java's overflow (ADR-062 T6); use BigInteger arithmetic, or compute the value in a local before the switch (where T6 applies as in any if) and compare that @15:28
+guard[int arithmetic][A?,D]	NONE	rejected JULC0072 Invalid guard on 'case A x0 when x0.v().signum() + 2147483647 < 0': 'x0.v().signum() + 2147483647' is int or long arithmetic, which JuLC evaluates without Java's overflow (ADR-062 T6); use BigInteger arithmetic, or compute the value in a local before the switch (where T6 applies as in any if) and compare that @15:28
+guard[String.equals of a boolean][A?,B]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+guard[String.equals of a boolean][A?,A,B]	NONE	rejected JULC0072 Invalid guard on 'case A x0 when "a".equals(true)': '"a".equals(true)' compares a String with a value that is not established as a String, which fails on-chain where Java gives false (#292) @15:28
+guard[String.equals of a boolean][A?,D]	NONE	rejected JULC0072 Invalid guard on 'case A x0 when "a".equals(true)': '"a".equals(true)' compares a String with a value that is not established as a String, which fails on-chain where Java gives false (#292) @15:28
+guard[int minimum literal beside a binding][A?,B]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+guard[int minimum literal beside a binding][A?,A,B]	NONE	bytes 3da23237247050e775dfe7db00e032384197ef52feea874217bfa0c19cb58719
+guard[int minimum literal beside a binding][A?,A,B]	BASELINE	bytes 54b714acaa5fad48973c6d066b211fef9a806f05ed745dcdb02da0ad6350f7e5
+guard[int minimum literal beside a binding][A?,A,B]	PV11_SAFE	bytes e01fe2f5f579003f6c0cce2d7bff6656df3ad4be20b3f1b69c9b2a29d60a1186
+guard[int minimum literal beside a binding][A?,A,B]	PV11_COSTED	bytes e01fe2f5f579003f6c0cce2d7bff6656df3ad4be20b3f1b69c9b2a29d60a1186
+guard[int minimum literal beside a binding][A?,D]	NONE	bytes c145d57614947b967b565ee710c10e19b151e55feddc34df2eabc76a08c536e3
+guard[int minimum literal beside a binding][A?,D]	BASELINE	bytes c04546de881d5fd0bbc5bd5f42261e76139caff683f950cdf0080eee2276ac9d
+guard[int minimum literal beside a binding][A?,D]	PV11_SAFE	bytes dfedf5d1be9739aff099f3fc4c280ede28141b545fb1ab2dd5bfc18aa7abc629
+guard[int minimum literal beside a binding][A?,D]	PV11_COSTED	bytes dfedf5d1be9739aff099f3fc4c280ede28141b545fb1ab2dd5bfc18aa7abc629
+guard[long minimum literal beside a binding][A?,B]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+guard[long minimum literal beside a binding][A?,A,B]	NONE	bytes 68db3a99e7e415ba2e6c527ad9cebcb0ec0b5493633c00401b74402d0f8530cf
+guard[long minimum literal beside a binding][A?,A,B]	BASELINE	bytes 44b3ebc8d3c870a90e4e9eec148c1135c464d8eff0cac7616ac1f28936a15ac8
+guard[long minimum literal beside a binding][A?,A,B]	PV11_SAFE	bytes 4bcdd18f34d4c7aa53e8128efae8a9707e8bd1ab148d7a833537190f17f9a9c0
+guard[long minimum literal beside a binding][A?,A,B]	PV11_COSTED	bytes 4bcdd18f34d4c7aa53e8128efae8a9707e8bd1ab148d7a833537190f17f9a9c0
+guard[long minimum literal beside a binding][A?,D]	NONE	bytes 378c73dfa63170770573311e776b934222526b916aafbe79a330c618d4cc1d8e
+guard[long minimum literal beside a binding][A?,D]	BASELINE	bytes 59681563ab0554122ffa0ced1d5198a1179512c48b7d2a433c5c4f2da924530b
+guard[long minimum literal beside a binding][A?,D]	PV11_SAFE	bytes 1dd361da474068b6cdc8eb4b403a0ba7a2b0e06c654544f00a9864beb1f5b324
+guard[long minimum literal beside a binding][A?,D]	PV11_COSTED	bytes 1dd361da474068b6cdc8eb4b403a0ba7a2b0e06c654544f00a9864beb1f5b324
+guard[out-of-range int literal][A?,B]	NONE	rejected JULC0085 integer number too large (compiler.err.int.number.too.large) @15:28
+guard[out-of-range int literal][A?,A,B]	NONE	rejected JULC0085 integer number too large (compiler.err.int.number.too.large) @15:28
+guard[out-of-range int literal][A?,D]	NONE	rejected JULC0085 integer number too large (compiler.err.int.number.too.large) @15:28
+guard[intValue][A?,B]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+guard[intValue][A?,A,B]	NONE	rejected JULC0072 Invalid guard on 'case A x0 when x0.v().intValue() < 0': 'x0.v().intValue()' narrows to 32 bits in Java, but JuLC lowers it to the identity (#294); compare the BigInteger value instead @15:28
+guard[intValue][A?,D]	NONE	rejected JULC0072 Invalid guard on 'case A x0 when x0.v().intValue() < 0': 'x0.v().intValue()' narrows to 32 bits in Java, but JuLC lowers it to the identity (#294); compare the BigInteger value instead @15:28
+guard[underscored minimum literals][A?,B]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
+guard[underscored minimum literals][A?,A,B]	NONE	bytes 705caa5e567cbaefdc5d6c3464c19c19d290392afbf117e33e7f64fc1723cbda
+guard[underscored minimum literals][A?,A,B]	BASELINE	bytes 4c13df71d225248988dbd7d80e88b3ede147d1186e28fbe7136cd7a3fbc6067d
+guard[underscored minimum literals][A?,A,B]	PV11_SAFE	bytes 9b8b3d43f5ba4b96b1f635e5c312a376c785c31565bfe089f73882dfa806d691
+guard[underscored minimum literals][A?,A,B]	PV11_COSTED	bytes 9b8b3d43f5ba4b96b1f635e5c312a376c785c31565bfe089f73882dfa806d691
+guard[underscored minimum literals][A?,D]	NONE	bytes 621f0355fdf02ae82483bf73785ee10e215774b775872aa50ce4e8f4c85eb7fe
+guard[underscored minimum literals][A?,D]	BASELINE	bytes 032cbb4f7f1f164f32776d26cfedf4fb38f4827b997669f332746e8727a4f238
+guard[underscored minimum literals][A?,D]	PV11_SAFE	bytes 033c59bc99755912299e58f2b4c8e94bd4f34a037721b0f0273664887bff2c78
+guard[underscored minimum literals][A?,D]	PV11_COSTED	bytes 033c59bc99755912299e58f2b4c8e94bd4f34a037721b0f0273664887bff2c78
+guard[underscored int overflow][A?,B]	NONE	rejected JULC0085 integer number too large (compiler.err.int.number.too.large) @15:28
+guard[underscored int overflow][A?,A,B]	NONE	rejected JULC0085 integer number too large (compiler.err.int.number.too.large) @15:28
+guard[underscored int overflow][A?,D]	NONE	rejected JULC0085 integer number too large (compiler.err.int.number.too.large) @15:28
+colon[falls through into default]	NONE	rejected JULC0075 Unsupported switch group 'case A x0': the group can complete normally, so Java would fall through into the next group; JuLC does not implement fall-through (#283). End the group with yield @15:13
+colon[falls through, guarded]	NONE	rejected JULC0075 Unsupported switch group 'case A x0 when n.signum() > 0': the group can complete normally, so Java would fall through into the next group; JuLC does not implement fall-through (#283). End the group with yield @15:13
+colon[falls through into a pattern]	NONE	rejected JULC0085 illegal fall-through to a pattern\n  (the previous case label is missing a break) (compiler.err.flows.through.to.pattern) @16:18
+colon[last group falls off]	NONE	rejected JULC0085 switch expression completes without providing a value\n  (switch expressions must either provide a value or throw for all possible input values) (compiler.err.switch.expression.completes.normally) @17:9
+colon[if without else falls through]	NONE	rejected JULC0075 Unsupported switch group 'case A x0': the group can complete normally, so Java would fall through into the next group; JuLC does not implement fall-through (#283). End the group with yield @15:13
+mixed[arrow then colon]	NONE	rejected JULC0085 different case kinds used in the switch (compiler.err.switch.mixing.case.types) @16:13
+mixed[colon then arrow]	NONE	rejected JULC0085 different case kinds used in the switch (compiler.err.switch.mixing.case.types) @16:13
+arrow[two patterns in one label]	NONE	rejected JULC0085 illegal fall-through from a pattern\n  (the current case label is missing a break) (compiler.err.flows.through.from.pattern) @15:24
+colon[grouped pattern labels]	NONE	rejected JULC0085 illegal fall-through from a pattern\n  (the current case label is missing a break) (compiler.err.flows.through.from.pattern) @15:18
+colon[grouped labels without bindings]	NONE	rejected JULC0075 Unsupported switch group 'case X0()': a statement group with several labels; give each label its own group that ends in yield @18:13
+names[parameter]	NONE	rejected JULC0085 variable n is already defined in method m(java.math.BigInteger,java.math.BigInteger) (compiler.err.already.defined) @14:36
+names[local]	NONE	rejected JULC0085 variable y is already defined in method m(java.math.BigInteger,java.math.BigInteger) (compiler.err.already.defined) @15:36
+names[field]	NONE	bytes 20a4118921d40c1bc80e44b36bafbd67c0f20d56bd23414992ffb850f019012f
+names[field]	BASELINE	bytes ebb31eb94def4e0157c9871ddaf7a59fe6793d0f29e051ca63f4dd2efc98a82e
+names[field]	PV11_SAFE	bytes 359b27a2b91ea204acf6998eefdf41452d26e1db5fd0c12a374f53a3e2df3de4
+names[field]	PV11_COSTED	bytes 359b27a2b91ea204acf6998eefdf41452d26e1db5fd0c12a374f53a3e2df3de4
+names[outer pattern variable]	NONE	rejected JULC0085 variable x0 is already defined in method m(java.math.BigInteger,java.math.BigInteger) (compiler.err.already.defined) @14:62
+names[sibling arms]	NONE	bytes 9f0edb7c18a9333620fcf2604d80b8d4c8c42e474d922610f7ea77c2944fc8b9
+names[sibling arms]	BASELINE	bytes cb129bf2d55f3060efbe644543b6faa54939e885697da5264838afe7749eae14
+names[sibling arms]	PV11_SAFE	bytes feacfda139ba643f1e6eea1993664f079aa966367b083ebe8cf37888e30f5f50
+names[sibling arms]	PV11_COSTED	bytes feacfda139ba643f1e6eea1993664f079aa966367b083ebe8cf37888e30f5f50
+single[guarded, then unguarded]	NONE	bytes 395917f6fba9db97f6c5eeefcbcb13f4d5ef8fce6a69191751373fb638512666
+single[guarded, then unguarded]	BASELINE	bytes ad91253162a539dda107d4be43fe2b113ea41aab4573e93ebaab7d35dae615a3
+single[guarded, then unguarded]	PV11_SAFE	bytes f2cd3edf0c6ce0ca283ec8ba985b7852813da3ea6f3ef548ae4e999332546958
+single[guarded, then unguarded]	PV11_COSTED	bytes f2cd3edf0c6ce0ca283ec8ba985b7852813da3ea6f3ef548ae4e999332546958
+single[guarded only]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @16:16
+generic[GD only]	NONE	rejected JULC0007 switch expression requires a sealed interface type, got: G, a sealed interface with type parameters; JuLC drops type arguments, so it cannot decide which variants apply or whether the switch is exhaustive @17:16
+generic[GC and GD]	NONE	rejected JULC0085 incompatible types: Probe.G<java.math.BigInteger> cannot be converted to Probe.GC (compiler.err.prob.found.req) @17:34

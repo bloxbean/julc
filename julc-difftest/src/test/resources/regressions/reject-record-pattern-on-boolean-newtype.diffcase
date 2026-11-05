@@ -1,0 +1,29 @@
+format: 3
+name: a record pattern on a boolean @NewType (F30)
+class: Probe
+method: m
+tag: Probe$FA Probe$SF 0
+tag: Probe$FB Probe$SF 1
+arg: 05
+expect: REJECT JULC0076
+note: ADR-067 F30: legal Java (1). A boolean @NewType is the Bool itself, with no component list.
+note: ADR-067 M1 (interim): the not-exhaustive rejection is now coded, JULC0005; record patterns are still dropped until M2a/M2b, which set the final verdict. REJECT none at the base.
+note: ADR-067 M1 review (F35, interim): record-pattern labels are rejected with JULC0076 until M2a lowers them, so no label is dropped silently; M2a/M2b set the final verdict. Expectation before: REJECT JULC0005.
+---
+import java.math.BigInteger;
+import org.julclang.stdlib.annotation.NewType;
+
+public class Probe {
+    @NewType record Flag(boolean value) {}
+    sealed interface SF permits FA, FB {}
+    record FA(Flag flag) implements SF {}
+    record FB(BigInteger z) implements SF {}
+
+    public static BigInteger m(BigInteger a) {
+        SF sf = new FA(new Flag(a.signum() > 0));
+        return switch (sf) {
+            case FA(Flag(var b)) -> b ? BigInteger.ONE : BigInteger.ZERO;
+            case FB fb -> BigInteger.TWO;
+        };
+    }
+}

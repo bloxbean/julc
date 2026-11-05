@@ -58,6 +58,34 @@ public sealed interface PirType {
         public Constructor { fields = List.copyOf(fields); }
     }
 
+    /**
+     * The first native array a value of this type would hold when it is Data-encoded (ADR-068 D6,
+     * JULC0091): the type itself, or one reached through list, map, pair, {@code Optional} and
+     * array elements and record and variant components; null when there is none. A nominal
+     * reference is checked at its own declaration. An array has no Data encoding.
+     */
+    static ArrayType nativeArrayIn(PirType type) {
+        return switch (type) {
+            case ArrayType array -> array;
+            case ListType list -> nativeArrayIn(list.elemType());
+            case OptionalType optional -> nativeArrayIn(optional.elemType());
+            case PairType pair -> nativeArrayIn(List.of(pair.first(), pair.second()));
+            case MapType map -> nativeArrayIn(List.of(map.keyType(), map.valueType()));
+            case RecordType record -> nativeArrayIn(record.fields().stream().map(Field::type).toList());
+            case SumType sum -> nativeArrayIn(sum.constructors().stream()
+                    .flatMap(constructor -> constructor.fields().stream()).map(Field::type).toList());
+            default -> null;
+        };
+    }
+
+    private static ArrayType nativeArrayIn(List<PirType> types) {
+        for (var type : types) {
+            var array = nativeArrayIn(type);
+            if (array != null) return array;
+        }
+        return null;
+    }
+
     static boolean isNativeOpaque(PirType type) {
         return type instanceof NativeValueType || type instanceof NativeG1Type || type instanceof NativeG2Type
                 || type instanceof NativeMlResultType || type instanceof NativeListType;

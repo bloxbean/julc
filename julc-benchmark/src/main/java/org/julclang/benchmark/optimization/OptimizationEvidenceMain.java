@@ -24,15 +24,15 @@ public final class OptimizationEvidenceMain {
                     return Builtins.trace("receiver", data);
                 }
                 static long count(long value, long mode) {
-                    if (mode == 2) return Builtins.unIData(Builtins.error());
-                    return Builtins.unIData(Builtins.trace("count", Builtins.iData(value)));
+                    if (mode == 2) return Builtins.unIData(Builtins.error()).longValue();
+                    return Builtins.unIData(Builtins.trace("count", Builtins.iData(value))).longValue();
                 }
                 static PlutusData drop(PlutusData data, long n, long mode) {
-                    JulcList<PlutusData> items = Builtins.unListData(receiver(data, mode));
+                    JulcList<PlutusData> items = PlutusData.cast(Builtins.unListData(receiver(data, mode)), JulcList.class);
                     return Builtins.listData(items.drop(count(n, mode)));
                 }
                 static PlutusData dropTwice(PlutusData data, long first, long second) {
-                    JulcList<PlutusData> items = Builtins.unListData(data);
+                    JulcList<PlutusData> items = PlutusData.cast(Builtins.unListData(data), JulcList.class);
                     return Builtins.listData(items.drop(first).drop(second));
                 }
             }
@@ -61,19 +61,20 @@ public final class OptimizationEvidenceMain {
 
     private static final String O2_CASE_BOOL_SOURCE = """
             import org.julclang.stdlib.Builtins;
+            import java.math.BigInteger;
             class BoolCaseEvidence {
                 static long selected(boolean condition, long mode) {
                     long encoded = condition ? 1 : 0;
                     boolean observed = Builtins.unIData(Builtins.trace(
-                            "condition", Builtins.iData(encoded))) == 1;
+                            "condition", Builtins.iData(encoded))).equals(BigInteger.ONE);
                     if (observed) {
-                        if (mode == 1) return Builtins.unIData(Builtins.error());
+                        if (mode == 1) return Builtins.unIData(Builtins.error()).longValue();
                         return Builtins.unIData(Builtins.trace(
-                                "then", Builtins.iData(11)));
+                                "then", Builtins.iData(11))).longValue();
                     } else {
-                        if (mode == 2) return Builtins.unIData(Builtins.error());
+                        if (mode == 2) return Builtins.unIData(Builtins.error()).longValue();
                         return Builtins.unIData(Builtins.trace(
-                                "else", Builtins.iData(22)));
+                                "else", Builtins.iData(22))).longValue();
                     }
                 }
             }
@@ -91,8 +92,8 @@ public final class OptimizationEvidenceMain {
                 static BigInteger repeated(PlutusData data, byte[] policy, byte[] token) {
                     return NativeValueLib.lookupCoin(
                                     policy, token, NativeValueLib.fromData(data))
-                            + NativeValueLib.lookupCoin(
-                                    policy, token, NativeValueLib.fromData(data));
+                            .add(NativeValueLib.lookupCoin(
+                                    policy, token, NativeValueLib.fromData(data)));
                 }
             }
             """;
@@ -102,7 +103,7 @@ public final class OptimizationEvidenceMain {
                 static BigInteger shared(PlutusData data, byte[] policy, byte[] token) {
                     JulcValue value = NativeValueLib.fromData(data);
                     return NativeValueLib.lookupCoin(policy, token, value)
-                            + NativeValueLib.lookupCoin(policy, token, value);
+                            .add(NativeValueLib.lookupCoin(policy, token, value));
                 }
             }
             """;
@@ -122,10 +123,10 @@ public final class OptimizationEvidenceMain {
                                            JulcList<BigInteger> requestIndices) {
                     BigInteger total = BigInteger.ZERO;
                     int i = 0;
-                    int n = requestIndices.size();
+                    long n = requestIndices.size();
                     while (i < n) {
                         BigInteger requestIndex = requestIndices.get(i);
-                        total = total.add(inputs.get(requestIndex)).add(outputs.get(i + 1));
+                        total = total.add(inputs.get(requestIndex.longValue())).add(outputs.get(i + 1));
                         i = i + 1;
                     }
                     return total;
@@ -136,7 +137,7 @@ public final class OptimizationEvidenceMain {
     private static final String O9_TWO_SITES_SOURCE = O9_IMPORTS + """
             class ListIndexTwoSites {
                 static BigInteger twoSites(JulcList<BigInteger> items, BigInteger first, BigInteger second) {
-                    return items.get(first).add(items.get(second));
+                    return items.get(first.longValue()).add(items.get(second.longValue()));
                 }
             }
             """;
@@ -145,7 +146,7 @@ public final class OptimizationEvidenceMain {
             class ListIndexManualArray {
                 static BigInteger manualArray(JulcList<BigInteger> items, BigInteger first, BigInteger second) {
                     JulcArray<BigInteger> array = items.toArray();
-                    return array.get(first).add(array.get(second));
+                    return array.get(first.longValue()).add(array.get(second.longValue()));
                 }
             }
             """;
@@ -233,7 +234,7 @@ public final class OptimizationEvidenceMain {
                 static BigInteger fee(BigInteger tier) {
                     JulcArray<BigInteger> fees = JulcArray.of(
                             BigInteger.valueOf(1000000), BigInteger.valueOf(2000000), BigInteger.valueOf(5000000));
-                    return fees.get(tier);
+                    return fees.get(tier.longValue());
                 }
             }
             """;
@@ -254,7 +255,7 @@ public final class OptimizationEvidenceMain {
             class ExpModIdiomEvidence {
                 static BigInteger powThenMod(
                         BigInteger base, BigInteger exponent, BigInteger modulus) {
-                    return MathLib.pow(base, exponent) % modulus;
+                    return MathLib.pow(base, exponent).remainder(modulus);
                 }
                 static BigInteger explicitExpMod(
                         BigInteger base, BigInteger exponent, BigInteger modulus) {
@@ -270,13 +271,11 @@ public final class OptimizationEvidenceMain {
                 static BigInteger literals() {
                     return MathLib.expMod(
                                     BigInteger.valueOf(2), BigInteger.valueOf(5),
-                                    BigInteger.valueOf(13))
-                            + MathLib.expMod(
+                                    BigInteger.valueOf(13)).add(MathLib.expMod(
                                     BigInteger.valueOf(2), BigInteger.valueOf(-1),
-                                    BigInteger.valueOf(5))
-                            + MathLib.expMod(
+                                    BigInteger.valueOf(5))).add(MathLib.expMod(
                                     BigInteger.valueOf(0), BigInteger.valueOf(0),
-                                    BigInteger.valueOf(7));
+                                    BigInteger.valueOf(7)));
                 }
             }
             """;
@@ -324,7 +323,7 @@ public final class OptimizationEvidenceMain {
             class Pv11AggregateEvidence {
                 static PlutusData validateLike(
                         PlutusData data, long dropCount, BigInteger minimum) {
-                    JulcList<PlutusData> items = Builtins.unListData(data);
+                    JulcList<PlutusData> items = PlutusData.cast(Builtins.unListData(data), JulcList.class);
                     JulcList<PlutusData> remaining = items.drop(dropCount);
                     if (remaining.isEmpty()) return Builtins.iData(0);
                     BigInteger head = Builtins.unIData(remaining.head());

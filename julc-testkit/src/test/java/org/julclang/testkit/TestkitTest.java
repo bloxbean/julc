@@ -95,7 +95,7 @@ class TestkitTest {
         @Test
         void compileResultEvaluationUsesExactTargetAndRejectsMismatch() {
             var compiled = MethodEvaluator.compileMethodResult(
-                    "class Targeted { static BigInteger answer() { return 42; } }",
+                    "import java.math.BigInteger;\nclass Targeted { static BigInteger answer() { return BigInteger.valueOf(42); } }",
                     "answer");
 
             assertTrue(ValidatorTest.evaluate(compiled).isSuccess());
@@ -288,11 +288,14 @@ class TestkitTest {
         void compileAndEvaluateAlwaysTrue() {
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.PlutusData;
 
                     @SpendingValidator
                     class AlwaysTrueValidator {
                         @Entrypoint
-                        static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                        static boolean validate(BigInteger redeemer, PlutusData ctx) {
                             return true;
                         }
                     }
@@ -307,11 +310,14 @@ class TestkitTest {
         void compileAndEvaluateAlwaysFalse() {
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.PlutusData;
 
                     @SpendingValidator
                     class AlwaysFalseValidator {
                         @Entrypoint
-                        static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                        static boolean validate(BigInteger redeemer, PlutusData ctx) {
                             return false;
                         }
                     }
@@ -359,11 +365,14 @@ class TestkitTest {
             var ct = new TestableContract();
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.PlutusData;
 
                     @SpendingValidator
                     class AlwaysTrue {
                         @Entrypoint
-                        static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                        static boolean validate(BigInteger redeemer, PlutusData ctx) {
                             return true;
                         }
                     }
@@ -378,11 +387,14 @@ class TestkitTest {
             var ct = new TestableContract();
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.PlutusData;
 
                     @SpendingValidator
                     class AlwaysFalse {
                         @Entrypoint
-                        static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                        static boolean validate(BigInteger redeemer, PlutusData ctx) {
                             return false;
                         }
                     }

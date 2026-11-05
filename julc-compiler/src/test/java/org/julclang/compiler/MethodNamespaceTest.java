@@ -23,6 +23,7 @@ class MethodNamespaceTest {
             import java.math.BigInteger;
             import org.julclang.core.types.JulcList;
             import org.julclang.stdlib.Builtins;
+            import org.julclang.core.PlutusData;
             class Names {
             """;
     private static final List<OptimizationLevel> LEVELS = List.of(
@@ -80,9 +81,15 @@ class MethodNamespaceTest {
     void paramAndMethodMayShareAName() {
         String source = """
                 import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.Builtins;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.Param;
+                import org.julclang.stdlib.annotation.SpendingValidator;
                 @SpendingValidator
                 class ParamNamedLikeMethod {
-                    @Param BigInteger limit;
+                    @Param static BigInteger limit;
                     static BigInteger limit(BigInteger x) { return x.add(BigInteger.ONE); }
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -107,13 +114,16 @@ class MethodNamespaceTest {
         var helper = rejected("""
                 static BigInteger amount(PlutusData d) { return Builtins.unIData(d); }
                 static BigInteger m(PlutusData d) { return d.amount(); }""");
-        assertEquals("JULC0055", helper.diagnostics().getFirst().code(), helper.getMessage());
-        assertTrue(helper.diagnostics().getFirst().line() > 0, "JULC0055 must point at the source: " + helper.getMessage());
-        assertTrue(helper.getMessage().contains("Cannot resolve amount"), helper.getMessage());
+        // javac rejects it first (ADR-068 I2b), where JuLC gave JULC0055.
+        assertEquals("JULC0085", helper.diagnostics().getFirst().code(), helper.getMessage());
+        assertTrue(helper.diagnostics().getFirst().line() > 0, "JULC0085 must point at the source: " + helper.getMessage());
+        assertTrue(helper.getMessage().contains("(compiler.err.cant.resolve.location.args)")
+                && helper.getMessage().contains("method amount()"), helper.getMessage());
         // ... and with an argument, the local named like the member.
         var local = rejected("""
                 static BigInteger m(PlutusData d, BigInteger scale) { BigInteger times = scale; return d.times(scale); }""");
-        assertEquals("JULC0055", local.diagnostics().getFirst().code(), local.getMessage());
+        assertEquals("JULC0085", local.diagnostics().getFirst().code(), local.getMessage());
+        assertTrue(local.getMessage().contains("(compiler.err.cant.resolve.location.args)"), local.getMessage());
     }
 
     @Test

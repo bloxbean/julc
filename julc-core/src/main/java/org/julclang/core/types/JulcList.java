@@ -33,10 +33,10 @@ public interface JulcList<T> extends Iterable<T>, ToPlutusData {
     /** Return all elements except the first. */
     JulcList<T> tail();
 
-    /** Return the first n elements. */
+    /** Return the first n elements. A negative n throws, and fails on-chain. */
     JulcList<T> take(long n);
 
-    /** Return all elements after the first n. */
+    /** Return all elements after the first n. A negative n throws, and fails on-chain. */
     JulcList<T> drop(long n);
 
     // --- Construction (returns new list) ---

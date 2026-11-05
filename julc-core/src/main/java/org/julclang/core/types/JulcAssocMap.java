@@ -5,13 +5,18 @@ import org.julclang.core.PlutusDataConversions;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Off-chain implementation of {@link JulcMap} using an association list.
  * All operations are immutable — mutations return new instances.
  * <p>
- * Key lookup uses {@code equals()} comparison, matching the on-chain EqualsData semantics.
+ * Keys and values compare as on-chain, where a map compares by Data equality: a {@code byte[]} by
+ * its content, anything else by its own {@code equals} (so a nested JuLC collection compares
+ * deeply). This applies to {@link #get}, {@link #lookup}, {@link #getOrDefault},
+ * {@link #containsKey}, {@link #delete}, {@link #equals} and {@link #hashCode}. {@link #insert}
+ * prepends, so among entries with equal keys the most recently inserted wins, as on-chain. Arrays
+ * are held, not copied: mutating a key or value after insertion changes the map's lookups,
+ * equality and hash, as with any mutable key.
  *
  * @param <K> the key type
  * @param <V> the value type
@@ -49,7 +54,7 @@ public final class JulcAssocMap<K, V> implements JulcMap<K, V> {
     @Override
     public V get(K key) {
         for (var entry : entries) {
-            if (Objects.equals(entry.key(), key)) {
+            if (ContentEquality.equal(entry.key(), key)) {
                 return entry.value();
             }
         }
@@ -64,7 +69,7 @@ public final class JulcAssocMap<K, V> implements JulcMap<K, V> {
     @Override
     public boolean containsKey(K key) {
         for (var entry : entries) {
-            if (Objects.equals(entry.key(), key)) {
+            if (ContentEquality.equal(entry.key(), key)) {
                 return true;
             }
         }
@@ -82,7 +87,7 @@ public final class JulcAssocMap<K, V> implements JulcMap<K, V> {
     public JulcMap<K, V> delete(K key) {
         var result = new ArrayList<Entry<K, V>>();
         for (var entry : entries) {
-            if (!Objects.equals(entry.key(), key)) {
+            if (!ContentEquality.equal(entry.key(), key)) {
                 result.add(entry);
             }
         }
@@ -141,13 +146,22 @@ public final class JulcAssocMap<K, V> implements JulcMap<K, V> {
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
-        if (o instanceof JulcAssocMap<?, ?> that) return entries.equals(that.entries);
-        return false;
+        if (!(o instanceof JulcAssocMap<?, ?> that) || entries.size() != that.entries.size()) return false;
+        for (int i = 0; i < entries.size(); i++) {
+            var a = entries.get(i);
+            var b = that.entries.get(i);
+            if (!ContentEquality.equal(a.key(), b.key()) || !ContentEquality.equal(a.value(), b.value())) return false;
+        }
+        return true;
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(entries);
+        int h = 1;
+        for (var entry : entries) {
+            h = 31 * h + (31 * ContentEquality.hash(entry.key()) + ContentEquality.hash(entry.value()));
+        }
+        return h;
     }
 
     @Override

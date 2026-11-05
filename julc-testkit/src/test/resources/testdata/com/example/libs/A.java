@@ -1,4 +1,5 @@
 package com.example.libs;
+import org.julclang.stdlib.annotation.OnchainLibrary;
 
 @OnchainLibrary
 class A {

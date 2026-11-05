@@ -195,6 +195,10 @@ class PatternVariableFieldGuardTest {
     void paramFieldIsRejected() {
         String validator = """
                 import java.math.BigInteger;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.Param;
+                import org.julclang.stdlib.annotation.SpendingValidator;
                 @SpendingValidator
                 class Guarded {
                     sealed interface Action permits Pay, Stop {}
@@ -215,7 +219,7 @@ class PatternVariableFieldGuardTest {
         var diagnostic = firstDiagnostic(error);
         assertEquals("JULC0059", diagnostic.code(), error.getMessage());
         assertEquals("Pattern variable 'limit' has the same name as a field of Guarded", diagnostic.message());
-        assertEquals(11, diagnostic.line());
+        assertEquals(15, diagnostic.line()); // the imports M1b added moved it from line 11
     }
 
     @Test
@@ -223,12 +227,13 @@ class PatternVariableFieldGuardTest {
         String library = """
                 package com.example.lib;
                 import java.math.BigInteger;
+                import org.julclang.stdlib.annotation.OnchainLibrary;
                 @OnchainLibrary
                 public class Shapes {
                     public sealed interface Shape permits Box, Dot {}
                     public record Box(BigInteger side) implements Shape {}
                     public record Dot() implements Shape {}
-                    static final Box unit = new Box(BigInteger.ONE);
+                    static final BigInteger unit = BigInteger.ONE;
                     public static BigInteger side(Shape shape) {
                         if (shape instanceof Box unit && unit.side().signum() > 0) { return unit.side(); }
                         return BigInteger.ZERO;
@@ -237,6 +242,11 @@ class PatternVariableFieldGuardTest {
         String validator = """
                 import java.math.BigInteger;
                 import com.example.lib.Shapes;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.Builtins;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
                 @SpendingValidator
                 class UsesShapes {
                     @Entrypoint
@@ -281,15 +291,16 @@ class PatternVariableFieldGuardTest {
         String library = """
                 package com.example.lib;
                 import java.math.BigInteger;
+                import org.julclang.stdlib.annotation.OnchainLibrary;
                 @OnchainLibrary
                 public class Fees {
-                    public static final BigInteger q = BigInteger.valueOf(40);
+                    public static final BigInteger q = BigInteger.TEN;
                     public static BigInteger base() { return q; }
                 }""";
         String validator = "import com.example.lib.Fees;\n" + source(SHAPE_TYPES + " public static long m(long n) {"
                 + ONE_SHAPE + " if (s instanceof Sq q) { return q.s().longValue() + Fees.base().longValue(); } return 0; }");
-        // Java: q is the pattern variable (Sq(3)), so 3 + 40.
-        var expected = new Term.Const(Constant.integer(BigInteger.valueOf(43)));
+        // Java: q is the pattern variable (Sq(3)), so 3 + 10.
+        var expected = new Term.Const(Constant.integer(BigInteger.valueOf(13)));
         for (var level : LEVELS) {
             var program = new JulcCompiler(StdlibRegistry.defaultRegistry(),
                     new CompilerOptions().setOptimizationLevel(level)).compileMethod(validator, "m", List.of(library)).program();

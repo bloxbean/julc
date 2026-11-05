@@ -25,6 +25,10 @@ class FailureReportIntegrationTest {
     // Minting validator that checks: 99 == 42 → always fails
     static final String EQUALITY_FAIL_MINT = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class EqualityFailMint {
@@ -32,7 +36,7 @@ class FailureReportIntegrationTest {
                 static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                     BigInteger expected = BigInteger.valueOf(42);
                     BigInteger actual = BigInteger.valueOf(99);
-                    return actual == expected;
+                    return actual.equals(expected);
                 }
             }
             """;
@@ -40,6 +44,10 @@ class FailureReportIntegrationTest {
     // Minting validator that checks: 5 >= 10 → always fails
     static final String COMPARISON_FAIL_MINT = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class ComparisonFailMint {
@@ -47,13 +55,17 @@ class FailureReportIntegrationTest {
                 static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                     BigInteger amount = BigInteger.valueOf(5);
                     BigInteger threshold = BigInteger.valueOf(10);
-                    return amount >= threshold;
+                    return amount.compareTo(threshold) >= 0;
                 }
             }
             """;
 
     // Minting validator that always succeeds
     static final String ALWAYS_PASS_MINT = """
+            import org.julclang.core.PlutusData;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
             @SpendingValidator
             class AlwaysPassMint {
                 @Entrypoint

@@ -43,7 +43,7 @@ class LibrarySourceResolverTest {
                 @SpendingValidator
                 class MyValidator {
                     @Entrypoint
-                    static boolean validate(BigInteger r, BigInteger c) { return true; }
+                    static boolean validate(BigInteger r, org.julclang.core.PlutusData c) { return true; }
                 }
                 """;
 

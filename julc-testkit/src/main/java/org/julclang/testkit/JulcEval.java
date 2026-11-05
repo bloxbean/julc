@@ -271,7 +271,7 @@ public final class JulcEval {
 
     private Term evaluateTerm(String methodName, org.julclang.core.PlutusData[] args) {
         if (sourceMapEnabled) {
-            return evaluateTermWithSourceMap(methodName, args);
+            return evaluateTermWithOptions(methodName, args);
         }
         if (javaSource != null) {
             return MethodEvaluator.evaluateTerm(javaSource, methodName, params, args);
@@ -279,8 +279,8 @@ public final class JulcEval {
         return MethodEvaluator.evaluateTerm(sourceClass, sourceRoot, methodName, params, args);
     }
 
-    private Term evaluateTermWithSourceMap(String methodName, org.julclang.core.PlutusData[] args) {
-        var options = new CompilerOptions().setSourceMapEnabled(true);
+    private Term evaluateTermWithOptions(String methodName, org.julclang.core.PlutusData[] args) {
+        var options = new CompilerOptions().setSourceMapEnabled(sourceMapEnabled);
         var compiler = new org.julclang.compiler.JulcCompiler(
                 org.julclang.stdlib.StdlibRegistry.defaultRegistry(), options);
 
@@ -288,16 +288,9 @@ public final class JulcEval {
         if (javaSource != null) {
             compiled = compiler.compileMethod(javaSource, methodName);
         } else {
-            // Read source file and compile method with source maps
-            var sourceFile = SourceDiscovery.sourceFileFor(sourceClass, sourceRoot);
-            String source;
-            try {
-                source = java.nio.file.Files.readString(sourceFile);
-            } catch (java.io.IOException e) {
-                throw new org.julclang.vm.TermExtractor.ExtractionException(
-                        "Cannot read source: " + sourceFile);
-            }
-            compiled = compiler.compileMethod(source, methodName);
+            // The class's source, with the project's and the class path's libraries as its pool (ADR-068 D8), on
+            // either frontend: the same pool the default path builds (MethodEvaluator, SourceDiscovery).
+            compiled = SourceDiscovery.compileMethod(sourceClass, sourceRoot, methodName, options);
         }
         if (compiled.hasErrors()) {
             throw new org.julclang.vm.TermExtractor.ExtractionException(

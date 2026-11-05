@@ -21,7 +21,6 @@ dependencies {
     implementation project(':julc-blueprint')
     implementation project(':julc-verification')
     implementation project(':julc-bls')
-    implementation project(':julc-jrl:julc-jrl-core')
     implementation "com.bloxbean.cardano:cardano-client-lib:${cardanoClientLibVersion}"
 
     implementation 'info.picocli:picocli:4.7.7'
@@ -36,11 +35,6 @@ dependencies {
     // exposes the JuLC compiler / linter / evaluator as MCP tools to AI
     // agents (Claude Code, Cursor, Continue, ...). See ADR-020 Phase C.
     implementation 'io.modelcontextprotocol.sdk:mcp:1.1.2'
-
-    // JavaParser — used by the MCP lint rules. Already pulled in transitively
-    // by julc-compiler; adding the explicit dep so the cli module compiles
-    // against it directly (lint code lives under julc-cli/.../mcp/lint).
-    implementation 'com.github.javaparser:javaparser-core:3.26.3'
 
     // SLF4J no-op binding — silences the "No SLF4J providers found" warning
     // that the MCP SDK (via Reactor) prints to stderr at startup. MCP allows
@@ -160,7 +154,7 @@ graalvmNative {
         main {
             imageName = 'julc'
             mainClass = application.mainClass.get()
-            buildArgs.addAll(['--no-fallback', '-H:+ReportExceptionStackTraces'])
+            buildArgs.addAll(['--no-fallback', '-H:+ReportExceptionStackTraces', '-H:AbortOnTypeReachable=com.github.javaparser.*'])
             sharedLibrary = false
         }
     }
@@ -169,3 +163,29 @@ graalvmNative {
 tasks.named('compileJava') {
     options.compilerArgs += ["-Aproject=${project.group}/${project.name}"]
 }
+
+// ADR-068 M6: the equivalence gate, what a tool gives against the frozen baseline of 068/m6-tools-baseline.tsv:
+//   ./gradlew :julc-cli:adr068Tools -Padr068.tools.sources=<dir>[:<dir>...] -Padr068.tools.baseline=<dir> [-Padr068.tools.out=<dir>] --offline
+test {
+    useJUnitPlatform {
+        excludeTags 'adr068-tools'
+    }
+}
+
+tasks.register('adr068Tools', Test) {
+    group = 'verification'
+    description = 'ADR-068 M6: lint, test discovery and MCP arity against their frozen baseline on a corpus'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform {
+        includeTags 'adr068-tools'
+    }
+    def sources = providers.gradleProperty('adr068.tools.sources')
+    if (sources.present) systemProperty 'adr068.tools.sources', sources.get()
+    def toolsBaseline = providers.gradleProperty('adr068.tools.baseline')
+    if (toolsBaseline.present) systemProperty 'adr068.tools.baseline', toolsBaseline.get()
+    systemProperty 'adr068.tools.out', providers.gradleProperty('adr068.tools.out')
+            .map { rootProject.file(it).absolutePath }.orElse(layout.buildDirectory.dir('adr068-tools').get().asFile.absolutePath).get()
+    outputs.upToDateWhen { false }
+}
+tasks.named('adr068Tools').configure { maxHeapSize = '3g' }

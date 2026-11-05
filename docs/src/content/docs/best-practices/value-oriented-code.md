@@ -84,7 +84,7 @@ For `[1, 2, 3]` this returns 3, for `[-1, 0, 2]` it returns 1, and for an empty 
 returns 0.
 
 The same applies outside loops. Outside the supported loop paths JuLC variables are
-immutable, so this is rejected with `Unsupported expression: AssignExpr`:
+immutable, so this is rejected with `JULC0061` (`Reassigning 'limit' is not supported outside a loop`):
 
 ```java
 static BigInteger limitFor(boolean vip) {
@@ -273,9 +273,8 @@ Two related methods do not work in a javac-compiled validator today:
   returns an optional value. Using the result as the element fails when the script runs.
   Use `any` for a yes-or-no question, or a loop that records what it finds.
 - `ListsLib.any`, `ListsLib.all`, `ListsLib.filter`, `ListsLib.map`, `ListsLib.find`,
-  `ListsLib.foldl` and `ListsLib.zip` compile only from source text, such as testkit
-  strings or the playground. `ListsLib` does not declare them in Java, so javac rejects
-  them in a Gradle project. Write a fold as an accumulator loop.
+  `ListsLib.foldl` and `ListsLib.zip` are not declared in Java, so javac rejects them.
+  Write a fold as an accumulator loop.
 
 A predicate often states the rule more directly than a loop, and lambdas may nest:
 
@@ -512,7 +511,7 @@ void staysWithinBudget() {
     var outputs = List.of(pay(PAYEE, 2_000_000), pay(OTHER, 9_000_000), pay(PAYEE, 3_000_000));
     EvalResult result = ValidatorTest.evaluate(compiled, context(CLAIM, outputs));
     BudgetAssertions.assertSuccess(result);
-    BudgetAssertions.assertBudgetUnder(result, 35_000_000, 140_000);
+    BudgetAssertions.assertBudgetUnder(result, 26_000_000, 90_000);
     BudgetAssertions.assertScriptSizeUnder(compiled, 1_000);
 }
 ```

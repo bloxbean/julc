@@ -1,50 +1,30 @@
 package org.julclang.compiler;
 
-import org.julclang.compiler.backend.PirBackend;
-import org.julclang.compiler.codegen.ValidatorWrapper;
-import org.julclang.compiler.codegen.StrictBoundaryGenerator;
-import org.julclang.compiler.codegen.StrictRecordEntrypoint;
+import org.julclang.compiler.codegen.ValidatorAssembly;
+import org.julclang.compiler.corpus.CorpusRecorder;
 import org.julclang.compiler.debug.DebugMetadataCollector;
 import org.julclang.compiler.error.CompilerDiagnostic;
 import org.julclang.compiler.error.DiagnosticInfo;
+import org.julclang.compiler.frontend.javac.JavacCompilation;
+import org.julclang.compiler.frontend.javac.JavacFrontend;
+import org.julclang.compiler.frontend.javac.JavacRuntime;
 import org.julclang.compiler.pir.*;
-import org.julclang.compiler.resolve.ImportResolver;
-import org.julclang.compiler.resolve.LedgerSourceLoader;
 import org.julclang.compiler.resolve.LibraryMethodRegistry;
-import org.julclang.compiler.resolve.SymbolTable;
-import org.julclang.compiler.resolve.TypeRegistrar;
-import org.julclang.compiler.resolve.TypeResolver;
 import org.julclang.compiler.schema.ContractCompileResult;
 import org.julclang.compiler.schema.ContractSchema;
 import org.julclang.compiler.uplc.UplcGenerator;
-import org.julclang.compiler.uplc.UplcOptimizer;
 import org.julclang.compiler.uplc.UplcTargetValidator;
-import org.julclang.compiler.util.MethodDependencyResolver;
-import org.julclang.compiler.validate.SubsetValidator;
 import org.julclang.core.Program;
 import org.julclang.core.Term;
 import org.julclang.core.source.SourceLocation;
-import org.julclang.core.source.SourceMap;
 import org.julclang.core.debug.DebugMetadata;
-import com.github.javaparser.ParserConfiguration;
-import com.github.javaparser.StaticJavaParser;
-import com.github.javaparser.ast.CompilationUnit;
-import com.github.javaparser.ast.Node;
-import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
-import com.github.javaparser.ast.body.MethodDeclaration;
-import com.github.javaparser.ast.body.Parameter;
-import com.github.javaparser.ast.body.TypeDeclaration;
-import com.github.javaparser.ast.body.VariableDeclarator;
-import com.github.javaparser.ast.expr.FieldAccessExpr;
-import com.github.javaparser.ast.expr.MemberValuePair;
-import com.github.javaparser.ast.expr.TypePatternExpr;
-import com.github.javaparser.ast.expr.NormalAnnotationExpr;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -66,31 +46,8 @@ public class JulcCompiler {
     public enum ScriptPurpose {
         SPENDING, MINTING, WITHDRAW, CERTIFYING, VOTING, PROPOSING, MULTI
     }
-
-    private record ParamField(String name, PirType pirType, String javaType,
-                              SourceLocation sourceLocation, Node declaration) {}
-    private record StaticField(String name, PirType pirType, com.github.javaparser.ast.expr.Expression initExpr) {}
-    private record CompiledStaticField(String name, PirTerm initPir) {}
     private record CompilationOutcome(CompileResult compileResult, ContractSchema contractSchema,
                                       DebugMetadata debugMetadata) {}
-
-    /** Typed Data subtypes that must not be used with @Param. */
-    private static final Set<String> BANNED_PARAM_TYPES = Set.of(
-            "PlutusData.BytesData", "BytesData",
-            "org.julclang.core.PlutusData.BytesData",
-            "PlutusData.MapData", "MapData",
-            "org.julclang.core.PlutusData.MapData",
-            "PlutusData.ListData", "ListData",
-            "org.julclang.core.PlutusData.ListData",
-            "PlutusData.IntData", "IntData",
-            "org.julclang.core.PlutusData.IntData"
-    );
-
-    private static final String SPENDING_ENTRYPOINT_PARAMS_SUGGESTION =
-            "Use (Redeemer, ScriptContext) for no-datum spending validators, or " +
-                    "(Datum, Redeemer, ScriptContext) when the script receives an inline datum.";
-    private static final String NON_SPENDING_ENTRYPOINT_PARAMS_SUGGESTION =
-            "Use exactly (Redeemer, ScriptContext) for non-spending validator entrypoints.";
 
     private final StdlibLookup stdlibLookup;
     private final CompilerOptions options;
@@ -106,6 +63,58 @@ public class JulcCompiler {
     public JulcCompiler(StdlibLookup stdlibLookup, CompilerOptions options) {
         this.stdlibLookup = stdlibLookup;
         this.options = options != null ? options : new CompilerOptions();
+    }
+
+    /**
+     * The library sources a source compiles with when the caller names none: what its imports resolve to in the class
+     * path's scan, on both frontends, as JAR sources (ADR-068 D8).
+     */
+    private List<String> classpathLibraries(String source, ClassLoader classLoader, CompilationContext context) {
+        var libraries = resolvedLibraries(source, classLoader);
+        context.markJarSources(libraries);
+        return libraries;
+    }
+
+    private static List<String> resolvedLibraries(String source, ClassLoader classLoader) {
+        var available = LibrarySourceResolver.scanClasspathSources(classLoader);
+        return available.isEmpty() ? List.of() : LibrarySourceResolver.resolve(source, available);
+    }
+
+    /**
+     * ADR-068: the one place a compilation leaves for the javac frontend.
+     * The call stays inside {@link JavacRuntime#call}, which is what makes a runtime without the compiler API
+     * {@code JULC0089} (I6): {@code JavacCompilation} cannot link there.
+     */
+    private CompilationOutcome onJavac(JavacFrontend.Unit root, List<JavacFrontend.Unit> pool, boolean captureDetails,
+                                       boolean captureContractSchema, boolean collectDebugMetadata,
+                                       CompilationContext context) {
+        var request = new JavacCompilation.Request(captureDetails, captureContractSchema,
+                collectDebugMetadata ? pool.stream().map(JavacFrontend.Unit::text).toList() : null);
+        var compiled = JavacRuntime.call(() -> JavacCompilation.validator(root, pool, stdlibLookup, context, request));
+        var result = compiled.result();
+        if (context.isVerbose() && result.program() != null) {
+            context.logf("Compilation complete (javac frontend): %s", result.scriptSizeFormatted());
+        }
+        DebugMetadata metadata = compiled.debug() == null ? null : compiled.debug().finish(result, options,
+                compiled.lowered().debug().emittedBinders(), compiled.lowered().debug().exactUplcPositions());
+        return new CompilationOutcome(result, compiled.schema(), metadata);
+    }
+
+    /**
+     * What a compilation of {@code source} with {@code librarySources} reports of the subset on the javac frontend, before
+     * it lowers anything ({@link JavacCompilation#subset}): javac's rejection, or the subset's rules and scan, with the
+     * same codes at the same positions, and the libraries ranked as a compilation ranks them (D8). For JuLC's tools that
+     * check a source without compiling it (ADR-068 M6), whatever frontend this compiler compiles with. Empty when the
+     * source keeps to the subset.
+     */
+    public List<CompilerDiagnostic> subsetDiagnostics(String source, List<String> librarySources) {
+        var context = beginCompilation();
+        try {
+            return JavacRuntime.call(() -> JavacCompilation.subset(JavacFrontend.Unit.of(source),
+                    libraryUnits(librarySources, context), context));
+        } catch (CompilerException e) {
+            return e.diagnostics();
+        }
     }
 
     private CompilationContext beginCompilation() {
@@ -127,11 +136,8 @@ public class JulcCompiler {
      */
     public CompileResult compile(String javaSource) {
         var context = beginCompilation();
-        var availableLibs = LibrarySourceResolver.scanClasspathSources(
-                JulcCompiler.class.getClassLoader());
-        var resolvedLibs = availableLibs.isEmpty()
-                ? List.<String>of()
-                : LibrarySourceResolver.resolve(javaSource, availableLibs);
+        var resolvedLibs = classpathLibraries(javaSource, JulcCompiler.class.getClassLoader(), context);
+        if (CorpusRecorder.ACTIVE != null) recordCorpus("compile", null, javaSource, resolvedLibs, context);
         return doCompile(javaSource, resolvedLibs, false, context);
     }
 
@@ -141,11 +147,8 @@ public class JulcCompiler {
      */
     public CompileResult compileWithDetails(String javaSource) {
         var context = beginCompilation();
-        var availableLibs = LibrarySourceResolver.scanClasspathSources(
-                JulcCompiler.class.getClassLoader());
-        var resolvedLibs = availableLibs.isEmpty()
-                ? List.<String>of()
-                : LibrarySourceResolver.resolve(javaSource, availableLibs);
+        var resolvedLibs = classpathLibraries(javaSource, JulcCompiler.class.getClassLoader(), context);
+        if (CorpusRecorder.ACTIVE != null) recordCorpus("compileWithDetails", null, javaSource, resolvedLibs, context);
         return doCompile(javaSource, resolvedLibs, true, context);
     }
 
@@ -153,7 +156,11 @@ public class JulcCompiler {
      * Compile a validator with library sources, capturing PIR and UPLC intermediate representations.
      */
     public CompileResult compileWithDetails(String validatorSource, List<String> librarySources) {
-        return doCompile(validatorSource, librarySources, true, beginCompilation());
+        var context = beginCompilation();
+        if (CorpusRecorder.ACTIVE != null) {
+            recordCorpus("compileWithDetails", null, validatorSource, librarySources, context);
+        }
+        return doCompile(validatorSource, librarySources, true, context);
     }
 
     /**
@@ -161,11 +168,23 @@ public class JulcCompiler {
      * This operation is deliberately separate from every normal/source-map compile API.
      */
     public DebugCompileResult compileForDebug(String validatorSource, List<String> librarySources) {
+        requireSourceMap();
+        return compileForDebug(validatorSource, librarySources, beginCompilation());
+    }
+
+    private void requireSourceMap() {
         if (!options.isSourceMapEnabled()) {
             throw new IllegalStateException("Java locals metadata requires source-map compilation");
         }
+    }
+
+    private DebugCompileResult compileForDebug(String validatorSource, List<String> librarySources,
+                                               CompilationContext context) {
+        if (CorpusRecorder.ACTIVE != null) {
+            recordCorpus("compileForDebug", null, validatorSource, librarySources, context);
+        }
         var outcome = doCompileOutcome(
-                validatorSource, librarySources, true, false, beginCompilation(), true);
+                validatorSource, librarySources, true, false, context, true);
         if (outcome.debugMetadata() == null) {
             throw new IllegalStateException("Java locals metadata was not collected");
         }
@@ -174,10 +193,16 @@ public class JulcCompiler {
 
     /** Compile a source-debug artifact with classpath-discovered libraries. */
     public DebugCompileResult compileForDebug(String validatorSource) {
-        var availableLibs = LibrarySourceResolver.scanClasspathSources(JulcCompiler.class.getClassLoader());
-        var resolvedLibs = availableLibs.isEmpty() ? List.<String>of()
-                : LibrarySourceResolver.resolve(validatorSource, availableLibs);
-        return compileForDebug(validatorSource, resolvedLibs);
+        return compileForDebug(validatorSource, JulcCompiler.class.getClassLoader());
+    }
+
+    /** {@link #compileForDebug(String)}, with the libraries of {@code classLoader}: they are found before anything else. */
+    DebugCompileResult compileForDebug(String validatorSource, ClassLoader classLoader) {
+        var libraries = resolvedLibraries(validatorSource, classLoader);
+        requireSourceMap();
+        var context = beginCompilation();
+        context.markJarSources(libraries);
+        return compileForDebug(validatorSource, libraries, context);
     }
 
     /**
@@ -188,7 +213,9 @@ public class JulcCompiler {
      * @return the compile result containing the UPLC Program
      */
     public CompileResult compile(String validatorSource, List<String> librarySources) {
-        return doCompile(validatorSource, librarySources, false, beginCompilation());
+        var context = beginCompilation();
+        if (CorpusRecorder.ACTIVE != null) recordCorpus("compile", null, validatorSource, librarySources, context);
+        return doCompile(validatorSource, librarySources, false, context);
     }
 
     /**
@@ -199,11 +226,10 @@ public class JulcCompiler {
      */
     public ContractCompileResult compileContract(String validatorSource) {
         var context = beginCompilation();
-        var availableLibs = LibrarySourceResolver.scanClasspathSources(
-                JulcCompiler.class.getClassLoader());
-        var resolvedLibs = availableLibs.isEmpty()
-                ? List.<String>of()
-                : LibrarySourceResolver.resolve(validatorSource, availableLibs);
+        var resolvedLibs = classpathLibraries(validatorSource, JulcCompiler.class.getClassLoader(), context);
+        if (CorpusRecorder.ACTIVE != null) {
+            recordCorpus("compileContract", null, validatorSource, resolvedLibs, context);
+        }
         var outcome = doCompileOutcome(validatorSource, resolvedLibs, false, true, context);
         return new ContractCompileResult(outcome.compileResult(), outcome.contractSchema());
     }
@@ -211,19 +237,22 @@ public class JulcCompiler {
     /** Compile a validator with library sources and capture its resolved contract schema. */
     public ContractCompileResult compileContract(
             String validatorSource, List<String> librarySources) {
+        var context = beginCompilation();
+        if (CorpusRecorder.ACTIVE != null) {
+            recordCorpus("compileContract", null, validatorSource, librarySources, context);
+        }
         var outcome = doCompileOutcome(
-                validatorSource, librarySources, false, true, beginCompilation());
+                validatorSource, librarySources, false, true, context);
         return new ContractCompileResult(outcome.compileResult(), outcome.contractSchema());
     }
 
     /** Compile with PIR/UPLC inspection details and resolved contract schema metadata. */
     public ContractCompileResult compileContractWithDetails(String validatorSource) {
         var context = beginCompilation();
-        var availableLibs = LibrarySourceResolver.scanClasspathSources(
-                JulcCompiler.class.getClassLoader());
-        var resolvedLibs = availableLibs.isEmpty()
-                ? List.<String>of()
-                : LibrarySourceResolver.resolve(validatorSource, availableLibs);
+        var resolvedLibs = classpathLibraries(validatorSource, JulcCompiler.class.getClassLoader(), context);
+        if (CorpusRecorder.ACTIVE != null) {
+            recordCorpus("compileContractWithDetails", null, validatorSource, resolvedLibs, context);
+        }
         var outcome = doCompileOutcome(validatorSource, resolvedLibs, true, true, context);
         return new ContractCompileResult(outcome.compileResult(), outcome.contractSchema());
     }
@@ -231,8 +260,12 @@ public class JulcCompiler {
     /** Compile with PIR/UPLC inspection details and resolved contract schema metadata. */
     public ContractCompileResult compileContractWithDetails(
             String validatorSource, List<String> librarySources) {
+        var context = beginCompilation();
+        if (CorpusRecorder.ACTIVE != null) {
+            recordCorpus("compileContractWithDetails", null, validatorSource, librarySources, context);
+        }
         var outcome = doCompileOutcome(
-                validatorSource, librarySources, true, true, beginCompilation());
+                validatorSource, librarySources, true, true, context);
         return new ContractCompileResult(outcome.compileResult(), outcome.contractSchema());
     }
 
@@ -262,442 +295,52 @@ public class JulcCompiler {
             boolean captureContractSchema,
             CompilationContext context,
             boolean collectDebugMetadata) {
-        StaticJavaParser.getParserConfiguration().setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
-
-        // 1. Parse all sources
-        context.logf("Parsing %d source(s) (1 validator + %d libraries)",
-                1 + librarySources.size(), librarySources.size());
-        var validatorCu = parseSource(validatorSource, "validator");
-        var libraryCus = new ArrayList<CompilationUnit>();
-        for (int i = 0; i < librarySources.size(); i++) {
-            libraryCus.add(parseSource(librarySources.get(i), "library[" + i + "]"));
-        }
-
-        DebugMetadataCollector debugMetadata = null;
-        if (collectDebugMetadata) {
-            var inputs = new ArrayList<DebugMetadataCollector.SourceInput>();
-            inputs.add(new DebugMetadataCollector.SourceInput("validator", sourceUri(validatorCu, "validator.java"),
-                    validatorSource, validatorCu));
-            for (int i = 0; i < libraryCus.size(); i++) {
-                inputs.add(new DebugMetadataCollector.SourceInput("library-" + i,
-                        sourceUri(libraryCus.get(i), "library-" + i + ".java"),
-                        librarySources.get(i), libraryCus.get(i)));
-            }
-            debugMetadata = new DebugMetadataCollector(inputs);
-        }
-        return doCompileFromCus(
-                validatorCu, libraryCus, captureDetails, captureContractSchema, context, debugMetadata);
+        return onJavac(JavacFrontend.Unit.of(validatorSource), libraryUnits(librarySources, context),
+                captureDetails, captureContractSchema, collectDebugMetadata, context);
     }
 
-    private CompilationOutcome doCompileFromCus(
-            CompilationUnit validatorCu,
-            List<CompilationUnit> libraryCus,
-            boolean captureDetails,
-            boolean captureContractSchema,
-            CompilationContext context) {
-        return doCompileFromCus(validatorCu, libraryCus, captureDetails, captureContractSchema, context, null);
+    private JavacFrontend.Unit libraryUnit(String text) {
+        return new JavacFrontend.Unit(text, null, options.getJarLibrarySources().contains(text)
+                ? JavacFrontend.Origin.JAR : JavacFrontend.Origin.PROJECT);
     }
 
-    private CompilationOutcome doCompileFromCus(
-            CompilationUnit validatorCu,
-            List<CompilationUnit> libraryCus,
-            boolean captureDetails,
-            boolean captureContractSchema,
-            CompilationContext context,
-            DebugMetadataCollector debugMetadata) {
-        // 2. Validate subset on all compilation units
-        var subsetValidator = new SubsetValidator();
-        var diagnostics = context.diagnosticBuffer();
-        diagnostics.addAll(subsetValidator.validate(validatorCu));
-        for (var libCu : libraryCus) {
-            diagnostics.addAll(subsetValidator.validate(libCu));
-        }
-        if (hasErrors(diagnostics)) {
-            throw new CompilerException(diagnostics);
-        }
-        context.log("Subset validation passed");
-        verifyBinderNamespaceInTests(context, validatorCu, libraryCus);
+    /** The javac frontend's pool: a source the class-path scan found is a JAR source, whichever way it got here. */
+    private List<JavacFrontend.Unit> libraryUnits(List<String> sources, CompilationContext context) {
+        return sources.stream().map(text -> context.isJarSource(text) ? JavacFrontend.Unit.jar(text) : libraryUnit(text)).toList();
+    }
 
-        // 3. Validate: library CUs must not contain validator annotations
-        for (var libCu : libraryCus) {
-            for (var type : libCu.findAll(TypeDeclaration.class)) {
-                rejectRoleConflict(type);
-                var validatorAnnotations = JavaSourceIntrospector.supportedValidatorAnnotationsOn(type);
-                if (!validatorAnnotations.isEmpty()) {
-                    throw new CompilerException("Library source must not contain validator annotation @"
-                            + validatorAnnotations.get(0) + ": " + type.getNameAsString());
-                }
-                var legacyAnnotations = JavaSourceIntrospector.legacyValidatorAnnotationsOn(type);
-                if (!legacyAnnotations.isEmpty()) {
-                    throw new CompilerException(JavaSourceIntrospector.legacyAnnotationMigrationMessage(
-                            legacyAnnotations.get(0), type.getNameAsString()));
-                }
+    /**
+     * Records a string entry point's inputs for the ADR-068 corpus (test-only; see {@link CorpusRecorder}), on either
+     * frontend: a case is its inputs, which the I1 tool compiles on both, and the frontend is a marker beside it (M5).
+     */
+    private void recordCorpus(String entry, String methodName, String source, List<String> librarySources,
+                              CompilationContext context) {
+        CorpusRecorder.ACTIVE.record(entry, methodName, new CorpusRecorder.Source(source, null),
+                librarySources.stream().map(text -> new CorpusRecorder.Source(text, null)).toList(),
+                stdlibLookup, CorpusRecorder.Options.of(context));
+    }
+
+    /**
+     * Records a path entry point's inputs, with each file's name, for the ADR-068 corpus (test-only). A library file
+     * that cannot be read is not recorded here; the compilation reports it as before.
+     */
+    private void recordCorpusPaths(String entry, Path validatorFile, String validatorText, List<Path> libraryFiles,
+                                   CompilationContext context) {
+        var libraries = new ArrayList<CorpusRecorder.Source>();
+        for (var libraryFile : libraryFiles) {
+            try {
+                libraries.add(new CorpusRecorder.Source(Files.readString(libraryFile), fileName(libraryFile)));
+            } catch (IOException e) {
+                return;
             }
         }
+        CorpusRecorder.ACTIVE.record(entry, null, new CorpusRecorder.Source(validatorText, fileName(validatorFile)),
+                libraries, stdlibLookup, CorpusRecorder.Options.of(context));
+    }
 
-        // 4. Find annotated validator class and determine purpose
-        var validatorClass = findAnnotatedClass(validatorCu);
-        var scriptPurpose = getScriptPurpose(validatorClass);
-        context.logf("Found @%sValidator: %s", scriptPurpose.name().charAt(0)
-                + scriptPurpose.name().substring(1).toLowerCase(), validatorClass.getNameAsString());
-
-        // 5. Register types from ALL sources (topo-sorted)
-        var typeResolver = new TypeResolver();
-
-        // 5a. Register ledger types dynamically from bundled sources
-        var ledgerCus = LedgerSourceLoader.loadLedgerSources(
-                JulcCompiler.class.getClassLoader());
-        new TypeRegistrar().registerAll(ledgerCus, typeResolver);
-        // Add flat-FQCN aliases for inner variant types (backward compat with ImportResolver)
-        typeResolver.addFlatVariantAliases("org.julclang.ledger");
-        context.logf("Registered %d ledger type(s) dynamically", ledgerCus.size());
-
-        // 5b. Register user-defined types from validator + library sources
-        var allCus = new ArrayList<CompilationUnit>();
-        allCus.addAll(libraryCus);
-        allCus.add(validatorCu);
-        registerTypesWithDiagnostics(allCus, typeResolver, diagnostics);
-        context.logf("Registered types from %d compilation unit(s)", allCus.size());
-
-        // 5c. Build knownFqcns for ImportResolver (types + library classes + stdlib classes)
-        var knownFqcns = new LinkedHashSet<String>();
-        knownFqcns.addAll(typeResolver.allRegisteredFqcns());
-        knownFqcns.addAll(TypeResolver.ledgerHashFqcns());
-        if (stdlibLookup != null) knownFqcns.addAll(stdlibLookup.registeredClassNames());
-        for (var libCu : libraryCus) {
-            for (var cls : libCu.findAll(ClassOrInterfaceDeclaration.class)) {
-                if (!cls.isInterface()) {
-                    knownFqcns.add(cls.getFullyQualifiedName().orElse(cls.getNameAsString()));
-                }
-            }
-        }
-
-        // 5b. Auto-register .of() for @NewType records as identity lookups
-        var newTypeNames = typeResolver.getNewTypeNames();
-        StdlibLookup effectiveStdlibLookup = newTypeNames.isEmpty()
-                ? stdlibLookup
-                : wrapWithNewTypeLookup(stdlibLookup, newTypeNames);
-
-        // 5d. Set import resolver for validator CU (used for type resolution)
-        var validatorImportResolver = new ImportResolver(validatorClass, knownFqcns);
-        typeResolver.setCurrentImportResolver(validatorImportResolver);
-
-        // 6. Detect @Param fields
-        var paramFields = findParamFields(validatorClass, typeResolver, diagnostics);
-        if (hasErrors(diagnostics)) {
-            throw new CompilerException(diagnostics);
-        }
-
-        if (!paramFields.isEmpty()) {
-            context.logf("Found %d @Param field(s): %s", paramFields.size(),
-                    paramFields.stream().map(pf -> pf.name + ": " + pf.javaType).toList());
-        }
-
-        // 6b. Detect static fields with initializers (non-@Param)
-        var staticFields = findStaticFields(validatorClass, typeResolver);
-
-        // 7. Find @Entrypoint method(s) and validate
-        // For MULTI purpose, discover all entrypoints and their purposes
-        var entrypointInfos = new ArrayList<EntrypointInfo>();
-        MethodDeclaration entrypointMethod = null;
-
-        if (scriptPurpose == ScriptPurpose.MULTI) {
-            entrypointInfos = findMultiEntrypoints(validatorClass);
-        } else {
-            entrypointMethod = findEntrypoint(validatorClass);
-            // 7b. Validate parameter count matches script purpose
-            validateEntrypointParams(entrypointMethod, scriptPurpose, validatorClass);
-        }
-
-        // 8. Compile library static methods to PIR (progressive lookup: each library sees previous)
-        var libraryRegistry = LibraryMethodRegistry.forCompilation(context);
-        if (!libraryCus.isEmpty()) {
-            context.logf("Compiling %d library source(s)", libraryCus.size());
-            compileLibraryMethods(
-                    libraryCus, typeResolver, libraryRegistry, effectiveStdlibLookup, knownFqcns, context);
-            context.logf("Compiled %d library method(s)", libraryRegistry.allMethods().size());
-        }
-
-        // Restore validator's import resolver after library compilation
-        typeResolver.setCurrentImportResolver(validatorImportResolver);
-
-        // 9. Compose lookup: stdlib + library methods
-        var effectiveLookup = libraryRegistry.isEmpty()
-                ? effectiveStdlibLookup
-                : new CompositeStdlibLookup(effectiveStdlibLookup, libraryRegistry);
-
-        // 10. Set up symbol table. Methods have their own namespace (ADR-060).
-        var methodOwner = methodOwner(validatorClass);
-        var symbolTable = new SymbolTable();
-        for (var pf : paramFields) {
-            symbolTable.define(pf.name, pf.pirType);
-        }
-        for (var sf : staticFields) {
-            symbolTable.define(sf.name, sf.pirType);
-        }
-        for (var method : validatorClass.getMethods()) {
-            if (method.isStatic()) {
-                var mType = computeMethodType(method, typeResolver);
-                symbolTable.declareMethod(method.getNameAsString(), methodBinder(methodOwner, method), mType);
-            }
-        }
-
-        // 11. Generate PIR for helper methods
-        var pirGenerator = debugMetadata == null
-                ? PirGenerator.forCompilation(typeResolver, symbolTable, effectiveLookup,
-                        TypeMethodRegistry.defaultRegistry(), null, context)
-                : PirGenerator.forDebugCompilation(typeResolver, symbolTable, effectiveLookup,
-                        TypeMethodRegistry.defaultRegistry(), null, context, debugMetadata);
-        // The entrypoints run once per evaluation (JULC0056, ADR-060). An entrypoint the dispatch
-        // does not use is never generated, so listing it too changes nothing.
-        pirGenerator.setEntryMethods(entrypointMethod != null ? List.of(entrypointMethod)
-                : entrypointInfos.stream().map(EntrypointInfo::method).toList());
-
-        // 11b. Compile static field initializers
-        var compiledStaticFields = new ArrayList<CompiledStaticField>();
-        for (var sf : staticFields) {
-            var initPir = pirGenerator.generateExpression(sf.initExpr);
-            requireNoMethodCall(sf, initPir, methodOwner, validatorClass);
-            compiledStaticFields.add(new CompiledStaticField(sf.name, initPir));
-        }
-
-        var entrypointNames = validatorClass.getMethods().stream()
-                .filter(method -> method.getAnnotationByName("Entrypoint").isPresent())
-                .map(MethodDeclaration::getNameAsString)
-                .collect(Collectors.toSet());
-        var overloads = new OnchainOverloads(validatorClass.getNameAsString(), entrypointNames);
-        for (var method : validatorClass.getMethods()) {
-            if (method.isStatic() && method.getAnnotationByName("Entrypoint").isEmpty()) {
-                var helperPir = pirGenerator.generateMethod(method);
-                var mType = computeMethodType(method, typeResolver);
-                overloads.check(method, mType, helperPir);
-                symbolTable.defineMethod(methodBinder(methodOwner, method), mType, helperPir);
-            }
-        }
-
-        // Enable boolean return guard for entrypoint only (not helpers — they may legitimately return false)
-        if (context.isSourceMapEnabled()) {
-            pirGenerator.setBooleanReturnGuard(true);
-        }
-
-        // 12. Generate PIR for entrypoint(s)
-        PirTerm validateFn = null;
-        Map<Integer, PirTerm> multiHandlers = null;
-        Map<Integer, Integer> multiParamCounts = null;
-        boolean isMultiAutoDispatch = false;
-        var strictRecordErrors = new ArrayList<PirTerm.Error>();
-
-        boolean isExplicitPurpose = !entrypointInfos.isEmpty()
-                && entrypointInfos.stream().noneMatch(e -> e.purposeName().equals("DEFAULT"));
-        if (scriptPurpose == ScriptPurpose.MULTI && isExplicitPurpose) {
-            // Mode 1: Auto-dispatch — entrypoints with explicit purposes
-            isMultiAutoDispatch = true;
-            multiHandlers = new LinkedHashMap<>();
-            multiParamCounts = new LinkedHashMap<>();
-            for (var ei : entrypointInfos) {
-                var handlerPir = pirGenerator.generateMethod(ei.method());
-                var transformed = transformStrictRecordEntrypoint(
-                        handlerPir, ei.method(), typeResolver);
-                handlerPir = transformed.function();
-                strictRecordErrors.addAll(transformed.errors());
-                multiHandlers.put(ei.tag(), handlerPir);
-                multiParamCounts.put(ei.tag(), ei.method().getParameters().size());
-            }
-            context.logf("PIR generation complete (%d auto-dispatch entrypoints)", entrypointInfos.size());
-        } else if (scriptPurpose == ScriptPurpose.MULTI) {
-            // Mode 2: Manual dispatch — single DEFAULT entrypoint
-            entrypointMethod = entrypointInfos.get(0).method();
-            validateFn = pirGenerator.generateMethod(entrypointMethod);
-            var transformed = transformStrictRecordEntrypoint(
-                    validateFn, entrypointMethod, typeResolver);
-            validateFn = transformed.function();
-            strictRecordErrors.addAll(transformed.errors());
-            context.log("PIR generation complete (manual dispatch)");
-        } else {
-            validateFn = pirGenerator.generateMethod(entrypointMethod);
-            var transformed = transformStrictRecordEntrypoint(
-                    validateFn, entrypointMethod, typeResolver);
-            validateFn = transformed.function();
-            strictRecordErrors.addAll(transformed.errors());
-            context.log("PIR generation complete");
-        }
-
-        // Disable guard after entrypoint generation
-        pirGenerator.setBooleanReturnGuard(false);
-
-        // 12b. Collect non-fatal errors from PIR generation
-        diagnostics.addAll(pirGenerator.getCollectedErrors());
-        if (hasErrors(diagnostics)) {
-            throw new CompilerException(diagnostics);
-        }
-
-        // 13. Wrap helper methods as Let bindings
-        // For auto-dispatch, wrap each handler; for single entrypoint, wrap the single body
-        PirTerm body;
-        if (isMultiAutoDispatch) {
-            // Wrap helper methods around each handler (dependency-ordered)
-            for (var entry : multiHandlers.entrySet()) {
-                PirTerm handlerBody = wrapMethodBindings(symbolTable.allMethods(), entry.getValue());
-                // Wrap static field initializers
-                for (int i = compiledStaticFields.size() - 1; i >= 0; i--) {
-                    var sf = compiledStaticFields.get(i);
-                    handlerBody = new PirTerm.Let(sf.name(), sf.initPir(), handlerBody);
-                }
-                multiHandlers.put(entry.getKey(), handlerBody);
-            }
-            body = null; // Not used; wrapper handles it
-        } else {
-            body = wrapMethodBindings(symbolTable.allMethods(), validateFn);
-
-            // 13b. Wrap static field initializers as Let bindings (reverse order for correct scoping)
-            for (int i = compiledStaticFields.size() - 1; i >= 0; i--) {
-                var sf = compiledStaticFields.get(i);
-                body = new PirTerm.Let(sf.name(), sf.initPir(), body);
-            }
-        }
-
-        // 14. Wrap library methods as Let bindings (topologically sorted: dependencies outermost)
-        var sortedLibMethods = topoSortLibraryMethods(libraryRegistry.allMethods());
-        if (isMultiAutoDispatch) {
-            for (var entry : multiHandlers.entrySet()) {
-                PirTerm handlerBody = entry.getValue();
-                for (var libMethod : sortedLibMethods) {
-                    if (containsVarRef(libMethod.body(), libMethod.qualifiedName())) {
-                        handlerBody = new PirTerm.LetRec(
-                                List.of(new PirTerm.Binding(libMethod.qualifiedName(), libMethod.body())),
-                                handlerBody);
-                    } else {
-                        handlerBody = new PirTerm.Let(libMethod.qualifiedName(), libMethod.body(), handlerBody);
-                    }
-                }
-                multiHandlers.put(entry.getKey(), handlerBody);
-            }
-        } else {
-            for (var libMethod : sortedLibMethods) {
-                if (containsVarRef(libMethod.body(), libMethod.qualifiedName())) {
-                    body = new PirTerm.LetRec(
-                            List.of(new PirTerm.Binding(libMethod.qualifiedName(), libMethod.body())),
-                            body);
-                } else {
-                    body = new PirTerm.Let(libMethod.qualifiedName(), libMethod.body(), body);
-                }
-            }
-        }
-
-        // 15. Resolve typed transaction-time roots and wrap the entrypoint for on-chain.
-        // ScriptContext and deployer-applied @Param fields are intentionally not boundary roots.
-        var namedDefinitions = typeResolver.namedDefinitions();
-        var wrapper = new ValidatorWrapper(namedDefinitions);
-        PirTerm wrappedTerm;
-        if (isMultiAutoDispatch) {
-            // Build datumOptional flags for auto-dispatch handlers
-            Map<Integer, Boolean> multiDatumOptional = new LinkedHashMap<>();
-            Map<Integer, PirType> multiDatumTypes = new LinkedHashMap<>();
-            Map<Integer, PirType> multiRedeemerTypes = new LinkedHashMap<>();
-            for (var ei : entrypointInfos) {
-                boolean datumOpt = false;
-                if (ei.tag() == 1 && ei.method().getParameters().size() == 3) {
-                    var firstParamType = ei.method().getParameter(0).getTypeAsString();
-                    datumOpt = firstParamType.startsWith("Optional");
-                    var datumParam = ei.method().getParameter(0);
-                    var datumType = typeResolver.resolve(datumParam.getType());
-                    ensureStrictBoundarySupported(datumParam, datumType, typeResolver);
-                    multiDatumTypes.put(ei.tag(), wrapperBoundaryType(datumType, typeResolver));
-                }
-                var redeemerParam = ei.method().getParameter(
-                        ei.tag() == 1 && ei.method().getParameters().size() == 3 ? 1 : 0);
-                var redeemerType = typeResolver.resolve(redeemerParam.getType());
-                ensureStrictBoundarySupported(redeemerParam, redeemerType, typeResolver);
-                multiRedeemerTypes.put(ei.tag(), wrapperBoundaryType(redeemerType, typeResolver));
-                multiDatumOptional.put(ei.tag(), datumOpt);
-            }
-            wrappedTerm = wrapper.wrapMultiValidator(multiHandlers, multiParamCounts,
-                    multiDatumOptional, multiDatumTypes, multiRedeemerTypes);
-        } else if (scriptPurpose == ScriptPurpose.SPENDING) {
-            int paramCount = entrypointMethod.getParameters().size();
-            boolean datumIsOptional = false;
-            PirType datumType = null;
-            if (paramCount == 3) {
-                var datumParam = entrypointMethod.getParameter(0);
-                var firstParamType = datumParam.getTypeAsString();
-                datumIsOptional = firstParamType.startsWith("Optional");
-                datumType = typeResolver.resolve(datumParam.getType());
-                ensureStrictBoundarySupported(datumParam, datumType, typeResolver);
-            }
-            var redeemerParam = entrypointMethod.getParameter(paramCount == 3 ? 1 : 0);
-            var redeemerType = typeResolver.resolve(redeemerParam.getType());
-            ensureStrictBoundarySupported(redeemerParam, redeemerType, typeResolver);
-            wrappedTerm = wrapper.wrapSpendingValidator(body, paramCount, datumIsOptional,
-                    wrapperBoundaryType(datumType, typeResolver),
-                    wrapperBoundaryType(redeemerType, typeResolver));
-        } else {
-            // Minting, Withdraw, Certifying, Voting, Proposing, Multi(manual) all use 2-param wrapper
-            var redeemerParam = entrypointMethod.getParameter(0);
-            var redeemerType = typeResolver.resolve(redeemerParam.getType());
-            ensureStrictBoundarySupported(redeemerParam, redeemerType, typeResolver);
-            wrappedTerm = wrapper.wrapMintingPolicy(body,
-                    wrapperBoundaryType(redeemerType, typeResolver));
-        }
-
-        // 15b. Register wrapper Error terms in source map (points to @Entrypoint method)
-        if (context.isSourceMapEnabled() && !wrapper.getErrorTerms().isEmpty()) {
-            var pirPositions = pirGenerator.getPirPositions();
-            // For multi-dispatch, use the first entrypoint; for single, use the entrypoint method
-            var epMethod = entrypointMethod != null ? entrypointMethod : entrypointInfos.getFirst().method();
-            epMethod.getRange().ifPresent(range -> {
-                var fileName = epMethod.findCompilationUnit()
-                        .flatMap(cu -> cu.getStorage().map(s -> s.getFileName()))
-                        .orElse(null);
-                var loc = new SourceLocation(fileName, range.begin.line, range.begin.column,
-                        "validator returned false");
-                for (var errorTerm : wrapper.getErrorTerms()) {
-                    pirPositions.put(errorTerm, loc);
-                }
-                for (var errorTerm : strictRecordErrors) {
-                    pirPositions.put(errorTerm, loc);
-                }
-            });
-        }
-
-        // 16. Wrap with outer param lambdas
-        for (int i = paramFields.size() - 1; i >= 0; i--) {
-            var pf = paramFields.get(i);
-            var rawName = "#" + pf.name + "__raw";
-            var decoded = PirHelpers.wrapDecode(
-                    new PirTerm.Var(rawName, new PirType.DataType()), pf.pirType);
-            var decodedBinding = new PirTerm.Let(pf.name, decoded, wrappedTerm);
-            if (debugMetadata != null) {
-                debugMetadata.associate(pf.declaration(), decodedBinding, pf.pirType());
-            }
-            wrappedTerm = new PirTerm.Lam(rawName, new PirType.DataType(), decodedBinding);
-        }
-
-        var provenance = debugMetadata == null ? null : debugMetadata.provenance();
-        pirGenerator.rejectUnresolvedMembers(wrappedTerm);
-        var lowered = PirBackend.lower(
-                wrappedTerm, context, pirGenerator.getPirPositions(), true, provenance);
-        var program = lowered.program();
-        PirTerm capturedPir = captureDetails ? lowered.pir() : null;
-        Term capturedUplc = captureDetails ? program.term() : null;
-        SourceMap sourceMap = lowered.sourceMap();
-
-        // 22. Build ParamInfo list
-        var paramInfos = paramFields.stream()
-                .map(pf -> new CompileResult.ParamInfo(pf.name, pf.javaType))
-                .toList();
-
-        var result = new CompileResult(
-                program, diagnostics, paramInfos, capturedPir, capturedUplc, sourceMap,
-                context.target(), context.optimizationReport());
-        ContractSchema contractSchema = captureContractSchema
-                ? buildContractSchema(scriptPurpose, entrypointMethod, entrypointInfos,
-                        paramFields, typeResolver, validatorClass)
-                : null;
-        context.logf("Compilation complete: %s", result.scriptSizeFormatted());
-        DebugMetadata completedMetadata = debugMetadata == null ? null
-                : debugMetadata.finish(result, options, lowered.debug().emittedBinders(),
-                        lowered.debug().exactUplcPositions());
-        return new CompilationOutcome(result, contractSchema, completedMetadata);
+    private static String fileName(Path file) {
+        var name = file.getFileName();
+        return name == null ? file.toString() : name.toString();
     }
 
     /**
@@ -740,19 +383,21 @@ public class JulcCompiler {
             boolean captureContractSchema,
             CompilationContext context)
             throws IOException {
-        StaticJavaParser.getParserConfiguration().setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
-
         context.logf("Parsing %d source(s) (1 validator + %d libraries)",
                 1 + libraryFiles.size(), libraryFiles.size());
-        var validatorCu = parseSource(Files.readString(validatorFile), "validator", validatorFile);
-        var libraryCus = new ArrayList<CompilationUnit>();
-        for (int i = 0; i < libraryFiles.size(); i++) {
-            var libFile = libraryFiles.get(i);
-            libraryCus.add(parseSource(Files.readString(libFile), "library[" + i + "]", libFile));
+        var validatorText = Files.readString(validatorFile);
+        if (CorpusRecorder.ACTIVE != null) {
+            recordCorpusPaths(captureContractSchema ? "compileContractPath" : "compilePath",
+                    validatorFile, validatorText, libraryFiles, context);
         }
-
-        return doCompileFromCus(
-                validatorCu, libraryCus, false, captureContractSchema, context);
+        var pool = new ArrayList<JavacFrontend.Unit>();
+        for (var libFile : libraryFiles) {
+            var text = Files.readString(libFile);
+            pool.add(new JavacFrontend.Unit(text, libFile, options.getJarLibrarySources().contains(text)
+                    ? JavacFrontend.Origin.JAR : JavacFrontend.Origin.PROJECT));
+        }
+        return onJavac(new JavacFrontend.Unit(validatorText, validatorFile), pool, false, captureContractSchema,
+                false, context);
     }
 
     /**
@@ -811,11 +456,7 @@ public class JulcCompiler {
      */
     public CompileResult compileMethod(String javaSource, String methodName) {
         var context = beginCompilation();
-        var availableLibs = LibrarySourceResolver.scanClasspathSources(
-                Thread.currentThread().getContextClassLoader());
-        var resolvedLibs = availableLibs.isEmpty()
-                ? List.<String>of()
-                : LibrarySourceResolver.resolve(javaSource, availableLibs);
+        var resolvedLibs = classpathLibraries(javaSource, Thread.currentThread().getContextClassLoader(), context);
         return compileMethod(javaSource, methodName, resolvedLibs, context);
     }
 
@@ -836,847 +477,15 @@ public class JulcCompiler {
             String methodName,
             List<String> librarySources,
             CompilationContext context) {
-        StaticJavaParser.getParserConfiguration().setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
-
-        // 1. Parse all sources
-        var cu = parseSource(javaSource, "method source");
-        var libraryCus = new ArrayList<CompilationUnit>();
-        for (int i = 0; i < librarySources.size(); i++) {
-            libraryCus.add(parseSource(librarySources.get(i), "library[" + i + "]"));
-        }
-
-        // 2. Validate subset
-        var subsetValidator = new SubsetValidator();
-        var diagnostics = context.diagnosticBuffer();
-        diagnostics.addAll(subsetValidator.validate(cu));
-        for (var libCu : libraryCus) {
-            diagnostics.addAll(subsetValidator.validate(libCu));
-        }
-        if (hasErrors(diagnostics)) {
-            throw new CompilerException(diagnostics);
-        }
-        verifyBinderNamespaceInTests(context, cu, libraryCus);
-
-        // 3. Find the target class (first non-interface class)
-        var targetClass = cu.findAll(ClassOrInterfaceDeclaration.class).stream()
-                .filter(c -> !c.isInterface())
-                .findFirst()
-                .orElseThrow(() -> new CompilerException("No class found in source"));
-
-        // 4. Find the target method
-        var targetMethod = targetClass.getMethods().stream()
-                .filter(m -> m.isStatic() && m.getNameAsString().equals(methodName))
-                .findFirst()
-                .orElseThrow(() -> new CompilerException(
-                        "No static method '" + methodName + "' found in " + targetClass.getNameAsString()));
-
-        // 5. Register types (ledger + user-defined)
-        var typeResolver = new TypeResolver();
-
-        var ledgerCus = LedgerSourceLoader.loadLedgerSources(
-                JulcCompiler.class.getClassLoader());
-        new TypeRegistrar().registerAll(ledgerCus, typeResolver);
-        typeResolver.addFlatVariantAliases("org.julclang.ledger");
-
-        var allCus = new ArrayList<CompilationUnit>();
-        allCus.addAll(libraryCus);
-        allCus.add(cu);
-        registerTypesWithDiagnostics(allCus, typeResolver, diagnostics);
-
-        // 6. Build knownFqcns and import resolver
-        var knownFqcns = new LinkedHashSet<String>();
-        knownFqcns.addAll(typeResolver.allRegisteredFqcns());
-        knownFqcns.addAll(TypeResolver.ledgerHashFqcns());
-        if (stdlibLookup != null) knownFqcns.addAll(stdlibLookup.registeredClassNames());
-        for (var libCu : libraryCus) {
-            for (var cls : libCu.findAll(ClassOrInterfaceDeclaration.class)) {
-                if (!cls.isInterface()) {
-                    knownFqcns.add(cls.getFullyQualifiedName().orElse(cls.getNameAsString()));
-                }
-            }
-        }
-
-        var newTypeNames = typeResolver.getNewTypeNames();
-        StdlibLookup effectiveStdlibLookup = newTypeNames.isEmpty()
-                ? stdlibLookup
-                : wrapWithNewTypeLookup(stdlibLookup, newTypeNames);
-
-        var importResolver = new ImportResolver(targetClass, knownFqcns);
-        typeResolver.setCurrentImportResolver(importResolver);
-
-        // 7. Detect @Param fields
-        var paramFields = findParamFields(targetClass, typeResolver, diagnostics);
-        if (hasErrors(diagnostics)) {
-            throw new CompilerException(diagnostics);
-        }
-
-        // 7b. Detect static fields
-        var staticFields = findStaticFields(targetClass, typeResolver);
-
-        // 8. Compile libraries (if any)
-        var libraryRegistry = LibraryMethodRegistry.forCompilation(context);
-        if (!libraryCus.isEmpty()) {
-            compileLibraryMethods(
-                    libraryCus, typeResolver, libraryRegistry, effectiveStdlibLookup, knownFqcns, context);
-        }
-        typeResolver.setCurrentImportResolver(importResolver);
-
-        var effectiveLookup = libraryRegistry.isEmpty()
-                ? effectiveStdlibLookup
-                : new CompositeStdlibLookup(effectiveStdlibLookup, libraryRegistry);
-
-        // 9. Set up symbol table. Methods have their own namespace (ADR-060).
-        var methodOwner = methodOwner(targetClass);
-        var symbolTable = new SymbolTable();
-        for (var pf : paramFields) {
-            symbolTable.define(pf.name, pf.pirType);
-        }
-        for (var sf : staticFields) {
-            symbolTable.define(sf.name, sf.pirType);
-        }
-        for (var method : targetClass.getMethods()) {
-            if (method.isStatic()) {
-                var mType = computeMethodType(method, typeResolver);
-                symbolTable.declareMethod(method.getNameAsString(), methodBinder(methodOwner, method), mType);
-            }
-        }
-
-        // The selected compileMethod entry point is decoded from external Data.
-        // Reject native Value anywhere in its boundary graph before generating
-        // helper bodies, where a lower-level Data codec error would lose context.
-        var paramTypes = new ArrayList<PirType>();
-        for (var param : targetMethod.getParameters()) {
-            var paramType = typeResolver.resolve(param.getType());
-            if (typeResolver.containsNativeOpaque(paramType)) {
-                throw CompilerTypeDiagnostics.nativeTypeAtDataBoundary(
-                        param.getNameAsString(), paramType, sourceLocation(param));
-            }
-            paramTypes.add(paramType);
-        }
-
-        // 10. Generate PIR for helper methods
-        var pirGenerator = PirGenerator.forCompilation(typeResolver, symbolTable, effectiveLookup,
-                TypeMethodRegistry.defaultRegistry(), null, context);
-        // The target runs once per evaluation (JULC0056, ADR-060).
-        pirGenerator.setEntryMethods(List.of(targetMethod));
-
-        var compiledStaticFields = new ArrayList<CompiledStaticField>();
-        for (var sf : staticFields) {
-            var initPir = pirGenerator.generateExpression(sf.initExpr);
-            requireNoMethodCall(sf, initPir, methodOwner, targetClass);
-            compiledStaticFields.add(new CompiledStaticField(sf.name, initPir));
-        }
-
-        // Compile ALL static methods (including target) so cross-references work
-        var overloads = new OnchainOverloads(targetClass.getNameAsString(), Set.of());
-        for (var method : targetClass.getMethods()) {
-            if (method.isStatic()) {
-                var helperPir = pirGenerator.generateMethod(method);
-                var mType = computeMethodType(method, typeResolver);
-                overloads.check(method, mType, helperPir);
-                symbolTable.defineMethod(methodBinder(methodOwner, method), mType, helperPir);
-            }
-        }
-
-        diagnostics.addAll(pirGenerator.getCollectedErrors());
-        if (hasErrors(diagnostics)) {
-            throw new CompilerException(diagnostics);
-        }
-
-        // 11. Build body: Data-accepting lambda that calls target method by Var reference
-        // Build application: Var("method") applied to decoded args
-        PirTerm application = new PirTerm.Var(methodBinder(methodOwner, targetMethod),
-                computeMethodType(targetMethod, typeResolver));
-        for (int i = 0; i < paramTypes.size(); i++) {
-            var decodedName = "#" + targetMethod.getParameter(i).getNameAsString() + "__dec";
-            application = new PirTerm.App(application,
-                    new PirTerm.Var(decodedName, paramTypes.get(i)));
-        }
-
-        // Wrap with outer Lam + decode for each param (inside-out)
-        PirTerm body = application;
-        for (int i = paramTypes.size() - 1; i >= 0; i--) {
-            var decodedName = "#" + targetMethod.getParameter(i).getNameAsString() + "__dec";
-            var rawName = "#" + targetMethod.getParameter(i).getNameAsString() + "__raw";
-            var decoded = PirHelpers.wrapDecode(
-                    new PirTerm.Var(rawName, new PirType.DataType()), paramTypes.get(i));
-            body = new PirTerm.Let(decodedName, decoded, body);
-            body = new PirTerm.Lam(rawName, new PirType.DataType(), body);
-        }
-
-        // 12. Wrap ALL methods as Let/LetRec bindings (target + helpers, dependency-ordered)
-        body = wrapMethodBindings(symbolTable.allMethods(), body);
-
-        // 14. Wrap static field initializers
-        for (int i = compiledStaticFields.size() - 1; i >= 0; i--) {
-            var sf = compiledStaticFields.get(i);
-            body = new PirTerm.Let(sf.name(), sf.initPir(), body);
-        }
-
-        // 15. Wrap library methods as Let bindings
-        var sortedLibMethods = topoSortLibraryMethods(libraryRegistry.allMethods());
-        for (var libMethod : sortedLibMethods) {
-            if (containsVarRef(libMethod.body(), libMethod.qualifiedName())) {
-                body = new PirTerm.LetRec(
-                        List.of(new PirTerm.Binding(libMethod.qualifiedName(), libMethod.body())),
-                        body);
-            } else {
-                body = new PirTerm.Let(libMethod.qualifiedName(), libMethod.body(), body);
-            }
-        }
-
-        // 16. Wrap with outer @Param lambdas
-        for (int i = paramFields.size() - 1; i >= 0; i--) {
-            var pf = paramFields.get(i);
-            var rawName = "#" + pf.name + "__raw";
-            var decoded = PirHelpers.wrapDecode(
-                    new PirTerm.Var(rawName, new PirType.DataType()), pf.pirType);
-            body = new PirTerm.Lam(rawName, new PirType.DataType(),
-                    new PirTerm.Let(pf.name, decoded, body));
-        }
-
-        pirGenerator.rejectUnresolvedMembers(body);
-        var values = new ValueLiteralFoldPass(context, pirGenerator.getPirPositions()).lower(body);
-        var folding = new ArrayLiteralFoldPass(context, values.positions()).lower(values.term());
-        var sharing = new ValueConversionSharingPass(context, folding.positions()).lower(folding.term());
-        var promotion = new ListIndexPromotionPass(context, sharing.positions()).lower(sharing.term());
-        var pairLowering = new PairDestructuringPass(context, promotion.positions()).lower(promotion.term());
-        body = pairLowering.term();
-
-        // 17. Lower to UPLC (with source map support)
-        var uplcGenerator = context.isSourceMapEnabled()
-                ? new UplcGenerator(context, pairLowering.positions())
-                : new UplcGenerator(context, null);
-        var uplcTerm = uplcGenerator.generate(body);
-
-        SourceMap sourceMap = null;
-        var producingStage = "UPLC lowering";
-        if (context.isSourceMapEnabled()) {
-            sourceMap = SourceMap.of(uplcGenerator.getUplcPositions());
-        } else {
-            var optimizer = new UplcOptimizer(context);
-            var optimization = optimizer.optimizeWithReport(uplcTerm);
-            uplcTerm = optimization.term();
-            context.recordOptimizationRules(optimization.appliedPasses());
-            producingStage = optimizerStage(optimization);
-        }
-
-        var paramInfos = paramFields.stream()
-                .map(pf -> new CompileResult.ParamInfo(pf.name, pf.javaType))
-                .toList();
-        var program = createProgram(context, uplcTerm);
-        UplcTargetValidator.validate(
-                program,
-                context,
-                producingStage);
-        return new CompileResult(
-                program, diagnostics, paramInfos, body, uplcTerm, sourceMap,
-                context.target(), context.optimizationReport());
-    }
-
-    // --- Library compilation ---
-
-    private void compileLibraryMethods(List<CompilationUnit> libCus, TypeResolver typeResolver,
-                                       LibraryMethodRegistry registry, StdlibLookup effectiveLookup,
-                                       Set<String> knownFqcns, CompilationContext context) {
-        new LibraryCompiler(context).compile(
-                libCus, typeResolver, registry, effectiveLookup, knownFqcns);
+        if (CorpusRecorder.ACTIVE != null) recordCorpus("compileMethod", methodName, javaSource, librarySources, context);
+        var pool = libraryUnits(librarySources, context);
+        return JavacRuntime.call(() ->
+                JavacCompilation.method(JavacFrontend.Unit.of(javaSource), pool, methodName, stdlibLookup, context));
     }
 
     private static Program createProgram(CompilationContext context, Term term) {
         var version = context.target().uplcVersion();
         return new Program(version.major(), version.minor(), version.patch(), term);
-    }
-
-    private static String optimizerStage(UplcOptimizer.OptimizationResult result) {
-        return result.appliedPasses().isEmpty()
-                ? "UPLC optimizer (no rewrites)"
-                : "UPLC optimizer passes " + result.appliedPasses();
-    }
-
-    /** Delegate to PirHelpers for self-recursion detection. */
-    private static boolean containsVarRef(PirTerm term, String name) {
-        return PirHelpers.containsVarRef(term, name);
-    }
-
-    /**
-     * Wrap class/validator methods as Let/LetRec bindings in dependency order.
-     * Uses Tarjan's SCC to handle forward references and mutual recursion.
-     */
-    private static PirTerm wrapMethodBindings(java.util.Collection<SymbolTable.MethodInfo> methods, PirTerm body) {
-        if (methods.isEmpty()) return body;
-
-        var bindings = new ArrayList<MethodDependencyResolver.NamedBinding>();
-        for (var mi : methods) {
-            bindings.add(new MethodDependencyResolver.NamedBinding(mi.name(), mi.body()));
-        }
-
-        var groups = MethodDependencyResolver.resolveDependencyOrder(
-                bindings, JulcCompiler::containsVarRef);
-
-        // Wrap from first (innermost) to last (outermost)
-        for (var group : groups) {
-            if (group.isSingle()) {
-                var b = group.bindings().get(0);
-                if (containsVarRef(b.body(), b.name())) {
-                    body = new PirTerm.LetRec(
-                            List.of(new PirTerm.Binding(b.name(), b.body())), body);
-                } else {
-                    body = new PirTerm.Let(b.name(), b.body(), body);
-                }
-            } else if (group.bindings().size() == 2) {
-                // Mutual recursion — multi-binding LetRec (Bekic's theorem in UplcGenerator)
-                var pirBindings = new ArrayList<PirTerm.Binding>();
-                for (var b : group.bindings()) {
-                    pirBindings.add(new PirTerm.Binding(b.name(), b.body()));
-                }
-                body = new PirTerm.LetRec(pirBindings, body);
-            } else {
-                var names = group.bindings().stream()
-                        .map(MethodDependencyResolver.NamedBinding::name)
-                        .toList();
-                throw new CompilerException(
-                        "Mutual recursion with more than 2 methods is not supported: " + names);
-            }
-        }
-
-        return body;
-    }
-
-    /**
-     * Topologically sort library methods so dependencies are outermost in the Let chain.
-     * Methods with no library dependencies come last (outermost); dependent methods come first (innermost).
-     * The iteration order of the result is suitable for direct use in the Let wrapping loop:
-     * first item = innermost, last item = outermost.
-     */
-    private static List<LibraryMethodRegistry.LibraryMethod> topoSortLibraryMethods(
-            java.util.Collection<LibraryMethodRegistry.LibraryMethod> methods) {
-        var methodList = new ArrayList<>(methods);
-        var methodMap = new java.util.LinkedHashMap<String, LibraryMethodRegistry.LibraryMethod>();
-        for (var m : methodList) methodMap.put(m.qualifiedName(), m);
-
-        // Build dependency graph: name -> set of library method names referenced in body
-        var deps = new java.util.LinkedHashMap<String, java.util.Set<String>>();
-        for (var m : methodList) {
-            var myDeps = new java.util.LinkedHashSet<String>();
-            for (var other : methodList) {
-                if (!other.qualifiedName().equals(m.qualifiedName())
-                        && containsVarRef(m.body(), other.qualifiedName())) {
-                    myDeps.add(other.qualifiedName());
-                }
-            }
-            deps.put(m.qualifiedName(), myDeps);
-        }
-
-        // Kahn's algorithm: emit methods whose dependencies are already emitted
-        var emitted = new java.util.LinkedHashSet<String>();
-        var result = new ArrayList<LibraryMethodRegistry.LibraryMethod>();
-        var remaining = new java.util.LinkedHashSet<>(deps.keySet());
-        while (!remaining.isEmpty()) {
-            String next = null;
-            for (String name : remaining) {
-                var d = new java.util.LinkedHashSet<>(deps.get(name));
-                d.removeAll(emitted);
-                if (d.isEmpty()) {
-                    next = name;
-                    break;
-                }
-            }
-            if (next == null) {
-                // Cycle — add remaining in original order
-                for (var m : methodList) {
-                    if (remaining.contains(m.qualifiedName())) {
-                        result.add(m);
-                    }
-                }
-                break;
-            }
-            remaining.remove(next);
-            emitted.add(next);
-            result.add(methodMap.get(next));
-        }
-
-        // Kahn's produces dependencies-first order (leaves first).
-        // For Let wrapping, we need dependents first (innermost), dependencies last (outermost).
-        java.util.Collections.reverse(result);
-        return result;
-    }
-
-    // --- Helper methods ---
-
-    private CompilationUnit parseSource(String source, String label) {
-        return parseSource(source, label, null);
-    }
-
-    private CompilationUnit parseSource(String source, String label, Path originalPath) {
-        try {
-            var cu = StaticJavaParser.parse(source);
-            // Preserve real file path when available; otherwise use synthetic ClassName.java
-            if (originalPath != null) {
-                cu.setStorage(originalPath);
-            } else {
-                cu.findFirst(ClassOrInterfaceDeclaration.class)
-                        .ifPresent(cls -> cu.setStorage(Path.of(cls.getNameAsString() + ".java")));
-            }
-            return cu;
-        } catch (Exception e) {
-            throw new CompilerException("Failed to parse " + label + " source: " + e.getMessage());
-        }
-    }
-
-    private static String sourceUri(CompilationUnit unit, String fallback) {
-        return unit.getStorage().map(storage -> storage.getPath().toString()).orElse(fallback);
-    }
-
-    /**
-     * Wrap a StdlibLookup with identity handlers for @NewType .of() calls.
-     */
-    private static StdlibLookup wrapWithNewTypeLookup(StdlibLookup base, Set<String> newTypeNames) {
-        return new StdlibLookup() {
-            @Override
-            public java.util.Optional<PirTerm> lookup(String className, String methodName, java.util.List<PirTerm> args) {
-                if (methodName.equals("of") && newTypeNames.contains(className)) {
-                    if (args.size() != 1) {
-                        throw new CompilerException(className + ".of() requires exactly 1 argument, got " + args.size());
-                    }
-                    return java.util.Optional.of(args.get(0));
-                }
-                return base != null ? base.lookup(className, methodName, args) : java.util.Optional.empty();
-            }
-
-            @Override
-            public java.util.Optional<PirTerm> lookup(
-                    String className,
-                    String methodName,
-                    java.util.List<PirTerm> args,
-                    java.util.List<PirType> argTypes) {
-                if (methodName.equals("of") && newTypeNames.contains(className)) {
-                    if (args.size() != 1) {
-                        throw new CompilerException(className + ".of() requires exactly 1 argument, got " + args.size());
-                    }
-                    return java.util.Optional.of(args.get(0));
-                }
-                return base != null
-                        ? base.lookup(className, methodName, args, argTypes)
-                        : java.util.Optional.empty();
-            }
-
-            @Override
-            public java.util.Optional<PirTerm> lookup(
-                    CompilationContext context,
-                    String className,
-                    String methodName,
-                    java.util.List<PirTerm> args,
-                    java.util.List<PirType> argTypes) {
-                if (methodName.equals("of") && newTypeNames.contains(className)) {
-                    return lookup(className, methodName, args, argTypes);
-                }
-                return base != null
-                        ? base.lookup(context, className, methodName, args, argTypes)
-                        : java.util.Optional.empty();
-            }
-
-            @Override
-            public LoweringRequirements requirements(String className, String methodName) {
-                if (methodName.equals("of") && newTypeNames.contains(className)) {
-                    return LoweringRequirements.NONE;
-                }
-                return base != null
-                        ? base.requirements(className, methodName)
-                        : LoweringRequirements.NONE;
-            }
-
-            @Override
-            public Set<String> registeredClassNames() {
-                return base != null ? base.registeredClassNames() : Set.of();
-            }
-
-            @Override
-            public boolean hasMethodsForClass(String className) {
-                return base != null && base.hasMethodsForClass(className);
-            }
-        };
-    }
-
-    private ClassOrInterfaceDeclaration findAnnotatedClass(CompilationUnit cu) {
-        for (var type : cu.findAll(TypeDeclaration.class)) {
-            rejectRoleConflict(type);
-        }
-        for (var type : cu.findAll(ClassOrInterfaceDeclaration.class)) {
-            if (JavaSourceIntrospector.hasSupportedValidatorAnnotation(type)) {
-                return type;
-            }
-        }
-        for (var type : cu.findAll(ClassOrInterfaceDeclaration.class)) {
-            var legacyAnnotations = JavaSourceIntrospector.legacyValidatorAnnotationsOn(type);
-            if (!legacyAnnotations.isEmpty()) {
-                throw new CompilerException(JavaSourceIntrospector.legacyAnnotationMigrationMessage(
-                        legacyAnnotations.get(0), type.getNameAsString()));
-            }
-        }
-        throw validationError(VALIDATOR_ANNOTATION_MISSING,
-                "Add exactly one validator annotation at the class level, such as " +
-                        "@SpendingValidator, @MintingValidator, @WithdrawValidator, " +
-                        "@CertifyingValidator, @VotingValidator, @ProposingValidator, or @MultiValidator.",
-                null,
-                " (e.g. @SpendingValidator, @MintingValidator)");
-    }
-
-    private static void rejectRoleConflict(TypeDeclaration<?> type) {
-        JavaSourceIntrospector.roleConflictOn(type)
-                .ifPresent(conflict -> {
-                    throw new CompilerException(conflict.message());
-                });
-    }
-
-    private ScriptPurpose getScriptPurpose(ClassOrInterfaceDeclaration cls) {
-        // Count how many validator annotations are present
-        var foundAnnotations = new ArrayList<>(JavaSourceIntrospector.supportedValidatorAnnotationsOn(cls));
-        if (foundAnnotations.size() > 1) {
-            throw new CompilerException("Class " + cls.getNameAsString()
-                    + " has multiple validator annotations: " + foundAnnotations
-                    + ". Only one validator annotation is allowed per class.");
-        }
-
-        if (foundAnnotations.contains("SpendingValidator")) {
-            return ScriptPurpose.SPENDING;
-        }
-        if (foundAnnotations.contains("MintingValidator")) {
-            return ScriptPurpose.MINTING;
-        }
-        if (foundAnnotations.contains("WithdrawValidator")) {
-            return ScriptPurpose.WITHDRAW;
-        }
-        if (foundAnnotations.contains("CertifyingValidator")) {
-            return ScriptPurpose.CERTIFYING;
-        }
-        if (foundAnnotations.contains("VotingValidator")) {
-            return ScriptPurpose.VOTING;
-        }
-        if (foundAnnotations.contains("ProposingValidator")) {
-            return ScriptPurpose.PROPOSING;
-        }
-        if (foundAnnotations.contains("MultiValidator")) {
-            return ScriptPurpose.MULTI;
-        }
-        throw validationError(VALIDATOR_ANNOTATION_MISSING,
-                "Add the appropriate validator annotation at the class level.",
-                cls,
-                " on " + cls.getNameAsString());
-    }
-
-    private MethodDeclaration findEntrypoint(ClassOrInterfaceDeclaration cls) {
-        for (var method : cls.getMethods()) {
-            if (method.getAnnotationByName("Entrypoint").isPresent()) {
-                return method;
-            }
-        }
-        throw validationError(ENTRYPOINT_MISSING,
-                "Annotate exactly one public static validator method with @Entrypoint.",
-                cls,
-                cls.getNameAsString());
-    }
-
-    /** Map Purpose enum name to ScriptInfo tag. */
-    private static final Map<String, Integer> PURPOSE_TAG_MAP = Map.of(
-            "MINT", 0,
-            "SPEND", 1,
-            "WITHDRAW", 2,
-            "CERTIFY", 3,
-            "VOTE", 4,
-            "PROPOSE", 5
-    );
-
-    /**
-     * Find all @Entrypoint methods in a @MultiValidator class and extract their purposes.
-     * Returns a list of (method, purposeName, tag) tuples.
-     * <p>
-     * Validates:
-     * <ul>
-     *   <li>No mixing of DEFAULT and explicit purposes</li>
-     *   <li>No duplicate purposes</li>
-     *   <li>SPEND: 2 or 3 params; all others: 2 params</li>
-     *   <li>DEFAULT mode: exactly 1 entrypoint with 2 params</li>
-     * </ul>
-     */
-    private record EntrypointInfo(MethodDeclaration method, String purposeName, int tag) {}
-
-    private ArrayList<EntrypointInfo> findMultiEntrypoints(ClassOrInterfaceDeclaration cls) {
-        var entrypoints = new ArrayList<EntrypointInfo>();
-
-        for (var method : cls.getMethods()) {
-            var annOpt = method.getAnnotationByName("Entrypoint");
-            if (annOpt.isEmpty()) continue;
-
-            var ann = annOpt.get();
-            String purposeName = "DEFAULT";
-
-            // Extract purpose from annotation
-            if (ann instanceof NormalAnnotationExpr normalAnn) {
-                for (MemberValuePair pair : normalAnn.getPairs()) {
-                    if (pair.getNameAsString().equals("purpose")) {
-                        var value = pair.getValue();
-                        if (value instanceof FieldAccessExpr fae) {
-                            purposeName = fae.getNameAsString();
-                        } else {
-                            purposeName = value.toString();
-                            // Handle "Purpose.MINT" string form
-                            if (purposeName.contains(".")) {
-                                purposeName = purposeName.substring(purposeName.lastIndexOf('.') + 1);
-                            }
-                        }
-                    }
-                }
-            }
-            // MarkerAnnotationExpr and SingleMemberAnnotationExpr default to "DEFAULT"
-
-            int tag = purposeName.equals("DEFAULT") ? -1 : PURPOSE_TAG_MAP.getOrDefault(purposeName, -1);
-            if (!purposeName.equals("DEFAULT") && tag == -1) {
-                throw new CompilerException("Unknown purpose '" + purposeName + "' on @Entrypoint method "
-                        + method.getNameAsString() + " in " + cls.getNameAsString()
-                        + ". Valid values: MINT, SPEND, WITHDRAW, CERTIFY, VOTE, PROPOSE");
-            }
-
-            entrypoints.add(new EntrypointInfo(method, purposeName, tag));
-        }
-
-        if (entrypoints.isEmpty()) {
-            throw validationError(ENTRYPOINT_MISSING,
-                    "Add a public static @Entrypoint method. For auto-dispatch, annotate each entrypoint with purpose=Purpose.<KIND>.",
-                    cls,
-                    "@MultiValidator " + cls.getNameAsString());
-        }
-
-        // Check for mixing DEFAULT and explicit purposes
-        boolean hasDefault = entrypoints.stream().anyMatch(e -> e.purposeName.equals("DEFAULT"));
-        boolean hasExplicit = entrypoints.stream().anyMatch(e -> !e.purposeName.equals("DEFAULT"));
-        if (hasDefault && hasExplicit) {
-            throw new CompilerException("@MultiValidator " + cls.getNameAsString()
-                    + " mixes DEFAULT and explicit purposes. "
-                    + "Either use a single @Entrypoint (manual dispatch) or "
-                    + "annotate all @Entrypoint methods with explicit purposes.");
-        }
-
-        if (hasDefault) {
-            // Mode 2: manual dispatch — exactly 1 entrypoint, 2 params
-            if (entrypoints.size() > 1) {
-                throw new CompilerException("@MultiValidator " + cls.getNameAsString()
-                        + " has multiple @Entrypoint methods with DEFAULT purpose. "
-                        + "Use explicit purposes (e.g. Purpose.MINT) for auto-dispatch, "
-                        + "or use a single @Entrypoint for manual dispatch.");
-            }
-            int paramCount = entrypoints.get(0).method.getParameters().size();
-            if (paramCount != 2) {
-                throw validationError(ENTRYPOINT_WRONG_PARAMETER_COUNT,
-                        "Use exactly (Redeemer, ScriptContext) for manual @MultiValidator dispatch.",
-                        entrypoints.get(0).method,
-                        "@MultiValidator manual dispatch",
-                        "2",
-                        " (redeemer, scriptContext)",
-                        paramCount,
-                        cls.getNameAsString(),
-                        entrypoints.get(0).method.getNameAsString(),
-                        "");
-            }
-        } else {
-            // Mode 1: auto-dispatch — check for duplicates and param counts
-            var seenPurposes = new HashSet<String>();
-            for (var ep : entrypoints) {
-                if (!seenPurposes.add(ep.purposeName)) {
-                    throw new CompilerException("Duplicate purpose " + ep.purposeName
-                            + " in @MultiValidator " + cls.getNameAsString());
-                }
-                int paramCount = ep.method.getParameters().size();
-                if (ep.purposeName.equals("SPEND")) {
-                    if (paramCount < 2 || paramCount > 3) {
-                        throw validationError(ENTRYPOINT_WRONG_PARAMETER_COUNT,
-                                SPENDING_ENTRYPOINT_PARAMS_SUGGESTION,
-                                ep.method,
-                                "@Entrypoint(purpose=Purpose.SPEND)",
-                                "2 or 3",
-                                "",
-                                paramCount,
-                                cls.getNameAsString(),
-                                ep.method.getNameAsString(),
-                                "");
-                    }
-                } else {
-                    if (paramCount != 2) {
-                        throw validationError(ENTRYPOINT_WRONG_PARAMETER_COUNT,
-                                NON_SPENDING_ENTRYPOINT_PARAMS_SUGGESTION,
-                                ep.method,
-                                "@Entrypoint(purpose=Purpose." + ep.purposeName + ")",
-                                "2",
-                                " (redeemer, scriptContext)",
-                                paramCount,
-                                cls.getNameAsString(),
-                                ep.method.getNameAsString(),
-                                "");
-                    }
-                }
-            }
-        }
-
-        return entrypoints;
-    }
-
-    private void validateEntrypointParams(MethodDeclaration entrypoint, ScriptPurpose purpose,
-                                          ClassOrInterfaceDeclaration cls) {
-        int paramCount = entrypoint.getParameters().size();
-        if (purpose == ScriptPurpose.SPENDING) {
-            // Spending validators: 2 params (redeemer, ctx) or 3 params (datum, redeemer, ctx)
-            if (paramCount < 2 || paramCount > 3) {
-                throw validationError(ENTRYPOINT_WRONG_PARAMETER_COUNT,
-                        SPENDING_ENTRYPOINT_PARAMS_SUGGESTION,
-                        entrypoint,
-                        "@SpendingValidator",
-                        "2 or 3",
-                        " (datum, redeemer, scriptContext)",
-                        paramCount,
-                        cls.getNameAsString(),
-                        entrypoint.getNameAsString(),
-                        "");
-            }
-        } else {
-            // Non-spending validators: 2 params (redeemer, scriptContext)
-            if (paramCount != 2) {
-                String annotation = switch (purpose) {
-                    case MINTING -> "@MintingValidator";
-                    case WITHDRAW -> "@WithdrawValidator";
-                    case CERTIFYING -> "@CertifyingValidator";
-                    case VOTING -> "@VotingValidator";
-                    case PROPOSING -> "@ProposingValidator";
-                    default -> "@" + purpose.name();
-                };
-                String hint = paramCount == 3 ? " Did you mean @SpendingValidator?" : "";
-                throw validationError(ENTRYPOINT_WRONG_PARAMETER_COUNT,
-                        NON_SPENDING_ENTRYPOINT_PARAMS_SUGGESTION,
-                        entrypoint,
-                        annotation,
-                        "2",
-                        " (redeemer, scriptContext)",
-                        paramCount,
-                        cls.getNameAsString(),
-                        entrypoint.getNameAsString(),
-                        "." + hint);
-            }
-        }
-    }
-
-    private static CompilerException validationError(DiagnosticInfo info, String suggestion,
-                                                     Node node, Object... args) {
-        String message = info.format(args);
-        int line = 0;
-        int column = 0;
-        if (node != null && node.getBegin().isPresent()) {
-            var pos = node.getBegin().get();
-            line = pos.line;
-            column = pos.column;
-        }
-        var diagnostic = new CompilerDiagnostic(
-                CompilerDiagnostic.Level.ERROR,
-                message,
-                "<source>",
-                line,
-                column,
-                suggestion,
-                info.code());
-        return new CompilerException(message, diagnostic);
-    }
-
-    private List<ParamField> findParamFields(ClassOrInterfaceDeclaration cls, TypeResolver typeResolver,
-                                              List<CompilerDiagnostic> diagnostics) {
-        var result = new ArrayList<ParamField>();
-        for (var field : cls.getFields()) {
-            if (field.getAnnotationByName("Param").isPresent()) {
-                var javaType = field.getCommonType().asString();
-                if (BANNED_PARAM_TYPES.contains(javaType)) {
-                    int line = 0, col = 0;
-                    var range = field.getRange();
-                    if (range.isPresent()) {
-                        line = range.get().begin.line;
-                        col = range.get().begin.column;
-                    }
-                    diagnostics.add(new CompilerDiagnostic(
-                            CompilerDiagnostic.Level.ERROR,
-                            PARAM_RAW_PLUTUS_DATA.format(javaType),
-                            "<source>", line, col,
-                            PARAM_RAW_PLUTUS_DATA.fix(),
-                            PARAM_RAW_PLUTUS_DATA.code()));
-                    continue;
-                }
-                for (var variable : field.getVariables()) {
-                    var name = variable.getNameAsString();
-                    var pirType = typeResolver.resolve(field.getCommonType());
-                    result.add(new ParamField(name, pirType, javaType, sourceLocation(variable), variable));
-                }
-            }
-        }
-        return result;
-    }
-
-    private ContractSchema buildContractSchema(
-            ScriptPurpose purpose,
-            MethodDeclaration entrypointMethod,
-            List<EntrypointInfo> entrypointInfos,
-            List<ParamField> paramFields,
-            TypeResolver typeResolver,
-            ClassOrInterfaceDeclaration validatorClass) {
-        if (purpose == ScriptPurpose.MULTI) {
-            if (entrypointInfos.stream().anyMatch(info -> info.purposeName().equals("DEFAULT"))) {
-                throw schemaError(validatorClass,
-                        "Blueprint schema generation does not support manual multi-purpose "
-                                + "dispatch for @MultiValidator. Use explicit purpose-indexed "
-                                + "@Entrypoint methods or julc build --no-blueprint.");
-            }
-
-            var interfaces = entrypointInfos.stream()
-                    .sorted(Comparator.comparingInt(EntrypointInfo::tag))
-                    .map(info -> schemaInterface(
-                            schemaPurpose(info.purposeName()), info.method(), typeResolver))
-                    .toList();
-            return new ContractSchema(
-                    interfaces,
-                    schemaParameters(paramFields),
-                    typeResolver.namedDefinitions(),
-                    true);
-        }
-
-        var validatorInterface = schemaInterface(
-                schemaPurpose(purpose), entrypointMethod, typeResolver);
-        return new ContractSchema(
-                List.of(validatorInterface),
-                schemaParameters(paramFields),
-                typeResolver.namedDefinitions(),
-                false);
-    }
-
-    private ContractSchema.ValidatorInterface schemaInterface(
-            ContractSchema.Purpose purpose,
-            MethodDeclaration entrypointMethod,
-            TypeResolver typeResolver) {
-        var methodParams = entrypointMethod.getParameters();
-        ContractSchema.Argument datum = null;
-        ContractSchema.Argument redeemer;
-        if (purpose == ContractSchema.Purpose.SPEND && methodParams.size() == 3) {
-            datum = schemaArgument(methodParams.get(0), typeResolver, true);
-            redeemer = schemaArgument(methodParams.get(1), typeResolver);
-        } else {
-            redeemer = schemaArgument(methodParams.get(0), typeResolver);
-        }
-        return new ContractSchema.ValidatorInterface(
-                entrypointMethod.getNameAsString(),
-                purpose,
-                datum,
-                redeemer,
-                sourceLocation(entrypointMethod));
-    }
-
-    private List<ContractSchema.Argument> schemaParameters(List<ParamField> paramFields) {
-        return paramFields.stream()
-                .map(field -> new ContractSchema.Argument(
-                        field.name(), field.pirType(), field.sourceLocation()))
-                .toList();
     }
 
     private ContractSchema.Purpose schemaPurpose(ScriptPurpose purpose) {
@@ -1700,211 +509,6 @@ public class JulcCompiler {
         }
     }
 
-    private void ensureStrictBoundarySupported(
-            com.github.javaparser.ast.body.Parameter parameter,
-            PirType type,
-            TypeResolver typeResolver) {
-        if (typeResolver.containsNativeOpaque(type)) {
-            throw CompilerTypeDiagnostics.nativeTypeAtDataBoundary(
-                    parameter.getNameAsString(), type, sourceLocation(parameter));
-        }
-        try {
-            typeResolver.findStandaloneVariantRecord(type).ifPresent(description -> {
-                throw new IllegalArgumentException(
-                        "Unsupported strict boundary " + description
-                                + "; declare the sealed interface type instead");
-            });
-            new StrictBoundaryGenerator(typeResolver.namedDefinitions()).ensureSupported(type);
-        } catch (IllegalArgumentException ex) {
-            throw schemaError(parameter, ex.getMessage());
-        }
-    }
-
-    private StrictRecordEntrypoint.Result transformStrictRecordEntrypoint(
-            PirTerm function,
-            MethodDeclaration method,
-            TypeResolver typeResolver) {
-        var params = method.getParameters();
-        var roots = new ArrayList<StrictRecordEntrypoint.Root>();
-        int rootCount = Math.max(0, params.size() - 1); // ScriptContext is always last
-        for (int i = 0; i < rootCount; i++) {
-            var parameter = params.get(i);
-            var type = typeResolver.resolve(parameter.getType());
-            ensureStrictBoundarySupported(parameter, type, typeResolver);
-            roots.add(new StrictRecordEntrypoint.Root(
-                    parameter.getNameAsString(), type));
-        }
-        return StrictRecordEntrypoint.transform(
-                function, roots, typeResolver.namedDefinitions());
-    }
-
-    private PirType wrapperBoundaryType(PirType type, TypeResolver typeResolver) {
-        if (type == null) return null;
-        return typeResolver.resolveNamed(type) instanceof PirType.RecordType
-                ? new PirType.DataType()
-                : type;
-    }
-
-    private ContractSchema.Argument schemaArgument(
-            com.github.javaparser.ast.body.Parameter parameter,
-            TypeResolver typeResolver) {
-        return schemaArgument(parameter, typeResolver, false);
-    }
-
-    private ContractSchema.Argument schemaArgument(
-            com.github.javaparser.ast.body.Parameter parameter,
-            TypeResolver typeResolver,
-            boolean unwrapLedgerDatumOptional) {
-        PirType type = typeResolver.resolve(parameter.getType());
-        if (unwrapLedgerDatumOptional && type instanceof PirType.OptionalType optional) {
-            // A spending entrypoint's Optional<T> receives ScriptInfo's ledger-level
-            // Maybe datum. CIP-57 describes the datum attached to the output: bare T.
-            type = optional.elemType();
-        }
-        return new ContractSchema.Argument(
-                parameter.getNameAsString(),
-                type,
-                sourceLocation(parameter));
-    }
-
     /** System property that enables the ADR-060 binder-namespace check (set by the test tasks). */
-    static final String VERIFY_BINDER_NAMESPACE = "julc.verifyBinderNamespace";
-
-    /**
-     * ADR-060 G2, enabled in tests: every binder that reaches UPLC generation must be a reserved
-     * {@code #} name, a source identifier (a block-local rename {@code name'N} counts as its
-     * name), or a qualified method name {@code owner.method}. A binder the compiler invents with
-     * any other name fails the compilation, whichever lowering created it.
-     */
-    private static void verifyBinderNamespaceInTests(CompilationContext context, CompilationUnit root,
-                                                     List<CompilationUnit> libraries) {
-        if (Boolean.getBoolean(VERIFY_BINDER_NAMESPACE)) context.verifyBinderNames(sourceBinderNamespace(root, libraries));
-    }
-
-    /**
-     * The binder names the Java frontend may produce from these sources (ADR-060 G2): names the
-     * sources declare (parameters, including lambda parameters and record components, variables
-     * and fields, pattern variables), and {@code owner.method} for a declared method.
-     */
-    static Predicate<String> sourceBinderNamespace(CompilationUnit root, List<CompilationUnit> libraries) {
-        var declared = new HashSet<String>();
-        var methods = new HashSet<String>();
-        for (var cu : Stream.concat(Stream.of(root), libraries.stream()).toList()) {
-            cu.findAll(Parameter.class).forEach(p -> declared.add(p.getNameAsString()));
-            cu.findAll(VariableDeclarator.class).forEach(v -> declared.add(v.getNameAsString()));
-            cu.findAll(TypePatternExpr.class).forEach(p -> declared.add(p.getNameAsString()));
-            cu.findAll(MethodDeclaration.class).forEach(m -> methods.add(m.getNameAsString()));
-        }
-        return name -> {
-            if (PirHelpers.isGeneratedName(name)) return true;
-            int mark = name.indexOf('\'');
-            if (declared.contains(mark < 0 ? name : name.substring(0, mark))) return true;
-            int dot = name.lastIndexOf('.');
-            return dot > 0 && methods.contains(name.substring(dot + 1));
-        };
-    }
-
-    /** The qualifier of a class's method binders: its fully qualified name (ADR-060). */
-    private static String methodOwner(ClassOrInterfaceDeclaration cls) {
-        return cls.getFullyQualifiedName().orElse(cls.getNameAsString());
-    }
-
-    /**
-     * A static method's PIR binder: {@code owner.method}, as library methods are bound. A dot cannot
-     * occur in a variable name, so no local, field or parameter can shadow a method (ADR-060).
-     */
-    private static String methodBinder(String owner, MethodDeclaration method) {
-        return owner + "." + method.getNameAsString();
-    }
-
-    /**
-     * Static field initializers are bound outside the class's methods, so they cannot call them.
-     * Reject the call here instead of leaving an unbound method reference to UPLC generation.
-     */
-    private void requireNoMethodCall(StaticField field, PirTerm initPir, String owner,
-                                     ClassOrInterfaceDeclaration cls) {
-        var free = PirSubstitution.collectFreeVarNames(initPir);
-        for (var method : cls.getMethods()) {
-            if (method.isStatic() && free.contains(methodBinder(owner, method))) {
-                throw CompilerTypeDiagnostics.staticInitializerCallsMethod(field.name(), method.getNameAsString(),
-                        sourceLocation(field.initExpr()));
-            }
-        }
-    }
-
-    private CompilerException schemaError(Node node, String message) {
-        var location = sourceLocation(node);
-        var diagnostic = new CompilerDiagnostic(
-                CompilerDiagnostic.Level.ERROR,
-                message,
-                location.fileName(),
-                location.line(),
-                location.column());
-        return new CompilerException(List.of(diagnostic));
-    }
-
-    private SourceLocation sourceLocation(Node node) {
-        int line = 0;
-        int column = 0;
-        if (node.getRange().isPresent()) {
-            line = node.getRange().get().begin.line;
-            column = node.getRange().get().begin.column;
-        }
-        String fileName = node.findCompilationUnit()
-                .flatMap(cu -> cu.getStorage().map(storage -> storage.getFileName()))
-                .orElse("<source>");
-        return new SourceLocation(fileName, line, column, node.toString());
-    }
-
-    /**
-     * Find static fields with initializers that are NOT @Param.
-     * These are compiled as Let bindings around the body.
-     */
-    private List<StaticField> findStaticFields(ClassOrInterfaceDeclaration cls, TypeResolver typeResolver) {
-        var result = new ArrayList<StaticField>();
-        for (var field : cls.getFields()) {
-            if (!field.isStatic()) continue;
-            if (field.getAnnotationByName("Param").isPresent()) continue;
-            for (var variable : field.getVariables()) {
-                if (variable.getInitializer().isEmpty()) continue;
-                var name = variable.getNameAsString();
-                var pirType = typeResolver.resolve(field.getCommonType());
-                result.add(new StaticField(name, pirType, variable.getInitializer().get()));
-            }
-        }
-        return result;
-    }
-
-    private PirType computeMethodType(MethodDeclaration method, TypeResolver typeResolver) {
-        var paramTypes = new ArrayList<PirType>();
-        for (var param : method.getParameters()) {
-            paramTypes.add(typeResolver.resolve(param.getType()));
-        }
-        PirType methodType = typeResolver.resolve(method.getType());
-        for (int i = paramTypes.size() - 1; i >= 0; i--) {
-            methodType = new PirType.FunType(paramTypes.get(i), methodType);
-        }
-        return methodType;
-    }
-
-    /** Register types with error collection instead of immediate failure. */
-    private void registerTypesWithDiagnostics(List<CompilationUnit> allCus, TypeResolver typeResolver,
-                                              List<CompilerDiagnostic> diagnostics) {
-        try {
-            new TypeRegistrar().registerAll(allCus, typeResolver);
-        } catch (CompilerException e) {
-            diagnostics.addAll(e.diagnostics());
-            if (e.diagnostics().isEmpty()) {
-                diagnostics.add(new CompilerDiagnostic(
-                        CompilerDiagnostic.Level.ERROR, e.getMessage(), "<source>", 0, 0));
-            }
-            if (hasErrors(diagnostics)) {
-                throw new CompilerException(diagnostics);
-            }
-        }
-    }
-
-    private boolean hasErrors(List<CompilerDiagnostic> diagnostics) {
-        return diagnostics.stream().anyMatch(CompilerDiagnostic::isError);
-    }
+    public static final String VERIFY_BINDER_NAMESPACE = "julc.verifyBinderNamespace";
 }

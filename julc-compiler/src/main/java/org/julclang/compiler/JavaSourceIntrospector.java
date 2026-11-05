@@ -1,11 +1,5 @@
 package org.julclang.compiler;
 
-import com.github.javaparser.JavaParser;
-import com.github.javaparser.ParserConfiguration;
-import com.github.javaparser.ast.CompilationUnit;
-import com.github.javaparser.ast.body.TypeDeclaration;
-import com.github.javaparser.ast.expr.AnnotationExpr;
-import com.github.javaparser.ast.nodeTypes.NodeWithAnnotations;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -42,7 +36,6 @@ public final class JavaSourceIntrospector {
 
     private static final Set<String> SUPPORTED_VALIDATOR_SET = new LinkedHashSet<>(SUPPORTED_VALIDATOR_ANNOTATIONS);
     private static final Set<String> LEGACY_VALIDATOR_SET = new LinkedHashSet<>(LEGACY_VALIDATOR_ANNOTATIONS);
-    private static final Set<String> ONCHAIN_LIBRARY_SET = Set.of(ONCHAIN_LIBRARY_ANNOTATION);
 
     private JavaSourceIntrospector() {}
 
@@ -95,7 +88,7 @@ public final class JavaSourceIntrospector {
     public static final class SourceParseException extends IllegalArgumentException {
         private final List<String> problems;
 
-        private SourceParseException(List<String> problems) {
+        SourceParseException(List<String> problems) {
             super("Could not parse Java source: " + problems);
             this.problems = List.copyOf(problems);
         }
@@ -106,49 +99,7 @@ public final class JavaSourceIntrospector {
     }
 
     public static SourceInfo inspect(String source) {
-        var configuration = new ParserConfiguration()
-                .setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
-        var result = new JavaParser(configuration).parse(source);
-        if (!result.isSuccessful() || result.getResult().isEmpty()) {
-            var problems = result.getProblems().stream()
-                    .map(problem -> {
-                        String message = problem.getMessage();
-                        int stackIdx = message.indexOf("Problem stacktrace");
-                        return stackIdx > 0 ? message.substring(0, stackIdx).trim() : message;
-                    })
-                    .toList();
-            throw new SourceParseException(problems.isEmpty() ? List.of("Unknown parse error") : problems);
-        }
-        return inspectCompilationUnit(result.getResult().get());
-    }
-
-    private static SourceInfo inspectCompilationUnit(CompilationUnit cu) {
-        String packageName = cu.getPackageDeclaration()
-                .map(pd -> pd.getName().asString())
-                .orElse("");
-        List<TypeDeclaration<?>> topLevelTypes = cu.getTypes();
-        Set<TypeDeclaration<?>> topLevelSet = Collections.newSetFromMap(new IdentityHashMap<>());
-        topLevelSet.addAll(topLevelTypes);
-
-        var topLevelTypeNames = topLevelTypes.stream()
-                .map(type -> type.getNameAsString())
-                .toList();
-        var validatorType = firstAnnotated(topLevelTypes, packageName, SUPPORTED_VALIDATOR_SET, true);
-        var legacyValidatorType = firstAnnotated(topLevelTypes, packageName, LEGACY_VALIDATOR_SET, true);
-        var topLevelOnchainLibrary = firstAnnotated(topLevelTypes, packageName, ONCHAIN_LIBRARY_SET, true);
-
-        var nestedOnchainLibraries = new ArrayList<AnnotatedType>();
-        for (TypeDeclaration<?> type : cu.findAll(TypeDeclaration.class)) {
-            if (!topLevelSet.contains(type) && hasAnnotation(type, ONCHAIN_LIBRARY_ANNOTATION)) {
-                nestedOnchainLibraries.add(toAnnotatedType(type, packageName, ONCHAIN_LIBRARY_ANNOTATION, false));
-            }
-        }
-        var roleConflicts = cu.findAll(TypeDeclaration.class).stream()
-                .flatMap(type -> roleConflictOn(type).stream())
-                .toList();
-
-        return new SourceInfo(packageName, topLevelTypeNames, validatorType, legacyValidatorType,
-                topLevelOnchainLibrary, List.copyOf(nestedOnchainLibraries), roleConflicts);
+        return JavacSourceIntrospection.inspect(source);
     }
 
     public static boolean mightContainOnchainLibraryAnnotation(String source) {
@@ -173,63 +124,22 @@ public final class JavaSourceIntrospector {
         return mightContainAnnotation(source, "Test");
     }
 
+    /**
+     * Whether a pre-filter candidate that the strict reading rejects (ADR-062 T24) plainly has no JuLC role: read
+     * leniently, as javac reads it, no type declares a validator or on-chain library annotation. Such a source
+     * only mentions an annotation, in a comment, an import or a link, and is skipped as a non-candidate would be.
+     * False when that cannot be decided, so that the caller keeps the strict diagnostic and fails closed.
+     */
+    public static boolean declaresNoJulcRole(String source) {
+        return JavacSourceIntrospection.declaresNoJulcRole(source);
+    }
+
     public static boolean isSupportedValidatorAnnotation(String annotationName) {
         return SUPPORTED_VALIDATOR_SET.contains(simpleName(annotationName));
     }
 
     public static boolean isLegacyValidatorAnnotation(String annotationName) {
         return LEGACY_VALIDATOR_SET.contains(simpleName(annotationName));
-    }
-
-    public static boolean hasSupportedValidatorAnnotation(NodeWithAnnotations<?> node) {
-        return !supportedValidatorAnnotationsOn(node).isEmpty();
-    }
-
-    public static boolean hasLegacyValidatorAnnotation(NodeWithAnnotations<?> node) {
-        return !legacyValidatorAnnotationsOn(node).isEmpty();
-    }
-
-    public static List<String> supportedValidatorAnnotationsOn(NodeWithAnnotations<?> node) {
-        return node.getAnnotations().stream()
-                .map(annotation -> simpleName(annotation.getNameAsString()))
-                .filter(SUPPORTED_VALIDATOR_SET::contains)
-                .toList();
-    }
-
-    public static List<String> legacyValidatorAnnotationsOn(NodeWithAnnotations<?> node) {
-        return node.getAnnotations().stream()
-                .map(annotation -> simpleName(annotation.getNameAsString()))
-                .filter(LEGACY_VALIDATOR_SET::contains)
-                .toList();
-    }
-
-    public static boolean hasOnchainLibraryAnnotation(NodeWithAnnotations<?> node) {
-        return hasAnnotation(node, ONCHAIN_LIBRARY_ANNOTATION);
-    }
-
-    public static Optional<RoleConflict> roleConflictOn(TypeDeclaration<?> type) {
-        if (!hasOnchainLibraryAnnotation(type)) {
-            return Optional.empty();
-        }
-
-        var conflictingAnnotations = new ArrayList<String>();
-        conflictingAnnotations.addAll(supportedValidatorAnnotationsOn(type));
-        conflictingAnnotations.addAll(legacyValidatorAnnotationsOn(type));
-
-        if (conflictingAnnotations.isEmpty()) {
-            return Optional.empty();
-        }
-
-        String simpleName = type.getNameAsString();
-        String fqcn = type.getFullyQualifiedName().orElse(simpleName);
-        return Optional.of(new RoleConflict(simpleName, fqcn, List.copyOf(conflictingAnnotations)));
-    }
-
-    public static boolean hasAnnotation(NodeWithAnnotations<?> node, String annotationName) {
-        String expected = simpleName(annotationName);
-        return node.getAnnotations().stream()
-                .map(annotation -> simpleName(annotation.getNameAsString()))
-                .anyMatch(expected::equals);
     }
 
     public static JulcCompiler.ScriptPurpose scriptPurpose(String annotationName) {
@@ -260,40 +170,26 @@ public final class JavaSourceIntrospector {
         };
     }
 
-    private static Optional<AnnotatedType> firstAnnotated(List<TypeDeclaration<?>> types,
-                                                          String packageName,
-                                                          Set<String> annotationNames,
-                                                          boolean topLevel) {
-        for (TypeDeclaration<?> type : types) {
-            for (String annotationName : annotationNames) {
-                if (hasAnnotation(type, annotationName)) {
-                    return Optional.of(toAnnotatedType(type, packageName, annotationName, topLevel));
-                }
-            }
-        }
-        return Optional.empty();
-    }
-
-    private static AnnotatedType toAnnotatedType(TypeDeclaration<?> type,
-                                                 String packageName,
-                                                 String annotationName,
-                                                 boolean topLevel) {
-        String simpleName = type.getNameAsString();
-        String fqcn = type.getFullyQualifiedName()
-                .orElse(packageName.isBlank() ? simpleName : packageName + "." + simpleName);
-        return new AnnotatedType(simpleName, packageName, fqcn, annotationName,
-                annotationNames(type), topLevel);
-    }
-
-    private static List<String> annotationNames(NodeWithAnnotations<?> node) {
-        return node.getAnnotations().stream()
-                .map(AnnotationExpr::getNameAsString)
-                .map(JavaSourceIntrospector::simpleName)
-                .toList();
-    }
-
+    /**
+     * A quick text test before parsing. javac reads a Unicode escape as the character it denotes (ADR-062 T24),
+     * so the escapes are also translated, leniently: a source that fails JuLC's stricter reading is not
+     * rejected here. Only a source that names the annotation goes on to the strict parser, which then fails
+     * closed if it cannot read it.
+     */
     private static boolean mightContainAnnotation(String source, String annotationName) {
-        return source.contains("@" + annotationName) || source.contains("." + annotationName);
+        if (namesAnnotation(source, annotationName)) return true;
+        return source.contains("\\u") && namesAnnotation(UnicodeEscapes.readLeniently(source).text(), annotationName);
+    }
+
+    /** {@code @Name}, with whitespace allowed after the {@code @} as Java allows it, or {@code .Name}. */
+    private static boolean namesAnnotation(String text, String annotationName) {
+        if (text.contains("." + annotationName)) return true;
+        for (int at = text.indexOf('@'); at >= 0; at = text.indexOf('@', at + 1)) {
+            int k = at + 1;
+            while (k < text.length() && Character.isWhitespace(text.charAt(k))) k++;
+            if (text.startsWith(annotationName, k)) return true;
+        }
+        return false;
     }
 
     private static String simpleName(String name) {

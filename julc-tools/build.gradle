@@ -21,9 +21,6 @@ dependencies {
     implementation 'com.fasterxml.jackson.core:jackson-databind:2.18.2'
     implementation 'org.bouncycastle:bcprov-jdk18on:1.83'
 
-    // JavaParser for Java contract metadata extraction
-    implementation 'com.github.javaparser:javaparser-core:3.26.3'
-
     // Model records carry Jackson annotations; (de)serialization happens in the transports
     api 'com.fasterxml.jackson.core:jackson-annotations:2.18.2'
 
@@ -36,3 +33,29 @@ dependencies {
         }
     }
 }
+
+// ADR-068 M6: the equivalence gate, what a tool gives against the frozen baseline of 068/m6-tools-baseline.tsv:
+//   ./gradlew :<module>:adr068Tools -Padr068.tools.sources=<dir>[:<dir>...] -Padr068.tools.baseline=<dir> [-Padr068.tools.out=<dir>] --offline
+test {
+    useJUnitPlatform {
+        excludeTags 'adr068-tools'
+    }
+}
+
+tasks.register('adr068Tools', Test) {
+    group = 'verification'
+    description = 'ADR-068 M6: this module\'s tools against their frozen baseline on a corpus'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform {
+        includeTags 'adr068-tools'
+    }
+    def sources = providers.gradleProperty('adr068.tools.sources')
+    if (sources.present) systemProperty 'adr068.tools.sources', sources.get()
+    def toolsBaseline = providers.gradleProperty('adr068.tools.baseline')
+    if (toolsBaseline.present) systemProperty 'adr068.tools.baseline', toolsBaseline.get()
+    systemProperty 'adr068.tools.out', providers.gradleProperty('adr068.tools.out')
+            .map { rootProject.file(it).absolutePath }.orElse(layout.buildDirectory.dir('adr068-tools').get().asFile.absolutePath).get()
+    outputs.upToDateWhen { false }
+}
+tasks.named('adr068Tools').configure { maxHeapSize = '3g' }

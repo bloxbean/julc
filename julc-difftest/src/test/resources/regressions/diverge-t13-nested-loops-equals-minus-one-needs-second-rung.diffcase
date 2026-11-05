@@ -1,0 +1,37 @@
+format: 2
+name: two nested while loops around a deep comparison with == -1 need the second rung at NONE (T13, #146)
+class: Probe
+method: m
+arg: 25
+arg: 06
+arg: 9f25ff
+expect: DIVERGE T13 Value/Inconclusive
+jvm: Value 24 []
+uplc: Inconclusive "budget exhausted"
+note: diverge-t13-nested-loops-needs-second-rung with `== -1` for `< 0` in the deep comparison, the same Java
+note: meaning, outside ADR-068 M1's compareTo rule, so the comparison keeps the lowering that repeats its operands
+note: (#146). The JVM returns -5; every level exhausts the budget, and the nested loops multiply the cost of the deep
+note: comparison, so T13 confirms with a second rung at NONE (D6).
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+
+public class Probe {
+    public static BigInteger m(BigInteger a, BigInteger b, JulcList<BigInteger> xs) {
+        BigInteger v0 = (BigInteger.valueOf(-5).compareTo(a) <= 0 ? b : (b.add(b).compareTo(BigInteger.valueOf(-5).add(b)) != 0 ? a : b));
+        long i1 = 0;
+        while (i1 < 3) {
+            long i2 = 0;
+            while (i2 < 3) {
+                v0 = (((((((((((((((BigInteger.valueOf(i1).compareTo(((((((((((((BigInteger.valueOf(i1).compareTo(BigInteger.valueOf(i1)) == -1 || BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) == -1) ? BigInteger.valueOf(-5) : BigInteger.valueOf(-5)).compareTo(BigInteger.valueOf(-5)) == -1 || BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) == -1) ? BigInteger.valueOf(-5) : BigInteger.valueOf(-5)).compareTo(BigInteger.valueOf(-5)) == -1 || BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) == -1) ? BigInteger.valueOf(-5) : BigInteger.valueOf(-5)).compareTo(BigInteger.valueOf(-5)) == -1 || BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) == -1) ? BigInteger.valueOf(-5) : BigInteger.valueOf(-5)).compareTo(BigInteger.valueOf(-5)) == -1 || BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) == -1) ? BigInteger.valueOf(-5) : BigInteger.valueOf(-5)).compareTo(BigInteger.valueOf(-5)) == -1 || BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) == -1) ? BigInteger.valueOf(-5) : BigInteger.valueOf(-5))) == -1 ? BigInteger.valueOf(-5) : BigInteger.valueOf(-5)).compareTo(BigInteger.valueOf(-5)) == -1 || BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) == -1) ? BigInteger.valueOf(-5) : BigInteger.valueOf(-5)).compareTo(BigInteger.valueOf(-5)) == -1 || BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) == -1) ? BigInteger.valueOf(-5) : BigInteger.valueOf(-5)).compareTo(BigInteger.valueOf(-5)) == -1 || BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) == -1) ? BigInteger.valueOf(-5) : BigInteger.valueOf(-5)).compareTo(BigInteger.valueOf(-5)) == -1 || BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) == -1) ? BigInteger.valueOf(-5) : BigInteger.valueOf(-5)).compareTo(BigInteger.valueOf(-5)) == -1 || BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) == -1) ? BigInteger.valueOf(-5) : BigInteger.valueOf(-5)).compareTo(BigInteger.valueOf(-5)) == -1 || BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) == -1) ? BigInteger.valueOf(-5) : BigInteger.valueOf(-5)).compareTo(BigInteger.valueOf(-5)) == -1 || BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) == -1) ? BigInteger.valueOf(-5) : BigInteger.valueOf(-5));
+                v0 = BigInteger.valueOf(-5);
+                v0 = BigInteger.valueOf(-5);
+                i2 = i2 + 1;
+            }
+            v0 = BigInteger.valueOf(-5);
+            v0 = BigInteger.valueOf(-5);
+            i1 = i1 + 1;
+        }
+        return BigInteger.valueOf(-5);
+    }
+}

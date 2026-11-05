@@ -26,6 +26,12 @@ only where the compiler still has enough type and source-semantic information.
 
 ## O2 — Bool: enabled at `PV11_SAFE`
 
+> Narrowed 2026-11-01: `Case` and builtin `IfThenElse` agree only on a real boolean, so a
+> conditional lowers to `Case Bool` only when `BooleanProof` proves its condition, and to the
+> forced/delayed builtin otherwise. See [the condition proof](#o2-the-condition-proof) below.
+> The original research follows. Its fixture's first conditional reads a lambda parameter, so it
+> keeps the builtin and the other two lower to `Case`; the candidate figures below include that.
+
 Every typed PIR `IfThenElse` lowers to `Case Bool [else, then]` when the
 selected level enables safe PV11 rules and the target advertises
 `CASE_ON_BUILTIN_CONSTANTS`. `BASELINE` retains the previous forced/delayed
@@ -46,21 +52,47 @@ provenance for canonical evaluation.
 
 Baseline hash: `11c11d8c4bb4027ee56c3277a64c620c738e1d7b9ee3429490696968`
 
-Candidate hash: `8a7649d2c3d23c9d3da8c504e851f340d04bac3911139a77dbe432e0`
+Candidate hash: `79c618e702dc6a5f9c767f113096561244a7770854fc34d08f947f7b`
 
 | Metric | Baseline | Candidate | Delta |
 |---|---:|---:|---:|
-| FLAT bytes | 134 | 117 | -17 |
-| UPLC term nodes | 119 | 91 | -28 |
-| CPU, successful path | 2251555 | 1687408 | -564147 |
-| Memory, successful path | 9694 | 7591 | -2103 |
-| CPU, selected failure | 2028014 | 1463867 | -564147 |
-| Memory, selected failure | 8798 | 6695 | -2103 |
+| FLAT bytes | 134 | 121 | -13 |
+| UPLC term nodes | 119 | 98 | -21 |
+| CPU, successful path | 2251555 | 1875457 | -376098 |
+| Memory, successful path | 9694 | 8292 | -1402 |
+| CPU, selected failure | 2028014 | 1651916 | -376098 |
+| Memory, selected failure | 8798 | 7396 | -1402 |
 
-This fixture contains three conditionals; its CPU/memory delta is a
-representative combined result, not a universal per-conditional constant.
+This fixture contains three conditionals, two on `Case`; its CPU/memory delta
+is a representative combined result, not a universal per-conditional constant.
 Source-map compilation uses the typed lowering and maps the emitted Case term;
 the later identity-changing UPLC optimizer remains disabled as before.
+
+### O2: the condition proof
+
+`UplcGenerator` asks `BooleanProof` about the condition of each PIR conditional, on the final PIR
+at the point of code generation. The proof reads terms and never a type. Proven forms: a boolean
+constant; a saturated builtin whose result is a boolean, so a decoded boolean needs no special case;
+a conditional, `IntegerCase` or `DataMatch` whose branches are proven; `PairMatch` over
+`UnConstrData`; a `Let` or `Trace` body; `Error`, which produces no value; a variable bound to a
+proven value; a saturated call of a let-bound or recursive function whose result is proven, recursion
+by greatest fixpoint. A lambda parameter is not proven, and the innermost binder of a name decides.
+Any other condition lowers to the builtin, in the shape `BASELINE` emits.
+
+A condition that stays on the builtin costs about 4 FLAT bytes at its site and 188,049 CPU and 701
+memory each time it runs. Over the ADR-068 corpus at `PV11_SAFE` (`PV11_COSTED` is within 0.005
+points on bytes and equal on CPU and memory), compared with `Case` on every conditional:
+
+| Proof | Sites on `Case` | Sites on the builtin | Bytes, all | Bytes, external | CPU, external | Memory, external |
+|---|---:|---:|---:|---:|---:|---:|
+| without calls | 326,515 | 26,554 (7.5%) | +1.323% | +2.331% | +1.442% | +1.437% |
+| with calls | 347,405 | 5,664 (1.6%) | +0.219% | +0.530% | +0.060% | +0.060% |
+
+The rule keeps the row with calls. CPU and memory are the 124 external evaluations that a corpus case
+compiles to, replayed on their recorded arguments; their outcomes, results, traces and failure
+messages are unchanged. The largest groups left are a local bound to an unproven value and a call of
+a function whose result is unproven; `ListsLib.contains` is one, since its result is a loop's
+accumulator, a lambda parameter.
 
 ## O3 — List: promising experiment, deferred
 

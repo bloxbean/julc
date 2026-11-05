@@ -66,7 +66,7 @@ ext.configureReleaseSigning = { Project candidate ->
 // Modules that are applications, test harnesses or aggregators rather than
 // published libraries. Declared here, not inside `subprojects`, because the
 // Central deployment scope below is derived from it.
-def nonPublishable = ['julc-examples', 'julc-e2e-tests', 'julc-plugin-test', 'julc-analyzer-cli', 'julc-benchmark', 'julc-cli', 'julc-playground', 'julc-tools', 'julc-wasm', 'julc-jrl']
+def nonPublishable = ['julc-examples', 'julc-e2e-tests', 'julc-difftest', 'julc-plugin-test', 'julc-analyzer-cli', 'julc-benchmark', 'julc-cli', 'julc-playground', 'julc-tools', 'julc-wasm']
 
 subprojects {
     def commit_id = getCheckedOutGitCommitHash()
@@ -94,6 +94,40 @@ subprojects {
 //        options.compilerArgs.addAll(['--enable-preview'])
     }
 
+    // ADR-068 D12: no JavaParser, in a source, a build script or native-image metadata, or on a class path. CI's
+    // `./gradlew build` runs it through `check`. The one line allowed asks a native image to abort if the type is reachable.
+    def verifyNoJavaParser = tasks.register('verifyNoJavaParser') {
+        group = 'verification'
+        description = 'ADR-068 D12: fails on any JavaParser name in this module and on any class path that holds it'
+        def scanned = fileTree(projectDir) {
+            include 'src/**/*.java', 'src/**/*.json', 'src/**/*.properties', 'build.gradle'
+        } + rootProject.files('build.gradle', 'settings.gradle', 'gradle/libs.versions.toml', 'julc-bom/build.gradle')
+        def classPaths = configurations.matching { it.canBeResolved }
+        inputs.files(scanned)
+        outputs.upToDateWhen { false }
+        doLast {
+            def group = 'com.github.' + 'javaparser'
+            def offenders = []
+            scanned.each { file ->
+                file.eachLine { line, number ->
+                    if (line.contains(group) && !line.contains('AbortOnTypeReachable')) offenders << "${file}:${number}: ${line.trim()}"
+                }
+            }
+            classPaths.each { classPath ->
+                classPath.resolvedConfiguration.lenientConfiguration.allModuleDependencies.each { dependency ->
+                    if (dependency.moduleGroup == group) offenders << "${classPath.name} holds ${dependency.name}"
+                }
+            }
+            if (offenders) throw new GradleException("JavaParser left the build at ADR-068 M6:\n" + offenders.join('\n'))
+        }
+    }
+    pluginManager.withPlugin('base') {
+        tasks.named('check') { dependsOn verifyNoJavaParser }
+    }
+    pluginManager.withPlugin('java') {
+        tasks.named('check') { dependsOn verifyNoJavaParser }
+    }
+
     tasks.withType(Test).configureEach {
         useJUnitPlatform()
 //        jvmArgs '--enable-preview'
@@ -101,6 +135,19 @@ subprojects {
         maxHeapSize = '1g'
         // ADR-060 G2: every compilation in tests checks the generated-binder namespace.
         systemProperty 'julc.verifyBinderNamespace', 'true'
+        // ADR-068 M0: `-Pjulc.corpus.record=<dir>` records every source these modules' tests compile through a
+        // compiler entry point (CorpusRecorder); unset, nothing is recorded and nothing changes.
+        // ADR-068 M6: `-Pjulc.frozenReference.record=<file>` writes the lowering tests' frozen answers (FrozenReference).
+        def frozenReference = providers.gradleProperty('julc.frozenReference.record')
+        if (frozenReference.present) {
+            systemProperty 'julc.frozenReference.record', rootProject.file(frozenReference.get()).absolutePath
+            outputs.upToDateWhen { false }
+        }
+        def corpusRecord = providers.gradleProperty('julc.corpus.record')
+        if (corpusRecord.present && project.name in ['julc-compiler', 'julc-stdlib', 'julc-testkit', 'julc-difftest', 'julc-examples']) {
+            systemProperty 'julc.corpus.record', rootProject.file(corpusRecord.get()).absolutePath
+            outputs.upToDateWhen { false }
+        }
     }
 
     tasks.withType(Javadoc).configureEach {

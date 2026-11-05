@@ -1,0 +1,1 @@
+(program -.1.0\"case (c(onstr 1 (con integer 1) (-con bool True)) (lamm 1.1.0 onstr 1 (con integer 1) (-con bool True)) (lamm 1.1.0 a a) (lam a (lam b b)a a) (lam a (lam b b))))

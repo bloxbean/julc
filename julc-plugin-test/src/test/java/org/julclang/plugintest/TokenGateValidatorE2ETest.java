@@ -36,6 +36,12 @@ class TokenGateValidatorE2ETest extends PluginTestBase {
 
     static final String TOKEN_GATE_VALIDATOR = """
             import org.julclang.core.PlutusData;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.ledger.TxInfo;
+            import org.julclang.stdlib.Builtins;
+            import org.julclang.stdlib.lib.ContextsLib;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class TokenGateValidator {
@@ -46,8 +52,8 @@ class TokenGateValidatorE2ETest extends PluginTestBase {
 
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                    PlutusData txInfo = ContextsLib.getTxInfo(ctx);
-                    return ContextsLib.signedBy(txInfo, redeemer);
+                    TxInfo txInfo = ContextsLib.getTxInfo(PlutusData.cast(ctx, ScriptContext.class));
+                    return ContextsLib.signedBy(txInfo, Builtins.unBData(redeemer));
                 }
             }
             """;

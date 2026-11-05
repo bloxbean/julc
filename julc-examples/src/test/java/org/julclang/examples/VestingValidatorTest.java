@@ -22,20 +22,23 @@ class VestingValidatorTest {
      */
     static final String ALWAYS_TRUE_VESTING = """
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
+            import org.julclang.core.PlutusData;
 
             @SpendingValidator
             class VestingValidator {
                 static boolean isPastDeadline(BigInteger currentTime, BigInteger deadline) {
-                    return currentTime > deadline;
+                    return currentTime.compareTo(deadline) > 0;
                 }
 
                 static boolean checkBeneficiary(BigInteger pkh, BigInteger expected) {
-                    return pkh == expected;
+                    return pkh.equals(expected);
                 }
 
                 @Entrypoint
-                static boolean validate(BigInteger redeemer, BigInteger ctx) {
-                    return isPastDeadline(2000, 1000) && checkBeneficiary(42, 42);
+                static boolean validate(BigInteger redeemer, PlutusData ctx) {
+                    return isPastDeadline(BigInteger.valueOf(2000), BigInteger.valueOf(1000)) && checkBeneficiary(BigInteger.valueOf(42), BigInteger.valueOf(42));
                 }
             }
             """;
@@ -45,16 +48,19 @@ class VestingValidatorTest {
      */
     static final String REJECTING_VESTING = """
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
+            import org.julclang.core.PlutusData;
 
             @SpendingValidator
             class VestingValidator {
                 static boolean isPastDeadline(BigInteger currentTime, BigInteger deadline) {
-                    return currentTime > deadline;
+                    return currentTime.compareTo(deadline) > 0;
                 }
 
                 @Entrypoint
-                static boolean validate(BigInteger redeemer, BigInteger ctx) {
-                    return isPastDeadline(500, 1000);
+                static boolean validate(BigInteger redeemer, PlutusData ctx) {
+                    return isPastDeadline(BigInteger.valueOf(500), BigInteger.valueOf(1000));
                 }
             }
             """;
@@ -64,22 +70,25 @@ class VestingValidatorTest {
      */
     static final String COMPLEX_VESTING = """
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
+            import org.julclang.core.PlutusData;
 
             @SpendingValidator
             class VestingValidator {
                 static BigInteger double_(BigInteger x) {
-                    return x + x;
+                    return x.add(x);
                 }
 
                 static boolean isPositive(BigInteger x) {
-                    return x > 0;
+                    return x.compareTo(BigInteger.ZERO) > 0;
                 }
 
                 @Entrypoint
-                static boolean validate(BigInteger redeemer, BigInteger ctx) {
-                    BigInteger doubled = double_(21);
+                static boolean validate(BigInteger redeemer, PlutusData ctx) {
+                    BigInteger doubled = double_(BigInteger.valueOf(21));
                     if (isPositive(doubled)) {
-                        return doubled == 42;
+                        return doubled.equals(BigInteger.valueOf(42));
                     } else {
                         return false;
                     }

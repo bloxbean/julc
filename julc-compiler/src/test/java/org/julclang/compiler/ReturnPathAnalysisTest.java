@@ -34,6 +34,9 @@ class ReturnPathAnalysisTest {
         // Method with a simple return — should compile fine
         var source = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class TestValidator {
@@ -52,12 +55,15 @@ class ReturnPathAnalysisTest {
         // if (x) return true; with no else and no fallthrough return
         var source = """
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
+            import org.julclang.core.PlutusData;
 
             @SpendingValidator
             class TestValidator {
                 @Entrypoint
-                static boolean validate(BigInteger redeemer, BigInteger ctx) {
-                    if (redeemer > 0) {
+                static boolean validate(BigInteger redeemer, PlutusData ctx) {
+                    if (redeemer.compareTo(BigInteger.ZERO) > 0) {
                         return true;
                     }
                 }
@@ -73,12 +79,15 @@ class ReturnPathAnalysisTest {
         // if/else where both branches return — should compile fine
         var source = """
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
+            import org.julclang.core.PlutusData;
 
             @SpendingValidator
             class TestValidator {
                 @Entrypoint
-                static boolean validate(BigInteger redeemer, BigInteger ctx) {
-                    if (redeemer > 0) {
+                static boolean validate(BigInteger redeemer, PlutusData ctx) {
+                    if (redeemer.compareTo(BigInteger.ZERO) > 0) {
                         return true;
                     } else {
                         return false;
@@ -95,12 +104,15 @@ class ReturnPathAnalysisTest {
         // if (cond) return X; return Y; — fallthrough pattern
         var source = """
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
+            import org.julclang.core.PlutusData;
 
             @SpendingValidator
             class TestValidator {
                 @Entrypoint
-                static boolean validate(BigInteger redeemer, BigInteger ctx) {
-                    if (redeemer > 0) {
+                static boolean validate(BigInteger redeemer, PlutusData ctx) {
+                    if (redeemer.compareTo(BigInteger.ZERO) > 0) {
                         return true;
                     }
                     return false;
@@ -116,6 +128,9 @@ class ReturnPathAnalysisTest {
         // Nested if with one branch missing a return
         var source = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class TestValidator {
@@ -145,6 +160,9 @@ class ReturnPathAnalysisTest {
         // Switch with return in all cases should compile fine
         var source = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             sealed interface Action permits Mint, Burn {}
             record Mint(long amt) implements Action {}
@@ -154,7 +172,7 @@ class ReturnPathAnalysisTest {
             class TestValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                    Action a = (Action) redeemer;
+                    Action a = (Action) (Object) redeemer;
                     return switch (a) {
                         case Mint m -> m.amt() > 0;
                         case Burn b -> b.amt() > 0;
@@ -171,6 +189,9 @@ class ReturnPathAnalysisTest {
         // Helper method with no return
         var source = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class TestValidator {
@@ -194,6 +215,9 @@ class ReturnPathAnalysisTest {
         // @Entrypoint with missing return path
         var source = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class TestValidator {
@@ -213,6 +237,9 @@ class ReturnPathAnalysisTest {
         // While loop as accumulator pattern — produces value via desugaring
         var source = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class TestValidator {
@@ -238,6 +265,9 @@ class ReturnPathAnalysisTest {
         // Note: "void" helpers are somewhat unusual in JuLC, but the check should not apply
         var source = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class TestValidator {

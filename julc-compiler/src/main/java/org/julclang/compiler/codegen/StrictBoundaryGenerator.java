@@ -28,9 +28,33 @@ public final class StrictBoundaryGenerator {
 
     private final Map<String, PirType> namedDefinitions;
     private final LinkedHashMap<PirType, Integer> typeIds = new LinkedHashMap<>();
+    private final String checkName;
 
     public StrictBoundaryGenerator(Map<String, PirType> namedDefinitions) {
+        this(namedDefinitions, CHECK);
+    }
+
+    private StrictBoundaryGenerator(Map<String, PirType> namedDefinitions, String checkName) {
         this.namedDefinitions = Map.copyOf(namedDefinitions);
+        this.checkName = checkName;
+    }
+
+    /**
+     * A checker whose dispatcher is bound once around a whole program, under {@code checkName}: each {@link #checkShared}
+     * registers its type in it, and {@link #bindShared} binds it, with every type registered by then.
+     */
+    public static StrictBoundaryGenerator shared(Map<String, PirType> namedDefinitions, String checkName) {
+        return new StrictBoundaryGenerator(namedDefinitions, checkName);
+    }
+
+    /** A Bool term that validates {@code data} as {@code type} through the shared dispatcher. */
+    public PirTerm checkShared(PirTerm data, PirType type) {
+        return applyCheck(register(type), data);
+    }
+
+    /** {@code body} under the shared dispatcher, or {@code body} itself if nothing was checked. */
+    public PirTerm bindShared(PirTerm body) {
+        return typeIds.isEmpty() ? body : withDispatcher(body);
     }
 
     /** Opaque Data has no declared shape and therefore needs no generated guard. */
@@ -116,7 +140,7 @@ public final class StrictBoundaryGenerator {
 
         var checker = new PirTerm.Lam("#__boundary-type", INTEGER,
                 new PirTerm.Lam("#__boundary-data", DATA, dispatch));
-        return new PirTerm.LetRec(List.of(new PirTerm.Binding(CHECK, checker)), rootCheck);
+        return new PirTerm.LetRec(List.of(new PirTerm.Binding(checkName, checker)), rootCheck);
     }
 
     private int register(PirType unresolved) {
@@ -319,7 +343,7 @@ public final class StrictBoundaryGenerator {
         var checkerType = new PirType.FunType(INTEGER,
                 new PirType.FunType(DATA, BOOL));
         return new PirTerm.App(
-                new PirTerm.App(new PirTerm.Var(CHECK, checkerType), integer(typeId)),
+                new PirTerm.App(new PirTerm.Var(checkName, checkerType), integer(typeId)),
                 data);
     }
 

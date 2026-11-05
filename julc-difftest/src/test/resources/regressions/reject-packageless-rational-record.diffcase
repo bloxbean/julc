@@ -1,0 +1,20 @@
+format: 2
+name: #284 a packageless top-level record named like a ledger type
+class: Probe
+method: m
+arg: 05
+arg: 07
+expect: AGREE
+note: ADR-067 F19. A subset rule: no top-level type of the unnamed package takes a name of the ledger.
+note: ADR-068 M6: on the only frontend, javac, AGREE; the JavaParser frontend answered REJECT JULC0100.
+---
+import java.math.BigInteger;
+record Rational(BigInteger denominator, BigInteger numerator) {}
+
+public class Probe {
+
+    public static BigInteger m(BigInteger a, BigInteger b) {
+        Rational r = new Rational(a, b);
+        return r.numerator();
+    }
+}

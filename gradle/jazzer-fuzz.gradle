@@ -1,0 +1,21 @@
+// Coverage-guided fuzzing with Jazzer (ADR-063 D13). Applied by modules with @FuzzTest targets; the
+// module declares `testImplementation libs.jazzer.junit` itself. `test` replays each target's saved
+// inputs; this task fuzzes one target, because Jazzer fuzzes only the first @FuzzTest a run selects:
+//   ./gradlew :<module>:fuzz --tests '*DecoderFuzzTest.plutusDataCbor' [-Pfuzz.duration=10m]
+// A failing input is saved as crash-* in the target's <Class>Inputs/<method>/ resource directory. Do not commit
+// it there until a fix or a pin makes it pass: that directory is also the replay set and the seed corpus.
+tasks.register('fuzz', Test) {
+    group = 'verification'
+    description = 'Fuzzes one @FuzzTest with Jazzer'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform {
+        includeEngines 'junit-jupiter'
+    }
+    environment 'JAZZER_FUZZ', '1'
+    // Coverage feedback from all of JuLC, not only the test's own package (Jazzer's default).
+    systemProperty 'jazzer.instrumentation_includes', 'org.julclang.**'
+    def duration = providers.gradleProperty('fuzz.duration')
+    if (duration.isPresent()) systemProperty 'jazzer.max_duration', duration.get()
+    outputs.upToDateWhen { false }
+}

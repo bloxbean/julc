@@ -55,6 +55,11 @@ public abstract class BundleJulcSourcesTask extends DefaultTask {
             }
 
             JavaSourceIntrospector.SourceInfo sourceInfo = inspect(javaFile, source);
+            if (sourceInfo == null) {
+                getLogger().info("Skipping {}: text matched OnchainLibrary, but read as javac reads it the source"
+                        + " declares no JuLC annotation", javaFile);
+                continue;
+            }
             rejectRoleConflicts(sourceInfo);
             if (!sourceInfo.nestedOnchainLibraries().isEmpty()) {
                 var nested = sourceInfo.nestedOnchainLibraries().get(0);
@@ -95,10 +100,12 @@ public abstract class BundleJulcSourcesTask extends DefaultTask {
         }
     }
 
+    /** The source's info, or null for a candidate JuLC cannot read that plainly declares no JuLC annotation. */
     private static JavaSourceIntrospector.SourceInfo inspect(File javaFile, String source) {
         try {
             return JavaSourceIntrospector.inspect(source);
         } catch (JavaSourceIntrospector.SourceParseException e) {
+            if (JavaSourceIntrospector.declaresNoJulcRole(source)) return null;
             throw new GradleException("Could not parse @OnchainLibrary candidate " + javaFile
                     + ": " + e.problems(), e);
         }

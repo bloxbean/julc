@@ -28,10 +28,9 @@ class O13ExpModLiteralFoldTest {
                 static BigInteger literals() {
                     return MathLib.expMod(
                                     BigInteger.valueOf(2), BigInteger.valueOf(5),
-                                    BigInteger.valueOf(13))
-                            + MathLib.expMod(
+                                    BigInteger.valueOf(13)).add(MathLib.expMod(
                                     BigInteger.valueOf(2), BigInteger.valueOf(-1),
-                                    BigInteger.valueOf(5));
+                                    BigInteger.valueOf(5)));
                 }
             }
             """;

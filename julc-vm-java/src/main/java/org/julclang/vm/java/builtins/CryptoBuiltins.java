@@ -1,14 +1,13 @@
 package org.julclang.vm.java.builtins;
 
+import org.julclang.vm.crypto.Ed25519Verifier;
 import org.julclang.vm.java.CekValue;
 import org.bouncycastle.crypto.digests.Blake2bDigest;
 import org.bouncycastle.crypto.digests.KeccakDigest;
 import org.bouncycastle.crypto.digests.RIPEMD160Digest;
 import org.bouncycastle.crypto.params.ECDomainParameters;
 import org.bouncycastle.crypto.params.ECPublicKeyParameters;
-import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters;
 import org.bouncycastle.crypto.signers.ECDSASigner;
-import org.bouncycastle.crypto.signers.Ed25519Signer;
 import org.bouncycastle.jce.ECNamedCurveTable;
 import org.bouncycastle.jce.spec.ECParameterSpec;
 import org.bouncycastle.math.ec.ECPoint;
@@ -89,23 +88,13 @@ public final class CryptoBuiltins {
         var msg = asByteString(args.get(1), "VerifyEd25519Signature");
         var sig = asByteString(args.get(2), "VerifyEd25519Signature");
 
-        if (pubKey.length != 32) {
+        if (pubKey.length != Ed25519Verifier.PUBLIC_KEY_BYTES) {
             throw new BuiltinException("VerifyEd25519Signature: public key must be 32 bytes, got " + pubKey.length);
         }
-        if (sig.length != 64) {
+        if (sig.length != Ed25519Verifier.SIGNATURE_BYTES) {
             throw new BuiltinException("VerifyEd25519Signature: signature must be 64 bytes, got " + sig.length);
         }
-
-        try {
-            var keyParams = new Ed25519PublicKeyParameters(pubKey, 0);
-            var signer = new Ed25519Signer();
-            signer.init(false, keyParams);
-            signer.update(msg, 0, msg.length);
-            return mkBool(signer.verifySignature(sig));
-        } catch (Exception e) {
-            // BouncyCastle may throw for invalid keys/signatures — return false per Plutus spec
-            return mkBool(false);
-        }
+        return mkBool(Ed25519Verifier.verify(pubKey, msg, sig));
     }
 
     public static CekValue verifyEcdsaSecp256k1Signature(List<CekValue> args) {

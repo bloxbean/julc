@@ -25,16 +25,19 @@ class VotingValidatorTest {
      */
     static final String AUTHORIZED_VOTER = """
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.VotingValidator;
+            import org.julclang.core.PlutusData;
 
             @VotingValidator
             class AuthorizedVoter {
                 static boolean isAuthorized(BigInteger credential, BigInteger expected) {
-                    return credential == expected;
+                    return credential.equals(expected);
                 }
 
                 @Entrypoint
-                static boolean validate(BigInteger redeemer, BigInteger ctx) {
-                    return isAuthorized(42, 42);
+                static boolean validate(BigInteger redeemer, PlutusData ctx) {
+                    return isAuthorized(BigInteger.valueOf(42), BigInteger.valueOf(42));
                 }
             }
             """;
@@ -44,16 +47,19 @@ class VotingValidatorTest {
      */
     static final String REJECTING_VOTER = """
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.VotingValidator;
+            import org.julclang.core.PlutusData;
 
             @VotingValidator
             class RejectingVoter {
                 static boolean isAuthorized(BigInteger credential, BigInteger expected) {
-                    return credential == expected;
+                    return credential.equals(expected);
                 }
 
                 @Entrypoint
-                static boolean validate(BigInteger redeemer, BigInteger ctx) {
-                    return isAuthorized(99, 42);
+                static boolean validate(BigInteger redeemer, PlutusData ctx) {
+                    return isAuthorized(BigInteger.valueOf(99), BigInteger.valueOf(42));
                 }
             }
             """;
@@ -64,15 +70,18 @@ class VotingValidatorTest {
      */
     static final String CONDITIONAL_VOTER_YES = """
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.VotingValidator;
+            import org.julclang.core.PlutusData;
 
             @VotingValidator
             class ConditionalVoterYes {
                 @Entrypoint
-                static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                static boolean validate(BigInteger redeemer, PlutusData ctx) {
                     BigInteger voteType = BigInteger.valueOf(1);
-                    if (voteType == 1) {
+                    if (voteType.equals(BigInteger.ONE)) {
                         return true;
-                    } else if (voteType == 2) {
+                    } else if (voteType.equals(BigInteger.TWO)) {
                         return true;
                     } else {
                         return false;
@@ -86,15 +95,18 @@ class VotingValidatorTest {
      */
     static final String CONDITIONAL_VOTER_ABSTAIN = """
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.VotingValidator;
+            import org.julclang.core.PlutusData;
 
             @VotingValidator
             class ConditionalVoterAbstain {
                 @Entrypoint
-                static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                static boolean validate(BigInteger redeemer, PlutusData ctx) {
                     BigInteger voteType = BigInteger.valueOf(3);
-                    if (voteType == 1) {
+                    if (voteType.equals(BigInteger.ONE)) {
                         return true;
-                    } else if (voteType == 2) {
+                    } else if (voteType.equals(BigInteger.TWO)) {
                         return true;
                     } else {
                         return false;

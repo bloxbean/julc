@@ -146,11 +146,11 @@ Builtins.unMapData(data)        // MapData -> pair-list
 
 // List primitives
 Builtins.headList(list)         // first element
-Builtins.tailList(list)         // all but first
+Builtins.tailList(list)         // all but first; a pair list stays a map on the JVM
 Builtins.nullList(list)         // is empty?
-Builtins.mkCons(elem, list)     // prepend element
+Builtins.mkCons(elem, list)     // prepend element; onto a pair list, a pair, and it stays a map
 Builtins.mkNilData()            // empty data list
-Builtins.mkNilPairData()        // empty pair list
+Builtins.mkNilPairData()        // empty pair list: an empty MapData on the JVM
 
 // Pair primitives
 Builtins.fstPair(pair)          // first of pair
@@ -174,18 +174,21 @@ Builtins.trace(msg, val)        // trace message, return val
 Here is a real example from `CryptoLib` -- the simplest pattern, where library methods are thin wrappers around builtins:
 
 ```java
+import org.julclang.stdlib.Builtins;
+import org.julclang.stdlib.annotation.OnchainLibrary;
+
 @OnchainLibrary
 public class CryptoLib {
 
-    public static PlutusData sha2_256(PlutusData bs) {
+    public static byte[] sha2_256(byte[] bs) {
         return Builtins.sha2_256(bs);
     }
 
-    public static PlutusData blake2b_256(PlutusData bs) {
+    public static byte[] blake2b_256(byte[] bs) {
         return Builtins.blake2b_256(bs);
     }
 
-    public static boolean verifyEd25519Signature(PlutusData key, PlutusData msg, PlutusData sig) {
+    public static boolean verifyEd25519Signature(byte[] key, byte[] msg, byte[] sig) {
         return Builtins.verifyEd25519Signature(key, msg, sig);
     }
 }
@@ -215,9 +218,8 @@ public class TokenUtils {
      * (currency symbol -> token name -> amount).
      */
     public static long tokenAmount(PlutusData value, PlutusData policyId, PlutusData tokenName) {
-        var outerPairs = Builtins.unMapData(value);
         var result = 0L;
-        var current = outerPairs;
+        PlutusData current = Builtins.unMapData(value);
         while (!Builtins.nullList(current)) {
             var outerPair = Builtins.headList(current);
             if (Builtins.equalsData(Builtins.fstPair(outerPair), policyId)) {
@@ -235,11 +237,11 @@ public class TokenUtils {
     /** Search an inner token map for a token name. Returns amount or 0. */
     public static long findToken(PlutusData innerPairs, PlutusData tokenName) {
         var result = 0L;
-        var current = innerPairs;
+        PlutusData current = innerPairs;
         while (!Builtins.nullList(current)) {
             var pair = Builtins.headList(current);
             if (Builtins.equalsData(Builtins.fstPair(pair), tokenName)) {
-                result = Builtins.unIData(Builtins.sndPair(pair));
+                result = Builtins.unIData(Builtins.sndPair(pair)).longValue();
                 current = Builtins.mkNilPairData(); // break
             } else {
                 current = Builtins.tailList(current);
@@ -266,15 +268,18 @@ package com.example.myproject;
 
 import java.math.BigInteger;
 import org.julclang.stdlib.Builtins;
+import org.julclang.core.PlutusData;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+import org.julclang.ledger.ScriptContext;
 
 @SpendingValidator
 class TokenGateValidator {
     @Entrypoint
-    static boolean validate(BigInteger redeemer, PlutusData ctx) {
-        var txInfo = Builtins.headList(Builtins.constrFields(ctx));
-        var mint = /* extract mint field from txInfo */;
-        var myPolicy = Builtins.bData(/* policy id bytes */);
-        var myToken = Builtins.bData(/* token name bytes */);
+    static boolean validate(BigInteger redeemer, ScriptContext ctx) {
+        PlutusData mint = PlutusData.cast(ctx.txInfo().mint(), PlutusData.class);
+        var myPolicy = Builtins.bData(new byte[]{/* policy id bytes */});
+        var myToken = Builtins.bData(new byte[]{/* token name bytes */});
         return TokenUtils.hasToken(mint, myPolicy, myToken, 1);
     }
 }
@@ -295,8 +300,10 @@ The JuLC compiler supports a restricted subset of Java. Within `@OnchainLibrary`
 - No uninitialized variables
 
 **Expressions:**
-- Arithmetic: `+`, `-`, `*`, `/`, `%`
-- Comparison: `<`, `<=`, `>`, `>=`, `==`, `!=`
+- Arithmetic: `+`, `-`, `*`, `/`, `%` on `long` and `int`; `BigInteger` uses its methods (`add`, `subtract`,
+  `multiply`, `divide`, `remainder`), as in Java
+- Comparison: `<`, `<=`, `>`, `>=`, `==`, `!=` on `long` and `int`; `BigInteger` uses `a.compareTo(b) < 0` and
+  `a.equals(b)`
 - Boolean: `&&`, `||`, `!`
 - Static method calls: `Builtins.headList(x)`, `MyLib.method(a, b)`
 - Chained calls: `Builtins.unIData(Builtins.sndPair(pair))`
@@ -346,7 +353,7 @@ public static boolean contains(PlutusData list, PlutusData target) {
 
 The following Java features are NOT supported in `@OnchainLibrary` classes:
 
-- **No lambdas or `.apply()` on functions in Java source libraries** -- you cannot pass functions as arguments in `@OnchainLibrary` Java source code. However, HOFs are available for user code via PIR-based methods (e.g., `list.map(x -> ...)`, `ListsLib.foldl(...)`). To add HOFs to a library, use the PIR API (Approach 2).
+- **No lambdas or `.apply()` on functions in Java source libraries** -- you cannot pass functions as arguments in `@OnchainLibrary` Java source code. However, HOFs are available for user code via PIR-based methods (e.g., `list.map(x -> ...)`). To add HOFs to a library, use the PIR API (Approach 2).
 - **No assignment expressions** -- all variables are immutable outside of `while`/`for-each` loop bodies.
 - **No `try`/`catch`** -- errors abort execution via `Builtins.error()`.
 - **No `null`** -- Plutus has no null concept.
@@ -543,7 +550,7 @@ class TokenUtilsTest {
             @SpendingValidator
             class TestValidator {
                 @Entrypoint
-                static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                static boolean validate(BigInteger redeemer, PlutusData ctx) {
                     // Test logic calling TokenUtils
                     return true;
                 }

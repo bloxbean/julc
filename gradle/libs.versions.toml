@@ -1,0 +1,5 @@
+[versions]
+jazzer = "0.30.0"
+
+[libraries]
+jazzer-junit = { module = "com.code-intelligence:jazzer-junit", version.ref = "jazzer" }

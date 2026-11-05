@@ -59,7 +59,7 @@ import java.util.stream.Collectors;
         "org.julclang.stdlib.annotation.ProposingValidator",
         "org.julclang.stdlib.annotation.MultiValidator"
 })
-@SupportedOptions({"julc.projectName", "julc.projectVersion", "julc.sourceMap", "julc.blueprint", "julc.target", "julc.optimization", "julc.costProfile"})
+@SupportedOptions({"julc.projectName", "julc.projectVersion", "julc.sourceMap", "julc.blueprint", "julc.target", "julc.optimization", "julc.costProfile", "julc.frontend"})
 @SupportedSourceVersion(SourceVersion.RELEASE_24)
 public class JulcAnnotationProcessor extends AbstractProcessor {
 
@@ -97,6 +97,7 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
                 "julc.target", CompilerTarget.PLUTUS_V3_PV11.profileId());
         try {
             this.compilerTarget = CompilerTargetRegistry.targetForProfileId(targetProfile);
+            CompilerOptions.requireJavacFrontend(processingEnv.getOptions().get("julc.frontend"));
             var optimizationOptions = OptimizationConfiguration.apply(
                     new CompilerOptions().setTarget(compilerTarget),
                     processingEnv.getOptions().getOrDefault(
@@ -224,6 +225,8 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
             if (sourceMapEnabled) {
                 options.setSourceMapEnabled(true);
             }
+            // The class path's sources are JAR sources: the javac gate ranks them below this project's (ADR-068 D8).
+            options.setJarLibrarySources(LibrarySourceResolver.jarSourceTexts(libraryPool(), classpathLibraries));
             var compiler = new JulcCompiler(stdlib, options);
             var contractResult = blueprintEnabled
                     ? compiler.compileContract(source, librarySources)
@@ -310,7 +313,7 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
         } catch (CompilerException e) {
             processingFailed = true;
             processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
-                    "Plutus compilation error: " + e.getMessage(), element);
+                    "Plutus compilation error: " + e.describe(), element);
         } catch (IOException e) {
             processingFailed = true;
             processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
@@ -324,15 +327,20 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
         }
     }
 
+    /** Same-project and class-path libraries, merged by primary name (same-project takes precedence). */
+    private Map<String, LibrarySource> libraryPool() {
+        var pool = new LinkedHashMap<>(classpathLibraries);
+        pool.putAll(sameProjectLibraries);
+        return pool;
+    }
+
     /**
      * Resolve library sources needed by the given validator source.
      * Uses import statements and same-package references to find matching
      * {@code @OnchainLibrary} classes, then recursively resolves transitive imports.
      */
     private List<String> resolveLibrarySources(String validatorSource) {
-        // Merge same-project + classpath into one pool (same-project takes precedence)
-        var pool = new LinkedHashMap<>(classpathLibraries);
-        pool.putAll(sameProjectLibraries);
+        var pool = libraryPool();
 
         return LibrarySourceResolver.resolve(validatorSource, pool);
     }

@@ -168,7 +168,7 @@ class ContractSchemaTest {
 
                     @Entrypoint(purpose = Purpose.SPEND)
                     static boolean spend(Datum datum, Spend redeemer, ScriptContext ctx) {
-                        return datum.state() == 7 && redeemer.next() == 8;
+                        return datum.state().equals(BigInteger.valueOf(7)) && redeemer.next().equals(BigInteger.valueOf(8));
                     }
 
                     @Entrypoint(purpose = Purpose.MINT)

@@ -1,3 +1,4 @@
+import org.julclang.ledger.PubKeyHash;
 import org.julclang.ledger.ScriptContext;
 import org.julclang.stdlib.annotation.Entrypoint;
 import org.julclang.stdlib.annotation.SpendingValidator;
@@ -17,8 +18,8 @@ class VulnerableThresholdGate {
     @Entrypoint
     static boolean validate(Datum datum, Redeemer redeemer, ScriptContext ctx) {
         var signers = ctx.txInfo().signatories();
-        return signers.contains(KEY_A)
-                || signers.contains(KEY_B)
-                || signers.contains(KEY_C);
+        return signers.contains(PubKeyHash.of(KEY_A))
+                || signers.contains(PubKeyHash.of(KEY_B))
+                || signers.contains(PubKeyHash.of(KEY_C));
     }
 }

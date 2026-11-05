@@ -1,0 +1,20 @@
+format: 2
+name: longValue() just above Long.MAX_VALUE in an if (F81, #294)
+class: Probe
+method: m
+arg: 1b8000000000000000
+expect: DIVERGE T6 Value/Value
+jvm: Value 01 []
+uplc: Value 02 []
+note: ADR-067 M1 round 4, F81 (#294), outside guards: JuLC lowers longValue() to the identity; Java narrows 9223372036854775808 to Long.MIN_VALUE (1), JuLC keeps it positive (2).
+---
+import java.math.BigInteger;
+
+public class Probe {
+    public static BigInteger m(BigInteger a) {
+        if (a.longValue() < 0) {
+            return BigInteger.ONE;
+        }
+        return BigInteger.TWO;
+    }
+}

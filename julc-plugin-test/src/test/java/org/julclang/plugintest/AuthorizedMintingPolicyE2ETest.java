@@ -31,13 +31,19 @@ class AuthorizedMintingPolicyE2ETest extends PluginTestBase {
 
     static final String AUTHORIZED_MINTING_POLICY = """
             import org.julclang.core.PlutusData;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.ledger.TxInfo;
+            import org.julclang.stdlib.Builtins;
+            import org.julclang.stdlib.lib.ContextsLib;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.MintingValidator;
 
             @MintingValidator
             class AuthorizedMintingPolicy {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                    PlutusData txInfo = ContextsLib.getTxInfo(ctx);
-                    return ContextsLib.signedBy(txInfo, redeemer);
+                    TxInfo txInfo = ContextsLib.getTxInfo(PlutusData.cast(ctx, ScriptContext.class));
+                    return ContextsLib.signedBy(txInfo, Builtins.unBData(redeemer));
                 }
             }
             """;

@@ -53,8 +53,15 @@ public final class PirDebugProvenance {
                 && isMatchingBinder(replacement, name);
     }
 
+    /**
+     * Whether {@code term} binds {@code name}, as written or with the mark a frontend gives a binder that would capture
+     * another one ({@code name'k}, ADR-068 I13): the binder is still that declaration's.
+     */
     private static boolean isMatchingBinder(PirTerm term, String name) {
-        return term instanceof PirTerm.Lam lambda && lambda.param().equals(name)
-                || term instanceof PirTerm.Let let && let.name().equals(name);
+        String binder = term instanceof PirTerm.Lam lambda ? lambda.param() : term instanceof PirTerm.Let let ? let.name() : null;
+        if (binder == null) return false;
+        if (binder.equals(name)) return true;
+        String mark = binder.startsWith(name + "'") ? binder.substring(name.length() + 1) : "";
+        return !mark.isEmpty() && mark.chars().allMatch(c -> c >= '0' && c <= '9');
     }
 }

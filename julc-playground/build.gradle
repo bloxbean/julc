@@ -4,14 +4,13 @@ plugins {
     id 'org.graalvm.buildtools.native' version '0.10.6'
 }
 
-description = 'julc-playground - Online JRL editor and testing playground'
+description = 'julc-playground - Online JuLC editor and testing playground'
 
 application {
     mainClass = 'org.julclang.playground.JulcPlaygroundServer'
 }
 
 dependencies {
-    implementation project(':julc-jrl:julc-jrl-core')
     implementation project(':julc-tools')
     implementation project(':julc-compiler')
     implementation project(':julc-core')
@@ -21,9 +20,6 @@ dependencies {
     implementation project(':julc-vm-java')
     implementation project(':julc-testkit')
     implementation project(':julc-blueprint')
-
-    // JavaParser for Java contract metadata extraction
-    implementation 'com.github.javaparser:javaparser-core:3.26.3'
 
     // Javalin 6 micro-framework
     implementation 'io.javalin:javalin:6.7.0'
@@ -141,4 +137,9 @@ graalvmNative {
             sharedLibrary = false
         }
     }
+}
+
+// FrontendSourcesCompileTest reads the Java the frontend puts in the editor, so a change to it reruns the test.
+tasks.named('test') {
+    inputs.files('frontend/src/lib/stores/editor.ts', 'frontend/src/lib/monaco/java-completions.ts')
 }

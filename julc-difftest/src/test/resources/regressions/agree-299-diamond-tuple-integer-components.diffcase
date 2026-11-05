@@ -1,0 +1,26 @@
+format: 2
+name: a diamond Tuple2 of BigIntegers encodes its components (#299)
+class: Probe
+method: m
+arg: 03
+arg: 04
+expect: AGREE
+note: ADR-068 D4 exception 2 (#299): `new Tuple2<>(x, y)` resolved to a tuple with Data components, so the
+note: BigIntegers were put in the constructor unencoded and the script failed (MkCons) where the JVM returns 4, at
+note: every level. The component types are now inferred as javac infers them (from the declared target type, else
+note: from the arguments) and each component is encoded by its type, as `new Tuple2<BigInteger, BigInteger>(x, y)`
+note: does. recorded.base is the reference frontend at B0.
+recorded.jvm: Value 04 []
+recorded.base: Failure [] "MkCons: element type Integer[] does not match list element type Data[]"
+---
+import java.math.BigInteger;
+import org.julclang.core.types.Tuple2;
+
+public class Probe {
+
+    public static BigInteger m(BigInteger x, BigInteger y) {
+        var t = new Tuple2<>(x, y);
+        BigInteger s = t.second();
+        return s;
+    }
+}

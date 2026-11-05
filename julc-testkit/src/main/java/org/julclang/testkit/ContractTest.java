@@ -1,6 +1,7 @@
 package org.julclang.testkit;
 
 import org.julclang.compiler.CompileResult;
+import org.julclang.compiler.CompilerOptions;
 import org.julclang.core.PlutusData;
 import org.julclang.core.Program;
 import org.julclang.core.source.SourceLocation;

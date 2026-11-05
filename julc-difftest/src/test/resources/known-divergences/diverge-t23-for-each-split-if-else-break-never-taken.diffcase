@@ -1,0 +1,27 @@
+format: 2
+name: for-each with an if/else assigning different variables, and a break never taken (T23)
+class: Probe
+method: m
+arg: 01
+arg: 22
+arg: 9f2324ff
+expect: DIVERGE T23 Value/Value
+jvm: Value 25 []
+uplc: Value 24 []
+note: As the taken-break case, but no element passes the break condition and only the then branch runs:
+note: the JVM returns -6, UPLC -5.
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+
+public class Probe {
+    public static BigInteger m(BigInteger a, BigInteger b, JulcList<BigInteger> xs) {
+        BigInteger v0 = a;
+        BigInteger v1 = b;
+        for (var x0 : xs) {
+            if (x0.compareTo(b) < 0) { v0 = v0.add(BigInteger.valueOf(1)); } else { v1 = v1.add(x0); }
+            if (x0.compareTo(b) > 0) { break; }
+        }
+        return v0.add(v1.multiply(BigInteger.valueOf(3)));
+    }
+}

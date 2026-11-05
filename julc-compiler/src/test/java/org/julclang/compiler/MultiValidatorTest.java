@@ -82,6 +82,9 @@ class MultiValidatorTest {
     void compilesMultiValidatorSingleEntrypoint() {
         var source = """
                 import org.julclang.stdlib.annotation.MultiValidator;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
 
                 @MultiValidator
                 class ProxyValidator {
@@ -100,6 +103,9 @@ class MultiValidatorTest {
     void multiValidatorManualDispatchWithMintingContext() {
         var source = """
                 import org.julclang.stdlib.annotation.MultiValidator;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
 
                 @MultiValidator
                 class ManualDispatch {
@@ -121,6 +127,9 @@ class MultiValidatorTest {
     void multiValidatorManualDispatchWithSpendingContext() {
         var source = """
                 import org.julclang.stdlib.annotation.MultiValidator;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
 
                 @MultiValidator
                 class ManualDispatch2 {
@@ -143,6 +152,9 @@ class MultiValidatorTest {
     void multiValidatorRejectsDefaultWith3Params() {
         var source = """
                 import org.julclang.stdlib.annotation.MultiValidator;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
 
                 @MultiValidator
                 class BadManualDispatch {
@@ -163,6 +175,9 @@ class MultiValidatorTest {
         var source = """
                 import org.julclang.stdlib.annotation.MultiValidator;
                 import org.julclang.stdlib.annotation.Purpose;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
 
                 @MultiValidator
                 class AutoDispatch {
@@ -187,6 +202,9 @@ class MultiValidatorTest {
         var source = """
                 import org.julclang.stdlib.annotation.MultiValidator;
                 import org.julclang.stdlib.annotation.Purpose;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
 
                 @MultiValidator
                 class MintSpendDispatch {
@@ -217,6 +235,9 @@ class MultiValidatorTest {
         var source = """
                 import org.julclang.stdlib.annotation.MultiValidator;
                 import org.julclang.stdlib.annotation.Purpose;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
 
                 @MultiValidator
                 class MintSpendDispatch2 {
@@ -248,6 +269,9 @@ class MultiValidatorTest {
         var source = """
                 import org.julclang.stdlib.annotation.MultiValidator;
                 import org.julclang.stdlib.annotation.Purpose;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
 
                 @MultiValidator
                 class SpendWithDatum {
@@ -279,6 +303,7 @@ class MultiValidatorTest {
         var source = """
                 import org.julclang.stdlib.annotation.*;
                 import java.math.BigInteger;
+                import org.julclang.ledger.ScriptContext;
 
                 @MultiValidator
                 class StrictDispatch {
@@ -330,6 +355,9 @@ class MultiValidatorTest {
         var source = """
                 import org.julclang.stdlib.annotation.MultiValidator;
                 import org.julclang.stdlib.annotation.Purpose;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
 
                 @MultiValidator
                 class MintOnly {
@@ -355,6 +383,9 @@ class MultiValidatorTest {
         var source = """
                 import org.julclang.stdlib.annotation.MultiValidator;
                 import org.julclang.stdlib.annotation.Purpose;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
 
                 @MultiValidator
                 class MintSpendOnly {
@@ -386,19 +417,23 @@ class MultiValidatorTest {
                 import org.julclang.stdlib.annotation.MultiValidator;
                 import org.julclang.stdlib.annotation.Purpose;
                 import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.Param;
 
                 @MultiValidator
                 class ParamMulti {
-                    @Param BigInteger threshold;
+                    @Param static BigInteger threshold;
 
                     @Entrypoint(purpose = Purpose.MINT)
                     static boolean handleMint(PlutusData redeemer, ScriptContext ctx) {
-                        return threshold > 0;
+                        return threshold.compareTo(BigInteger.ZERO) > 0;
                     }
 
                     @Entrypoint(purpose = Purpose.SPEND)
                     static boolean handleSpend(PlutusData redeemer, ScriptContext ctx) {
-                        return threshold > 10;
+                        return threshold.compareTo(BigInteger.TEN) > 0;
                     }
                 }
                 """;
@@ -431,6 +466,9 @@ class MultiValidatorTest {
         var source = """
                 import org.julclang.stdlib.annotation.MultiValidator;
                 import org.julclang.stdlib.annotation.Purpose;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
 
                 @MultiValidator
                 class HelperMulti {
@@ -466,6 +504,10 @@ class MultiValidatorTest {
     void spendingWithOptionalDatumSome() {
         var source = """
                 import java.util.Optional;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class OptionalDatumSome {
@@ -494,6 +536,10 @@ class MultiValidatorTest {
     void spendingWithOptionalDatumNone() {
         var source = """
                 import java.util.Optional;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class OptionalDatumNone {
@@ -524,6 +570,9 @@ class MultiValidatorTest {
                 import org.julclang.stdlib.annotation.MultiValidator;
                 import org.julclang.stdlib.annotation.Purpose;
                 import java.util.Optional;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
 
                 @MultiValidator
                 class OptionalDatumMulti {
@@ -567,6 +616,10 @@ class MultiValidatorTest {
         var source = """
                 import java.util.Optional;
                 import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class OptionalCustomDatum {
@@ -576,7 +629,7 @@ class MultiValidatorTest {
                     static boolean validate(Optional<MyDatum> datum, PlutusData redeemer, ScriptContext ctx) {
                         if (datum.isPresent()) {
                             MyDatum d = datum.get();
-                            return d.amount() > 0;
+                            return d.amount().compareTo(BigInteger.ZERO) > 0;
                         }
                         return false;
                     }
@@ -621,6 +674,9 @@ class MultiValidatorTest {
         var source = """
                 import org.julclang.stdlib.annotation.MultiValidator;
                 import org.julclang.stdlib.annotation.Purpose;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
 
                 @MultiValidator
                 class DupPurpose {
@@ -644,6 +700,9 @@ class MultiValidatorTest {
         var source = """
                 import org.julclang.stdlib.annotation.MultiValidator;
                 import org.julclang.stdlib.annotation.Purpose;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
 
                 @MultiValidator
                 class MixedPurposes {
@@ -665,6 +724,11 @@ class MultiValidatorTest {
     @Test
     void duplicateAnnotationsRejected() {
         var source = """
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.MintingValidator;
+                import org.julclang.stdlib.annotation.SpendingValidator;
                 @SpendingValidator
                 @MintingValidator
                 class DualAnnotation {

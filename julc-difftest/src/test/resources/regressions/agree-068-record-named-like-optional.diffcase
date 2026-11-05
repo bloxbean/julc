@@ -1,0 +1,17 @@
+format: 3
+name: a user record whose name starts with Optional is a record
+class: Case
+method: m
+arg: d8799f05ff
+expect: AGREE
+note: ADR-068 D7. The reference reads the datum of a validator of this type by its spelling, which only a validator shows (Adr068TypeIdentityTest).
+note: ADR-068 D13: on frontend=JAVAC this agrees with the JVM (Adr068SavedCasesOnJavacTest).
+---
+public class Case {
+    public record OptionalThing(long value) { }
+
+    public static long m(OptionalThing thing) {
+        var copy = new OptionalThing(thing.value() + 1);
+        return copy.value();
+    }
+}

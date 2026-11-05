@@ -1,0 +1,21 @@
+format: 2
+name: trace messages with line breaks, an empty message and the JVM's own prefix
+class: Probe
+method: m
+arg: 4b610a5b54524143455d2062
+arg: 40
+arg: 44780d0a79
+arg: 01
+expect: AGREE
+note: Each Builtins.trace call is one event on both sides (ADR-063 H2): the JVM capture must not split
+note: "a\n[TRACE] b" at its line break or strip the inner prefix. The messages are arguments, because
+note: string literals with escapes diverged until T22 was fixed; agree-t22-string-literal-escapes covers literals.
+---
+import org.julclang.core.PlutusData;
+import org.julclang.stdlib.Builtins;
+
+public class Probe {
+    public static PlutusData m(String first, String second, String third, PlutusData n) {
+        return Builtins.trace(third, Builtins.trace(second, Builtins.trace(first, n)));
+    }
+}

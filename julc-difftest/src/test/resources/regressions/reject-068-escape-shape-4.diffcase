@@ -1,0 +1,10 @@
+format: 3
+name: an escape shape javac reads and the reference's reader does not (4)
+class: Case
+method: m
+expect: AGREE
+note: ADR-065 I2c, scheduled for acceptance by M0.
+note: ADR-068 D13: on frontend=JAVAC this agrees with the JVM (Adr068SavedCasesOnJavacTest).
+note: ADR-068 M6: on the only frontend, javac, AGREE; the JavaParser frontend answered REJECT none.
+---
+public class Case { public static String m() { return "\u005c\\\u006e"; } }

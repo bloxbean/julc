@@ -324,7 +324,8 @@ class ConditionalYieldLoweringTest {
                 """;
         var ex = assertThrows(CompilerException.class,
                 () -> new JulcCompiler(StdlibRegistry.defaultRegistry()).compileMethod(source, "check"));
-        assertTrue(ex.getMessage().contains("switch case block may not yield a value on all execution paths"),
+        // javac rejects it first (ADR-068 I2b), where JuLC said the case block may not yield on every path.
+        assertTrue(ex.getMessage().contains("JULC0085") && ex.getMessage().contains("(compiler.err.rule.completes.normally)"),
                 () -> "unexpected message: " + ex.getMessage());
     }
 
@@ -356,7 +357,8 @@ class ConditionalYieldLoweringTest {
                 """;
         var ex = assertThrows(CompilerException.class,
                 () -> new JulcCompiler(StdlibRegistry.defaultRegistry()).compileMethod(source, "check"));
-        assertTrue(ex.getMessage().contains("switch case block may not yield a value on all execution paths"),
+        // javac rejects it first (ADR-068 I2b), where JuLC said the case block may not yield on every path.
+        assertTrue(ex.getMessage().contains("JULC0085") && ex.getMessage().contains("(compiler.err.rule.completes.normally)"),
                 () -> "unexpected message: " + ex.getMessage());
     }
 
@@ -386,7 +388,8 @@ class ConditionalYieldLoweringTest {
                 """;
         var ex = assertThrows(CompilerException.class,
                 () -> new JulcCompiler(StdlibRegistry.defaultRegistry()).compileMethod(source, "anyPositive"));
-        assertTrue(ex.getMessage().contains("switch case block may not yield a value on all execution paths"),
+        // javac rejects it first (ADR-068 I2b), where JuLC said the case block may not yield on every path.
+        assertTrue(ex.getMessage().contains("JULC0085") && ex.getMessage().contains("(compiler.err.rule.completes.normally)"),
                 () -> "unexpected message: " + ex.getMessage());
     }
 
@@ -417,7 +420,8 @@ class ConditionalYieldLoweringTest {
                 """;
         var ex = assertThrows(CompilerException.class,
                 () -> new JulcCompiler(StdlibRegistry.defaultRegistry()).compileMethod(source, "check"));
-        assertTrue(ex.getMessage().contains("switch case block may not yield a value on all execution paths"),
+        // javac rejects it first (ADR-068 I2b), where JuLC said the case block may not yield on every path.
+        assertTrue(ex.getMessage().contains("JULC0085") && ex.getMessage().contains("(compiler.err.rule.completes.normally)"),
                 () -> "unexpected message: " + ex.getMessage());
     }
 

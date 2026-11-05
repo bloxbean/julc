@@ -1,5 +1,6 @@
 package org.julclang.compiler;
 
+
 import org.julclang.core.PlutusData;
 import org.julclang.stdlib.StdlibRegistry;
 import org.julclang.vm.OptimizationCostProfiles;
@@ -28,6 +29,14 @@ final class Adr060Corpus {
 
     static List<Entry> entries() {
         var entries = new ArrayList<Entry>();
+        addEntries(entries);
+        // ListsLib.any and zip exist only in the stdlib registry, not in Java, so javac rejects those shapes. Their ids stay,
+        // so that every other id still names its row of the byte snapshot.
+        entries.removeIf(entry -> entry.source().contains("ListsLib.any(") || entry.source().contains("ListsLib.zip("));
+        return entries;
+    }
+
+    private static void addEntries(List<Entry> entries) {
         addFixtures(entries, "o8", O8ValueSharingFixtures.FIXTURES, f -> new Entry(null, f.source(), f.method(),
                 f.inputs().stream().map(O8ValueSharingFixtures.Input::args).toList()));
         addFixtures(entries, "o9", O9ListIndexFixtures.FIXTURES, f -> new Entry(null, f.source(), f.method(),
@@ -48,7 +57,6 @@ final class Adr060Corpus {
         addValidators(entries, "hygiene", hygieneSources());
         // @Param validators, a multi-validator and the construct-shaped programs of the G1 oracle.
         entries.addAll(BinderNameIndependenceTest.CLASS_LEVEL);
-        return entries;
     }
 
     private static <F> void addFixtures(List<Entry> entries, String prefix, List<F> fixtures, Function<F, Entry> map) {
@@ -70,8 +78,9 @@ final class Adr060Corpus {
             bodies.add("return outer.all(" + name + " -> inner.any(y -> Builtins.equalsData(y, " + name + ")));");
         }
         for (var name : List.of("h", "lst", "go"))
-            bodies.add("return outer.any(" + name + " -> inner.find(y -> Builtins.equalsData(y, " + name
-                    + ")).isPresent());");
+            // JulcList.find returns T in Java but an Optional on-chain (ADR-068 M1b): the cast keeps the lowering.
+            bodies.add("return outer.any(" + name + " -> PlutusData.cast(inner.find(y -> Builtins.equalsData(y, " + name
+                    + ")), Optional.class).isPresent());");
         for (var name : List.of("x_flt", "acc_flt"))
             bodies.add("return outer.any(" + name + " -> inner.filter(y -> Builtins.equalsData(y, " + name
                     + ")).size() > 0);");
@@ -85,7 +94,7 @@ final class Adr060Corpus {
         bodies.add("long _if = 7; if (outer.isEmpty()) { Builtins.error(); } return _if == 7 && outer.size() == 1;");
         bodies.add("long _forEach = 7; for (PlutusData item : outer) { } return _forEach == 7 && outer.size() == 1;");
         bodies.add("long count = 0; long total = 0; for (PlutusData item : inner) { count = count + 1; "
-                + "total = total + Builtins.unIData(item); } return count == 2 && total == 30;");
+                + "total = total + Builtins.unIData(item).longValue(); } return count == 2 && total == 30;");
         bodies.add("return outer.any(a -> inner.any(b -> Builtins.equalsData(b, a)));");
         return bodies.stream().map(BuilderBinderHygieneTest.LISTS::formatted).toList();
     }

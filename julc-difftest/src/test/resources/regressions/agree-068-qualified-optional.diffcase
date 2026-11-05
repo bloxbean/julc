@@ -1,0 +1,16 @@
+format: 3
+name: a qualified java.util.Optional is an Optional
+class: Case
+method: m
+arg: d8799f05ff
+expect: AGREE
+note: ADR-068 D7. The reference needs a datum where a validator takes this type, which only a validator shows (Adr068TypeIdentityTest).
+note: ADR-068 D13: on frontend=JAVAC this agrees with the JVM (Adr068SavedCasesOnJavacTest).
+---
+import org.julclang.core.PlutusData;
+
+public class Case {
+    public static boolean m(java.util.Optional<PlutusData> datum) {
+        return datum.isPresent();
+    }
+}

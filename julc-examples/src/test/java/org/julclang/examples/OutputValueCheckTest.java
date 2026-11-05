@@ -24,6 +24,12 @@ class OutputValueCheckTest {
 
     static final String MIN_PAYMENT_SOURCE = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.ledger.TxInfo;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
+            import org.julclang.stdlib.lib.ValuesLib;
 
             @SpendingValidator
             class MinPaymentValidator {
@@ -34,7 +40,7 @@ class OutputValueCheckTest {
                     TxInfo txInfo = ctx.txInfo();
                     var firstOutput = txInfo.outputs().head();
                     BigInteger lovelace = ValuesLib.lovelaceOf(firstOutput.value());
-                    return lovelace >= datum.minLovelace();
+                    return lovelace.compareTo(datum.minLovelace()) >= 0;
                 }
             }
             """;
@@ -43,6 +49,12 @@ class OutputValueCheckTest {
 
     static final String ANY_OUTPUT_SOURCE = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.ledger.TxInfo;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
+            import org.julclang.stdlib.lib.ValuesLib;
 
             @SpendingValidator
             class AnyOutputValidator {
@@ -54,7 +66,7 @@ class OutputValueCheckTest {
                     boolean found = false;
                     for (var output : txInfo.outputs()) {
                         BigInteger lovelace = ValuesLib.lovelaceOf(output.value());
-                        found = found || lovelace >= datum.minLovelace();
+                        found = found || lovelace.compareTo(datum.minLovelace()) >= 0;
                     }
                     return found;
                 }
@@ -65,17 +77,23 @@ class OutputValueCheckTest {
 
     static final String SUM_OUTPUTS_SOURCE = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.ledger.TxInfo;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
+            import org.julclang.stdlib.lib.ValuesLib;
 
             @SpendingValidator
             class SumOutputsValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                     TxInfo txInfo = ctx.txInfo();
-                    BigInteger total = 0;
+                    BigInteger total = BigInteger.ZERO;
                     for (var output : txInfo.outputs()) {
-                        total = total + ValuesLib.lovelaceOf(output.value());
+                        total = total.add(ValuesLib.lovelaceOf(output.value()));
                     }
-                    return total >= 10000000;
+                    return total.compareTo(BigInteger.valueOf(10000000)) >= 0;
                 }
             }
             """;

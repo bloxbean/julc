@@ -2,12 +2,17 @@ package org.julclang.cli.mcp.lint.rules;
 
 import org.julclang.cli.mcp.lint.LintFinding;
 import org.julclang.cli.mcp.lint.LintRule;
-import com.github.javaparser.ast.CompilationUnit;
-import com.github.javaparser.ast.body.MethodDeclaration;
-import com.github.javaparser.ast.body.VariableDeclarator;
-import com.github.javaparser.ast.expr.AssignExpr;
-import com.github.javaparser.ast.expr.NameExpr;
-import com.github.javaparser.ast.stmt.WhileStmt;
+import org.julclang.cli.mcp.lint.LintTrees;
+import org.julclang.compiler.frontend.javac.JavacSyntax;
+import com.sun.source.util.TreePath;
+import com.sun.source.tree.AnnotationTree;
+import com.sun.source.tree.AssignmentTree;
+import com.sun.source.tree.CompoundAssignmentTree;
+import com.sun.source.tree.ExpressionTree;
+import com.sun.source.tree.IdentifierTree;
+import com.sun.source.tree.Tree;
+import com.sun.source.tree.VariableTree;
+import com.sun.source.tree.WhileLoopTree;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -51,27 +56,27 @@ public final class MutableVarRule implements LintRule {
     }
 
     @Override
-    public List<LintFinding> check(CompilationUnit cu) {
+    public List<LintFinding> check(JavacSyntax syntax) {
         var findings = new ArrayList<LintFinding>();
-        cu.findAll(MethodDeclaration.class).forEach(method -> {
-            // Collect locals declared in this method's body.
-            Map<String, VariableDeclarator> locals = new HashMap<>();
-            method.findAll(VariableDeclarator.class).forEach(v ->
-                    locals.put(v.getNameAsString(), v));
-            if (locals.isEmpty()) return;
+        for (TreePath method : LintTrees.methods(syntax)) {
+            Set<String> locals = new HashSet<>();
+            for (TreePath path : LintTrees.findAll(method, VariableTree.class)) {
+                if (LintTrees.isDeclarator(path)) locals.add(((VariableTree) path.getLeaf()).getName().toString());
+            }
+            if (locals.isEmpty()) continue;
 
-            // Build set of variable names that are accumulators (declared
-            // before a while loop and assigned inside it). For accumulator-
-            // assignments we allow the assignment.
-            Set<String> whileAccumulators = collectWhileAccumulators(method, locals.keySet());
+            Set<String> whileAccumulators = new HashSet<>();
+            for (TreePath loop : LintTrees.findAll(method, WhileLoopTree.class)) {
+                for (TreePath assign : assignments(loop)) {
+                    String name = targetName(assign.getLeaf());
+                    if (name != null && locals.contains(name)) whileAccumulators.add(name);
+                }
+            }
 
-            method.findAll(AssignExpr.class).forEach(assign -> {
-                if (!(assign.getTarget() instanceof NameExpr ne)) return;
-                String name = ne.getNameAsString();
-                if (!locals.containsKey(name)) return;
-                if (whileAccumulators.contains(name)) return;
-                int line = assign.getBegin().map(p -> p.line).orElse(0);
-                int col = assign.getBegin().map(p -> p.column).orElse(0);
+            for (TreePath path : assignments(method)) {
+                String name = targetName(path.getLeaf());
+                if (name == null || !locals.contains(name)) continue;
+                if (whileAccumulators.contains(name)) continue;
                 findings.add(LintFinding.warning(
                         id(),
                         null,
@@ -79,30 +84,31 @@ public final class MutableVarRule implements LintRule {
                                 "JuLC on-chain code is single-assignment; the compiler will reject this. " +
                                 "(Inside a while-loop accumulator pattern, re-assignment IS allowed; " +
                                 "this lint runs a heuristic and may need a manual override.)",
-                        line, col,
+                        syntax.line(path.getLeaf()), syntax.column(path.getLeaf()),
                         "Introduce a new variable: `var " + name + "2 = " + name + ".add(...)`. " +
                                 "Or, if you need an accumulator, wrap the loop body in a `while`."
                 ));
-            });
-        });
+            }
+        }
         return findings;
     }
 
     /**
-     * Names of locals that look like while-loop accumulators: declared in
-     * the method, assigned inside the body of at least one {@code while}.
-     * Conservatively whitelisted so the rule doesn't false-positive on the
-     * canonical {@code while (cond) { acc = acc.add(...); }} pattern.
+     * JavaParser's assignment expressions: {@code =} and the compound ones, in pre-order. An annotation's
+     * {@code name = value} is an assignment in javac's tree and a member-value pair in JavaParser's, so it is left out.
      */
-    private static Set<String> collectWhileAccumulators(MethodDeclaration method, Set<String> locals) {
-        Set<String> acc = new HashSet<>();
-        method.findAll(WhileStmt.class).forEach(loop ->
-                loop.findAll(AssignExpr.class).forEach(assign -> {
-                    if (assign.getTarget() instanceof NameExpr ne
-                            && locals.contains(ne.getNameAsString())) {
-                        acc.add(ne.getNameAsString());
-                    }
-                }));
-        return acc;
+    private static List<TreePath> assignments(TreePath root) {
+        return LintTrees.findAll(root, ExpressionTree.class).stream()
+                .filter(path -> (path.getLeaf() instanceof AssignmentTree
+                        && !(path.getParentPath().getLeaf() instanceof AnnotationTree))
+                        || path.getLeaf() instanceof CompoundAssignmentTree)
+                .toList();
+    }
+
+    /** The assigned simple name, or null when the target is anything else. */
+    private static String targetName(Tree assignment) {
+        ExpressionTree target = assignment instanceof AssignmentTree a ? a.getVariable()
+                : ((CompoundAssignmentTree) assignment).getVariable();
+        return target instanceof IdentifierTree id ? id.getName().toString() : null;
     }
 }

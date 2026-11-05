@@ -1,0 +1,2 @@
+# Tests whose evaluations differ between recordings beyond adr068/nondeterministic-evaluations.txt: Adr068Corpus.NONDETERMINISTIC_ORIGINS.
+org.julclang.compiler.IntegerLiteralTest#generatedLiteralsHaveJavacsValue

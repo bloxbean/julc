@@ -162,7 +162,7 @@ JUnit 5 (Jupiter) with `junit-bom:5.11.4`. Test files follow the `*Test.java` na
 ### Fixing a Compiler Bug
 
 1. Write a failing test that reproduces the bug
-2. Fix the issue in the relevant compiler phase (`PirGenerator`, `UplcGenerator`, `LoopDesugarer`, etc.)
+2. Fix the issue in the relevant compiler phase (`frontend/javac/lower`, `UplcGenerator`, `LoopDesugarer`, etc.)
 3. Add a regression test
 4. Update `docs/troubleshooting.md` if the error message or behavior changes
 5. Reference `docs/compiler-developer-guide.md` for architecture understanding

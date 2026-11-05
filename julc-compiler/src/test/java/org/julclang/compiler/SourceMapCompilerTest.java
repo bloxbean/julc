@@ -19,6 +19,9 @@ class SourceMapCompilerTest {
         String source = """
                 import org.julclang.ledger.*;
                 import org.julclang.stdlib.Builtins;
+                import org.julclang.core.PlutusData;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class SimpleValidator {
@@ -44,6 +47,9 @@ class SourceMapCompilerTest {
         String source = """
                 import org.julclang.ledger.*;
                 import org.julclang.stdlib.Builtins;
+                import org.julclang.core.PlutusData;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class SimpleValidator {
@@ -68,6 +74,9 @@ class SourceMapCompilerTest {
         String source = """
                 import org.julclang.ledger.*;
                 import org.julclang.stdlib.Builtins;
+                import org.julclang.core.PlutusData;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class ConditionalValidator {
@@ -120,6 +129,9 @@ class SourceMapCompilerTest {
         String source = """
                 import org.julclang.ledger.*;
                 import org.julclang.stdlib.Builtins;
+                import org.julclang.core.PlutusData;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class ErrorValidator {

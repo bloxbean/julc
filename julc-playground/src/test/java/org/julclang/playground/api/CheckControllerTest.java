@@ -25,11 +25,14 @@ class CheckControllerTest {
         JavalinTest.test(app(), (server, client) -> {
             var body = mapper.writeValueAsString(new CheckRequest("""
                     import java.math.BigInteger;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.PlutusData;
 
                     @SpendingValidator
                     class SimpleValidator {
                         @Entrypoint
-                        static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                        static boolean validate(BigInteger redeemer, PlutusData ctx) {
                             return true;
                         }
                     }
@@ -56,7 +59,11 @@ class CheckControllerTest {
     @Test
     void onchainLibraryValidatorRoleConflict_returnsError() {
         JavalinTest.test(app(), (server, client) -> {
+            // Imported, so that javac's reading (ADR-068 M6) reads the annotations as JuLC's, as JavaParser's spells them.
             var body = mapper.writeValueAsString(new CheckRequest("""
+                    import org.julclang.stdlib.annotation.OnchainLibrary;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+
                     @OnchainLibrary
                     @SpendingValidator
                     class Confused {}

@@ -1,0 +1,19 @@
+format: 2
+name: JulcMap.of is off-chain only
+class: Probe
+method: m
+arg: 420102
+expect: REJECT JULC0062
+note: Rejected with JULC0062, which says that JulcMap.of is off-chain only and suggests JulcMap.empty()
+note: with insert. Before #257 the diagnostic was 'Undefined variable: JulcMap' (ADR-062 T20).
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+import org.julclang.core.types.JulcMap;
+
+public class Probe {
+    public static boolean m(byte[] a) {
+        JulcMap<byte[], BigInteger> map = JulcMap.of(a, BigInteger.ONE);
+        return map.containsKey(a);
+    }
+}

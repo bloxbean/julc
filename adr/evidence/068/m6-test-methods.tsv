@@ -1,0 +1,303 @@
+file	method	fate	why
+frontend/javac/lower/SubsetRulesTest.java	theReferenceWithTheGateOffIsUnchanged	deleted	About a gate rule the frontend it guarded took with it (D15, JULC0100/JULC0101 gate-only); SpelledProgramsOnJavacTest holds the javac frontend to each shape
+frontend/javac/lower/SubsetRulesTest.java	noMethodTakesAnIntrinsicsName	deleted	About a gate rule the frontend it guarded took with it (D15, JULC0100/JULC0101 gate-only); SpelledProgramsOnJavacTest holds the javac frontend to each shape
+frontend/javac/lower/SubsetRulesTest.java	noMethodIsCalledThroughASpelledVariable	deleted	About a gate rule the frontend it guarded took with it (D15, JULC0100/JULC0101 gate-only); SpelledProgramsOnJavacTest holds the javac frontend to each shape
+frontend/javac/lower/SubsetRulesTest.java	noCallOfAnAccumulatorsNameIsAUsersMethod	deleted	About a gate rule the frontend it guarded took with it (D15, JULC0100/JULC0101 gate-only); SpelledProgramsOnJavacTest holds the javac frontend to each shape
+frontend/javac/lower/SubsetRulesTest.java	aNewTypesComponentTakesNoServedName	deleted	About a gate rule the frontend it guarded took with it (D15, JULC0100/JULC0101 gate-only); SpelledProgramsOnJavacTest holds the javac frontend to each shape
+frontend/javac/lower/SubsetRulesTest.java	aNewTypeOfAnotherTypeIsNotThisRule	deleted	About a gate rule the frontend it guarded took with it (D15, JULC0100/JULC0101 gate-only); SpelledProgramsOnJavacTest holds the javac frontend to each shape
+frontend/javac/lower/SubsetRulesTest.java	anyRecordsComponentTakesNeitherName	deleted	About a gate rule the frontend it guarded took with it (D15, JULC0100/JULC0101 gate-only); SpelledProgramsOnJavacTest holds the javac frontend to each shape
+frontend/javac/lower/SubsetRulesTest.java	aNewTypeOfBytesHasNoInheritedCall	deleted	About a gate rule the frontend it guarded took with it (D15, JULC0100/JULC0101 gate-only); SpelledProgramsOnJavacTest holds the javac frontend to each shape
+frontend/javac/lower/SubsetRulesTest.java	aNewTypeOfAnIntegerTakesOnlyItsAccessor	deleted	About a gate rule the frontend it guarded took with it (D15, JULC0100/JULC0101 gate-only); SpelledProgramsOnJavacTest holds the javac frontend to each shape
+frontend/javac/lower/SubsetRulesTest.java	anApiMethodThroughAVariableIsNoSpelledCall	deleted	About a gate rule the frontend it guarded took with it (D15, JULC0100/JULC0101 gate-only); SpelledProgramsOnJavacTest holds the javac frontend to each shape
+frontend/javac/lower/SubsetRulesTest.java	aCallOnATypeIsNoSpelledCall	deleted	About a gate rule the frontend it guarded took with it (D15, JULC0100/JULC0101 gate-only); SpelledProgramsOnJavacTest holds the javac frontend to each shape
+frontend/javac/lower/SubsetRulesTest.java	aLibrarysMethodTakesNoIntrinsicsName	deleted	About a gate rule the frontend it guarded took with it (D15, JULC0100/JULC0101 gate-only); SpelledProgramsOnJavacTest holds the javac frontend to each shape
+CrossLibraryTypeWarningTest.java	testByteStringToDataWarns	deleted	The source is dialect javac rejects (D6, JULC0085/JULC0086), so it has no meaning on the only frontend; javac rejection is pinned by JavacTypesTest and the I1 table (byte[] or long passed as PlutusData); JavacLibrariesTest holds the warning for what javac lets through
+CrossLibraryTypeWarningTest.java	testIntegerToDataWarns	deleted	The source is dialect javac rejects (D6, JULC0085/JULC0086), so it has no meaning on the only frontend; javac rejection is pinned by JavacTypesTest and the I1 table (byte[] or long passed as PlutusData); JavacLibrariesTest holds the warning for what javac lets through
+CrossLibraryTypeWarningTest.java	testWarningDoesNotBlockCompilation	deleted	The source is dialect javac rejects (D6, JULC0085/JULC0086), so it has no meaning on the only frontend; javac rejection is pinned by JavacTypesTest and the I1 table (byte[] or long passed as PlutusData); JavacLibrariesTest holds the warning for what javac lets through
+CrossLibraryTypeWarningTest.java	testWarningHasSuggestion	deleted	The source is dialect javac rejects (D6, JULC0085/JULC0086), so it has no meaning on the only frontend; javac rejection is pinned by JavacTypesTest and the I1 table (byte[] or long passed as PlutusData); JavacLibrariesTest holds the warning for what javac lets through
+CrossLibraryTypeWarningTest.java	testMultiArgOnlyBadOnesWarn	deleted	The source is dialect javac rejects (D6, JULC0085/JULC0086), so it has no meaning on the only frontend; javac rejection is pinned by JavacTypesTest and the I1 table (byte[] or long passed as PlutusData); JavacLibrariesTest holds the warning for what javac lets through
+JulcCompilerTest.java	rejectsLibraryWithNewValidatorAnnotation	deleted	Reference rejection of an unread library (D8 r11); JavacLibraryRolesTest holds a referenced one
+JulcCompilerTest.java	rejectsLibraryThatCombinesOnchainLibraryAndValidatorAnnotation	deleted	Reference rejection of an unread library (D8 r11); JavacLibraryRolesTest holds a referenced one
+MultiFileCompilerTest.java	rejectsLibraryWithValidatorAnnotation	deleted	Reference rejection (D8, D7) or dialect (PlutusData as BigInteger); JavacLibraryRolesTest and JavacTypesTest hold javac
+MultiFileCompilerTest.java	rejectsLibraryWithMintingValidatorAnnotation	deleted	Reference rejection (D8, D7) or dialect (PlutusData as BigInteger); JavacLibraryRolesTest and JavacTypesTest hold javac
+MultiFileCompilerTest.java	rejectsDuplicateRecordTypes	deleted	Reference rejection (D8, D7) or dialect (PlutusData as BigInteger); JavacLibraryRolesTest and JavacTypesTest hold javac
+MultiFileCompilerTest.java	dataEntrypointParamPassedToIntegerLibMethod	deleted	Reference rejection (D8, D7) or dialect (PlutusData as BigInteger); JavacLibraryRolesTest and JavacTypesTest hold javac
+MultiFileCompilerTest.java	dataEntrypointParamPassedToIntegerLibMethodFalseCase	deleted	Reference rejection (D8, D7) or dialect (PlutusData as BigInteger); JavacLibraryRolesTest and JavacTypesTest hold javac
+resolve/FqcnResolutionTest.java	duplicateRecordFqcnThrowsError	deleted	Reference keys two records by name; on javac each has an identity (JavacTypesTest)
+ComparisonLoweringTest.java	dialectRelationalOperatorsTraceInSourceOrder	deleted	The source is dialect javac rejects (D6, JULC0085/JULC0086), so it has no meaning on the only frontend; javac rejection is pinned by JavacTypesTest and the I1 table
+DebugCompileResultTest.java	lambdaCapturesAndSameSpellingUseStableDistinctIdentities	deleted	The source is dialect javac rejects (D6, JULC0085/JULC0086), so it has no meaning on the only frontend; javac rejection is pinned by JavacTypesTest and the I1 table; JavacContractAndDebugTest holds captures at a list method
+LambdaExpressionTest.java	lambdaInLetBinding	deleted	The source is dialect javac rejects (D6, JULC0085/JULC0086), so it has no meaning on the only frontend; javac rejection is pinned by JavacTypesTest and the I1 table (a var of a lambda has no type in Java); JavacLambdasTest holds the rejection
+LambdaExpressionTest.java	lambdaAsMethodArgument	deleted	The source is dialect javac rejects (D6, JULC0085/JULC0086), so it has no meaning on the only frontend; javac rejection is pinned by JavacTypesTest and the I1 table (a var of a lambda has no type in Java); JavacLambdasTest holds the rejection
+LambdaExpressionTest.java	lambdaWithMultipleParams	deleted	The source is dialect javac rejects (D6, JULC0085/JULC0086), so it has no meaning on the only frontend; javac rejection is pinned by JavacTypesTest and the I1 table (a var of a lambda has no type in Java); JavacLambdasTest holds the rejection
+LambdaExpressionTest.java	lambdaWithBoolBody	deleted	The source is dialect javac rejects (D6, JULC0085/JULC0086), so it has no meaning on the only frontend; javac rejection is pinned by JavacTypesTest and the I1 table (a var of a lambda has no type in Java); JavacLambdasTest holds the rejection
+LambdaExpressionTest.java	lambdaWithBlockBodyCompiles	deleted	The source is dialect javac rejects (D6, JULC0085/JULC0086), so it has no meaning on the only frontend; javac rejection is pinned by JavacTypesTest and the I1 table (a var of a lambda has no type in Java); JavacLambdasTest holds the rejection
+LambdaExpressionTest.java	lambdaWithBooleanParams	deleted	The source is dialect javac rejects (D6, JULC0085/JULC0086), so it has no meaning on the only frontend; javac rejection is pinned by JavacTypesTest and the I1 table (a var of a lambda has no type in Java); JavacLambdasTest holds the rejection
+O3ListCaseLoweringTest.java	mapAndWhileTraversalDoNotAcquireListCaseRule	deleted	The source is dialect javac rejects (D6, JULC0085/JULC0086), so it has no meaning on the only frontend; javac rejection is pinned by JavacTypesTest and the I1 table (for-each over JulcMap)
+ParameterizedValidatorTest.java	paramByteArrayPassedToDataLibMethod	deleted	The source is dialect javac rejects (D6, JULC0085/JULC0086), so it has no meaning on the only frontend; javac rejection is pinned by JavacTypesTest and the I1 table
+PlutusDataConversionTest.java	pubKeyHashFromPlutusDataIsIdentity	deleted	The source is dialect javac rejects (D6, JULC0085/JULC0086), so it has no meaning on the only frontend; javac rejection is pinned by JavacTypesTest and the I1 table (fromPlutusData on a user type), or a hash read as Data: JavacCallsTest holds the hash in a variable
+PlutusDataConversionTest.java	userDefinedRecordFromPlutusDataIsIdentity	deleted	The source is dialect javac rejects (D6, JULC0085/JULC0086), so it has no meaning on the only frontend; javac rejection is pinned by JavacTypesTest and the I1 table (fromPlutusData on a user type), or a hash read as Data: JavacCallsTest holds the hash in a variable
+PlutusDataConversionTest.java	fromPlutusDataInFieldAccess	deleted	The source is dialect javac rejects (D6, JULC0085/JULC0086), so it has no meaning on the only frontend; javac rejection is pinned by JavacTypesTest and the I1 table (fromPlutusData on a user type), or a hash read as Data: JavacCallsTest holds the hash in a variable
+PlutusDataConversionTest.java	userDefinedSealedInterfaceFromPlutusData	deleted	The source is dialect javac rejects (D6, JULC0085/JULC0086), so it has no meaning on the only frontend; javac rejection is pinned by JavacTypesTest and the I1 table (fromPlutusData on a user type), or a hash read as Data: JavacCallsTest holds the hash in a variable
+PlutusDataConversionTest.java	recordToPlutusDataIsIdentity	deleted	The source is dialect javac rejects (D6, JULC0085/JULC0086), so it has no meaning on the only frontend; javac rejection is pinned by JavacTypesTest and the I1 table (fromPlutusData on a user type), or a hash read as Data: JavacCallsTest holds the hash in a variable
+StdlibCompileEvalTest.java	pairKeyOnMapEntry	deleted	The source is dialect javac rejects (D6, JULC0085/JULC0086), so it has no meaning on the only frontend; javac rejection is pinned by JavacTypesTest and the I1 table (for-each over JulcMap, ListsLib registry-only HOFs), or the reference find (M3f decision 1): JavacLambdasTest
+StdlibCompileEvalTest.java	pairValueOnMapEntry	deleted	The source is dialect javac rejects (D6, JULC0085/JULC0086), so it has no meaning on the only frontend; javac rejection is pinned by JavacTypesTest and the I1 table (for-each over JulcMap, ListsLib registry-only HOFs), or the reference find (M3f decision 1): JavacLambdasTest
+StdlibCompileEvalTest.java	forEachOverMapAccumulates	deleted	The source is dialect javac rejects (D6, JULC0085/JULC0086), so it has no meaning on the only frontend; javac rejection is pinned by JavacTypesTest and the I1 table (for-each over JulcMap, ListsLib registry-only HOFs), or the reference find (M3f decision 1): JavacLambdasTest
+StdlibCompileEvalTest.java	forEachOverEmptyMap	deleted	The source is dialect javac rejects (D6, JULC0085/JULC0086), so it has no meaning on the only frontend; javac rejection is pinned by JavacTypesTest and the I1 table (for-each over JulcMap, ListsLib registry-only HOFs), or the reference find (M3f decision 1): JavacLambdasTest
+StdlibCompileEvalTest.java	forEachOnMapFromFieldAccess	deleted	The source is dialect javac rejects (D6, JULC0085/JULC0086), so it has no meaning on the only frontend; javac rejection is pinned by JavacTypesTest and the I1 table (for-each over JulcMap, ListsLib registry-only HOFs), or the reference find (M3f decision 1): JavacLambdasTest
+StdlibCompileEvalTest.java	listFindWithTypedLambda	deleted	The source is dialect javac rejects (D6, JULC0085/JULC0086), so it has no meaning on the only frontend; javac rejection is pinned by JavacTypesTest and the I1 table (for-each over JulcMap, ListsLib registry-only HOFs), or the reference find (M3f decision 1): JavacLambdasTest
+StdlibCompileEvalTest.java	listsLibMapInferred	deleted	The source is dialect javac rejects (D6, JULC0085/JULC0086), so it has no meaning on the only frontend; javac rejection is pinned by JavacTypesTest and the I1 table (for-each over JulcMap, ListsLib registry-only HOFs), or the reference find (M3f decision 1): JavacLambdasTest
+StdlibCompileEvalTest.java	listsLibFilterInferred	deleted	The source is dialect javac rejects (D6, JULC0085/JULC0086), so it has no meaning on the only frontend; javac rejection is pinned by JavacTypesTest and the I1 table (for-each over JulcMap, ListsLib registry-only HOFs), or the reference find (M3f decision 1): JavacLambdasTest
+StdlibCompileEvalTest.java	listFindInferred	deleted	The source is dialect javac rejects (D6, JULC0085/JULC0086), so it has no meaning on the only frontend; javac rejection is pinned by JavacTypesTest and the I1 table (for-each over JulcMap, ListsLib registry-only HOFs), or the reference find (M3f decision 1): JavacLambdasTest
+StdlibCompileEvalTest.java	listsLibAnyInferredByteStringType	deleted	The source is dialect javac rejects (D6, JULC0085/JULC0086), so it has no meaning on the only frontend; javac rejection is pinned by JavacTypesTest and the I1 table (for-each over JulcMap, ListsLib registry-only HOFs), or the reference find (M3f decision 1): JavacLambdasTest
+StringLiteralEscapeTest.java	theJavaParserReaderStillFailsClosed	deleted	Tests the reader M6 deletes; every shape stays pinned on javac by the same class
+TypeMethodsTest.java	byteStringPlusOperator	deleted	The source is dialect javac rejects (D6, JULC0085/JULC0086), so it has no meaning on the only frontend; javac rejection is pinned by JavacTypesTest and the I1 table (+, length() or hash() on byte[], value() on a Data local)
+TypeMethodsTest.java	byteArrayLengthMethod	deleted	The source is dialect javac rejects (D6, JULC0085/JULC0086), so it has no meaning on the only frontend; javac rejection is pinned by JavacTypesTest and the I1 table (+, length() or hash() on byte[], value() on a Data local)
+TypeMethodsTest.java	bytesDataValueOnVar	deleted	The source is dialect javac rejects (D6, JULC0085/JULC0086), so it has no meaning on the only frontend; javac rejection is pinned by JavacTypesTest and the I1 table (+, length() or hash() on byte[], value() on a Data local)
+TypeMethodsTest.java	intDataValueOnVar	deleted	The source is dialect javac rejects (D6, JULC0085/JULC0086), so it has no meaning on the only frontend; javac rejection is pinned by JavacTypesTest and the I1 table (+, length() or hash() on byte[], value() on a Data local)
+TypeMethodsTest.java	bytesDataValueChainedWithEquals	deleted	The source is dialect javac rejects (D6, JULC0085/JULC0086), so it has no meaning on the only frontend; javac rejection is pinned by JavacTypesTest and the I1 table (+, length() or hash() on byte[], value() on a Data local)
+TypeMethodsTest.java	sealedInterfaceHashDotHash	deleted	The source is dialect javac rejects (D6, JULC0085/JULC0086), so it has no meaning on the only frontend; javac rejection is pinned by JavacTypesTest and the I1 table (+, length() or hash() on byte[], value() on a Data local)
+TypeMethodsTest.java	helperMethodWithHashDotHash	deleted	The source is dialect javac rejects (D6, JULC0085/JULC0086), so it has no meaning on the only frontend; javac rejection is pinned by JavacTypesTest and the I1 table (+, length() or hash() on byte[], value() on a Data local)
+TypeMethodsTest.java	helperMethodInHofLambda	deleted	The source is dialect javac rejects (D6, JULC0085/JULC0086), so it has no meaning on the only frontend; javac rejection is pinned by JavacTypesTest and the I1 table (+, length() or hash() on byte[], value() on a Data local)
+VerboseCompilationTest.java	testVerboseLogsAllStages	deleted	The stage lines were the JavaParser path's log; testVerboseOnTheDefaultFrontend holds what javac logs
+VerboseCompilationTest.java	testVerboseWithLibraries	deleted	The stage lines were the JavaParser path's log; testVerboseOnTheDefaultFrontend holds what javac logs
+VerboseCompilationTest.java	testVerboseWithParams	deleted	The stage lines were the JavaParser path's log; testVerboseOnTheDefaultFrontend holds what javac logs
+frontend/javac/subset/ConstantStringJoinsTest.java	itNeedsTheGateOnTheJavaParserFrontend	deleted	About the gate alone
+BuilderBinderHygieneTest.java	staticListsLibHofsDoNotCaptureOuterLambdaParameters	deleted	The source is dialect javac rejects (D6, JULC0085/JULC0086), so it has no meaning on the only frontend; javac rejection is pinned by JavacTypesTest and the I1 table (ListsLib.any and zip are registry-only)
+JulcMapTest.java	ForEachMapGet (7 tests)	deleted	The source is dialect javac rejects (D6, JULC0085/JULC0086), so it has no meaning on the only frontend; javac rejection is pinned by JavacTypesTest and the I1 table (iterating a JulcMap has no Java form, ADR-068 M5)
+JulcMapTest.java	WhileLoopMapGet (7 tests)	deleted	The source is dialect javac rejects (D6, JULC0085/JULC0086), so it has no meaning on the only frontend; javac rejection is pinned by JavacTypesTest and the I1 table (iterating a JulcMap has no Java form, ADR-068 M5)
+JulcMapTest.java	WhileLoopMapEdgeCases (5 tests)	deleted	The source is dialect javac rejects (D6, JULC0085/JULC0086), so it has no meaning on the only frontend; javac rejection is pinned by JavacTypesTest and the I1 table (iterating a JulcMap has no Java form, ADR-068 M5)
+JulcMapTest.java	WhileLoopMultiAcc (5 tests)	deleted	The source is dialect javac rejects (D6, JULC0085/JULC0086), so it has no meaning on the only frontend; javac rejection is pinned by JavacTypesTest and the I1 table (iterating a JulcMap has no Java form, ADR-068 M5)
+JulcMapTest.java	WhileLoopNestedMap (2 tests)	deleted	The source is dialect javac rejects (D6, JULC0085/JULC0086), so it has no meaning on the only frontend; javac rejection is pinned by JavacTypesTest and the I1 table (iterating a JulcMap has no Java form, ADR-068 M5)
+TypeMethodsTest.java	assertReferenceEqualityRejected methods	ported	The javac rejection JULC0086 and the Java form stay; the JavaParser half goes
+CrossMethodTypeInferenceTest.java	assertReferenceEqualityRejected methods	ported	The javac rejection JULC0086 and the Java form stay; the JavaParser half goes
+StdlibCompileEvalTest.java	uniqueOutputAtErrorsNoMatch, txOutAddressExtractsCorrectField, uniqueOutputAtSucceeds, chainedFieldAccessOnLibraryRecordResult	ported	Incidental == on an Address becomes equals (JULC0086)
+JulcAnnotationProcessorFrontendTest.java	javacCompilesTheScriptTheReferenceDoes	removed or renamed	See the file's row in m6-test-table.tsv
+JulcAnnotationProcessorFrontendTest.java	aLibraryOfThePoolCompilesAsOnTheReference	removed or renamed	See the file's row in m6-test-table.tsv
+JulcAnnotationProcessorFrontendTest.java	theOptionReachesTheCompilation	removed or renamed	See the file's row in m6-test-table.tsv
+JulcAnnotationProcessorJavacGateTest.java	anEmptyConstructorCompiles	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068ToolsCorpusTest.java	toolsReadTheCorpusAlikeOnBothParsers	removed or renamed	See the file's row in m6-test-table.tsv
+TestDiscoveryTest.java	discoverSkipsSourcesThatOnlyMentionTestAndJuLCCannotRead	removed or renamed	See the file's row in m6-test-table.tsv
+BuildCommandFrontendTest.java	aProjectLibraryBuildsAsOnTheReference	removed or renamed	See the file's row in m6-test-table.tsv
+BuildCommandFrontendTest.java	javacBuildsTheScriptTheReferenceDoes	removed or renamed	See the file's row in m6-test-table.tsv
+BuildCommandFrontendTest.java	theOptionReachesTheCompilation	removed or renamed	See the file's row in m6-test-table.tsv
+BuildCommandFrontendTest.java	aBlueprintBuildsOnTheDefault	removed or renamed	See the file's row in m6-test-table.tsv
+BuildCommandFrontendTest.java	anUnknownFrontendFailsTheBuild	removed or renamed	See the file's row in m6-test-table.tsv
+BuildCommandJavacGateTest.java	anEmptyConstructorBuilds	removed or renamed	See the file's row in m6-test-table.tsv
+LintEngineOnJavacTest.java	varargsLabelsAndNestedSwitchesMatchJavaParser	removed or renamed	See the file's row in m6-test-table.tsv
+LintEngineOnJavacTest.java	aRuleWithoutAJavacReadingIsReportedAsNotRunning	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068DiscoveryCorpusTest.java	javacReadsTheLibraryReferencesJavaParserReads	removed or renamed	See the file's row in m6-test-table.tsv
+BinderNamespaceCheckTest.java	javaFrontendNamespace	moved	To BinderNamespaceTest.onlyDeclaredNamesCount, on javac's trees (review F4)
+ComparisonLoweringTest.java	staticLibraryDispatchIsUnchanged	removed or renamed	See the file's row in m6-test-table.tsv
+CompileResultProvenanceTest.java	reportModeRecordsARejectionItDidNotEnforce	removed or renamed	See the file's row in m6-test-table.tsv
+CompileResultProvenanceTest.java	aGateThatDidNotRunSaysSo	removed or renamed	See the file's row in m6-test-table.tsv
+CompileResultProvenanceTest.java	provenanceDoesNotChangeTheCompiledBytes	removed or renamed	See the file's row in m6-test-table.tsv
+DialectRemovalAlternativesTest.java	anEmptyLoopReachesNoComparison	removed or renamed	See the file's row in m6-test-table.tsv
+DialectRemovalAlternativesTest.java	rewritingValueEqualityTurnsARuntimeFailureIntoAComparison	removed or renamed	See the file's row in m6-test-table.tsv
+DialectRemovalAlternativesTest.java	rewritingHashEqualityWithAnIntegerStillFailsAtADifferentBuiltin	removed or renamed	See the file's row in m6-test-table.tsv
+JulcMapTest.java	sumViaGet_twoEntries	removed or renamed	See the file's row in m6-test-table.tsv
+JulcMapTest.java	sumViaGet_threeEntries	removed or renamed	See the file's row in m6-test-table.tsv
+JulcMapTest.java	sumViaDirect_twoEntries	removed or renamed	See the file's row in m6-test-table.tsv
+JulcMapTest.java	allKeysPresent	removed or renamed	See the file's row in m6-test-table.tsv
+JulcMapTest.java	crossMapLookup	removed or renamed	See the file's row in m6-test-table.tsv
+JulcMapTest.java	sumViaGet_emptyMap	removed or renamed	See the file's row in m6-test-table.tsv
+JulcMapTest.java	sumViaGet_singleEntry	removed or renamed	See the file's row in m6-test-table.tsv
+JulcMapTest.java	sumViaGet_twoEntries	removed or renamed	See the file's row in m6-test-table.tsv
+JulcMapTest.java	sumViaGet_threeEntries	removed or renamed	See the file's row in m6-test-table.tsv
+JulcMapTest.java	sumViaDirect_twoEntries	removed or renamed	See the file's row in m6-test-table.tsv
+JulcMapTest.java	allKeysPresent	removed or renamed	See the file's row in m6-test-table.tsv
+JulcMapTest.java	crossMapLookup	removed or renamed	See the file's row in m6-test-table.tsv
+JulcMapTest.java	sumViaGet_emptyMap	removed or renamed	See the file's row in m6-test-table.tsv
+JulcMapTest.java	sumViaGet_singleEntry	removed or renamed	See the file's row in m6-test-table.tsv
+JulcMapTest.java	booleanGuard_findKey	removed or renamed	See the file's row in m6-test-table.tsv
+JulcMapTest.java	booleanGuard_findKeyMissing	removed or renamed	See the file's row in m6-test-table.tsv
+JulcMapTest.java	countAndSum	removed or renamed	See the file's row in m6-test-table.tsv
+JulcMapTest.java	countEvenValues	removed or renamed	See the file's row in m6-test-table.tsv
+JulcMapTest.java	countAboveThreshold	removed or renamed	See the file's row in m6-test-table.tsv
+JulcMapTest.java	nestedMapIteration	removed or renamed	See the file's row in m6-test-table.tsv
+JulcMapTest.java	mapIterWithInnerListWhile	removed or renamed	See the file's row in m6-test-table.tsv
+JulcMapTest.java	singleEntryIteration	removed or renamed	See the file's row in m6-test-table.tsv
+JulcMapTest.java	emptyMapSkipsLoop	removed or renamed	See the file's row in m6-test-table.tsv
+JulcMapTest.java	largeMap	removed or renamed	See the file's row in m6-test-table.tsv
+JulcMapTest.java	tailPreservesMapType	removed or renamed	See the file's row in m6-test-table.tsv
+JulcMapTest.java	headThenTailConsistency	removed or renamed	See the file's row in m6-test-table.tsv
+LambdaExpressionTest.java	singleParamLambda	removed or renamed	See the file's row in m6-test-table.tsv
+LambdaExpressionTest.java	multiParamLambda	removed or renamed	See the file's row in m6-test-table.tsv
+LambdaExpressionTest.java	lambdaWithBlockBody	removed or renamed	See the file's row in m6-test-table.tsv
+LambdaExpressionTest.java	lambdaGeneratesCorrectType	removed or renamed	See the file's row in m6-test-table.tsv
+LibraryDiscoveryCleanupTest.java	importNamesComeFromCustomRegistrationsAndSurviveComposition	removed or renamed	See the file's row in m6-test-table.tsv
+LibrarySourceResolverReadersTest.java	bothReadersListTheSameReferencesInTheSameOrder	removed or renamed	See the file's row in m6-test-table.tsv
+PatternMatchTest.java	buildDataMatchReordersByTag	removed or renamed	See the file's row in m6-test-table.tsv
+SealedInterfaceTest.java	registersTwoVariantSealedInterface	removed or renamed	See the file's row in m6-test-table.tsv
+SealedInterfaceTest.java	registersThreeVariantSealedInterface	removed or renamed	See the file's row in m6-test-table.tsv
+SealedInterfaceTest.java	variantHasCorrectFields	removed or renamed	See the file's row in m6-test-table.tsv
+SealedInterfaceTest.java	lookupSumTypeForVariant	removed or renamed	See the file's row in m6-test-table.tsv
+SealedInterfaceTest.java	resolvesSealedInterfaceAsType	removed or renamed	See the file's row in m6-test-table.tsv
+SealedInterfaceTest.java	constructorGetsCorrectTag	removed or renamed	See the file's row in m6-test-table.tsv
+SealedInterfaceTest.java	secondVariantGetsTag1	removed or renamed	See the file's row in m6-test-table.tsv
+SealedInterfaceTest.java	constructorFieldsGenerated	removed or renamed	See the file's row in m6-test-table.tsv
+SourceReadersTest.java	anUnknownReaderFailsWhenUsedNamingTheProperty	removed or renamed	See the file's row in m6-test-table.tsv
+SourceReadersTest.java	anEnumsNestedTypesComeInJavaParsersOrder	removed or renamed	See the file's row in m6-test-table.tsv
+SubsetRulesAtEveryEntryTest.java	theDefaultModeEnforces	removed or renamed	See the file's row in m6-test-table.tsv
+SubsetRulesAtEveryEntryTest.java	enforceRejects	removed or renamed	See the file's row in m6-test-table.tsv
+SubsetRulesAtEveryEntryTest.java	reportAndOffLeaveTheRulesUnenforced	removed or renamed	See the file's row in m6-test-table.tsv
+SubsetRulesAtEveryEntryTest.java	reportWritesTheRuleDown	removed or renamed	See the file's row in m6-test-table.tsv
+SubsetRulesAtEveryEntryTest.java	theJavacFrontendAppliesTheRulesInEveryMode	removed or renamed	See the file's row in m6-test-table.tsv
+UnicodeEscapeReadingTest.java	everyRejectedSourceIsRejectedWhateverJavacDoes	removed or renamed	See the file's row in m6-test-table.tsv
+UnicodeEscapeReadingTest.java	nodePositionsReferToTheSourceAsWritten	removed or renamed	See the file's row in m6-test-table.tsv
+UnicodeEscapeReadingTest.java	parseProblemsReferToTheSourceAsWritten	removed or renamed	See the file's row in m6-test-table.tsv
+UnicodeEscapeReadingTest.java	aLexicalErrorNamesThePositionAsWritten	removed or renamed	See the file's row in m6-test-table.tsv
+UnicodeEscapeReadingTest.java	commentsAreAttributedAndPlacedAsWritten	removed or renamed	See the file's row in m6-test-table.tsv
+UnicodeEscapeReadingTest.java	annotationPreFiltersSkipOffChainSourcesJuLCCannotRead	removed or renamed	See the file's row in m6-test-table.tsv
+UnicodeEscapeReadingTest.java	aCandidateThatOnlyMentionsAnAnnotationHasNoJulcRole	removed or renamed	See the file's row in m6-test-table.tsv
+UnicodeEscapeReadingTest.java	theParserLintSeesEveryShape	removed or renamed	See the file's row in m6-test-table.tsv
+UnicodeEscapeReadingTest.java	everyParserIsMadeByJavaSourceParser	removed or renamed	See the file's row in m6-test-table.tsv
+CorpusRecorderTest.java	aRecordingHoldsCompilationsOnEitherFrontend	removed or renamed	See the file's row in m6-test-table.tsv
+DiagnosticCollectorTest.java	collectsErrorsWithPosition	removed or renamed	See the file's row in m6-test-table.tsv
+DiagnosticCollectorTest.java	errorsWithoutNodeUseZeroPosition	removed or renamed	See the file's row in m6-test-table.tsv
+DiagnosticCollectorTest.java	errorWithCode_attachesStableCode	removed or renamed	See the file's row in m6-test-table.tsv
+DiagnosticCollectorTest.java	errorWithGeneratedCode_formatsTemplateAndUsesCatalogFix	removed or renamed	See the file's row in m6-test-table.tsv
+DiagnosticCollectorTest.java	errorWithCode_withoutNode_isStillStructured	removed or renamed	See the file's row in m6-test-table.tsv
+JavacGateEnvironmentTest.java	aLoaderWithoutTheCompilerApiIsJulc0089	removed or renamed	See the file's row in m6-test-table.tsv
+JavacGateEnvironmentTest.java	aLoaderWithoutTheCompilerApiIsJulc0089OnTheJavacFrontend	removed or renamed	See the file's row in m6-test-table.tsv
+JavacGateEnvironmentTest.java	readJarsWithoutJavacFailsWhenEnforcedAndChecksPathsOtherwise	removed or renamed	See the file's row in m6-test-table.tsv
+JavacGateReviewTest.java	cacheKeyDistinguishesUnitBoundariesAndPaths	removed or renamed	See the file's row in m6-test-table.tsv
+JavacGateReviewTest.java	aCollidingPrimedResultCannotAcceptAProviderInEnforceMode	removed or renamed	See the file's row in m6-test-table.tsv
+JavacGateReviewTest.java	anUnwritableOrInvalidReportPathNeverFailsACompilation	removed or renamed	See the file's row in m6-test-table.tsv
+JavacGateReviewTest.java	theGateDecidesOnTheMergedPoolWhileReportModeCompilesB0sPool	removed or renamed	See the file's row in m6-test-table.tsv
+JavacGateReviewTest.java	enforceModeCompilesTheMergedPoolInBothFrontends	removed or renamed	See the file's row in m6-test-table.tsv
+JavacGateReviewTest.java	anExplicitReportOptionWinsOverAGlobalEnforceProperty	removed or renamed	See the file's row in m6-test-table.tsv
+JavacGateReviewTest.java	anUnrelatedCompilationsTagsNeverChangeAResult	removed or renamed	See the file's row in m6-test-table.tsv
+JavacGateReviewTest.java	metadataTaskIsCachedPerProcessAndLocksItself	moved	To JavacFrontendTest, on JavacLibraryTypes.metadata() (review F11)
+JavacGateReviewTest.java	aSurrogateTextAndItsStoredFormNeverShareAKey	removed or renamed	See the file's row in m6-test-table.tsv
+JavacSeamTest.java	noFrontendSourceNamesTheResolverOrJavaParser	removed or renamed	See the file's row in m6-test-table.tsv
+JavacTypesTest.java	registryEqualsTheJavaParserPath	removed or renamed	See the file's row in m6-test-table.tsv
+JavacTypesTest.java	providerOutputEqualsTheJavaParserPath	removed or renamed	See the file's row in m6-test-table.tsv
+JavacTypesTest.java	theDefaultIsJavac	removed or renamed	See the file's row in m6-test-table.tsv
+JavacTypesTest.java	aProvidersTypesEqualTheJavaParserPath	removed or renamed	See the file's row in m6-test-table.tsv
+ByteEqualsRemedyTest.java	theOldFormIsJulc0087WithTheRemedyAndTheWayBack	removed or renamed	See the file's row in m6-test-table.tsv
+EntrypointContextPropertyTest.java	theContextIsTheLastParameterOnBothFrontends	removed or renamed	See the file's row in m6-test-table.tsv
+JavacCastsTest.java	theReferenceErasesTheNarrowing	removed or renamed	See the file's row in m6-test-table.tsv
+SubsetRulesTest.java	anEntryPointIsKnownByItsAnnotationsName	removed or renamed	See the file's row in m6-test-table.tsv
+SubsetRulesTest.java	aTopLevelUsersValueOfIsACall	removed or renamed	See the file's row in m6-test-table.tsv
+SubsetRulesTest.java	aLibrarysAnonymousClassIsRejected	removed or renamed	See the file's row in m6-test-table.tsv
+SubsetRulesTest.java	theSpelledNamesAreTypeResolversOwn	removed or renamed	See the file's row in m6-test-table.tsv
+SubsetRulesTest.java	noTypeTakesASpelledName	removed or renamed	See the file's row in m6-test-table.tsv
+SubsetRulesTest.java	noTypeParameterTakesASpelledName	removed or renamed	See the file's row in m6-test-table.tsv
+SubsetRulesTest.java	aTypeParameterNamedBooleanIsNoEscapeFromTheCastRule	removed or renamed	See the file's row in m6-test-table.tsv
+SubsetRulesTest.java	aTypeInALocalScopeIsReadToo	removed or renamed	See the file's row in m6-test-table.tsv
+SubsetRulesTest.java	aUsersBigIntegerHasNoValueOf	removed or renamed	See the file's row in m6-test-table.tsv
+SubsetRulesTest.java	aLibraryTakesNoSpelledName	removed or renamed	See the file's row in m6-test-table.tsv
+SubsetRulesTest.java	theRuleNamesTheComponent	removed or renamed	See the file's row in m6-test-table.tsv
+SubsetRulesTest.java	theMethodRuleNamesTheMethod	removed or renamed	See the file's row in m6-test-table.tsv
+SubsetRulesTest.java	theTypeRuleNamesTheType	removed or renamed	See the file's row in m6-test-table.tsv
+PirTermTest.java	listMatchRetainsResultTypeWithUnreachableEmptyBranch	removed or renamed	See the file's row in m6-test-table.tsv
+FqcnResolutionTest.java	explicitImportResolvesCorrectly	removed or renamed	See the file's row in m6-test-table.tsv
+FqcnResolutionTest.java	samePackageResolvesFirst	removed or renamed	See the file's row in m6-test-table.tsv
+FqcnResolutionTest.java	ambiguousWildcardThrowsError	removed or renamed	See the file's row in m6-test-table.tsv
+FqcnResolutionTest.java	unknownTypeReturnsFallback	removed or renamed	See the file's row in m6-test-table.tsv
+FqcnResolutionTest.java	explicitImportWinsOverWildcard	removed or renamed	See the file's row in m6-test-table.tsv
+FqcnResolutionTest.java	memberTypeShadowsImports	removed or renamed	See the file's row in m6-test-table.tsv
+FqcnResolutionTest.java	memberTypesAreScopedToTheEnclosingTypes	removed or renamed	See the file's row in m6-test-table.tsv
+FqcnResolutionTest.java	noPackageCodeResolves	removed or renamed	See the file's row in m6-test-table.tsv
+SubsetValidatorTest.java	acceptsLambda	removed or renamed	See the file's row in m6-test-table.tsv
+SubsetValidatorTest.java	rejectsMethodReference	removed or renamed	See the file's row in m6-test-table.tsv
+SubsetValidatorTest.java	acceptsRecordApply	removed or renamed	See the file's row in m6-test-table.tsv
+SubsetValidatorTest.java	methodReferenceErrorHasSuggestion	removed or renamed	See the file's row in m6-test-table.tsv
+SubsetValidatorTest.java	warnsCodeAfterReturn	removed or renamed	See the file's row in m6-test-table.tsv
+SubsetValidatorTest.java	warnsCodeAfterBreak	removed or renamed	See the file's row in m6-test-table.tsv
+SubsetValidatorTest.java	warningDoesNotBlockCompilation	removed or renamed	See the file's row in m6-test-table.tsv
+SubsetValidatorTest.java	onlyFirstUnreachableWarns	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068DelayedMethodsTest.java	aLibraryOnJavacIsTheReferences	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068GuardShapesPropertyTest.java	bothFrontendsAnswerAlike	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringHarnessTest.java	theFrontendIsPartOfTheCacheKey	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringTest.java	theJavacFrontendAgainstTheReference	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aProgramFullyCovered	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aProgramPartlyCovered	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	javacRejectsWhatTheReferenceAccepted	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aJulcRejectionOfWhatTheReferenceAcceptedIsADifference	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aRejectionOfWhatTheReferenceRejectsIsNotAPass	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aPortedRuleIsTheSameRejection	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aPortedRuleWithItsNewCodeIsADifference	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aRejectionAlike	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aSourceBothRejectJavacFirst	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	acceptingWhatTheReferenceRejectsIsADifference	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aDifferenceInBytesIsReported	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aDifferenceAtOneLevelWithASourceMapIsReported	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aDifferenceInDiagnosticsIsReported	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aDifferenceInParamInfosIsReported	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aMethodLoweredToAnotherTermIsReported	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aMethodLoweredToAnotherTermWhereJavacRejectsIsUnaccepted	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aPirRowOnlyJavacRejectsIsAPolicyRejection	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aPirRowOnlyTheReferenceRejectsIsAcceptedByDecision	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aPirRowBothRejectHasNoClass	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aRowOfAnotherTermPinsThatTerm	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aRowOfAnotherTypePinsThatType	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aRowPinsEveryMethodThatDiffers	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aMethodOnlyThisFrontendLowersIsPinned	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aMethodLoweredToAnotherTypeIsReported	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aProgramAcceptedWithMethodsNotLoweredIsReported	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aMovedPositionIsReported	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	everyMovedPositionIsReported	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aRowWithADiagnosticDifferencePinsTheBytes	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aRowThatAlsoDiffersInParamsIsNotADiagnosticsRow	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aRowWithAParamDifferencePinsTheBytes	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	javacsCellsOfARowOnlyItAcceptsArePinned	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	javacsCellsOfARowOnlyItAcceptsArePinnedWithASourceMap	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aProgramWithALibraryIsTheRootsAloneWithASourceMap	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aProgramWithALibraryIsTheRootsAlone	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aRejectionAtAnotherPositionIsReported	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aMethodLoweredOnlyByJavacIsReported	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aLostPositionIsReported	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	onlyOneSideCompilingWithAMapIsReported	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	javacsOwnRejectionIsPinnedInFull	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aDifferenceBeyondWhatIsShownMovesTheRow	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aReferenceThatMovedIsReportedInEveryColumn	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aCaseTheReferenceTableDoesNotHoldIsReported	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aReferenceThatMovedIsReportedOnARowJavacDoesNotReach	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aMethodTheReferenceLowersDifferentlyMovesTheTable	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aMoveOutOfJavacRejectsIsAShrink	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aMoveOutOfAListedRejectionIsAShrink	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aMoveAmongListedClassesIsAShrink	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aGainIsNoShrink	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aRowNewerThanTheTableIsComparedWithTheRunsReference	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aChangedDigestOfARowIsAShrink	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aChangedProvenanceOfARowIsAShrink	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	theEvidenceDirectoryIsNoOutputDirectory	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aMoveDownIsAShrink	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	everyClassTheToolWritesHasARank	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	anAcceptedEntryNamesADifferenceAndItsClass	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	anEntryWithoutAD13ClassIsRefused	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	anEntryWhoseClassCannotExplainItsRowIsRefused	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aRunTimePolicyRejectionNamesAListedDecisionAndAControl	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	theM5aTablesCiteControlsThatExist	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aCaseListedTwiceIsRefused	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aFailedBindingCheckFailsTheTool	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aCrashOfAWholeProgramFailsTheTool	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aRejectionOfAWholeProgramIsARow	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	anIllegalArgumentIsARejectionOfAProviderAlone	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	theFrontendReportsWhatItThrew	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aCrashOfOneMethodFailsTheTool	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aMethodIsComparedThoughAnotherIsRejected	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aProviderCellSpellsOutItsConstants	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aSpecializationSpellsOutItsConstants	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	theLedgersEmptyProviderIsCompared	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aVarargsLibraryMethodDoesNotLower	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aLoneMethodThatCallsAMethodOfItsClassPassesTheCheck	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068LoweringToolTest.java	aFixedLibraryMethodLowersAtItsCallSite	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068M5aHarnessTest.java	theReferenceReadsAConditionalsElseBranchAsItsThenBranch	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068SwitchCorpusOnJavacTest.java	everyProgramTakesTheReferencesAnswer	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068TypeIdentityTest.java	theReferenceReadsBothByTheirSpelling	removed or renamed	See the file's row in m6-test-table.tsv
+BundleJulcSourcesTaskTest.java	bundleFailsOnACandidateJuLCCannotRead	removed or renamed	See the file's row in m6-test-table.tsv
+JulcPluginFrontendTest.java	javacCompilesTheScriptTheReferenceDoes	removed or renamed	See the file's row in m6-test-table.tsv
+JulcPluginFrontendTest.java	aLibraryOfTheSourceDirectoryCompilesAsOnTheReference	removed or renamed	See the file's row in m6-test-table.tsv
+JulcPluginFrontendTest.java	theOptionReachesTheCompilation	removed or renamed	See the file's row in m6-test-table.tsv
+JulcPluginFrontendTest.java	theProcessorIsToldTheFrontend	removed or renamed	See the file's row in m6-test-table.tsv
+JulcPluginFrontendTest.java	anUnknownFrontendFailsTheBuild	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068MetadataCorpusTest.java	javacReadsTheMetadataJavaParserReads	removed or renamed	See the file's row in m6-test-table.tsv
+JavaMetadataExtractorReadersTest.java	aTryCatchIsJulc0015OnBothReadings	removed or renamed	See the file's row in m6-test-table.tsv
+JavaMetadataExtractorReadersTest.java	aValidatorKeepingToTheSubsetIsValidOnBoth	removed or renamed	See the file's row in m6-test-table.tsv
+Adr068AnnotationsCorpusTest.java	javacReadsTheAnnotationsJavaParserReads	removed or renamed	See the file's row in m6-test-table.tsv
+SourceAnnotationsTest.java	bothReadersReadTheSameUnit	removed or renamed	See the file's row in m6-test-table.tsv
+SourceAnnotationsTest.java	theValuesAreJavaParsersReading	removed or renamed	See the file's row in m6-test-table.tsv
+SourceAnnotationsTest.java	anUnreadableSourceThrowsOnBoth	removed or renamed	See the file's row in m6-test-table.tsv
+SourceAnnotationsTest.java	aCommentBeforeAValueAndASpacedMinusPrintAsJavaParserPrintsThem	removed or renamed	See the file's row in m6-test-table.tsv

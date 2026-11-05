@@ -1,0 +1,18 @@
+format: 2
+name: a user record Value reaches the ledger handler by simple name
+class: Probe
+method: m
+arg: 05
+expect: REJECT JULC0055
+note: ADR-067 F45: nested in Probe, on the constructor. A subset rule: a class or a record does not take a type key of the lowering.
+note: ADR-068 M6: on the only frontend, javac, REJECT JULC0055; the JavaParser frontend answered REJECT JULC0100.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    record Value(boolean isEmpty) {}
+
+    public static boolean m(BigInteger a) {
+        return new Value(a.signum() > 0).isEmpty();
+    }
+}

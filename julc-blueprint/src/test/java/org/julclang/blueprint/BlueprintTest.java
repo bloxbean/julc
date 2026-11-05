@@ -481,26 +481,28 @@ class BlueprintTest {
 
     @Test
     void advertisedContainerEncodingIsAcceptedByTheSameCompiledValidator() {
+        // A JulcMap: java.util.Map's get with a byte[] key compares it by identity on the JVM (JULC0087, ADR-068 D6),
+        // and JuLC's map compares byte[] keys by content on the JVM as on-chain.
         String source = """
                 import org.julclang.stdlib.annotation.*;
                 import org.julclang.ledger.ScriptContext;
                 import java.math.BigInteger;
                 import java.util.List;
-                import java.util.Map;
+                import org.julclang.core.types.JulcMap;
                 import java.util.Optional;
 
                 @MintingValidator
                 class EncodingGate {
                     record Redeemer(List<BigInteger> values,
-                                    Map<byte[], BigInteger> balances,
+                                    JulcMap<byte[], BigInteger> balances,
                                     Optional<byte[]> owner,
                                     boolean active) {}
 
                     @Entrypoint
                     static boolean validate(Redeemer redeemer, ScriptContext ctx) {
                         byte[] owner = redeemer.owner().get();
-                        return redeemer.values().get(0) == 42
-                                && redeemer.balances().get(owner) == 7
+                        return redeemer.values().get(0).equals(BigInteger.valueOf(42))
+                                && redeemer.balances().get(owner).equals(BigInteger.valueOf(7))
                                 && redeemer.active();
                     }
                 }
@@ -588,9 +590,10 @@ class BlueprintTest {
         String source = """
                 import org.julclang.stdlib.annotation.*;
                 import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
                 @MintingValidator class BodyGate {
                     record Redeemer(BigInteger value) {}
-                    @Entrypoint static boolean validate(Redeemer redeemer, BigInteger ctx) {
+                    @Entrypoint static boolean validate(Redeemer redeemer, PlutusData ctx) {
                         return true;
                     }
                 }
@@ -719,12 +722,16 @@ class BlueprintTest {
                 }
                 """;
 
+        // A record component is Data-encoded, so the array is rejected where its type is written (JULC0091,
+        // ADR-068 D6, #298), before the strict boundary would reject the datum.
         var error = assertThrows(
                 org.julclang.compiler.CompilerException.class,
                 () -> new org.julclang.compiler.JulcCompiler()
                         .compileContract(source));
-        assertTrue(error.getMessage().contains("ArrayType"));
-        assertTrue(error.getMessage().contains("ArrayGate.java"));
+        var diagnostic = error.diagnostics().getFirst();
+        assertEquals("JULC0091", diagnostic.code(), error.getMessage());
+        assertTrue(diagnostic.message().contains("Component 'values' of record Datum"), diagnostic.message());
+        assertTrue(diagnostic.line() > 0, diagnostic.toString());
         assertFalse(error.getMessage().contains("Any Plutus data"));
     }
 

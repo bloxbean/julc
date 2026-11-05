@@ -67,12 +67,16 @@ class BigIntegerCompatTest {
         void bigIntegerValueOfCompilesAsIntLiteral() {
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            return BigInteger.valueOf(42) == 42;
+                            return BigInteger.valueOf(42).equals(BigInteger.valueOf(42));
                         }
                     }
                     """;
@@ -91,12 +95,16 @@ class BigIntegerCompatTest {
         void bigIntegerValueOfInArithmetic() {
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            return BigInteger.valueOf(10) + BigInteger.valueOf(5) == 15;
+                            return BigInteger.valueOf(10).add(BigInteger.valueOf(5)).equals(BigInteger.valueOf(15));
                         }
                     }
                     """;
@@ -118,12 +126,16 @@ class BigIntegerCompatTest {
         void newBigIntegerWithStringLiteral() {
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            return new BigInteger("50000000000") == 50000000000L;
+                            return new BigInteger("50000000000").equals(BigInteger.valueOf(50000000000L));
                         }
                     }
                     """;
@@ -142,12 +154,16 @@ class BigIntegerCompatTest {
         void newBigIntegerInArithmetic() {
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            return new BigInteger("100") + new BigInteger("200") == 300;
+                            return new BigInteger("100").add(new BigInteger("200")).equals(BigInteger.valueOf(300));
                         }
                     }
                     """;
@@ -169,12 +185,16 @@ class BigIntegerCompatTest {
         void bigIntegerZero() {
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            return BigInteger.ZERO == 0;
+                            return BigInteger.ZERO.equals(BigInteger.ZERO);
                         }
                     }
                     """;
@@ -193,12 +213,16 @@ class BigIntegerCompatTest {
         void bigIntegerOne() {
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            return BigInteger.ONE == 1;
+                            return BigInteger.ONE.equals(BigInteger.ONE);
                         }
                     }
                     """;
@@ -217,12 +241,16 @@ class BigIntegerCompatTest {
         void bigIntegerTwoAndTen() {
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            return BigInteger.TWO + BigInteger.TEN == 12;
+                            return BigInteger.TWO.add(BigInteger.TEN).equals(BigInteger.valueOf(12));
                         }
                     }
                     """;
@@ -245,6 +273,9 @@ class BigIntegerCompatTest {
             // redeemer.no().equals(BigInteger.valueOf(42))
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -274,6 +305,9 @@ class BigIntegerCompatTest {
         void equalsOnRecordIntFieldFalse() {
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -304,6 +338,10 @@ class BigIntegerCompatTest {
             // This tests .equals() on a ByteString field against another ByteString
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -315,30 +353,22 @@ class BigIntegerCompatTest {
                         }
                     }
                     """;
-            var compiler = new JulcCompiler();
-            var program = compiler.compile(source).program();
-
-            var pkh = new byte[]{1, 2, 3, 4, 5};
-            var datum = PlutusData.constr(0,
-                    PlutusData.bytes(pkh),
-                    PlutusData.integer(1000));
-            var optDatum = PlutusData.constr(0, datum);
-            var txOutRef = PlutusData.constr(0,
-                    PlutusData.bytes(new byte[32]),
-                    PlutusData.integer(0));
-            var scriptInfo = PlutusData.constr(1, txOutRef, optDatum);
-            var txInfo = buildTxInfo(new PlutusData[0], alwaysInterval());
-            // Redeemer is BData(pkh) — same bytes as datum.beneficiary
-            var ctx = buildScriptContext(txInfo, PlutusData.bytes(pkh), scriptInfo);
-
-            var result = vm.evaluateWithArgs(program, List.of(ctx));
-            assertTrue(result.isSuccess(), "datum.beneficiary().equals(redeemer) should be true. Got: " + result);
+            // ADR-068 M5: on javac, the default, byte[].equals is Object.equals, identity on the JVM: JULC0087, whose fix
+            // names Builtins.equalsByteString.
+            var rejected = assertThrows(CompilerException.class, () -> new JulcCompiler().compile(source));
+            var diagnostic = rejected.diagnostics().getFirst();
+            assertEquals("JULC0087", diagnostic.code(), rejected.getMessage());
+            assertTrue(diagnostic.suggestion().contains("Builtins.equalsByteString(a, b)"), diagnostic.suggestion());
         }
 
         @Test
         void equalsWithBigIntegerZero() {
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -374,6 +404,12 @@ class BigIntegerCompatTest {
             // Full vesting validator using .equals() and BigInteger.valueOf() — the user's original pattern
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxInfo;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.PubKeyHash;
 
                     @SpendingValidator
                     class VestingValidator {
@@ -384,7 +420,7 @@ class BigIntegerCompatTest {
                         static boolean validate(VestingDatum datum, VestingRedeemer redeemer, ScriptContext ctx) {
                             TxInfo txInfo = ctx.txInfo();
                             var sigs = txInfo.signatories();
-                            boolean hasSigner = sigs.contains(datum.beneficiary());
+                            boolean hasSigner = sigs.contains(PlutusData.cast(datum.beneficiary(), PubKeyHash.class));
                             boolean correctAction = redeemer.no().equals(BigInteger.valueOf(1));
                             return hasSigner && correctAction;
                         }
@@ -419,6 +455,12 @@ class BigIntegerCompatTest {
         void vestingValidatorRejectsWrongRedeemer() {
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxInfo;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.PubKeyHash;
 
                     @SpendingValidator
                     class VestingValidator {
@@ -429,7 +471,7 @@ class BigIntegerCompatTest {
                         static boolean validate(VestingDatum datum, VestingRedeemer redeemer, ScriptContext ctx) {
                             TxInfo txInfo = ctx.txInfo();
                             var sigs = txInfo.signatories();
-                            boolean hasSigner = sigs.contains(datum.beneficiary());
+                            boolean hasSigner = sigs.contains(PlutusData.cast(datum.beneficiary(), PubKeyHash.class));
                             boolean correctAction = redeemer.no().equals(BigInteger.valueOf(1));
                             return hasSigner && correctAction;
                         }

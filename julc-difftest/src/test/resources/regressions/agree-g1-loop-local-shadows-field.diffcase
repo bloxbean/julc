@@ -1,0 +1,63 @@
+format: 3
+name: a loop-body local shadows a field of another type, and the field is read after the loop (G1 default profile)
+class: Probe
+method: m
+profile: G1 r3 -GUARDS -RECORD_PATTERNS -CROSS_TYPE_EQUALS -SHARED_VARIANT -ASSIGN_PATTERN_BINDING -ZERO_ARG_HELPERS -SHADOW_IN_LOOP_BRANCH -LOOP_BREAK_SHAPES -TRACE_IN_COMPARISON
+arg: 04
+arg: 23
+arg: 9f21232104ff
+arg: d8799fd87980ff
+expect: AGREE
+note: The default-profile shape closest to #209 (ADR-066 M2 review, F67): boolean f, declared directly in a while
+note: body, shadows the field R0 f; after the loop, f.equals(x) reads the field. The PR campaign generated it 0
+note: times in 150 on its seed; this case runs it on every build until the G1E corpus (M4) covers it.
+found.by: G1 default campaign (ADR-066 M2, F67)
+found.generator: G1 r3
+found.plan: 146,302,149,191,835,837,614,479,597,67,613,946,665,261,96,747,688,697,83,46,796,612,582,722,218,207,832,896,238,138,908,657,227,765,800,386,877,792,90,74,975,593,496,712,463,242,189,369,995,184,286,638,483,299,179,107,148,916,853,247,607,323,65,916,960,993,91,166,846,157,680,244,760,937,380,289,961,126,255,302,934,700,961,188,383,309,807,386,98,78,785,320,985,689,938,680,120,926,863,633,16,26,528,892,265,291,884,150,164,764,503,529,577,492
+found.inputs: 49,353,84,147,67,862,998,944,386,613,251,399
+found.compiler: 0.1.0-pre20 v0.1.0-pre20-39-gb9f8ba9eba06-dirty
+recorded.jvm: Value d8799fd87980ff []
+recorded.Java/NONE: Value d8799fd87980ff []
+recorded.Java/NONE.cost: cpu 13803530 mem 52107 size 499
+recorded.Java/BASELINE: Value d8799fd87980ff []
+recorded.Java/BASELINE.cost: cpu 12154659 mem 46193 size 347
+recorded.Java/PV11_SAFE: Value d8799fd87980ff []
+recorded.Java/PV11_SAFE.cost: cpu 10274169 mem 39183 size 311
+recorded.Java/PV11_COSTED: Value d8799fd87980ff []
+recorded.Java/PV11_COSTED.cost: cpu 10274169 mem 39183 size 311
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+import org.julclang.stdlib.Builtins;
+
+public class Probe {
+    record R0(boolean x) {}
+
+    static final R0 f = new R0(false);
+
+    static BigInteger t(String k, BigInteger v) {
+        return Builtins.unIData(Builtins.trace(k, Builtins.iData(v)));
+    }
+
+    static BigInteger fail(BigInteger z) {
+        return Builtins.unIData(Builtins.error());
+    }
+
+    static boolean f(BigInteger x, R0 f, R0 v) {
+        return BigInteger.valueOf(-2).compareTo(BigInteger.valueOf(-4)) > 0;
+    }
+
+    public static R0 m(BigInteger a, BigInteger b, JulcList<BigInteger> xs, R0 w) {
+        R0 x = f;
+        long i0 = 0;
+        while (i0 < 2) {
+            boolean f = !(b.compareTo(BigInteger.valueOf(-3)) <= 0);
+            x = w;
+            i0 = i0 + 1;
+        }
+        if (f.equals(x)) {
+            return new R0(BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) < 0);
+        }
+        return new R0(BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) < 0);
+    }
+}

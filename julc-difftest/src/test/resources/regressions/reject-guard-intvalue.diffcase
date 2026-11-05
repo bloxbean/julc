@@ -1,0 +1,27 @@
+format: 3
+name: a guard calling BigInteger.intValue() (F81, #294)
+class: Probe
+method: m
+tag: Probe$A Probe$S 0
+tag: Probe$B Probe$S 1
+arg: 1a80000000
+expect: REJECT JULC0072
+recorded.jvm: Value 01 []
+recorded.base: Value 02 []
+note: ADR-067 M1 round 4, F81: Java narrows 2147483648 to a negative int (1); JuLC lowers intValue() to the identity (#294) and gave 2 at bbf815a1, so the guard is rejected.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    sealed interface S permits A, B {}
+    record A(BigInteger v) implements S {}
+    record B(BigInteger v) implements S {}
+
+    public static BigInteger m(BigInteger a) {
+        S s = new A(a);
+        return switch (s) {
+            case A x when x.v().intValue() < 0 -> BigInteger.ONE;
+            default -> BigInteger.TWO;
+        };
+    }
+}

@@ -370,8 +370,9 @@ class O8ValueSharingTest {
     @Test
     void parameterBoundConversionsInStaticHelpersShareInsideTheWrapperScope() {
         var source = O8ValueSharingFixtures.IMPORTS + """
+                import org.julclang.stdlib.annotation.Param;
                 class ParamShapes {
-                    @Param PlutusData p;
+                    @Param static PlutusData p;
                     static JulcValue expected() { return NativeValueLib.fromData(p); }
                     static boolean same() {
                         return NativeValueLib.contains(NativeValueLib.fromData(p), expected());
@@ -381,8 +382,9 @@ class O8ValueSharingTest {
         // The validator entry point wraps @Param lambdas the same way; it must compile too.
         var validator = O8ValueSharingFixtures.IMPORTS + """
                 import org.julclang.ledger.*;
+                import org.julclang.stdlib.annotation.*;
                 @SpendingValidator class ParamValidator {
-                    @Param PlutusData expectedValue;
+                    @Param static PlutusData expectedValue;
                     static JulcValue expected() { return NativeValueLib.fromData(expectedValue); }
                     @Entrypoint static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                         JulcValue e = NativeValueLib.fromData(expectedValue);
@@ -396,7 +398,8 @@ class O8ValueSharingTest {
                     .setOptimizationCostProfile(OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1))
                     .compileWithDetails(validator);
             assertFalse(compiled.hasErrors(), level + " " + compiled.diagnostics());
-            assertEquals(level.pv11SafeRulesEnabled() ? 1 : 2, countConversions(compiled.pirTerm()), level.toString());
+            // The helper's conversion may fail, so it runs at each call (ADR-068 B4), and no sharing reaches into it.
+            assertEquals(2, countConversions(compiled.pirTerm()), level.toString());
             assertEquals(java.util.Set.of(), org.julclang.compiler.pir.PirSubstitution.collectFreeVarNames(compiled.pirTerm()), level.toString());
         }
         for (var data : List.of(VALID, NOT_A_MAP, ZERO_QUANTITY)) {
@@ -405,8 +408,8 @@ class O8ValueSharingTest {
             assertFalse(baseline.hasErrors(), baseline.diagnostics().toString());
             assertFalse(safe.hasErrors(), safe.diagnostics().toString());
             assertEquals(2, countConversions(baseline.pirTerm()));
-            assertEquals(1, countConversions(safe.pirTerm()));
-            assertTrue(safe.optimizationReport().appliedRules().contains(ValueConversionSharingPass.RULE));
+            assertEquals(2, countConversions(safe.pirTerm()));
+            assertFalse(safe.optimizationReport().appliedRules().contains(ValueConversionSharingPass.RULE));
             for (String provider : List.of("Java", "Truffle", "Scalus")) {
                 var before = evaluate(baseline.program(), List.of(data), provider);
                 var after = evaluate(safe.program(), List.of(data), provider);

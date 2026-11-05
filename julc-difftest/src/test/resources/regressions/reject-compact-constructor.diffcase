@@ -1,0 +1,22 @@
+format: 2
+name: #282 a compact constructor normalizing a component (N3)
+class: Probe
+method: m
+arg: 05
+expect: REJECT JULC0099
+note: ADR-067 N3. A subset rule: a constructor holds no statement.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    record R(BigInteger x) {
+        R {
+            x = x.abs();
+        }
+    }
+
+    public static BigInteger m(BigInteger a) {
+        R r = new R(a.negate());
+        return r.x();
+    }
+}

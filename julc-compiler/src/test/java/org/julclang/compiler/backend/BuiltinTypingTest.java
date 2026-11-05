@@ -1,5 +1,6 @@
 package org.julclang.compiler.backend;
 
+import org.julclang.compiler.uplc.BooleanProof;
 import org.julclang.core.BuiltinSemantics;
 import org.julclang.core.DefaultFun;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -26,5 +27,15 @@ class BuiltinTypingTest {
             assertTrue(semantics.typeArity() > 0, fun + " is polymorphic in the VM table");
             assertEquals(semantics.valueArity(), polymorphic, fun + " arity");
         }
+    }
+
+    /** What the conditional's lowering trusts is what the signatures say: only {@code nullList} is polymorphic. */
+    @ParameterizedTest
+    @EnumSource(DefaultFun.class)
+    void aBuiltinReturnsABooleanExactlyWhenItsSignatureSaysSo(DefaultFun fun) {
+        var monomorphic = BuiltinTyping.monomorphic(fun);
+        boolean signature = fun == DefaultFun.NullList
+                || monomorphic != null && monomorphic.result().equals(BuiltinTyping.BOOL);
+        assertEquals(signature, BooleanProof.returnsBoolean(fun), fun.name());
     }
 }

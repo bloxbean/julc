@@ -442,6 +442,8 @@ class O15ProjectionSharingTest {
                 import org.julclang.ledger.ScriptContext;
                 import org.julclang.ledger.TxInfo;
                 import java.math.BigInteger;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.MintingValidator;
                 @MintingValidator
                 class Corpus {
                     record Order(BigInteger amount, byte[] owner) {}

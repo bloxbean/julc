@@ -113,13 +113,6 @@ export default defineConfig({
             { label: 'Compiler Developer Guide', slug: 'internals/compiler-developer-guide' },
           ],
         },
-        {
-          label: 'Experimental',
-          collapsed: true,
-          items: [
-            { label: 'JRL Guide', slug: 'experimental/jrl-guide', badge: { text: 'Experimental', variant: 'caution' } },
-          ],
-        },
       ],
     }),
     svelte(),

@@ -10,7 +10,7 @@ This document covers all supported Java operations in the JuLC compiler, the sta
 
 | Java Type | UPLC Representation | Notes |
 |-----------|-------------------|-------|
-| `int`, `long`, `BigInteger` | Integer | All mapped to arbitrary-precision integers |
+| `int`, `long`, `BigInteger` | Integer | All mapped to arbitrary-precision integers. Use `long` or `BigInteger` for values that can get large (see the note below) |
 | `boolean` | Bool (Constr 0/1) | `false` = Constr(0,[]), `true` = Constr(1,[]) |
 | `byte[]` | ByteString | Raw bytes |
 | `String` | String (UTF-8) | Converted via EncodeUtf8/DecodeUtf8 |
@@ -26,6 +26,8 @@ This document covers all supported Java operations in the JuLC compiler, the sta
 | `PubKeyHash`, `PolicyId`, `TokenName`, `TxId`, `ScriptHash`, `ValidatorHash`, `DatumHash` | ByteString | Ledger hash types |
 | `Value` | Map(Pair) | Named RecordType with instance methods |
 | `JulcArray<T>` *(PV11)* | BuiltinArray | O(1) random access array (CIP-138). PV11+ only |
+
+**An on-chain integer has no width.** In Java an `int` wraps past 32 bits and a `long` past 64; on-chain neither wraps. A value that stays in range is the same in both, and one that overflows in a JVM test keeps growing in the script. So use `long` for amounts, counters and anything computed from them, and `BigInteger` for values that can pass 64 bits, such as lovelace products. An explicit `(int)` cast follows Java and keeps the low 32 bits. `int x; x += someLong;` is rejected (`JULC0130`), because Java narrows it without saying so: declare `x` as `long`.
 
 ### JulcList and JulcMap
 
@@ -78,11 +80,13 @@ Raw `Tuple2` (no type args) defaults to `DataType` for backward compatibility. T
 Zero-cost type aliases for single-field records with a supported underlying type (`byte[]`, `BigInteger`, `String`, `boolean`).
 
 ```java
-@NewType
-public record AssetClass(byte[] policyId) {}
+import org.julclang.stdlib.annotation.NewType;
 
-// On-chain: identity (no ConstrData wrap)
-// AssetClass.of(bytes) is auto-registered
+@NewType
+public record AssetClass(byte[] value) {}
+
+// On-chain: new AssetClass(bytes) is identity (no ConstrData wrap)
+// There is no synthesized AssetClass.of(bytes): it is not Java (ADR-068 D6)
 ```
 
 ### Type.of() Factory Methods
@@ -125,28 +129,40 @@ var items2 = PlutusData.cast(data, JulcList.class);                 // element t
 
 ### Arithmetic
 
+Operators apply to `int` and `long`, as in Java. A `BigInteger` uses its methods (`a.add(b)`, `a.subtract(b)`,
+`a.multiply(b)`, `a.divide(b)`, `a.remainder(b)`, `a.mod(b)`), which compile to the integer builtins.
+
 | Operator | Java Example | UPLC Builtin | Notes |
 |----------|-------------|-------------|-------|
-| `+` | `a + b` | `AddInteger` | For `BigInteger`/`int`/`long` operands |
-| `+` | `s1 + s2` | `AppendString` | For `String` operands |
-| `+` | `b1 + b2` | `AppendByteString` | For `byte[]` operands |
+| `+` | `a + b` | `AddInteger` | `int`/`long`; `a.add(b)` for `BigInteger` |
+| `+` | `s1 + s2` | `AppendString` | Two `String` operands; a non-`String` operand is `JULC0090` |
 | `-` | `a - b` | `SubtractInteger` | |
 | `*` | `a * b` | `MultiplyInteger` | |
 | `/` | `a / b` | `QuotientInteger` | Truncates toward zero, matching Java |
 | `%` | `a % b` | `RemainderInteger` | |
 
-The `+` operator is type-aware: the compiler infers the operand type and dispatches to the correct builtin.
+Bytes are joined with `Builtins.appendByteString(b1, b2)`.
 
 ### Comparison
 
+`==` and `!=` compare primitives (`int`, `long`, `boolean`). Between references they are reference equality in Java,
+so the compiler rejects them (`JULC0086`), except for constant strings built from literals and `+`. Compare
+references by value:
+
+| Java Example | UPLC Builtin | Notes |
+|-------------|-------------|-------|
+| `a == b` | `EqualsInteger` | `int`/`long` |
+| `x == y` | `IfThenElse` | `boolean` |
+| `a.equals(b)` | `EqualsInteger` | `BigInteger` |
+| `s1.equals(s2)` | `EqualsString` | `String` |
+| `Builtins.equalsByteString(b1, b2)` | `EqualsByteString` | `byte[]`: `b1.equals(b2)` compares references on the JVM, so it is `JULC0087` |
+| `d1.equals(d2)` | `EqualsData` | `PlutusData`, records and sealed interfaces whose components hold no `byte[]` |
+| `a.compareTo(b) < 0` | `LessThanInteger` | `BigInteger` ordering: `compareTo(...) OP 0` |
+
+Ordering on `int` and `long`:
+
 | Operator | Java Example | UPLC Builtin | Notes |
 |----------|-------------|-------------|-------|
-| `==` | `a == b` | `EqualsInteger` | For `BigInteger`/`int`/`long` (default) |
-| `==` | `s1 == s2` | `EqualsString` | For `String` operands |
-| `==` | `b1 == b2` | `EqualsByteString` | For `byte[]` operands |
-| `==` | `d1 == d2` | `EqualsData` | For `PlutusData`, records, sealed interfaces |
-| `==` | `x == y` | `IfThenElse` | For `boolean` operands |
-| `!=` | `a != b` | negated equality | Same type dispatch as `==` |
 | `<` | `a < b` | `LessThanInteger` | |
 | `<=` | `a <= b` | `LessThanEqualsInteger` | |
 | `>` | `a > b` | `LessThanInteger` (swapped) | |
@@ -184,8 +200,8 @@ record Withdraw(BigInteger amount) implements Action {}
 
 // In validator:
 return switch (action) {
-    case Deposit d -> d.amount() > 0;
-    case Withdraw w -> w.amount() > 0 && hasSigner;
+    case Deposit d -> d.amount().compareTo(BigInteger.ZERO) > 0;
+    case Withdraw w -> w.amount().compareTo(BigInteger.ZERO) > 0 && hasSigner;
 };
 ```
 
@@ -194,7 +210,7 @@ Switch expressions check exhaustiveness at compile time. All variants of the sea
 ### instanceof Pattern Matching
 ```java
 if (action instanceof Deposit d) {
-    return d.amount() > 0;
+    return d.amount().compareTo(BigInteger.ZERO) > 0;
 }
 ```
 
@@ -215,11 +231,11 @@ Desugared to a recursive fold. Supports single/multi-accumulator, break, and nes
 
 ### While Loop
 ```java
-BigInteger sum = 0;
-BigInteger i = 0;
-while (i < 10) {
-    sum = sum + i;
-    i = i + 1;
+BigInteger sum = BigInteger.ZERO;
+BigInteger i = BigInteger.ZERO;
+while (i.compareTo(BigInteger.TEN) < 0) {
+    sum = sum.add(i);
+    i = i.add(BigInteger.ONE);
 }
 ```
 Desugared to tail-recursive call via Z-combinator.
@@ -234,11 +250,11 @@ All variables are **immutable** (functional semantics). Reassignment is only sup
 
 ```java
 // OK
-BigInteger x = 42;
-var y = x + 1;
+BigInteger x = BigInteger.valueOf(42);
+var y = x.add(BigInteger.ONE);
 
 // NOT OK - assignment not supported
-x = x + 1;
+x = x.add(BigInteger.ONE);
 ```
 
 The `var` keyword is supported and types are inferred from the initializer.
@@ -251,7 +267,7 @@ Records compile to Constr-encoded Data with fields in declaration order.
 record VestingDatum(byte[] beneficiary, BigInteger deadline) {}
 
 // Construction
-var datum = new VestingDatum(pkh, 1000);
+var datum = new VestingDatum(pkh, BigInteger.valueOf(1000));
 
 // Field access
 byte[] b = datum.beneficiary();
@@ -263,10 +279,15 @@ BigInteger d = datum.deadline();
 Static methods in the validator class (without `@Entrypoint`) are compiled as helper functions. Recursive helper methods use Z-combinator transformation.
 
 ```java
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class MyValidator {
     static boolean isPositive(BigInteger x) {
-        return x > 0;
+        return x.compareTo(BigInteger.ZERO) > 0;
     }
 
     @Entrypoint
@@ -279,27 +300,21 @@ class MyValidator {
 ## Lambda Expressions
 
 ```java
-ListsLib.any(list, x -> x > 0)
-ListsLib.filter(list, x -> Builtins.unIData(x) > 100)
-ListsLib.foldl((acc, x) -> acc + Builtins.unIData(x), BigInteger.ZERO, list)
+list.any(x -> x.compareTo(BigInteger.ZERO) > 0)
+list.filter(x -> Builtins.unIData(x).compareTo(BigInteger.valueOf(100)) > 0)
 ```
 
 Lambda bodies can be a single expression or a block:
 
 ```java
-ListsLib.filter(items, item -> {
+items.filter(item -> {
     var threshold = new BigInteger("100");
-    return Builtins.unIData(item) > threshold;
+    return Builtins.unIData(item).compareTo(threshold) > 0;
 });
 ```
 
-Equivalent instance method syntax (lambda types auto-inferred):
-
-```java
-list.any(x -> x.compareTo(BigInteger.ZERO) > 0)
-list.filter(x -> Builtins.unIData(x).compareTo(BigInteger.valueOf(100)) > 0)
-// foldl is only available as ListsLib.foldl (no instance method)
-```
+Lambda parameter types are inferred. There is no Java form of `foldl`: write a fold as an
+accumulator loop.
 
 ## Typed Ledger Access
 
@@ -403,7 +418,7 @@ boolean hasSigner = ctx.txInfo().signatories().contains(datum.beneficiary());
 
 Chaining is supported: `sigs.tail().isEmpty()`, `sigs.tail().contains(pkh)`.
 
-`foldl` is only available as a static call (`ListsLib.foldl`), not as an instance method.
+There is no Java form of `foldl`: write a fold as an accumulator loop.
 
 ### Map Instance Methods
 
@@ -442,16 +457,18 @@ MapType variables always hold pair lists internally. `insert` and `delete` retur
 | Method | Return Type | UPLC Translation |
 |--------|------------|-----------------|
 | `.equals(other)` | `boolean` | `EqualsString` |
-| `.length()` | `BigInteger` | `LengthOfByteString(EncodeUtf8(s))` |
+| `.length()` | `int` | UTF-16 code units, counted from `EncodeUtf8(s)` |
 
-### ByteString (byte[]) Instance Methods
+### ByteString (byte[]) Operations
 
-| Method | Return Type | UPLC Translation |
+A `byte[]` is a Java array, so its operations are `Builtins` calls; `byte[].equals` compares references on the JVM and is
+`JULC0087`.
+
+| Call | Return Type | UPLC Translation |
 |--------|------------|-----------------|
-| `.equals(other)` | `boolean` | `EqualsByteString` |
-| `.length()` | `BigInteger` | `LengthOfByteString` |
-| `.length` | `BigInteger` | `LengthOfByteString` (field access form) |
-| `.hash()` | `byte[]` | `UnBData` (for list iteration context) |
+| `Builtins.equalsByteString(a, b)` | `boolean` | `EqualsByteString` |
+| `Builtins.lengthOfByteString(b)` | `long` | `LengthOfByteString` |
+| `b.length` | `int` | `LengthOfByteString` (field access form) |
 
 ### Optional Instance Methods
 
@@ -463,7 +480,8 @@ MapType variables always hold pair lists internally. `insert` and `delete` retur
 
 ### PlutusData Equality
 
-Raw `PlutusData` variables support `.equals()` and `==`/`!=` operators using `EqualsData`.
+Raw `PlutusData` variables compare with `.equals()`, using `EqualsData`. `==` and `!=` between them are reference
+equality in Java and are rejected (`JULC0086`).
 
 ## Standard Library Reference
 
@@ -518,13 +536,10 @@ Import from `org.julclang.stdlib.lib.*` in validators. See [Standard Library Gui
 | `hasDuplicateBytes(list)` | List | Check for duplicate bytestrings |
 | `empty()` | (none) | Create empty list |
 | `prepend(elem, list)` | Data, List | Prepend element to list |
-| `any(list, pred)` | List, Lambda | True if any element matches |
-| `all(list, pred)` | List, Lambda | True if all elements match |
-| `find(list, pred)` | List, Lambda | Find first matching (Optional) |
-| `foldl(f, init, list)` | Lambda, init, List | Left fold |
-| `map(list, f)` | List, Lambda | Transform elements |
-| `filter(list, pred)` | List, Lambda | Keep matching elements |
-| `zip(a, b)` | List, List | Pair elements from two lists |
+
+`ListsLib` declares no `any`, `all`, `find`, `foldl`, `map`, `filter` or `zip` in Java, so
+javac rejects those calls (`JULC0085`). Use the `JulcList` instance methods, or an accumulator
+loop for a fold.
 
 ### ValuesLib
 
@@ -789,10 +804,13 @@ var result = JulcEval.forClass(MyHelper.class).call("methodName", arg1, arg2);
 ## Complete Example
 
 ```java
-import org.julclang.onchain.annotation.*;
-import org.julclang.onchain.ledger.*;
 import org.julclang.core.PlutusData;
 import java.math.BigInteger;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.TxInfo;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+import org.julclang.ledger.PubKeyHash;
 
 @SpendingValidator
 class VestingValidator {
@@ -801,8 +819,8 @@ class VestingValidator {
     @Entrypoint
     static boolean validate(VestingDatum datum, PlutusData redeemer, ScriptContext ctx) {
         TxInfo txInfo = ctx.txInfo();
-        boolean hasSigner = txInfo.signatories().contains(datum.beneficiary());
-        boolean pastDeadline = datum.deadline() > 0;
+        boolean hasSigner = txInfo.signatories().contains(PubKeyHash.of(datum.beneficiary()));
+        boolean pastDeadline = datum.deadline().compareTo(BigInteger.ZERO) > 0;
         return hasSigner && pastDeadline;
     }
 }

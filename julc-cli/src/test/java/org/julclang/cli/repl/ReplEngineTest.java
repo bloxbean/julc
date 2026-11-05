@@ -5,6 +5,8 @@ import org.julclang.compiler.LibrarySourceResolver;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import java.util.LinkedHashMap;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -16,6 +18,23 @@ class ReplEngineTest {
     @BeforeAll
     static void setup() {
         engine = new ReplEngine();
+    }
+
+    /** A collection of a primitive evaluates, although the subset takes no written {@code Integer} or {@code Long}. */
+    @Test
+    void aCollectionJavacInfersFromAPrimitiveEvaluates() {
+        var repl = new ReplEngine();
+        repl.evaluate(":import org.julclang.core.types.JulcList");
+        for (String expression : List.of("JulcList.of(1)", "JulcList.of(1L)", "JulcList.of(BigInteger.ONE)")) {
+            var value = assertInstanceOf(ReplResult.Success.class, repl.evaluate(expression), expression);
+            assertEquals("[1]", value.formattedValue(), expression);
+            var type = assertInstanceOf(ReplResult.MetaOutput.class, repl.evaluate(":type " + expression), expression);
+            assertTrue(type.text().contains("JulcList<BigInteger>"), type.text());
+            var pir = assertInstanceOf(ReplResult.MetaOutput.class, repl.evaluate(":pir " + expression), expression);
+            assertFalse(pir.text().contains("Unknown type"), pir.text());
+        }
+        var head = assertInstanceOf(ReplResult.Success.class, repl.evaluate("JulcList.of(7L).head()"));
+        assertEquals("7", head.formattedValue());
     }
 
     @Test
@@ -62,7 +81,7 @@ class ReplEngineTest {
 
     @Test
     void evaluateMathPow() {
-        var result = engine.evaluate("MathLib.pow(2, 10)");
+        var result = engine.evaluate("MathLib.pow(BigInteger.TWO, BigInteger.TEN)");
         assertInstanceOf(ReplResult.Success.class, result);
         assertEquals("1024", ((ReplResult.Success) result).formattedValue());
     }
@@ -199,6 +218,60 @@ class ReplEngineTest {
         var result = engine.evaluate(":import com.example.Foo");
         assertInstanceOf(ReplResult.MetaOutput.class, result);
         assertTrue(((ReplResult.MetaOutput) result).text().contains("com.example.Foo"));
+        // javac checks the import (ADR-068 D9): an unknown package fails the next evaluation, until :reset.
+        assertInstanceOf(ReplResult.Error.class, engine.evaluate("1 + 2"));
+        engine.evaluate(":reset");
+        assertInstanceOf(ReplResult.Success.class, engine.evaluate("1 + 2"));
+    }
+
+    @Test
+    void importCommand_usesAnImportedType() {
+        engine.evaluate(":import org.julclang.core.types.JulcArray");
+        try {
+            var result = engine.evaluate("JulcArray.of(BigInteger.ONE, BigInteger.TWO).length()");
+            assertInstanceOf(ReplResult.Success.class, result, result.toString());
+            assertEquals("2", ((ReplResult.Success) result).formattedValue());
+        } finally {
+            engine.evaluate(":reset");
+        }
+    }
+
+    @Test
+    void integerArithmeticIsUnboundedOnChain() {
+        // ADR-068 D9 / ADR-062 T6: the REPL evaluates on-chain, where 2147483647 + 1 does not wrap.
+        var result = engine.evaluate("2147483647 + 1");
+        assertInstanceOf(ReplResult.Success.class, result);
+        assertEquals("2147483648", ((ReplResult.Success) result).formattedValue());
+    }
+
+    @Test
+    void typeCommand_reportsJavacsType() {
+        var result = engine.evaluate(":type 1 + 2");
+        assertInstanceOf(ReplResult.MetaOutput.class, result);
+        assertEquals("Type: BigInteger", ((ReplResult.MetaOutput) result).text());
+        var bool = engine.evaluate(":type 1 < 2");
+        assertEquals("Type: boolean", ((ReplResult.MetaOutput) bool).text());
+    }
+
+    @Test
+    void conditional_evaluatesAndReportsItsStandaloneType() {
+        assertEquals("1", ((ReplResult.Success) engine.evaluate("true ? BigInteger.ONE : BigInteger.TWO")).formattedValue());
+        var type = engine.evaluate(":type true ? BigInteger.ONE : BigInteger.TWO");
+        assertEquals("Type: BigInteger", ((ReplResult.MetaOutput) type).text());
+    }
+
+    @Test
+    void pirCommand_showsThePir() {
+        var result = engine.evaluate(":pir 1 + 2");
+        assertInstanceOf(ReplResult.MetaOutput.class, result);
+        assertFalse(((ReplResult.MetaOutput) result).text().isBlank());
+    }
+
+    @Test
+    void javacRejection_isTheError() {
+        var result = engine.evaluate("1 + true");
+        assertInstanceOf(ReplResult.Error.class, result);
+        assertTrue(((ReplResult.Error) result).message().contains("JULC0085"), result.toString());
     }
 
     @Test
@@ -292,5 +365,16 @@ class ReplEngineTest {
     @Test
     void formatValue_string() {
         assertEquals("\"hello\"", ReplEngine.formatValue("hello"));
+    }
+
+    /** ADR-068 M5 (review F5): the compile-only commands report a rejection's code and fix. */
+    @Test
+    void compileOnlyCommandsShowTheCodeAndFix() {
+        for (String command : List.of(":type", ":uplc", ":pir")) {
+            var result = engine.evaluate(command + " new byte[]{1}.equals(new byte[]{1})");
+            assertTrue(result instanceof ReplResult.Error, command + ": " + result);
+            String message = ((ReplResult.Error) result).message();
+            assertTrue(message.contains("JULC0087") && message.contains("Builtins.equalsByteString(a, b)"), command + ": " + message);
+        }
     }
 }

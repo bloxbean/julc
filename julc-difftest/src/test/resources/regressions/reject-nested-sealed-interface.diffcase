@@ -1,0 +1,26 @@
+format: 2
+name: a nested sealed hierarchy (M3)
+class: Probe
+method: m
+arg: 05
+expect: REJECT JULC0109
+note: ADR-067 M3: out of scope.
+note: ADR-068 M6: on the only frontend, javac, REJECT JULC0109; the JavaParser frontend answered REJECT none.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    sealed interface S permits A, U {}
+    sealed interface U extends S permits B, C {}
+    record A(BigInteger v) implements S {}
+    record B(BigInteger v) implements U {}
+    record C(BigInteger v) implements U {}
+
+    public static BigInteger m(BigInteger a) {
+        U u = new C(a);
+        return switch (u) {
+            case B x -> BigInteger.ONE;
+            case C y -> BigInteger.valueOf(202);
+        };
+    }
+}

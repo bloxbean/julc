@@ -36,7 +36,7 @@ class IfLoopContinuationTest {
 
     private static String source(String body, boolean switchArm) {
         return HEADER + "static BigInteger m(JulcList<BigInteger> xs, BigInteger mode) { "
-                + (switchArm ? "Action action = new Only(mode); return switch (action) { case Only o -> { " : "")
+                + (switchArm ? "Action selected = new Only(mode); return switch (selected) { case Only o -> { " : "")
                 + (switchArm ? body.replace("return ", "yield ") : body)
                 + (switchArm ? " } case Other o -> BigInteger.ZERO; };" : "") + " } }";
     }
@@ -70,7 +70,7 @@ class IfLoopContinuationTest {
     void reproducer() {
         var body = """
                 BigInteger total = BigInteger.ZERO;
-                if (xs.size().compareTo(BigInteger.ZERO) > 0) {
+                if (xs.size() > 0) {
                     for (var x : xs) { total = total.add(x); }
                 }
                 return total;
@@ -122,8 +122,8 @@ class IfLoopContinuationTest {
             for (boolean innerWhile : List.of(false, true)) {
                 for (boolean nestedSwitch : List.of(false, true)) {
                     String inner = innerWhile
-                            ? "BigInteger j = BigInteger.ZERO; while (j.compareTo(xs.size()) < 0) { "
-                                + "local = local.add(xs.get(j)); j = j.add(BigInteger.ONE); }"
+                            ? "BigInteger j = BigInteger.ZERO; while (j.compareTo(BigInteger.valueOf(xs.size())) < 0) { "
+                                + "local = local.add(xs.get(j.longValue())); j = j.add(BigInteger.ONE); }"
                             : "for (var y : xs) { local = local.add(y); }";
                     String arm = "BigInteger local = BigInteger.ZERO; "
                             + "if (o.value().signum() > 0) { " + inner + " } "
@@ -136,7 +136,7 @@ class IfLoopContinuationTest {
                     }
                     String body = "Action action = mode.signum() < 0 ? new Other() : new Only(mode); "
                             + "BigInteger acc = BigInteger.ZERO; BigInteger i = BigInteger.ZERO; "
-                            + (outerWhile ? "while (i.compareTo(xs.size()) < 0) { " : "for (var x : xs) { ")
+                            + (outerWhile ? "while (i.compareTo(BigInteger.valueOf(xs.size())) < 0) { " : "for (var x : xs) { ")
                             + "BigInteger step = " + value + "; "
                             + "ContextsLib.trace(\"after\"); acc = acc.add(step); i = i.add(BigInteger.ONE); "
                             + "} return acc;";
@@ -393,10 +393,17 @@ class IfLoopContinuationTest {
                 assertTrue(error.getMessage().contains("t"), error.getMessage());
                 assertFalse(error.getMessage().matches("(?s).*t'[0-9]+.*"), error.getMessage());
                 if (declaration.equals("BigInteger t;")) {
-                    assertTrue(error.getMessage().contains("Variable must be initialized: t."), error.getMessage());
-                    assertTrue(error.getMessage().contains("var t = BigInteger.ZERO;"), error.getMessage());
+                    // javac's frontend, the default from ADR-068 M5, gives JULC0002 the words without the reference's full stop.
+                    assertTrue(error.getMessage().contains("Variable must be initialized: t"), error.getMessage());
+                    // javac's JULC0002 carries the catalog's fix, which shows the form with a placeholder name; the reference
+                    // wrote `var t = BigInteger.ZERO;` (068-followups.md: a follow-up to name the variable)
+                    assertTrue(error.getMessage().contains("ERROR[JULC0002]"), error.getMessage());
+                    assertTrue(error.getMessage().contains("(suggestion: Initialize at declaration, e.g. `var x = BigInteger.ZERO;`."),
+                            error.getMessage());
                 } else {
-                    assertTrue(error.getMessage().contains("Variable 't' initializer"), error.getMessage());
+                    // javac rejects the G1 element where a BigInteger is declared first (ADR-068 I2b).
+                    assertTrue(error.getMessage().contains("JULC0085")
+                            && error.getMessage().contains("(compiler.err.prob.found.req)"), error.getMessage());
                 }
             }
         }
@@ -429,7 +436,7 @@ class IfLoopContinuationTest {
             for (boolean whileLoop : List.of(false, true)) {
                 for (boolean multi : List.of(false, true)) {
                     for (boolean breaks : List.of(false, true)) {
-                        String loop = (whileLoop ? "while (total.compareTo(xs.size()) < 0) { "
+                        String loop = (whileLoop ? "while (total.compareTo(BigInteger.valueOf(xs.size())) < 0) { "
                                 : "for (var x : xs) { ")
                                 + "total = total.add(BigInteger.ONE); "
                                 + (multi ? "count = count.add(BigInteger.TEN); " : "")
@@ -438,7 +445,7 @@ class IfLoopContinuationTest {
                             String branch = switch (shape) {
                                 case 0 -> "if (mode.signum() > 0) { " + loop + " }";
                                 case 1 -> "if (mode.signum() <= 0) {} else { " + loop + " }";
-                                case 2 -> "if (mode.signum() > 0) { if (xs.size().signum() > 0) { " + loop + " } }";
+                                case 2 -> "if (mode.signum() > 0) { if (xs.size() > 0) { " + loop + " } }";
                                 default -> "if (mode.signum() > 0) { " + loop + " } else { " + loop + " }";
                             };
                             String body = "BigInteger total = BigInteger.ZERO; "

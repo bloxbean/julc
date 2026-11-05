@@ -1,0 +1,144 @@
+# ADR-068 I2a coverage: every rejection site of the reference frontend (each emitted diagnostics.json code and each uncoded rejection), with the inventory rows that show it. Generated from julc-difftest/src/test/resources/adr068/rejection-sites.tsv; do not edit.
+site	kind	match	where	reachability	inventory-rows
+JULC0003	code	JULC0003	RETURN_INSIDE_WHILE	source	7
+JULC0005	code	JULC0005	SWITCH_NOT_EXHAUSTIVE	source	137
+JULC0007	code	JULC0007	SWITCH_REQUIRES_SEALED_INTERFACE	source	7
+JULC0008	code	JULC0008	ENTRYPOINT_WRONG_PARAMETER_COUNT	source	4
+JULC0009	code	JULC0009	ENTRYPOINT_MISSING	source	1
+JULC0010	code	JULC0010	VALIDATOR_ANNOTATION_MISSING	source	1
+JULC0012	code	JULC0012	TYPE_RESOLUTION_FAILED	source	2
+JULC0013	code	JULC0013	PARAM_RAW_PLUTUS_DATA	source	9
+JULC0015	code	JULC0015	TRY_CATCH_UNSUPPORTED	source	3
+JULC0016	code	JULC0016	THROW_UNSUPPORTED	source	1
+JULC0017	code	JULC0017	NULL_UNSUPPORTED	source	2
+JULC0018	code	JULC0018	C_STYLE_FOR_UNSUPPORTED	source	1
+JULC0019	code	JULC0019	DO_WHILE_UNSUPPORTED	source	1
+JULC0031	code	JULC0031	UNSUPPORTED_COMPILER_TARGET	configuration: an unsupported target fails in beginCompilation, before any source is read or recorded	0
+JULC0032	code	JULC0032	COMPILER_BUILTIN_UNAVAILABLE	source	1
+JULC0033	code	JULC0033	COMPILER_FEATURE_UNAVAILABLE	target: a term or constant unavailable for the target; only the PV11 target exists	0
+JULC0034	code	JULC0034	COMPILER_PROGRAM_VERSION_MISMATCH	internal: the generated program version disagrees with the target (an invariant of UPLC generation)	0
+JULC0035	code	JULC0035	COMPILER_TARGET_INVARIANT_VIOLATION	internal: a compiler stage emitted a target-illegal feature (an invariant of UPLC generation)	0
+JULC0036	code	JULC0036	COMPILER_EVALUATION_TARGET_MISMATCH	evaluation: the testkit compares compile and evaluation targets (ValidatorTest), not a compile rejection	0
+JULC0038	code	JULC0038	OPTIMIZATION_COST_PROFILE_TARGET_MISMATCH	configuration: a cost profile for another target fails in beginCompilation, before any source is read	0
+JULC0039	code	JULC0039	UNSUPPORTED_OPTIMIZATION_LEVEL	configuration: an unknown optimization level id fails when the level is parsed	0
+JULC0040	code	JULC0040	UNSUPPORTED_OPTIMIZATION_COST_PROFILE	configuration: an unknown cost profile id fails when the profile is resolved	0
+JULC0041	code	JULC0041	NATIVE_TYPE_MISMATCH	source	58
+JULC0042	code	JULC0042	NATIVE_TYPE_AT_DATA_BOUNDARY	source	8
+JULC0043	code	JULC0043	UNKNOWN_OPTIMIZATION_RULE	configuration: an unknown disabled rule fails in beginCompilation, before any source is read	0
+JULC0044	code	JULC0044	BACKEND_UNSUPPORTED_REVISION	producer backend contract (ADR-056/059): an unsupported revision of a non-Java producer	0
+JULC0045	code	JULC0045	BACKEND_CAPABILITY_UNAVAILABLE	producer backend contract (ADR-056/059): a capability a non-Java producer requires	0
+JULC0046	code	JULC0046	BACKEND_TARGET_MISMATCH	producer backend contract (ADR-056/059): a producer target differing from the backend	0
+JULC0047	code	JULC0047	BACKEND_INVALID_DESCRIPTOR	producer backend contract (ADR-056/059): an invalid neutral descriptor from a producer	0
+JULC0048	code	JULC0048	PIR_INVALID_BINDING	producer backend contract (ADR-056/059): invalid producer PIR bindings	0
+JULC0049	code	JULC0049	PIR_TYPE_MISMATCH	producer backend contract (ADR-056/059): producer PIR types disagree	0
+JULC0050	code	JULC0050	PIR_UNSUPPORTED_STRUCTURE	producer backend contract (ADR-056/059): producer PIR structure the lowering does not support	0
+JULC0051	code	JULC0051	BACKEND_UNSUPPORTED_REQUEST	source	14
+JULC0052	code	JULC0052	COMPOUND_ASSIGNMENT_UNSUPPORTED	source	6
+JULC0053	code	JULC0053	MULTIPLE_DECLARATORS_UNSUPPORTED	source	2
+JULC0054	code	JULC0054	METHOD_OVERLOAD_UNSUPPORTED	source	7
+JULC0055	code	JULC0055	UNRESOLVED_MEMBER_ACCESS	source	7
+JULC0056	code	JULC0056	FIELD_ASSIGNMENT_UNSUPPORTED	source	32
+JULC0057	code	JULC0057	STATIC_INITIALIZER_CALLS_METHOD	source	1
+JULC0058	code	JULC0058	LOOP_REASSIGNMENT_WITHOUT_ACCUMULATOR	source	7
+JULC0059	code	JULC0059	PATTERN_VARIABLE_SHADOWS_FIELD	source	13
+JULC0060	code	JULC0060	CONTINUE_UNSUPPORTED	source	5
+JULC0061	code	JULC0061	REASSIGNMENT_OUTSIDE_LOOP	source	11
+JULC0062	code	JULC0062	JULCMAP_OF_OFF_CHAIN_ONLY	source	5
+JULC0063	code	JULC0063	BREAK_IN_LOOP_WITHOUT_ACCUMULATOR	source	7
+JULC0064	code	JULC0064	BREAK_LOOP_STATEMENT_UNSUPPORTED	source	3
+JULC0065	code	JULC0065	LOOP_UPDATE_POSITION_UNSUPPORTED	source	4
+JULC0066	code	JULC0066	LABEL_UNSUPPORTED	source	11
+JULC0070	code	JULC0070	INTEGER_LITERAL_INVALID	source	35
+JULC0071	code	JULC0071	SWITCH_LABEL_DOMINATED	source	661
+JULC0072	code	JULC0072	SWITCH_GUARD_INVALID	source	161
+JULC0073	code	JULC0073	SWITCH_GUARD_VARIABLE_NOT_EFFECTIVELY_FINAL	source	8
+JULC0074	code	JULC0074	SWITCH_GUARD_PATTERN_VARIABLE_UNSUPPORTED	source	6
+JULC0075	code	JULC0075	SWITCH_GROUP_UNSUPPORTED	source	20
+JULC0076	code	JULC0076	CASE_PATTERN_UNSUPPORTED	source	25
+JULC0082	code	JULC0082	SWITCH_DUPLICATE_DEFAULT	source	83
+JULC0083	code	JULC0083	PATTERN_VARIABLE_CONFLICT	source	22
+U-synchronized	uncoded	^synchronized is not supported on-chain	SubsetValidator:184	source	1
+U-break-outside-loop	uncoded	break is only supported inside for-each or while loops	SubsetValidator:210	source	2
+U-method-reference	uncoded	Method references \(::\) are not supported	SubsetValidator:242	source	1
+U-functional-call	uncoded	^Functional interface \.\w+\(\) is not supported	SubsetValidator:252	source	1
+U-this	uncoded	^'this' is not supported on-chain	SubsetValidator:289	source	2
+U-super	uncoded	^'super' is not supported on-chain	SubsetValidator:296	source	1
+U-array-creation	uncoded	^arrays are not supported on-chain	SubsetValidator:322	source	1
+U-array-access	uncoded	^array access is not supported on-chain	SubsetValidator:329	source	1
+U-floating-point	uncoded	floating point types \(float/double\) are not supported	SubsetValidator:340	source	2
+U-inheritance	uncoded	^class inheritance is not supported on-chain	SubsetValidator:391	source	3
+U-parse	uncoded	^Failed to parse .* source: 	JulcCompiler:1264 (JavaParser, JavaSourceParser)	source	36
+U-library-validator-annotation	uncoded	^Library source must not contain validator annotation	JulcCompiler:337	source	3
+U-legacy-annotation	uncoded	( is no longer supported on |^Unsupported legacy validator annotation @)	JulcCompiler:342,1354 (JavaSourceIntrospector)	source	2
+U-no-class	uncoded	^No class found in source	JulcCompiler:905	source	1
+U-no-static-method	uncoded	^No static method '	JulcCompiler:911	source	2
+U-mutual-recursion	uncoded	^Mutual recursion with more than 2 methods	JulcCompiler:1179	source	1
+U-newtype-of-arity	uncoded	\.of\(\) requires exactly 1 argument	JulcCompiler:1281,1296	source	1
+U-role-conflict	uncoded	must not combine @OnchainLibrary with validator annotation	JulcCompiler:1369 (JavaSourceIntrospector:89)	source	2
+U-multiple-validator-annotations	uncoded	has multiple validator annotations	JulcCompiler:1377	source	1
+U-unknown-purpose	uncoded	^Unknown purpose '	JulcCompiler:1476	source	1
+U-multivalidator	uncoded	^@MultiValidator 	JulcCompiler:1495,1504	source	1
+U-duplicate-purpose	uncoded	^Duplicate purpose 	JulcCompiler:1527	source	1
+U-method-arity	uncoded	requires (an index|one|a count|a function|a predicate|a key|key and value|a policyId|policyId and tokenName) argument	TypeMethodRegistry:411-906	source	1
+U-variable-initialized	uncoded	^Variable must be initialized: 	PirGenerator:508, LoopBodyGenerator:881	source	1
+U-method-body	uncoded	^Method must have a body: 	PirGenerator:415	source	1
+U-undefined-variable	uncoded	^Undefined variable: 	PirGenerator:927	source	17
+U-unknown-variant	uncoded	^Unknown variant in switch: 	PirGenerator:2707	defensive: SwitchPatternChecker rejects a label that is not a permitted variant first (JULC0076, not applicable)	0
+U-break-outside-loop-pir	uncoded	^(.*: )?break statement outside of a loop	PirGenerator:548	shadowed: SubsetValidator rejects a break outside a for-each or while first (U-break-outside-loop); inside a loop the break is JULC0063	0
+U-unsupported-statement	uncoded	Unsupported statement: 	PirGenerator:893	source	1
+U-byte-array-element	uncoded	A byte\[\] initializer element must be an integer literal	PirGenerator:1014	shadowed: SubsetValidator rejects a byte[] initializer with a non-literal element first (arrays are not supported)	0
+U-assignment-position	uncoded	Assignment to .* is not supported at this position	PirGenerator:1028	source	2
+U-compound-assignment-target	uncoded	Compound assignment \S+ to '	PirGenerator:1132,1143	source	3
+U-bigInteger-field	uncoded	Unsupported BigInteger field: 	PirGenerator:1738	source	1
+U-newtype-constructor	uncoded	@NewType constructor must have exactly 1 argument	PirGenerator:1801	source	1
+U-new-biginteger	uncoded	new BigInteger\(\) requires a string literal argument	PirGenerator:1824	source	1
+U-non-record-construction	uncoded	Cannot construct non-record type: 	PirGenerator:1867	source	1
+U-instanceof-pattern	uncoded	Unsupported instanceof pattern: 	PirGenerator:2984	source	1
+U-lambda-body	uncoded	Unsupported lambda body: 	PirGenerator:3061,3155	defensive: JavaParser gives every lambda an expression or a block body	0
+U-loop-conditional-local	uncoded	Conditional update to loop-body local '	LoopBodyGenerator:71	source	103
+U-reassign-case-variable	uncoded	Reassignment of switch case-pattern variable '	LoopBodyGenerator:142	source	37
+U-switch-arm-update	uncoded	Switch-expression arm cannot update enclosing variable '	LoopBodyGenerator:148	source	48
+U-break-loop-statement	uncoded	Unsupported statement in break-aware loop body: 	LoopBodyGenerator:385	source	1
+U-multi-acc-statement	uncoded	Unsupported in multi-acc (loop|break-aware) body: 	LoopBodyGenerator:554,620	source	1
+U-undeclared-assignment	uncoded	Assignment to undeclared variable '	LoopBodyGenerator:866	source	3
+U-newtype-field-type	uncoded	(Unsupported @NewType field type: |@NewType record '.*' field type '.*' is not supported)	TypeRegistrar:275,288	source	1
+U-duplicate-record	uncoded	Duplicate record type: '	TypeResolver:79	shadowed: TypeRegistrar rejects a type declared twice across compilation units first (Duplicate record type ... found across compilation units)	0
+U-duplicate-named-type	uncoded	Duplicate named type: '	TypeResolver:97	shadowed: TypeRegistrar rejects a type declared twice across compilation units first (Duplicate record type ... found across compilation units)	0
+U-duplicate-sealed	uncoded	Duplicate sealed interface: '	TypeResolver:162,231	shadowed: TypeRegistrar rejects a sealed interface declared twice across compilation units first (U-duplicate-sealed-units)	0
+U-primitive-type	uncoded	Unsupported primitive type: 	TypeResolver:379	source	1
+U-array-type	uncoded	Arrays are not supported except byte\[\]	TypeResolver:399	source	1
+U-cannot-resolve-type	uncoded	^Cannot resolve type: 	TypeResolver:404 (a wildcard type argument: List<?>, List<? extends String>, Optional<?>, Map<String,?>; F311)	source	8
+U-type-variable-arguments	uncoded	cannot take type arguments	TypeResolver:428	shadowed: a template parameter written T<...> is rejected first by its description (JULC0051, Unsupported on-chain source type); outside templates T is an unknown type	0
+U-unknown-type	uncoded	^Unknown type: 	TypeResolver:537,582	source	3
+U-ambiguous-type	uncoded	^Ambiguous type '	TypeResolver:576,615, ImportResolver:148	source	2
+U-recursive-type	uncoded	Recursive type definition is incomplete: '	TypeResolver:665	defensive: a recursive named-type reference is always registered before it is resolved (TypeResolver.resolveNamed)	0
+U-generic-call-from-java	uncoded	cannot be called from Java yet	LibraryMethodRegistry:98	source	1
+U-ambiguous-library	uncoded	^Ambiguous library class '	LibraryMethodRegistry:175	source	1
+U-library-invalid-source	uncoded	^Invalid Java library source	JavaLibraryProvider:55	source	1
+U-library-duplicate-owner	uncoded	^Duplicate library type ownership	JavaLibraryProvider:69	source	1
+U-library-ledger-conflict	uncoded	^Library type conflicts with bundled ledger type	JavaLibraryProvider:76	source	1
+U-library-not-onchain	uncoded	^Only @OnchainLibrary sources can be exported	JavaLibraryProvider:85	source	1
+U-library-description	uncoded	(Generic record type is not yet supported by library descriptions|Cannot identify source constructor|Raw or invalid container signature|Unsupported on-chain source type)	LibraryTypeDescriptions:35-224	source	75
+U-unicode-escape	uncoded	Illegal Unicode escape	UnicodeEscapes:91	source	8
+U-escaped-backslash	uncoded	A backslash written as a Unicode escape is followed by raw	UnicodeEscapes:109	source	5
+U-unpaired-surrogate	uncoded	unpaired surrogate	UnicodeEscapes:210	source	9
+U-backslash-outside-literal	uncoded	Illegal character '\\' in 	JavaSourceParser:135	source	2
+U-missing-return	uncoded	may not return a value on all execution paths	PirGenerator:421	source	5
+U-unsupported-expression	uncoded	Unsupported expression: 	PirGenerator:1049	source	2
+U-unsupported-operator	uncoded	Unsupported operator: 	PirGenerator:1106	source	1
+U-unsupported-unary	uncoded	Unsupported unary operator: 	PirGenerator:1279	source	1
+U-unknown-method	uncoded	Unknown method: 	PirGenerator:1587	source	1
+U-plutusdata-cast	uncoded	PlutusData\.cast\(\) second argument must be a literal	PirGenerator:1356	source	1
+U-return-in-foreach	uncoded	'return' is not supported inside for-each loop body	PirGenerator:1922	source	2
+U-yield-in-loop	uncoded	'yield' is not supported inside (for-each|while) loop body	PirGenerator:1930,2416	source	2
+U-switch-block-yield	uncoded	switch case block may not yield a value on all execution paths	PirGenerator:2941	source	4
+U-duplicate-record-units	uncoded	Duplicate record type '.*' found across compilation units	TypeRegistrar:54	source	2
+U-newtype-arity	uncoded	@NewType record '.*' must have exactly 1 field	TypeRegistrar:270	source	1
+U-recursive-unproductive	uncoded	Recursive type dependency has no finite base constructor	TypeRegistrar:518	source	2
+U-strict-boundary	uncoded	Unsupported strict boundary 	JulcCompiler:1755, StrictBoundaryGenerator:145,179	source	5
+U-blueprint-multivalidator	uncoded	Blueprint schema generation does not support manual multi-purpose	JulcCompiler:1669	source	1
+U-string-escape	uncoded	Illegal escape sequence .* in a string literal	StringLiterals:75	source	2
+U-string-lone-backslash	uncoded	A string literal ends with a lone backslash	StringLiterals:61	defensive: JavaParser's lexer rejects the unterminated literal first (U-parse)	0
+U-stdlib-variadic-arity	uncoded	expects at least \d+ arguments, got \d+	StdlibRegistry:1043	source	2
+U-library-bounded-type-parameter	uncoded	has a bound; generic library methods support only unbounded type parameters	JavaLibraryProvider (unsupported export)	source	2
+U-duplicate-sealed-units	uncoded	Duplicate sealed interface '.*' found across compilation units	TypeRegistrar	source	1

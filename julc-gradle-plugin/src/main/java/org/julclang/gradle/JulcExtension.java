@@ -6,6 +6,8 @@ import org.gradle.api.file.DirectoryProperty;
 import org.gradle.api.model.ObjectFactory;
 import org.gradle.api.provider.Property;
 
+import java.util.Locale;
+
 /**
  * Configuration extension for the julc Gradle plugin.
  * <p>
@@ -34,6 +36,7 @@ public class JulcExtension {
     private final Property<String> target;
     private final Property<String> optimization;
     private final Property<String> costProfile;
+    private final Property<String> frontend;
 
     public JulcExtension(Project project) {
         ObjectFactory objects = project.getObjects();
@@ -48,6 +51,7 @@ public class JulcExtension {
         optimization = objects.property(String.class)
                 .convention(OptimizationLevel.DEFAULT_PROFILE_ID);
         costProfile = objects.property(String.class);
+        frontend = objects.property(String.class);
     }
 
     public DirectoryProperty getSourceDir() {
@@ -85,5 +89,14 @@ public class JulcExtension {
     /** Optional compatibility ID (e.g. plutus-v3-pv11-costs-v1); unused by compilation. */
     public Property<String> getCostProfile() {
         return costProfile;
+    }
+
+    /**
+     * Removed (ADR-068 M6): JuLC reads Java with javac alone. Kept so that a build that still sets it gets
+     * {@link org.julclang.compiler.CompilerOptions#requireJavacFrontend}'s message, not an unknown property.
+     */
+    @Deprecated
+    public Property<String> getFrontend() {
+        return frontend;
     }
 }

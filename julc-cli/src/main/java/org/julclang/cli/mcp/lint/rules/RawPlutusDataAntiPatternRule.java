@@ -2,9 +2,17 @@ package org.julclang.cli.mcp.lint.rules;
 
 import org.julclang.cli.mcp.lint.LintFinding;
 import org.julclang.cli.mcp.lint.LintRule;
-import com.github.javaparser.ast.CompilationUnit;
-import com.github.javaparser.ast.expr.MethodCallExpr;
-import com.github.javaparser.ast.expr.ObjectCreationExpr;
+import org.julclang.cli.mcp.lint.LintTrees;
+import org.julclang.compiler.frontend.javac.JavacSyntax;
+import com.sun.source.util.TreePath;
+import com.sun.source.tree.AnnotatedTypeTree;
+import com.sun.source.tree.IdentifierTree;
+import com.sun.source.tree.ImportTree;
+import com.sun.source.tree.MemberSelectTree;
+import com.sun.source.tree.MethodInvocationTree;
+import com.sun.source.tree.NewClassTree;
+import com.sun.source.tree.ParameterizedTypeTree;
+import com.sun.source.tree.Tree;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -42,58 +50,59 @@ public final class RawPlutusDataAntiPatternRule implements LintRule {
     }
 
     @Override
-    public List<LintFinding> check(CompilationUnit cu) {
+    public List<LintFinding> check(JavacSyntax syntax) {
         var findings = new ArrayList<LintFinding>();
-
-        // Detect whether the source imports any of the raw types directly,
-        // e.g. `import org.julclang.core.PlutusData.ConstrData`.
-        // If so, `new ConstrData(...)` (without a `PlutusData.` prefix) is
-        // also the anti-pattern. Codex P2 / impl-validator finding.
-        boolean hasDirectRawImport = cu.getImports().stream().anyMatch(imp -> {
-            String name = imp.getNameAsString();
+        boolean hasDirectRawImport = false;
+        for (ImportTree imp : syntax.unit().getImports()) {
+            String name = imp.getQualifiedIdentifier().toString();
             for (var raw : RAW_TYPES) {
-                if (name.endsWith(".PlutusData." + raw)) return true;
+                if (name.endsWith(".PlutusData." + raw)) hasDirectRawImport = true;
             }
-            return false;
-        });
+        }
 
-        cu.findAll(ObjectCreationExpr.class).forEach(expr -> {
-            String typeName = expr.getType().getNameAsString();
-            String full = expr.getType().toString();
+        for (TreePath path : LintTrees.findAll(syntax, NewClassTree.class)) {
+            var expr = (NewClassTree) path.getLeaf();
+            String typeName = simpleTypeName(expr.getIdentifier());
+            String full = expr.getIdentifier().toString();
             boolean qualifiedHit = RAW_TYPES.contains(typeName) && full.contains("PlutusData");
             boolean directImportHit = hasDirectRawImport && RAW_TYPES.contains(typeName) && !full.contains(".");
-            if (!qualifiedHit && !directImportHit) return;
-            int line = expr.getBegin().map(p -> p.line).orElse(0);
-            int col = expr.getBegin().map(p -> p.column).orElse(0);
+            if (!qualifiedHit && !directImportHit) continue;
             findings.add(LintFinding.warning(
                     id(),
                     null,
                     "Constructing `" + full + "` directly is the project's #1 anti-pattern.",
-                    line, col,
+                    syntax.line(expr), syntax.column(expr),
                     "Define a `record` or sealed interface for your data and let the compiler " +
                             "auto-encode/decode. See https://julc.dev/ai/starter-pack/#5-critical-use-type-classes-not-raw-plutusdata"
             ));
-        });
+        }
 
-        // `PlutusData.cast(...)` (legacy/forwarding pattern).
-        cu.findAll(MethodCallExpr.class).forEach(call -> {
-            if (!"cast".equals(call.getNameAsString())) return;
-            var scope = call.getScope().orElse(null);
-            if (scope == null) return;
-            if (!"PlutusData".equals(scope.toString())) return;
-            int line = call.getBegin().map(p -> p.line).orElse(0);
-            int col = call.getBegin().map(p -> p.column).orElse(0);
+        for (TreePath path : LintTrees.findAll(syntax, MethodInvocationTree.class)) {
+            var call = (MethodInvocationTree) path.getLeaf();
+            if (!"cast".equals(LintTrees.methodName(call))) continue;
+            if (!"PlutusData".equals(LintTrees.dottedName(LintTrees.receiver(call)))) continue;
             findings.add(LintFinding.warning(
                     id(),
                     null,
                     "`PlutusData.cast(...)` indicates raw-data manipulation — usually a sign " +
                             "that a typed record / sealed interface should be used instead.",
-                    line, col,
+                    syntax.line(call), syntax.column(call),
                     "Replace with field access on a typed record. If interop with an opaque " +
                             "payload is genuinely needed, leave it but document why."
             ));
-        });
+        }
 
         return findings;
+    }
+
+    /** A class type's own name, without its qualifier or type arguments. */
+    private static String simpleTypeName(Tree type) {
+        return switch (type) {
+            case ParameterizedTypeTree parameterized -> simpleTypeName(parameterized.getType());
+            case AnnotatedTypeTree annotated -> simpleTypeName(annotated.getUnderlyingType());
+            case MemberSelectTree select -> select.getIdentifier().toString();
+            case IdentifierTree id -> id.getName().toString();
+            default -> type.toString();
+        };
     }
 }
