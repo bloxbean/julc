@@ -245,10 +245,17 @@ Users pay these at run time, so they come before other optimization work.
 
 | ID | Problem | Plan | Owner |
 |---|---|---|---|
-| A compound assignment that narrows | **Closed, r19.** `int x; x += someLong` gave 5 on the JVM and 4294967301 on-chain at 2^32. The maintainer's decision: reject it, `JULC0130`, with a fix text that leads with `long` | Done; plain `int` arithmetic stays documented as having no width | closed |
+| A compound assignment that narrows | **Closed, r19 and r22.** `int x; x += someLong` gave 5 on the JVM and 4294967301 on-chain at 2^32. The maintainer's decision: reject it, `JULC0130`, with a fix text that leads with `long`. r19 looked at the operand's own kind, so a `Long` javac inferred still compiled to the wrong value (`var z : JulcList.of(y)`, `ys.head()`, a local alias; F1208, reviewer1 at `f491a88a`). r22 classifies it after unboxing; `JavacM5aTest` holds each shape, the five operators and the controls | Done; plain `int` arithmetic stays documented as having no width | closed |
 | I1 on `DIFFERENT-pir` rows | The tool returned before `sourceMapDifference` on these rows and compared diagnostics at the default level only | **Closed at M6**: the reference's tool is gone, so this is what those rows rest on. `lowering-javac.tsv` holds their locations at every level | M6 |
 | `NarrowingElisionPass`'s scope tests | They assert term equality, not evaluation. The review's scope-targeted fuzz (`build/work/m5d-review/`, `NarrowFuzz.genS`) caught every scoping mutant, 300,000 terms, 0 value or trace divergences | Port it as a PIR-level differential property test | later |
 | A long call chain in `rangeOf` | At n = 8000 a chain of calls overflows a 1 MB stack: a compile failure, not a miscompile | Fail with a coded diagnostic if a real program ever reaches it | later |
+
+## Raised by reviewer1's review of `f491a88a`
+
+| Item | Where | State |
+|---|---|---|
+| F1208 [P1], a narrowing through an inferred `Long` | `Operators.requireNoHiddenNarrowing` | Fixed in r22. Reproduced first: 10 shapes compiled. See "A compound assignment that narrows" |
+| F1209 [P2], `JulcList.of(1)` in a REPL | `ReplExpressionWrapper` wrote javac's inferred `JulcList<Integer>` as the return type, which the subset rejects with `Unknown type: Integer` | Fixed in r22. The wrapper writes `BigInteger` for those boxes, also nested, and casts through `Object` inside a collection. `ReplEngineTest` covers evaluation, `:type`, `:pir` and `JulcList.of(7L).head()`; `ExpressionEvaluatorTest` covers `of(1)` and `of(1L)` against the `BigInteger` control. `:type JulcList.of(1)` prints `JulcList<BigInteger>` |
 
 ## A flaky test seen at M5d
 
