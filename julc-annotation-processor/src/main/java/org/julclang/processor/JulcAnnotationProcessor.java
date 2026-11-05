@@ -60,7 +60,6 @@ import java.util.stream.Collectors;
         "org.julclang.stdlib.annotation.MultiValidator"
 })
 @SupportedOptions({"julc.projectName", "julc.projectVersion", "julc.sourceMap", "julc.blueprint", "julc.target", "julc.optimization", "julc.costProfile", "julc.frontend"})
-@SupportedSourceVersion(SourceVersion.RELEASE_24)
 public class JulcAnnotationProcessor extends AbstractProcessor {
 
     private Trees trees;
@@ -110,6 +109,12 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
             processingEnv.getMessager().printMessage(
                     Diagnostic.Kind.ERROR, e.getMessage());
         }
+    }
+
+    /** JuLC reads the sources with its own javac, so the build's source level asks nothing of this processor. */
+    @Override
+    public SourceVersion getSupportedSourceVersion() {
+        return SourceVersion.latestSupported();
     }
 
     @Override
