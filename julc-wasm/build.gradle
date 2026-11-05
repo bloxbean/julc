@@ -437,12 +437,15 @@ tasks.register('nativeImageBlsProbe', Exec) {
                 '--no-fallback', '-H:+ReportExceptionStackTraces', 'org.julclang.wasm.BlsProbe'
     }
     doLast {
-        def process = new ProcessBuilder(new File(dir.get().asFile, 'bls-probe').absolutePath).redirectErrorStream(true).start()
-        def text = process.inputStream.getText('UTF-8')
+        // To a file, not a pipe: reading a pipe until it ends would wait for the probe before the time limit starts.
+        def output = new File(dir.get().asFile, 'bls-probe.out')
+        def process = new ProcessBuilder(new File(dir.get().asFile, 'bls-probe').absolutePath).redirectErrorStream(true)
+                .redirectOutput(output).start()
         if (!process.waitFor(2, java.util.concurrent.TimeUnit.MINUTES)) {
             process.destroyForcibly()
-            throw new GradleException("The BLS probe did not finish:\n${text}")
+            throw new GradleException("The BLS probe did not finish in 2 minutes:\n${output.getText('UTF-8')}")
         }
+        def text = output.getText('UTF-8')
         def lines = text.readLines().findAll { it.startsWith('uncompress ') || it.startsWith('invalid constant ') }
         if (process.exitValue() != 0 || lines != ['uncompress success', 'invalid constant rejected']) {
             throw new GradleException("BLS changed in an ordinary native image with julc-wasm on its class path:\n${text}")
