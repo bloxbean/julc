@@ -216,6 +216,17 @@ class DiagnosticTextTest {
     }
 
     @Test
+    void aRelativePathWithDirectoriesShowsItsLine() throws IOException {
+        var directory = Files.createDirectories(Path.of("build", "tmp", "relative-excerpt", "src"));
+        var file = directory.resolve("Bad.java");
+        Files.writeString(file, "class Bad {\n    static long m() { return missing; }\n}\n");
+        assertFalse(file.isAbsolute());
+        var error = assertThrows(CompilerException.class,
+                () -> new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()).compile(file));
+        assertTrue(error.diagnostics().getFirst().excerpt().contains("return missing;"), error.describe());
+    }
+
+    @Test
     void aProblemWithAWholeFileShowsNoLine() {
         var diagnostic = libraryError("interface OnlyAnInterface { }\n");
         assertEquals("JULC0133", diagnostic.code());

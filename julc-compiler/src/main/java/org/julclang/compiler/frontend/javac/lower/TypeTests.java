@@ -151,8 +151,10 @@ final class TypeTests {
     private CompilerException unsupported(InstanceOfTree tree) {
         // The source's words: javac's tree text would print a var component as the type it inferred.
         String fix = tree.getPattern() instanceof DeconstructionPatternTree recordPattern
-                ? RecordPatternFix.ofInstanceof(facts, recordPattern, facts.location(tree.getExpression()).fragment())
+                ? RecordPatternFix.ofInstanceof(facts, recordPattern, facts.text(tree.getExpression()))
                 : null;
-        return facts.rejectionWithFix(DiagnosticCodes.INSTANCEOF_RECORD_PATTERN_UNSUPPORTED, fix, tree.getPattern(), facts.location(tree).fragment());
+        // A plain type test has no pattern: it is reported at the instanceof itself.
+        var where = tree.getPattern() != null ? tree.getPattern() : tree;
+        return facts.rejectionWithFix(DiagnosticCodes.INSTANCEOF_RECORD_PATTERN_UNSUPPORTED, fix, where, facts.location(tree).fragment());
     }
 }

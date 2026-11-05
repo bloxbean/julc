@@ -52,8 +52,8 @@ public final class RecordPatternFix {
         if (!record.getTypeParameters().isEmpty() && !(pattern.getDeconstructor() instanceof ParameterizedTypeTree)) return null;
 
         String simpleName = record.getSimpleName().toString();
-        String written = facts.location(pattern.getDeconstructor()).fragment();
-        String typeName = written.isEmpty() ? simpleName : written;
+        // The whole type as written, which a copied rewrite needs; a location's fragment is cut for display.
+        String typeName = facts.text(pattern.getDeconstructor());
         String binding = unusedName(simpleName.substring(0, 1).toLowerCase(Locale.ROOT) + simpleName.substring(1),
                 namesAround(facts, pattern));
         String start = START + prefix + typeName + " " + binding + "`";
@@ -65,7 +65,7 @@ public final class RecordPatternFix {
             if (readsWithoutATest(facts, nested.get(i), components.get(i))) {
                 reads.add(read + " for `" + ((BindingPatternTree) nested.get(i)).getVariable().getName() + "`");
             } else {
-                tests.add("that " + read + " matches `" + facts.location(nested.get(i)).fragment() + "`");
+                tests.add("that " + read + " matches `" + facts.text(nested.get(i)) + "`");
             }
         }
         if (!tests.isEmpty()) {
@@ -78,7 +78,7 @@ public final class RecordPatternFix {
     /** Whether {@code pattern} takes every value of the field: {@code var}, or a type the field's type always fits. */
     private static boolean readsWithoutATest(JavacFacts facts, PatternTree pattern, RecordComponentElement component) {
         if (!(pattern instanceof BindingPatternTree binding)) return false;
-        if (facts.location(binding).fragment().startsWith("var ")) return true;
+        if (facts.isInferred(binding.getVariable())) return true;
         var types = facts.types();
         return types.isSubtype(types.erasure(component.asType()), types.erasure(facts.type(binding.getVariable())));
     }

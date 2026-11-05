@@ -186,4 +186,48 @@ class RecordPatternDiagnosticTest {
         var result = CompilerTestVm.pv11().evaluateWithArgs(program, List.<PlutusData>of(new PlutusData.IntData(BigInteger.TWO)));
         assertEquals(new Term.Const(Constant.integer(BigInteger.ZERO)), ((EvalResult.Success) result).resultTerm());
     }
+
+    /** Longer than a location's display fragment: a rewrite to copy has to hold the whole type and operand. */
+    @Test
+    void aLongTypeAndOperandAreWrittenInFull() {
+        String type = "org.julclang.core.types.Tuple2<org.julclang.core.types.JulcList<java.math.BigInteger>, java.math.BigInteger>";
+        var source = SwitchGuardTest.probe("""
+                    static BigInteger m(%s t) {
+                        if (t instanceof %s(var a, var b)) { return b; }
+                        return BigInteger.ZERO;
+                    }
+                """.formatted(type, type));
+        var fix = rejected(source, "JULC0077").suggestion();
+        assertTrue(fix.contains("`t instanceof " + type + " tuple2`"), fix);
+        assertFalse(fix.contains("..."), fix);
+    }
+
+    @Test
+    void aLongNestedPatternIsWrittenInFull() {
+        var longName = "Component".repeat(14);
+        var source = method(TYPES + "sealed interface I permits W {} record W(S inner) implements I {} ", "n",
+                "I w = new W(new A(n)); return switch (w) { case W(A " + longName + ") -> BigInteger.ONE; default -> BigInteger.ZERO; };");
+        var fix = rejected(source, "JULC0076").suggestion();
+        assertTrue(fix.contains("matches `A " + longName + "`"), fix);
+    }
+
+    /** A plain type test has no pattern node, and keeps its position. */
+    @Test
+    void aPlainTypeTestKeepsItsLocation() {
+        var source = """
+                import java.math.BigInteger;
+                public class Probe {
+                    sealed interface S permits A, B {}
+                    record A() implements S {}
+                    record B() implements S {}
+                    static boolean m(S s) {
+                        return s instanceof A;
+                    }
+                }
+                """;
+        var diagnostic = rejected(source, "JULC0077");
+        assertEquals("Probe.java", diagnostic.fileName());
+        assertEquals(7, diagnostic.line());
+        assertTrue(diagnostic.excerpt().contains("return s instanceof A;"), diagnostic.toString());
+    }
 }
