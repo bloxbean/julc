@@ -23,6 +23,17 @@ class ExpressionWrapperTest {
         return wrapped.returnType();
     }
 
+    /** javac infers the box of a primitive where the subset writes no such type: on-chain it is an integer. */
+    @Test
+    void anInferredBoxedNumberIsABigInteger() {
+        var imports = List.of("org.julclang.core.types.JulcList");
+        for (String expression : List.of("JulcList.of(1)", "JulcList.of(1L)", "JulcList.of(java.math.BigInteger.ONE)")) {
+            var wrapped = ExpressionWrapper.wrap(expression, imports, List.of());
+            assertTrue(wrapped.isAccepted(), () -> expression + ": " + wrapped.errors());
+            assertEquals("JulcList<BigInteger>", wrapped.returnType(), expression);
+        }
+    }
+
     @Test
     void numericLiteral_infersBigInteger() {
         assertEquals("BigInteger", type("42"));

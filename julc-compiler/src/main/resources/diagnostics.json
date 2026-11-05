@@ -1569,7 +1569,7 @@
       "category": "TYPE",
       "severity": "error",
       "template": "Compound assignment {0} to the int ''{1}'' takes a long: Java narrows the result to 32 bits and the on-chain integer does not, so a JVM test and the script could differ",
-      "summary": "An int variable updated with +=, -=, *=, /= or %= from a long operand. Java casts the result back to int without saying so, and an on-chain integer has no width, so past 32 bits the JVM and the script would give different values. Emitted by the javac frontend (ADR-068 r19).",
+      "summary": "An int variable updated with +=, -=, *=, /= or %= from a long operand, or a Long that javac inferred, as in var z : JulcList.of(y). Java casts the result back to int without saying so, and an on-chain integer has no width, so past 32 bits the JVM and the script would give different values. Emitted by the javac frontend (ADR-068 r19).",
       "fix": "Declare the variable as long, e.g. long total = 0; total += amount; (BigInteger for values that can pass 64 bits). If you do want Java's 32-bit result, write the cast: x = (int) (x + y);"
     }
   ]

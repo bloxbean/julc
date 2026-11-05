@@ -2,7 +2,7 @@
 
 **Status:** Accepted (2026-10-31): approved by the review comment at `0e8bb3c1` and by Codex at `0e8bb3c1`, with
 the post-approval P3 edits at `3ba3ea03`. The implementation follows in this PR, milestone by milestone (M0–M6)
-**Date:** 2026-10-30 (r1); revised 2026-10-31 (r2–r9), 2026-11-01 (r10, r11), 2026-11-02 (r12, r13), 2026-11-03 (r14 to r16), 2026-11-04 (r17, r18) and 2026-11-05 (r19 to r21)
+**Date:** 2026-10-30 (r1); revised 2026-10-31 (r2–r9), 2026-11-01 (r10, r11), 2026-11-02 (r12, r13), 2026-11-03 (r14 to r16), 2026-11-04 (r17, r18) and 2026-11-05 (r19 to r22)
 **Label:** `semantic-consistency`
 **Risk class:** correctness-sensitive, **high**. The frontend decides what every validator means; a wrong
 binding, type or literal is a silent miscompile.
@@ -1004,7 +1004,7 @@ said `frontend=JAVAC` is what every compilation does now. M3a adds:
 | `JULC0126` | An `instanceof` of a value whose type is not the variant's interface | `frontend=JAVAC` (r17); a Policy rejection where the reference accepted |
 | `JULC0127` | A variant that is not a plain record: at a `new`, an `instanceof` or a `case` of it, and (M5) at its declaration wherever its sealed interface is declared in a unit the compilation reads, used or not, since such a sum has no layout | `frontend=JAVAC` (r17); a Policy rejection where the reference accepted |
 | `JULC0128` | A value whose on-chain form is not the one the operation reads | `frontend=JAVAC` (r17); a Policy rejection where the reference accepted |
-| `JULC0130` | A compound assignment of a `long` to an `int`: Java narrows the result without saying so and the on-chain integer does not. An explicit `(int)` follows Java (D6) and a `long` needs no cast, so the form is rejected (the maintainer's decision, r19) | `frontend=JAVAC` (r19); a Policy rejection where the reference accepted |
+| `JULC0130` | A compound assignment of a `long`, or of a `Long` javac inferred (r22), to an `int`: Java narrows the result without saying so and the on-chain integer does not. An explicit `(int)` follows Java (D6) and a `long` needs no cast, so the form is rejected (the maintainer's decision, r19) | `frontend=JAVAC` (r19); a Policy rejection where the reference accepted |
 | `JULC0129` | A `new` of a class that is not a record: "Cannot construct non-record type", the reference's words, which it gives uncoded (I2a) | `frontend=JAVAC` (r17) |
 | `JULC0012` | A type parameter no call specializes: the reference's "Unknown type", which it gives uncoded (I2a) | `frontend=JAVAC` (r17) |
 | `JULC0014` | An array type the javac frontend reads, a varargs record component included (the reference reads `BigInteger...` as its element type) | `frontend=JAVAC` (r17) |
@@ -1684,6 +1684,7 @@ rest on the rule's own tests and on V146 showing it is the only byte change. Dev
   - M5's entry gate is met, on `m5-corpus-head-3`, a recording of the head at `8875e6a9` that replaces `m2-corpus-head` in
     the gate: no `JULC0084` on the corpus, every case has a javac row, and every `DIFFERENT` row is classified with none
     owed. The tables are frozen at the integration with M6a's tool readings, which moved no row.
+- **r22** (2026-11-05, on reviewer1's review of `f491a88a`): F1208 → `JULC0130` classifies the operand after unboxing, so a `Long` javac inferred from a for-each element, a generic method's result, a local alias or a conditional is rejected like a `long`. It compiled before and gave 4294967301 on-chain against the JVM's 5 at 2^32. F1209 → D9's wrapper writes an inferred `Integer` or `Long` as `BigInteger`, the integer it is on-chain, casting through `Object` where it sits inside a collection, so `JulcList.of(1)` and `JulcList.of(1L)` evaluate again in both REPLs; a source still cannot write those boxes.
 - **r21** (2026-11-05, on the independent review of M6, `build/reviews/m6-review.md`, delegated by the maintainer):
   - D13: I1 is a migration gate, and it ends when M6 merges. It needs the recorded corpora, about 2.1 GB outside the repository, so CI has never run it, and a recording at a later head has other keys. `lowering-javac.tsv` stays as the record of what M6 compiled, and the corpora are archived with a digest ([M6's evidence](evidence/068-m6.md)). From the merge, byte stability in CI is `FrozenReference`'s 8,250 answers, `NativeConstantsRegressionTest`'s hashes and sizes, and the Blaster artifacts; the `.diffcase` set checks verdicts against the JVM, not bytes. So most of the 24,167 cases, the stdlib's, the external examples' and G0's and G1's among them, have no byte pin in CI after the merge, and a change to their bytes shows only in a run of I1 from the archive. A moved answer is read through `FrozenReference`'s report, as text. D13's classes stay as the record of what was decided during the migration, and take no new row; the observations they required for a moved row come from the change's own tests.
   - D10: G1's exemption for `JULC0012` names `ArmTypes`' own words for a conditional and a switch expression. The lowering's loss of a type, which ends in similar words, stays a failure of the campaign.
