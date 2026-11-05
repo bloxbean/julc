@@ -29,6 +29,7 @@ import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.Modifier;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.type.TypeKind;
+import javax.lang.model.type.TypeMirror;
 import java.math.BigInteger;
 import java.util.Arrays;
 
@@ -108,11 +109,22 @@ final class Operators {
     /**
      * Java's {@code int += long} casts the result back to {@code int} without saying so, while on-chain the integer keeps its value:
      * the JVM and the script would differ past 32 bits. An explicit {@code (int)} follows Java (D6), and a {@code long} needs no
-     * cast, so this form is rejected rather than given a wrap the program did not write and pays for.
+     * cast, so this form is rejected rather than given a wrap the program did not write and pays for. A {@code Long} javac
+     * inferred ({@code var z : JulcList.of(y)}) unboxes to a {@code long} first, so it narrows the same way.
      */
     private void requireNoHiddenNarrowing(CompoundAssignmentTree compound, String operator, String name) {
-        if (facts.type(compound.getVariable()).getKind() == TypeKind.INT && facts.type(compound.getExpression()).getKind() == TypeKind.LONG) {
+        if (facts.type(compound.getVariable()).getKind() == TypeKind.INT && unboxedKind(facts.type(compound.getExpression())) == TypeKind.LONG) {
             throw facts.rejection(DiagnosticCodes.COMPOUND_ASSIGNMENT_NARROWS, compound, operator, name);
+        }
+    }
+
+    /** The primitive kind Java's numeric promotion sees: the type's own kind, or what it unboxes to. */
+    private TypeKind unboxedKind(TypeMirror type) {
+        if (type.getKind().isPrimitive()) return type.getKind();
+        try {
+            return facts.types().unboxedType(type).getKind();
+        } catch (IllegalArgumentException notABox) {
+            return type.getKind();
         }
     }
 

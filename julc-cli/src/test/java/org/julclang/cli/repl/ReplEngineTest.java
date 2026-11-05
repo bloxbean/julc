@@ -20,6 +20,23 @@ class ReplEngineTest {
         engine = new ReplEngine();
     }
 
+    /** A collection of a primitive evaluates, although the subset takes no written {@code Integer} or {@code Long}. */
+    @Test
+    void aCollectionJavacInfersFromAPrimitiveEvaluates() {
+        var repl = new ReplEngine();
+        repl.evaluate(":import org.julclang.core.types.JulcList");
+        for (String expression : List.of("JulcList.of(1)", "JulcList.of(1L)", "JulcList.of(BigInteger.ONE)")) {
+            var value = assertInstanceOf(ReplResult.Success.class, repl.evaluate(expression), expression);
+            assertEquals("[1]", value.formattedValue(), expression);
+            var type = assertInstanceOf(ReplResult.MetaOutput.class, repl.evaluate(":type " + expression), expression);
+            assertTrue(type.text().contains("JulcList<BigInteger>"), type.text());
+            var pir = assertInstanceOf(ReplResult.MetaOutput.class, repl.evaluate(":pir " + expression), expression);
+            assertFalse(pir.text().contains("Unknown type"), pir.text());
+        }
+        var head = assertInstanceOf(ReplResult.Success.class, repl.evaluate("JulcList.of(7L).head()"));
+        assertEquals("7", head.formattedValue());
+    }
+
     @Test
     void evaluateSimpleAddition() {
         var result = engine.evaluate("1 + 2");

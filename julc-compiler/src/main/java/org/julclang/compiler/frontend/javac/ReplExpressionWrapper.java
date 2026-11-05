@@ -108,6 +108,10 @@ public final class ReplExpressionWrapper {
                                 + " assign it to a local of its type and return that"
                         : "the input's type Object is not an on-chain type");
             }
+            if (isBoxedInteger(type)) {
+                types.add("BigInteger");
+                continue;
+            }
             switch (type.getKind()) {
                 case INT, LONG, SHORT, BYTE -> types.add("BigInteger");
                 default -> {
@@ -124,10 +128,13 @@ public final class ReplExpressionWrapper {
         }
         String returnType = types.iterator().next();
         String finalBody = block ? body : "return (" + trimmed + ");";
-        if (integral && !block) {
-            finalBody = "return BigInteger.valueOf((" + trimmed + "));";
-        } else if (integral) {
-            // Wrap each returned integer, from the last, by its offsets in the probe.
+        // javac's inferred boxes are written as the integers they are on-chain, which the subset takes as a written type.
+        String wrap = integral ? "BigInteger.valueOf(" : inputTypes.stream().anyMatch(ReplExpressionWrapper::holdsBoxedInteger)
+                ? "(" + returnType + ") (Object) (" : null;
+        if (wrap != null && !block) {
+            finalBody = "return " + wrap + "(" + trimmed + "));";
+        } else if (wrap != null) {
+            // Wrap each returned value, from the last, by its offsets in the probe.
             var positions = attribution.trees().getSourcePositions();
             var sorted = new ArrayList<>(returns);
             sorted.sort(Comparator.comparingLong((TreePath p) -> positions.getStartPosition(unit, p.getLeaf())).reversed());
@@ -135,7 +142,7 @@ public final class ReplExpressionWrapper {
             for (var r : sorted) {
                 int s = (int) positions.getStartPosition(unit, r.getLeaf()) - bodyStart;
                 int e = (int) positions.getEndPosition(unit, r.getLeaf()) - bodyStart;
-                sb.replace(s, e, "BigInteger.valueOf(" + sb.substring(s, e) + ")");
+                sb.replace(s, e, wrap + sb.substring(s, e) + ")");
             }
             finalBody = sb.toString();
         }
@@ -235,6 +242,7 @@ public final class ReplExpressionWrapper {
                 yield component == null ? null : component + "[]";
             }
             case DECLARED -> {
+                if (isBoxedInteger(type)) yield "BigInteger";
                 var declared = (DeclaredType) type;
                 String name = name((TypeElement) declared.asElement(), Set.copyOf(imports));
                 if (name == null) yield null;
@@ -248,6 +256,18 @@ public final class ReplExpressionWrapper {
             }
             default -> null;
         };
+    }
+
+    /** The boxes javac infers from a primitive ({@code T} is {@code Integer} in {@code JulcList.of(1)}); no source may write one. */
+    private static boolean isBoxedInteger(TypeMirror type) {
+        return type instanceof DeclaredType declared && declared.asElement() instanceof TypeElement element
+                && (element.getQualifiedName().contentEquals(JavacNames.BOXED_INTEGER)
+                        || element.getQualifiedName().contentEquals(JavacNames.BOXED_LONG));
+    }
+
+    private static boolean holdsBoxedInteger(TypeMirror type) {
+        return isBoxedInteger(type) || type instanceof DeclaredType declared
+                && declared.getTypeArguments().stream().anyMatch(ReplExpressionWrapper::holdsBoxedInteger);
     }
 
     private static String name(TypeElement type, Set<String> imports) {

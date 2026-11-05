@@ -1582,7 +1582,7 @@ strings built from literals and `+` alone keep their meaning.
 
 ### `JULC0130` `Compound assignment <op> to the int '<name>' takes a long`
 
-**Cause:** Java's `int x; x += someLong;` casts the result back to `int` without saying so. An on-chain integer has no width, so past 32 bits a JVM test and the script would give different values.
+**Cause:** Java's `int x; x += someLong;` casts the result back to `int` without saying so. An on-chain integer has no width, so past 32 bits a JVM test and the script would give different values. A `Long` javac inferred counts too, as in `for (var z : JulcList.of(y)) { x += z; }`: Java unboxes it first.
 
 **Fix:** Declare the variable as `long`, which is what most code means: `long total = 0; total += amount;`. Use `BigInteger` for values that can pass 64 bits. If you do want Java's 32-bit result, write the cast: `x = (int) (x + y);`.
 

@@ -271,6 +271,27 @@ class JavacM5aTest {
         assertEquals("JULC0130", rejected(members).code());
     }
 
+    /** A {@code Long} that javac inferred unboxes to a {@code long} before Java narrows the result, so it hides the same narrowing. */
+    @ParameterizedTest
+    @ValueSource(strings = {"+=", "-=", "*=", "/=", "%="})
+    void anInferredLongOperandIsRejected(String operator) {
+        assertEquals("JULC0130", rejected("static long m(long y) { int x = 5; for (var z : JulcList.of(y)) { x " + operator
+                + " z; } return x; }").code());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "for (var z : ys) { x += z; }",
+            "for (var w : xs) { x += ys.head(); }",
+            "for (var w : xs) { var q = ys.head(); x += q; }",
+            "for (var w : xs) { x += (ys.head()); }",
+            "for (var w : xs) { var q = ys.head(); x += w.signum() > 0 ? q : q; }",
+    })
+    void everyShapeOfAnInferredLongIsRejected(String loop) {
+        assertEquals("JULC0130", rejected("static long m(JulcList<BigInteger> xs, long y) { int x = 5; var ys = JulcList.of(y); "
+                + loop + " return x; }").code());
+    }
+
     /** Nothing narrows in these, or the program says so; each gives the JVM's value past 32 bits. */
     @ParameterizedTest
     @CsvSource(delimiter = '|', value = {
@@ -278,6 +299,9 @@ class JavacM5aTest {
             "BigInteger x = BigInteger.valueOf(5); for (var y : xs) { x = x.add(y); } return x.longValue(); | 4294967301",
             "int x = 5; for (var y : xs) { x = (int) (x + y.longValue()); } return x; | 5",
             "int x = 5; for (var y : xs) { x += (int) y.longValue(); } return x; | 5",
+            "long x = 5; for (var z : JulcList.of(xs.head().longValue())) { x += z; } return x; | 4294967301",
+            "int x = 5; for (var z : JulcList.of(xs.head().longValue())) { x = (int) (x + z); } return x; | 5",
+            "int x = 5; for (var z : JulcList.of(7)) { x += z; } return x; | 12",
     })
     void whatDoesNotHideANarrowingCompiles(String body, long java) {
         var options = new CompilerOptions().setOptimizationLevel(OptimizationLevel.BASELINE);
