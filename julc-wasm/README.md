@@ -124,10 +124,10 @@ missing result record lets the engine start, and that operation's calls then fai
 
    | Image | `.wasm` size |
    |---|---:|
-   | JuLC's VM image | 14.2 MB |
+   | JuLC's VM image | 14.3 MB |
    | A demo language with no compiler, `julc-compiler` in the pattern | 15.8 MB |
-   | Elci, with its compiler and javac | 30.2 MB |
-   | JuLC's full image | 33.2 MB |
+   | Elci, with its compiler and javac | 30.0 MB |
+   | JuLC's full image | 33.1 MB |
 
    Measured with GraalVM 25.3.4.1.
 

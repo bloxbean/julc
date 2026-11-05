@@ -294,7 +294,7 @@ Not part of CI. A scratch clone of Elci at `a3ec190`, repinned to this branch's 
 
 | Check | Result |
 |---|---|
-| Image | 30,162,724 bytes, 42 s, about 5 GB of memory to build |
+| Image | 30,002,660 bytes, about 42 s and 5 GB of memory to build |
 | 11 examples, 12 cases, in Node.js and in Chrome | FLAT bytes equal to the JVM compiler's; `eval` values equal too |
 | Java library through javac in the image | `custom-library` gives 42; with the library removed, `On-chain Java source not found: example.Pricing` |
 | Compile error | `Signed.elm:12:1: ELCI2002`, status 400 |
@@ -328,5 +328,5 @@ What this shows, and its limits: the image and the JVM agree on these examples, 
 - r3 (2026-10-24, responds to the review of 9d942f9c): custom `costModel` strings rewritten → D2b, I11;
   `uplc.defaultTransaction` missing from the Promise client → D2b, I11; tests in `codec.test.mjs` and the new
   `client.test.mjs`.
-- r4 (2026-11-05, on `main` after ADR-068): merged `main`. JavaParser is gone from JuLC, so its `-H:AbortOnTypeReachable` line only guards against its return, and the README no longer counts it in image sizes. The sizes in D5 were measured before ADR-068; the README has current ones, with the full image now 33.2 MB because javac runs in it. Added the check with a real Elci image (Verification strategy).
+- r4 (2026-11-05, on `main` after ADR-068): merged `main`. JavaParser is gone from JuLC, so its `-H:AbortOnTypeReachable` line only guards against its return, and the README no longer counts it in image sizes. The sizes in D5 were measured before ADR-068; the README has current ones, with the full image now 33.1 MB because javac runs in it. Added the check with a real Elci image (Verification strategy).
 - r5 (2026-11-05, on two reviews of `7daa4ee1`): POMs gain a name and a description, and `verifyMavenReleasePublicationScope` checks them. The cardano-client-lib rule uses `cardanoClientLibVersion`; r4's merge had kept the old literal. I5 is enforced (`OnlyWebImage`, `nativeImageBlsProbe`), which answers open question 1. `julc-tools`' public signatures get their modules in `api` scope. The client refuses an engine whose variant or API version differs from its manifest. The cost model shorthand needs JuLC's exact fields. `uplc.defaultTransaction` is reserved, a recursive record is rejected when registered, and engine groups must be distinct. The README's codec, metadata and exclusion notes are corrected; the demo image now excludes `julc-compiler`'s metadata.
