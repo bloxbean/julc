@@ -352,6 +352,18 @@ the old form stops at compile time, so there is nothing to look for at run time.
 replacements.</p>
 <div class="sl-heading-wrapper level-h3"><h3 id="also-in-this-release">Also in this release</h3><a class="sl-anchor-link" href="#also-in-this-release"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Also in this release”</span></a></div>
 <ul>
+<li><strong>Clearer errors.</strong> Script bytes do not change.
+<ul>
+<li>An error from the compiler, the CLI, the Gradle plugin or the annotation processor now shows the source line with the problem underlined.</li>
+<li><code dir="auto">JULC0076</code> and <code dir="auto">JULC0077</code> show a record pattern’s rewrite with your own names: <code dir="auto">case A(var amount)</code> on <code dir="auto">record A(BigInteger v)</code>
+suggests <code dir="auto">write `case A a`, then use `a.v()` for `amount` </code>.</li>
+<li>Messages no longer mention design documents or internal names such as <code dir="auto">AssignExpr</code>. <code dir="auto">JULC0125</code> says <code dir="auto">a char literal</code>, and
+<code dir="auto">JULC0110</code> says <code dir="auto">a nested block</code>.</li>
+<li><code dir="auto">CompilerDiagnostic</code> has a new component, <code dir="auto">excerpt</code>. Its constructors and accessors keep working, but a record pattern over it
+needs eight components, and two diagnostics that differ only in <code dir="auto">excerpt</code> are not equal.</li>
+<li>These errors now have codes: <code dir="auto">JULC0131</code> to <code dir="auto">JULC0138</code>. Some rejections that had no code now report an existing one, such as <code dir="auto">JULC0012</code> and <code dir="auto">JULC0114</code>.</li>
+</ul>
+</li>
 <li><strong>The tools read with javac.</strong> Lint, <code dir="auto">julc check</code>’s test discovery, the MCP tools, the metadata extractor and the
 verification resolvers read sources with javac’s parser. Lint and test discovery read the corpus as JavaParser read it;
 the metadata extractor (the playground’s check) now reports the javac frontend’s diagnostics (ADR-068 M6a).</li>
