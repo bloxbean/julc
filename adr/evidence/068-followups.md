@@ -220,7 +220,7 @@ code. An owner is who closes the row: **maintainer** for a decision, **M5b** for
 
 | ID | Problem | Plan | Owner |
 |---|---|---|---|
-| O1, arms of two types | A conditional or `switch` expression whose arms have two Java types is `JULC0012` wherever it is used (section 9), outside a primitive result, a sealed sum and a PlutusData view | Confirm the rule and its three exceptions, or name a further shape to lower; each lowered shape needs a JVM-pinned harness row | maintainer |
+| O1, arms of two types | A conditional or `switch` expression whose arms have two Java types is `JULC0012` wherever it is used (section 9), outside a primitive result, a sealed sum and a PlutusData view | **Decided (maintainer, 2026-11-05): keep the rule and its three exceptions.** Lowering a further shape would need its own JVM-pinned harness row | maintainer |
 | O2, Policy rejections of M5a | `JULC0124` (a cast to `byte`, `short`, `char`), `JULC0126`, `JULC0127`, `JULC0128`: the reference accepts each and reads it otherwise than Java, or holds a value with no representation | Confirm each code as a policy (D13 "Policy rejection" needs the decision), with the r17 text of section 10 | maintainer |
 | O3, an integer `@NewType`'s component named like a method | `r.a().abs()` where `a` is an integer `@NewType` read from a record: `JULC0055`. The reference compiles it, and with the default gate rejects it with `JULC0101`, so no gated program is lost. A port at M5a widened a pinned rejection and was reverted | Port with the byte-string wrapper read of section 12, as one change with its own harness rows | M5b |
 | O4, `Number.longValue()` | `for (Number o : xs) { s = s + o.longValue(); }` over a `JulcList<BigInteger>`: `JULC0055`. JuLC reads `longValue` and `intValue` as the identity, which Java's 64- and 32-bit truncation is only in range, so a port takes the narrowing rule (`GuardRules.NARROWING_IDENTITY_METHODS`) with it | Lower `Number`'s accessors as the element's, under the narrowing rule, or keep the rejection | M5b |
@@ -263,6 +263,12 @@ Users pay these at run time, so they come before other optimization work.
 |---|---|---|---|
 | A playground test's empty response | M5d's gates | `CompileControllerJavacGateTest.javacErrorIsReported` failed once at `6420db53` in `test --rerun`, after 19 ms and with an empty response body, and passed in the same head's full build and in 6 of 6 reruns of `:julc-playground:test`. The cause, found at `0591bdfc`: the test's server took a port another program held on 127.0.0.1. Jetty listens on the wildcard address with `SO_REUSEADDR`, so the kernel lets it share such a port, and the test client's `localhost` reaches the other program. Two full builds there failed this way, each with a 404 and an empty body after 11 ms: `CompileControllerJavacTest.javacErrorIsReported` on port 50817 and `CompileControllerTest.blueprintEnabledPublishesExplicitMultiPurposeInterfaces` on port 50935, both held by IntelliJ. A local run can hit it; the compiler and the playground are not involved | Rerun, or close the program. Binding the tests' servers to 127.0.0.1 would end it, and is not done here |
 
+## After the merge
+
+| Item | Where |
+|---|---|
+| On-chain library jars and the two javac runs: a jar is found only on the processor path, the two paths can hold different versions with no warning, and `compileJulc` reads no jars. Also the docs, the error hint, Maven bundling and the option B decision | #302 |
+
 ## Codex read owed
 
 If Codex cannot run, a milestone closes on independent Claude reviewers, and its head is listed here for a later Codex pass (maintainer decision, 2026-11-01).
@@ -278,7 +284,7 @@ If Codex cannot run, a milestone closes on independent Claude reviewers, and its
 | `dbc506bd`, M6a's head | The tools' javac readings (`SourceReader`, `SourceAnnotations`, the lint and discovery ports), `JulcCompiler.subsetDiagnostics` | Closed on an independent Claude review (`m6a-review.md`) |
 | M5 integration head (`wip/068-m5-integ`; `068-m5-integration.md`) | The merge of M6a onto M5a, the freeze with `m5-corpus-head-3`, the I1 tool's classes for `DIFFERENT-pir-unaccepted`, r17's ADR text | Integration; Codex to read with the heads above |
 | `91ab9f47`, M5b's review fixes (`wip/068-m5c`) | The default flip on every host, the testkit's and `JulcEval`'s frontend routes, `JULC0127` at the declaration, the corpus recorder on either frontend | Closed on an independent Claude review and its re-review (no P0, P1 or P2), with the maintainer's choice to run Codex later |
-| `wip/068-m6` head | The whole deletion: `JulcCompiler`'s one path, `JavaLibraryProvider`, what stays of `PirHelpers`, `TypeRegistry` and `SpelledMethods`, `CompilerOptions.requireJavacFrontend`, the frozen tables and `FrozenReference`, the re-baselined saved cases, `CampaignVerifier`'s policy list | Run with no Codex at `68a84417` and the evidence commit after it; closed on the gates in `068-m6.md`, with the review owed |
+| `wip/068-m6` head | The whole deletion: `JulcCompiler`'s one path, `JavaLibraryProvider`, what stays of `PirHelpers`, `TypeRegistry` and `SpelledMethods`, `CompilerOptions.requireJavacFrontend`, the frozen tables and `FrozenReference`, the re-baselined saved cases, `CampaignVerifier`'s policy list | Run with no Codex at `68a84417` and the evidence commit after it; closed on the gates in `068-m6.md`. reviewer1 (Codex) then reviewed the branch at `f491a88a` and gave design acceptance at `155bfc40`, concentrating on identity and lowering invariants, narrowing, the ledger gates and the REPL boundary. That was not a line-by-line read |
 | `wip/068-m5d` head | `NarrowingElisionPass`: its rules, its scoping over every binder form and its place in `PirBackend`; the 11 moved rows; the O8 decision as recorded in r18 | Closed on the gates here. Codex is to read it with the heads above |
 
 ## Future stdlib enhancements (after ADR-068 is complete)

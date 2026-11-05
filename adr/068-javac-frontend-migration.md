@@ -1,8 +1,8 @@
 # ADR-068: Replace JavaParser with javac as JuLC's only Java frontend
 
 **Status:** Accepted (2026-10-31): approved by the review comment at `0e8bb3c1` and by Codex at `0e8bb3c1`, with
-the post-approval P3 edits at `3ba3ea03`. The implementation follows in this PR, milestone by milestone (M0–M6)
-**Date:** 2026-10-30 (r1); revised 2026-10-31 (r2–r9), 2026-11-01 (r10, r11), 2026-11-02 (r12, r13), 2026-11-03 (r14 to r16), 2026-11-04 (r17, r18) and 2026-11-05 (r19 to r22)
+the post-approval P3 edits at `3ba3ea03`. The implementation followed in PR #267, milestone by milestone (M0–M6), and merged to `main` at `ee798630` (2026-11-05)
+**Date:** 2026-10-30 (r1); revised 2026-10-31 (r2–r9), 2026-11-01 (r10, r11), 2026-11-02 (r12, r13), 2026-11-03 (r14 to r16), 2026-11-04 (r17, r18) and 2026-11-05 (r19 to r23)
 **Label:** `semantic-consistency`
 **Risk class:** correctness-sensitive, **high**. The frontend decides what every validator means; a wrong
 binding, type or literal is a silent miscompile.
@@ -1684,6 +1684,10 @@ rest on the rule's own tests and on V146 showing it is the only byte change. Dev
   - M5's entry gate is met, on `m5-corpus-head-3`, a recording of the head at `8875e6a9` that replaces `m2-corpus-head` in
     the gate: no `JULC0084` on the corpus, every case has a javac row, and every `DIFFERENT` row is classified with none
     owed. The tables are frozen at the integration with M6a's tool readings, which moved no row.
+- **r23** (2026-11-05, after PR #267 merged at `ee798630`; records decisions, no change of design):
+  - D13: the maintainer accepts r21. I1 ended at the merge, so most of its 24,167 cases have no byte check in CI. The corpora are archived, with a copy off this machine ([M6's evidence](evidence/068-m6.md)).
+  - D6: the maintainer confirms the follow-ups' O1. A conditional or `switch` expression whose arms have two Java types stays `JULC0012`, with its three exceptions: a primitive result, a sealed sum and a PlutusData view.
+  - D3: option B stays deferred. Its decision and the library findings of the two javac runs are tracked in #302.
 - **r22** (2026-11-05, on reviewer1's review of `f491a88a`): F1208 → `JULC0130` classifies the operand after unboxing, so a `Long` javac inferred from a for-each element, a generic method's result, a local alias or a conditional is rejected like a `long`. It compiled before and gave 4294967301 on-chain against the JVM's 5 at 2^32. F1209 → D9's wrapper writes an inferred `Integer` or `Long` as `BigInteger`, the integer it is on-chain, casting through `Object` where it sits inside a collection, so `JulcList.of(1)` and `JulcList.of(1L)` evaluate again in both REPLs; a source still cannot write those boxes.
 - **r21** (2026-11-05, on the independent review of M6, `build/reviews/m6-review.md`, delegated by the maintainer):
   - D13: I1 is a migration gate, and it ends when M6 merges. It needs the recorded corpora, about 2.1 GB outside the repository, so CI has never run it, and a recording at a later head has other keys. `lowering-javac.tsv` stays as the record of what M6 compiled, and the corpora are archived with a digest ([M6's evidence](evidence/068-m6.md)). From the merge, byte stability in CI is `FrozenReference`'s 8,250 answers, `NativeConstantsRegressionTest`'s hashes and sizes, and the Blaster artifacts; the `.diffcase` set checks verdicts against the JVM, not bytes. So most of the 24,167 cases, the stdlib's, the external examples' and G0's and G1's among them, have no byte pin in CI after the merge, and a change to their bytes shows only in a run of I1 from the archive. A moved answer is read through `FrozenReference`'s report, as text. D13's classes stay as the record of what was decided during the migration, and take no new row; the observations they required for a moved row come from the change's own tests.
