@@ -63,10 +63,21 @@ ext.configureReleaseSigning = { Project candidate ->
     }
 }
 
+// The playground and the WebAssembly engine run blueprint generation and script hashing on cardano-client-lib,
+// which also runs under GraalVM Web Image. The projects that build them force cardanoClientLibVersion so no transitive
+// dependency moves it. A resolution rule, unlike a strict dependency constraint, is not published: a consumer of
+// julc-tools or julc-wasm that resolves another cardano-client-lib still resolves (ADR-064).
+ext.pinWebImageCardanoClientLib = { Project candidate ->
+    candidate.configurations.matching { it.canBeResolved }.configureEach {
+        resolutionStrategy.force "com.bloxbean.cardano:cardano-client-lib:${cardanoClientLibVersion}"
+    }
+}
+
 // Modules that are applications, test harnesses or aggregators rather than
 // published libraries. Declared here, not inside `subprojects`, because the
 // Central deployment scope below is derived from it.
-def nonPublishable = ['julc-examples', 'julc-e2e-tests', 'julc-difftest', 'julc-plugin-test', 'julc-analyzer-cli', 'julc-benchmark', 'julc-cli', 'julc-playground', 'julc-tools', 'julc-wasm']
+// julc-tools and julc-wasm are published so that another language's WebAssembly image can be built on them (ADR-064).
+def nonPublishable = ['julc-examples', 'julc-e2e-tests', 'julc-difftest', 'julc-plugin-test', 'julc-analyzer-cli', 'julc-benchmark', 'julc-cli', 'julc-playground']
 
 subprojects {
     def commit_id = getCheckedOutGitCommitHash()
@@ -280,6 +291,16 @@ tasks.register('verifyMavenReleasePublicationScope') {
                     'Central deployment scope does not match declared publications. ' +
                             "Publishing but not deployed: ${missing.sort()}; " +
                             "deployed but publishes nothing: ${extra.sort()}")
+        }
+        // Central rejects a whole deployment if one POM has no name or description, after the BloxBean upload that makes
+        // the version unusable for another try.
+        def incomplete = allprojects.findAll { it.pluginManager.hasPlugin('maven-publish') }.collectMany { candidate ->
+            candidate.publishing.publications.withType(MavenPublication).findAll {
+                it.pom.name.getOrElse('').isBlank() || it.pom.description.getOrElse('').isBlank()
+            }.collect { "${candidate.path}:${it.name}" }
+        }
+        if (!incomplete.isEmpty()) {
+            throw new GradleException("Publications with no POM name or description: ${incomplete.sort()}")
         }
         logger.lifecycle("Central deployment scope: ${expected.size()} projects")
     }

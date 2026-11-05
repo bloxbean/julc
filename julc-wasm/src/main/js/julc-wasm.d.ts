@@ -38,13 +38,29 @@ export type SourceDebugSession = M.SourceDebugModels_OpenResponse & {
   locals(): Promise<M.SourceDebugModels_LocalsResponse>;
   children(handle: string, start?: number, count?: number): Promise<M.SourceDebugModels_ChildrenResponse>;
 };
-export type FeatureGroup = 'vm' | 'debug' | 'compiler' | 'uplc' | 'sourceDebug' | 'sourceDebugLocals';
-export interface Features {api: 0; variant: 'full' | 'vm'; groups: FeatureGroup[]; defaultProtocol: 11; bls: false;}
+/** JuLC's groups; an image another language builds on julc-wasm adds its own (ADR-064). */
+export type JulcFeatureGroup = 'vm' | 'debug' | 'compiler' | 'uplc' | 'sourceDebug' | 'sourceDebugLocals';
+export type FeatureGroup = JulcFeatureGroup | (string & {});
+/** `full` and `vm` are JuLC's images; another language's image names its own variant. */
+export type Variant = 'full' | 'vm' | (string & {});
+export interface Features {api: 0; variant: Variant; groups: FeatureGroup[]; defaultProtocol: 11; bls: false;}
 export interface JulcError extends Error {code: string; status: number; body: unknown;}
-export interface VmClient {
+/** What every engine has. */
+export interface EngineClient {
   version(): string;
   features(): Features;
   dispose(): void;
+  /** The playground's HTTP routes, answered by the engine. */
+  rest(method: string, path: string, body?: unknown): Promise<{status: number; body: unknown}>;
+}
+/**
+ * The operations of an engine group as the client exposes them: one Promise per operation. Integers outside the
+ * 32-bit range cross as `bigint`.
+ */
+export type Operations<T extends Record<string, (request: any) => unknown>> = {
+  [K in keyof T]: (request: Parameters<T[K]>[0]) => Promise<Awaited<ReturnType<T[K]>>>;
+};
+export interface VmClient extends EngineClient {
   vm: {
     decode(request: Input<M.UplcModels_DecodeRequest>): Promise<M.UplcModels_DecodeResponse>;
     hash(request: Input<M.UplcModels_DecodeRequest>): Promise<{scriptHash: string}>;
@@ -74,8 +90,9 @@ export interface Manifest {
   api: 0;
   version: string;
   launcher: string;
-  variant: 'full' | 'vm';
+  variant: Variant;
   groups?: FeatureGroup[];
+  /** The JuLC version the image was built with. */
   julcVersion: string;
 }
 export interface Options {
@@ -86,6 +103,10 @@ export interface Options {
   timeoutMs?: number;
   loadTimeoutMs?: number;
 }
-/** Narrow with isFullClient before accessing compiler and transaction helpers. */
-export function createJulc(options?: Options): Promise<VmClient | FullClient>;
-export function isFullClient(client: VmClient | FullClient): client is FullClient;
+/**
+ * Narrow with isFullClient before accessing compiler and transaction helpers. An image another language builds on
+ * julc-wasm names its client type, for example
+ * `createJulc<VmClient & {elci: Operations<{check(r: CheckRequest): CheckResult}>}>()`.
+ */
+export function createJulc<C extends EngineClient = VmClient | FullClient>(options?: Options): Promise<C>;
+export function isFullClient(client: EngineClient): client is FullClient;

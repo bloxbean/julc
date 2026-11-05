@@ -9,7 +9,7 @@ import org.julclang.core.BlsConstantValidator;
  * implementation backed by the native blst library, which cannot run in WebAssembly. Without a validator the parser
  * accepts BLS constants unchecked, as it does when no implementation is on the classpath.
  */
-@TargetClass(BlsConstantValidator.class)
+@TargetClass(value = BlsConstantValidator.class, onlyWith = OnlyWebImage.class)
 final class Target_org_julclang_core_BlsConstantValidator {
 
     @Substitute

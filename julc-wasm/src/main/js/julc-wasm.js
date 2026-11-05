@@ -1,9 +1,10 @@
-/** Create an isolated Promise-based JuLC client. Each client owns one worker. */
+/** True for JuLC's full image, which adds the compiler, transaction and source-debug helpers. */
 export function isFullClient(client) {
   const features = client.features();
   return features.variant === 'full' && features.groups.includes('compiler')
     && features.groups.includes('sourceDebug');
 }
+/** Create an isolated Promise-based client of a JuLC engine, or of one built on julc-wasm. Each owns one worker. */
 export async function createJulc({baseUrl = new URL('.', import.meta.url), manifest, catalogue,
   workerFactory = url => new Worker(url), timeoutMs = 30000, loadTimeoutMs = 120000} = {}) {
   const base = new URL(baseUrl, import.meta.url);
@@ -39,6 +40,12 @@ export async function createJulc({baseUrl = new URL('.', import.meta.url), manif
   try { worker.postMessage({type: 'init', base: base.href, manifest, catalogue}); }
   catch (error) { dispose(error); }
   const info = await ready;
+  if ((manifest.variant !== undefined && manifest.variant !== info.features.variant)
+      || (manifest.api !== undefined && manifest.api !== info.features.api)) {
+    const error = new Error('JuLC engine variant or API version does not match its manifest');
+    dispose(error);
+    throw error;
+  }
   if (Array.isArray(manifest.groups)) {
     const declared = [...manifest.groups].sort();
     const actual = [...info.features.groups].sort();
@@ -99,14 +106,23 @@ export async function createJulc({baseUrl = new URL('.', import.meta.url), manif
   }
   const api = {version: () => info.version, features: () => info.features, dispose,
     rest: (method, path, body) => send({op: 'rest', method, path, body})};
+  const created = new Set();
   for (const method of Object.keys(info.schemas)) {
-    const [group, name] = method.split('.'); api[group] ??= {};
+    const [group, name] = method.split('.');
+    if (!created.has(group)) {
+      if (group in api) { dispose(); throw new Error('Reserved engine group: ' + group); }
+      api[group] = {};
+      created.add(group);
+    }
     api[group][name] = async (body = {}) => {
       const result = await send({method, body});
       if (method === 'vm.debug' || method === 'uplc.debugTransaction') return proxy(result);
       return method === 'sourceDebug.open' ? proxy(result, 'sourceDebug') : result;
     };
   }
-  if (api.uplc) api.uplc.defaultTransaction = body => send({method: 'uplc.defaultTransaction', body});
+  // The runtime adds this helper to every engine that advertises uplc, with or without uplc operations.
+  if (info.features.groups.includes('uplc')) {
+    (api.uplc ??= {}).defaultTransaction = body => send({method: 'uplc.defaultTransaction', body});
+  }
   return api;
 }

@@ -146,7 +146,16 @@ class WasmSourceDebugSmoke {
   api.dispose();
   assert.equal(lost.isOpen(), false);
   await assert.rejects(lost.snapshot(), error => error.status === 404);
-  const timed = await createJulc({baseUrl, manifest, catalogue, workerFactory, timeoutMs: 200});
+  // A cost model named by its profile needs the bundled parameters, which the image has to carry.
+  const profileClient = await createJulc({baseUrl, manifest, catalogue, workerFactory});
+  try {
+    const profiled = await profileClient.vm.evaluate({script: {script: '(program 1.1.0 (con integer 42))'}, target: {protocol: 11},
+      costModel: 'plutus-v3-pv11-costs-v1'});
+    assert.equal(profiled.status, 'success');
+    console.log('ok cost model profile');
+  } finally { profileClient.dispose(); }
+  // Long enough for a slow runner to open the session; only the endless script below may time out.
+  const timed = await createJulc({baseUrl, manifest, catalogue, workerFactory, timeoutMs: 5000});
   try {
     const session = await timed.vm.debug(request);
     await assert.rejects(timed.vm.evaluate({
