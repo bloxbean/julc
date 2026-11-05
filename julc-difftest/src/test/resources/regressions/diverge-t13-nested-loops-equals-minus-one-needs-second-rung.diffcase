@@ -5,13 +5,16 @@ method: m
 arg: 25
 arg: 06
 arg: 9f25ff
-expect: DIVERGE T13 Value/Inconclusive
-jvm: Value 24 []
-uplc: Inconclusive "budget exhausted"
+expect: AGREE
 note: diverge-t13-nested-loops-needs-second-rung with `== -1` for `< 0` in the deep comparison, the same Java
 note: meaning, outside ADR-068 M1's compareTo rule, so the comparison keeps the lowering that repeats its operands
 note: (#146). The JVM returns -5; every level exhausts the budget, and the nested loops multiply the cost of the deep
 note: comparison, so T13 confirms with a second rung at NONE (D6).
+note: #146 (fixed): compareTo binds a receiver or an argument that is not a variable or a literal and evaluates it
+note: once, outside the OP 0 form too, so the deep comparison no longer doubles per level and the case agrees at
+note: every level; its expectation is AGREE and recorded.jvm and recorded.base keep the old pins.
+recorded.jvm: Value 24 []
+recorded.base: Inconclusive "budget exhausted"
 ---
 import java.math.BigInteger;
 import org.julclang.core.types.JulcList;

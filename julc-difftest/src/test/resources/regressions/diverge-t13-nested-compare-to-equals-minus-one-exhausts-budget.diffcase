@@ -5,13 +5,16 @@ method: m
 arg: 02
 arg: 01
 arg: 80
-expect: DIVERGE T13 Value/Inconclusive
-jvm: Value 02 []
-uplc: Inconclusive "budget exhausted"
+expect: AGREE
 note: diverge-t13-nested-compare-to-exhausts-budget with `a.compareTo(b) == -1` for `a.compareTo(b) < 0`, the same
 note: Java meaning. ADR-068 M1's compareTo rule covers only a comparison with the int literal 0, so this form keeps
 note: the lowering that repeats its operands (#146): the script and its evaluation double per level and every level
 note: exhausts the budget, where the JVM returns 2. It is T13's reproducer for KnownDivergencesTest.
+note: #146 (fixed): compareTo binds a receiver or an argument that is not a variable or a literal and evaluates it
+note: once, outside the OP 0 form too, so the script no longer doubles per level and the case agrees at every level;
+note: its expectation is AGREE and recorded.jvm and recorded.base keep the old pins.
+recorded.jvm: Value 02 []
+recorded.base: Inconclusive "budget exhausted"
 ---
 import java.math.BigInteger;
 import org.julclang.core.types.JulcList;

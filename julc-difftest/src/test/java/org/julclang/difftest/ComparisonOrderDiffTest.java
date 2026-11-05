@@ -160,18 +160,20 @@ class ComparisonOrderDiffTest {
     }
 
     /**
-     * Outside the rule ({@code OP 0L}, a parenthesized call or zero, a comparison with 1) {@code compareTo} keeps today's
-     * lowering, which evaluates a traced operand more than once (T13, #146): those stay open.
+     * Outside the rule ({@code OP 0L}, a parenthesized call or zero, a comparison with 1) {@code compareTo} keeps its
+     * three-way lowering, which binds each operand that is no variable or literal, so each runs once, in order (#146).
      */
     @Test
-    void otherComparisonsKeepTodaysLowering() {
+    void otherComparisonsEvaluateEachOperandOnce() {
         for (String form : List.of("t(\"A\", a).compareTo(t(\"B\", b)) > 0L", "(t(\"A\", a).compareTo(t(\"B\", b))) > 0",
                 "t(\"A\", a).compareTo(t(\"B\", b)) > (0)",
                 "t(\"A\", a).compareTo(t(\"B\", b)) < 1")) {
-            var report = run("", "boolean", "return " + form + ";", 3, 1);
-            assertTrue(report.all(Verdict.Kind.MISMATCH), report.describe());
-            report.results().values().forEach(result ->
-                    assertEquals(List.of("A", "B", "A", "B"), ((Observation.Value) result.uplc()).traces(), report.describe()));
+            for (long[] input : List.of(new long[]{3, 1}, new long[]{1, 3}, new long[]{2, 2})) {
+                var report = run("", "boolean", "return " + form + ";", input[0], input[1]);
+                assertTrue(report.all(Verdict.Kind.AGREE), report.describe());
+                report.results().values().forEach(result ->
+                        assertEquals(List.of("A", "B"), ((Observation.Value) result.uplc()).traces(), report.describe()));
+            }
         }
     }
 }

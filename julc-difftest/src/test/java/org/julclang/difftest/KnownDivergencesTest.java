@@ -174,8 +174,9 @@ class KnownDivergencesTest {
 
     private static final Path REGRESSIONS = Path.of("src/test/resources/regressions");
     /**
-     * T13's reproducers compare with {@code == -1}: since ADR-068 M1 the {@code OP 0} form evaluates its operands once
-     * (D6), so the original reproducers agree; T13 stays open for every other use of {@code compareTo}.
+     * T13's last saved reproducers, which compare with {@code == -1}. ADR-068 M1 made the {@code OP 0} form evaluate its
+     * operands once (D6), and #146's fix did the same for every other use of {@code compareTo}, so both now finish within
+     * the budget; the rule's ladder is tested with reruns that return fixed observations.
      */
     private static final String T13_REPRODUCER = "diverge-t13-nested-compare-to-equals-minus-one-exhausts-budget.diffcase";
     private static final String T13_SECOND_RUNG_REPRODUCER = "diverge-t13-nested-loops-equals-minus-one-needs-second-rung.diffcase";
@@ -198,31 +199,17 @@ class KnownDivergencesTest {
     }
 
     /**
-     * ADR-063 D6 (r6, round r4 of #253): T13 explains an exhausted budget only when a rerun with
-     * {@link KnownDivergences#CONFIRMATION_FACTOR} times the budget finishes and agrees with the JVM. The saved
-     * reproducer is such a case at every level.
+     * #146 is fixed: a nested {@code compareTo} operand is evaluated once, so the script grows linearly and T13's saved
+     * reproducers agree with the JVM at every level, within the budget and with no rerun.
      */
     @Test
-    void theSavedT13ReproducerIsExplainedByItsConfirmationRerun() {
-        var saved = RegressionStore.read(REGRESSIONS.resolve(T13_REPRODUCER));
-        var diffCase = saved.diffCase();
-        var report = RUNNER.run(diffCase);
-        for (var entry : report.results().entrySet()) {
-            var config = entry.getKey();
-            var result = entry.getValue();
-            assertEquals(BUDGET, result.uplc(), config.toString());
-            var reruns = new ArrayList<UplcExecutor.Execution>();
-            KnownDivergences.Rerun rerun = factor -> {
-                assertEquals(KnownDivergences.CONFIRMATION_FACTOR, factor);
-                var execution = RUNNER.rerun(diffCase, config, factor);
-                reruns.add(execution);
-                return execution;
-            };
-            assertEquals(Optional.of("T13"), KNOWN.explain(diffCase, config, DEEP, result, rerun), config.toString());
-            assertEquals(List.of(value(2)), reruns.stream().map(UplcExecutor.Execution::observation).toList());
-            // The verdict itself stays inconclusive (D3, H5), and without a rerun nothing confirms it.
-            assertEquals(Verdict.Kind.INCONCLUSIVE, result.verdict().kind());
-            assertEquals(Optional.empty(), KNOWN.explain(diffCase, config, DEEP, result), "no rerun, no T13");
+    void theFormerT13ReproducersFinishWithinTheBudget() {
+        for (var name : List.of(T13_REPRODUCER, T13_SECOND_RUNG_REPRODUCER)) {
+            var report = RUNNER.run(RegressionStore.read(REGRESSIONS.resolve(name)).diffCase());
+            for (var entry : report.results().entrySet()) {
+                assertEquals(report.jvm(), entry.getValue().uplc(), name + " " + entry.getKey());
+                assertEquals(Verdict.Kind.AGREE, entry.getValue().verdict().kind(), name + " " + entry.getKey());
+            }
         }
     }
 
@@ -301,37 +288,6 @@ class KnownDivergencesTest {
         assertEquals(List.of(10L, 100L, 1000L), factors);
     }
 
-    /**
-     * The input of F15, saved as a reproducer: two nested {@code while} loops around a deep comparison. At
-     * {@code NONE} it needs about 107 times the budget, so only T13's second rung confirms it.
-     */
-    @Test
-    void theNestedLoopsReproducerNeedsTheSecondRungAtNone() {
-        var diffCase = RegressionStore.read(REGRESSIONS.resolve(T13_SECOND_RUNG_REPRODUCER)).diffCase();
-        var report = RUNNER.run(diffCase);
-        assertEquals(value(-5), report.jvm());
-        for (var entry : report.results().entrySet()) {
-            var config = entry.getKey();
-            assertEquals(BUDGET, entry.getValue().uplc(), config.toString());
-            var factors = new ArrayList<Long>();
-            var observations = new ArrayList<Observation>();
-            KnownDivergences.Rerun rerun = factor -> {
-                var execution = RUNNER.rerun(diffCase, config, factor);
-                factors.add(factor);
-                observations.add(execution.observation());
-                return execution;
-            };
-            assertEquals(Optional.of("T13"), KNOWN.explain(diffCase, config, DEEP, entry.getValue(), rerun), config.toString());
-            if (config.level() == OptimizationLevel.NONE) {
-                assertEquals(List.of(100L, 1000L), factors);
-                assertEquals(List.of(BUDGET, value(-5)), observations);
-            } else {
-                assertEquals(List.of(100L), factors, config.toString());
-                assertEquals(List.of(value(-5)), observations, config.toString());
-            }
-        }
-    }
-
     @Test
     void theT13RuleAsksForNoRerunOutsideItsShape() {
         var factors = new ArrayList<Long>();
@@ -342,52 +298,6 @@ class KnownDivergencesTest {
         assertEquals(Optional.empty(), explain(DEEP, value(-5), new Observation.Inconclusive("JVM timeout after 10000 ms"), rerun),
                 "another reason");
         assertEquals(List.of(), factors);
-    }
-
-    /**
-     * Review round r4 of #253, F12: a program with both markers whose T21 {@code if} is never taken, so it does
-     * not hang, and whose result includes the saved T13 expression. It exhausts the budget only by cost: the rerun
-     * returns the JVM's value, so it is T13 alone at every level. Since round r7 that rerun is T21's 10-times rung,
-     * which T13 accepts (F16).
-     */
-    @Test
-    void aProgramWithBothShapesThatFinishesIsT13Only() {
-        var t13 = RegressionStore.read(REGRESSIONS.resolve(T13_REPRODUCER)).diffCase();
-        String expression = t13.source().substring(t13.source().indexOf("return ") + 7, t13.source().lastIndexOf(';'));
-        String source = """
-                import java.math.BigInteger;
-                import org.julclang.core.types.JulcList;
-
-                public class Probe {
-                    public static BigInteger m(BigInteger a, BigInteger b, JulcList<BigInteger> xs) {
-                        BigInteger v0 = a;
-                        long i = 0;
-                        while (i < 1) {
-                            if (b.compareTo(BigInteger.ZERO) < 0) { break; }
-                            if (a.compareTo(BigInteger.TEN) > 0) { v0 = b; }
-                            i = i + 1;
-                        }
-                        return v0.subtract(a).add(%s);
-                    }
-                }
-                """.formatted(expression);
-        var diffCase = new DiffCase("both shapes, finishing", source, "Probe", "m", t13.args());
-        var both = Set.of(G0.Feature.DEEP_COMPARISON.name(), G0.Feature.WHILE_BREAK_WITH_IF_UPDATE.name());
-        var report = RUNNER.run(diffCase);
-        assertEquals(value(2), report.jvm());
-        for (var entry : report.results().entrySet()) {
-            var config = entry.getKey();
-            assertEquals(BUDGET, entry.getValue().uplc(), config.toString());
-            var reruns = new ArrayList<Observation>();
-            KnownDivergences.Rerun rerun = factor -> {
-                assertEquals(T21_RUNG, factor);
-                var execution = RUNNER.rerun(diffCase, config, factor);
-                reruns.add(execution.observation());
-                return execution;
-            };
-            assertEquals(Optional.of("T13"), KNOWN.explain(diffCase, config, both, entry.getValue(), rerun), config.toString());
-            assertEquals(List.of(value(2)), reruns, config.toString());
-        }
     }
 
     @Test

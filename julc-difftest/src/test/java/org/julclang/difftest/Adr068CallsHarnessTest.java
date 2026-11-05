@@ -261,14 +261,26 @@ class Adr068CallsHarnessTest {
                 + receiver + ".insert(said(\"A\", b), b).isEmpty(); }", new PlutusData.MapData(List.of()), integer(1));
     }
 
-    /** These run an operand twice on the branch that returns it, so its trace comes twice: T13's family. */
+    /**
+     * These read an operand twice, on the branch that returns it or in a second comparison: it is bound and runs once,
+     * so its trace comes once, as on the JVM (#146). Each input takes a different branch.
+     */
     @Test
-    void handlersThatRunAnOperandTwice() {
+    void handlersThatReadAnOperandTwiceRunItOnce() {
         String method = "public static BigInteger m(BigInteger a, BigInteger b) { return ";
-        assertBothDivergeAlike(method + "said(\"T\", a).abs(); }", integer(3), integer(1));
-        assertBothDivergeAlike(method + "said(\"T\", a).max(b); }", integer(3), integer(1));
-        assertBothDivergeAlike(method + "said(\"T\", a).min(b); }", integer(1), integer(3));
-        assertBothDivergeAlike("public static int m(BigInteger a) { return said(\"T\", a).signum(); }", integer(3));
+        String compared = "public static int m(BigInteger a, BigInteger b) { return ";
+        for (var input : List.of(new long[]{3, 1}, new long[]{-3, 1}, new long[]{1, 3}, new long[]{2, 2})) {
+            var a = integer(input[0]);
+            var b = integer(input[1]);
+            assertAgree(method + "said(\"T\", a).abs(); }", a, b);
+            assertAgree(method + "said(\"T\", a).max(b); }", a, b);
+            assertAgree(method + "said(\"T\", a).min(b); }", a, b);
+            assertAgree(method + "a.max(said(\"T\", b)); }", a, b);
+            assertAgree(method + "said(\"L\", a).min(said(\"R\", b)); }", a, b);
+            assertAgree(compared + "said(\"T\", a).signum(); }", a, b);
+            assertAgree(compared + "said(\"L\", a).compareTo(said(\"R\", b)); }", a, b);
+            assertAgree(compared + "said(\"L\", a).compareTo(b) == -1 ? 1 : 2; }", a, b);
+        }
     }
 
     /** {@code lovelaceOf} looks ADA up by key on both frontends and on the JVM: with no ADA, or nothing at all, it is 0. */

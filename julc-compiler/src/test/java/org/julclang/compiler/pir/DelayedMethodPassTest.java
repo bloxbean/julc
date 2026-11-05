@@ -766,28 +766,39 @@ class DelayedMethodPassTest {
         return PirHelpers.readOnce(operand, INTEGER, read -> read);
     }
 
+    /** Any operand that is not a variable or a literal is bound once (#146), a read or not. */
     @Test
-    void anOperandThatHoldsAReadIsBound() {
-        assertInstanceOf(PirTerm.Let.class, once(variable("C.k")));
-        assertInstanceOf(PirTerm.Let.class, once(builtin(DefaultFun.AddInteger, variable("C.k"), integer(1))));
-        assertInstanceOf(PirTerm.Let.class, once(call("C.f", variable("C.k"))));
-        assertInstanceOf(PirTerm.Let.class, once(new PirTerm.Let("x", variable("C.k"), variable("x"))));
-    }
-
-    @Test
-    void anOperandThatHoldsNoReadGoesInAsItIs() {
-        for (var operand : List.of(variable("x"), integer(1), call("C.f", variable("x")), builtin(DefaultFun.AddInteger, call("C.f", integer(1)), integer(1)),
-                new PirTerm.App(variable(".amount"), variable("x")))) {
-            assertSame(operand, once(operand));
+    void anOperandThatIsNoVariableOrLiteralIsBound() {
+        for (var operand : List.of(variable("C.k"), builtin(DefaultFun.AddInteger, variable("C.k"), integer(1)), call("C.f", variable("C.k")),
+                new PirTerm.Let("x", variable("C.k"), variable("x")), call("C.f", variable("x")),
+                builtin(DefaultFun.AddInteger, call("C.f", integer(1)), integer(1)), new PirTerm.App(variable(".amount"), variable("x")))) {
+            var bound = assertInstanceOf(PirTerm.Let.class, once(operand));
+            assertSame(operand, bound.value());
+            assertEquals(new PirTerm.Var(bound.name(), INTEGER), bound.body());
         }
     }
 
+    /** A variable, a literal and a negative literal ({@code 0 - n}) have no effect and next to no cost: they go in as they are. */
     @Test
-    void aReceiverWithAnEffectIsBoundAheadOfABoundArgument() {
+    void aVariableOrALiteralGoesInAsItIs() {
+        for (var operand : List.of(variable("x"), integer(1), builtin(DefaultFun.SubtractInteger, integer(0), integer(5)))) {
+            assertSame(operand, once(operand));
+        }
+        for (var operand : List.of(builtin(DefaultFun.SubtractInteger, integer(1), integer(5)), builtin(DefaultFun.SubtractInteger, integer(0), variable("x")),
+                builtin(DefaultFun.AddInteger, integer(0), integer(5)))) {
+            assertInstanceOf(PirTerm.Let.class, once(operand));
+        }
+    }
+
+    /** Both operands are bound, the receiver first, so they run in Java's order and once each. */
+    @Test
+    void aReceiverIsBoundAheadOfItsArgument() {
         var receiver = builtin(DefaultFun.AddInteger, variable("x"), integer(1));
-        var argument = builtin(DefaultFun.AddInteger, variable("C.k"), integer(1));
+        var argument = call("C.f", variable("x"));
         var bound = assertInstanceOf(PirTerm.Let.class, PirHelpers.readOnce(receiver, argument, INTEGER, (a, b) -> b));
         assertEquals(receiver, bound.value());
         assertEquals(argument, assertInstanceOf(PirTerm.Let.class, bound.body()).value());
+        assertSame(receiver, assertInstanceOf(PirTerm.Let.class, PirHelpers.readOnce(receiver, variable("y"), INTEGER, (a, b) -> b)).value());
+        assertSame(argument, assertInstanceOf(PirTerm.Let.class, PirHelpers.readOnce(integer(2), argument, INTEGER, (a, b) -> a)).value());
     }
 }
