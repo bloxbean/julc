@@ -187,6 +187,8 @@ replacements.
     suggests ``write `case A a`, then use `a.v()` for `amount` ``.
   - Messages no longer mention design documents or internal names such as `AssignExpr`. `JULC0125` says `a char literal`, and
     `JULC0110` says `a nested block`.
+  - `CompilerDiagnostic` has a new component, `excerpt`. Its constructors and accessors keep working, but a record pattern over it
+    needs eight components, and two diagnostics that differ only in `excerpt` are not equal.
   - These errors now have codes: `JULC0131` to `JULC0138`. Some rejections that had no code now report an existing one, such as `JULC0012` and `JULC0114`.
 - **The tools read with javac.** Lint, `julc check`'s test discovery, the MCP tools, the metadata extractor and the
   verification resolvers read sources with javac's parser. Lint and test discovery read the corpus as JavaParser read it;

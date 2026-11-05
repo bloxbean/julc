@@ -197,7 +197,7 @@ final class JavacDiscovery {
         var found = validatorAnnotations(type);
         if (found.size() > 1) {
             throw validationError(MULTIPLE_VALIDATOR_ANNOTATIONS, MULTIPLE_VALIDATOR_ANNOTATIONS.fix(), type,
-                    type.getSimpleName(), found);
+                    type.getSimpleName(), String.join(", ", found.stream().map(simple -> "@" + simple).toList()));
         }
         return switch (found.getFirst()) {
             case "SpendingValidator" -> ScriptPurpose.SPENDING;
@@ -263,7 +263,7 @@ final class JavacDiscovery {
                     && JavacNames.BANNED_PARAM_TYPES.contains(facts.identity(declared))) {
                 var info = DiagnosticCodes.PARAM_RAW_PLUTUS_DATA;
                 var diagnostic = new CompilerDiagnostic(CompilerDiagnostic.Level.ERROR,
-                        info.format(field.getType().toString()), "<source>", at.line(), at.column(), info.fix(), info.code());
+                        info.format(field.getType().toString()), at.fileName(), at.line(), at.column(), info.fix(), info.code());
                 if (!diagnostics.contains(diagnostic)) diagnostics.add(diagnostic);
                 continue;
             }
@@ -436,14 +436,16 @@ final class JavacDiscovery {
             printable[i] = args[i] instanceof CharSequence text ? text.toString() : args[i];
         }
         String message = info.format(printable);
+        String file = "<source>";
         int line = 0;
         int column = 0;
         if (tree != null) {
             var at = facts.location(tree);
+            file = at.fileName();
             line = at.line();
             column = at.column();
         }
-        return new CompilerException(message, new CompilerDiagnostic(CompilerDiagnostic.Level.ERROR, message, "<source>",
+        return new CompilerException(message, new CompilerDiagnostic(CompilerDiagnostic.Level.ERROR, message, file,
                 line, column, suggestion, info.code()));
     }
 }

@@ -883,7 +883,7 @@ public final class DiagnosticCodes {
             CompilerDiagnostic.Level.ERROR,
             "CONTROL_FLOW",
             "Guard on ''{0}'' declares pattern variable ''{1}'', which is not supported",
-            "Use a nested record pattern instead, `case P(C c) -> c.w()`, or test the type without a binding (`p.t() instanceof C`) and read the value in the arm.");
+            "Test the type without a binding (`p.t() instanceof C`) and read the value in the arm.");
 
     public static final DiagnosticInfo SWITCH_REQUIRES_SEALED_INTERFACE = new DiagnosticInfo(
             "JULC0007",
@@ -1003,7 +1003,7 @@ public final class DiagnosticCodes {
             CompilerDiagnostic.Level.ERROR,
             "CONFIG",
             "Optimization level {0} is not supported. Supported levels: {1}",
-            "Select one of the listed optimization levels. Use baseline for the least optimized program.");
+            "Select one of the listed optimization levels. Use none to turn the optimizer off.");
 
     public static final DiagnosticInfo VALIDATOR_ANNOTATION_MISSING = new DiagnosticInfo(
             "JULC0010",

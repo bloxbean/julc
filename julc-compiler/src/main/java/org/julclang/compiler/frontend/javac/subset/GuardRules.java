@@ -180,7 +180,7 @@ final class GuardRules {
             var target = facts.type(cast.getType());
             if (!target.getKind().isPrimitive() && types.declared(target) != JType.BOOLEAN_BOX) {
                 throw invalid(cast, entry, "'" + facts.text(cast) + "' casts to a reference type, and JuLC erases the cast's "
-                        + "run-time check (#288); a guard may cast only to a primitive type or to Boolean");
+                        + "run-time check; a guard may cast only to a primitive type or to Boolean");
             }
         }
         for (var cast : casts) {
@@ -214,7 +214,7 @@ final class GuardRules {
                     && NARROWING_IDENTITY_METHODS.contains(select.getIdentifier().toString())) {
                 throw invalid(call, entry, "'" + facts.text(call) + "' narrows to "
                         + (select.getIdentifier().contentEquals("intValue") ? "32" : "64") + " bits in Java, but JuLC "
-                        + "lowers it to the identity (#294); compare the BigInteger value instead");
+                        + "lowers it to the identity; compare the BigInteger value instead");
             }
         }
         boolean small = SubsetWalk.all(guard, LiteralTree.class).stream().anyMatch(l -> l.getKind() == Tree.Kind.CHAR_LITERAL)
@@ -274,7 +274,7 @@ final class GuardRules {
                     && call.getArguments().size() == 1 && types.of(select.getExpression(), leaf) == JType.STRING
                     && types.of(call.getArguments().getFirst(), leaf) != JType.STRING) {
                 throw invalid(call, entry, "'" + facts.text(call) + "' compares a String with a value that is not established "
-                        + "as a String, which fails on-chain where Java gives false (#292)");
+                        + "as a String, which fails on-chain where Java gives false");
             }
         }
     }

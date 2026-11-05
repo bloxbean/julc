@@ -43,7 +43,7 @@ import java.util.Map;
  *   "ok": boolean,
  *   "compilerTarget": "plutus-v3-pv11-uplc-1.1.0",
  *   "diagnostics": [
- *     { "level":"error|warning|info", "code":"JULC0003"?, "message":..., "line":..., "column":..., "suggestion":... }
+ *     { "level":"error|warning|info", "code":"JULC0003"?, "message":..., "line":..., "column":..., "excerpt":string?, "suggestion":... }
  *   ],
  *   "scriptSizeBytes": number?,
  *   "uplc": string?,    // only when includeUplc and ok

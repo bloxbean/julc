@@ -519,6 +519,10 @@ public final class JavacFacts {
 
     /** {@link #rejection(DiagnosticInfo, Tree, Object...)}, with a fix for this source in place of the catalogue's, unless it is null. */
     public CompilerException rejectionWithFix(DiagnosticInfo info, String fix, Tree where, Object... arguments) {
+        if (where == null) {
+            return new CompilerException(List.of(new CompilerDiagnostic(info.level(), info.format(arguments), "<source>", 0, 0,
+                    fix != null ? fix : info.fix(), info.code())));
+        }
         var at = location(where);
         return new CompilerException(List.of(new CompilerDiagnostic(info.level(), info.format(arguments),
                 at.fileName(), at.line(), at.column(), fix != null ? fix : info.fix(), info.code())));

@@ -584,8 +584,8 @@ var negative = -amount;
 variable declared before it (the loop's accumulator). Anywhere else, assigning to a
 local variable, a parameter or a field is rejected, including in an `if`/`else`
 branch and inside an expression. Before [#257](https://github.com/bloxbean/julc/issues/257)
-this was reported as `Unsupported expression: AssignExpr`, without a code; an
-assignment inside an expression in a loop still is.
+this was reported without a code. An assignment inside an expression in a loop is
+`JULC0114`.
 
 **Fix:** Declare a new local for the new value, or choose the value in one
 expression.
@@ -744,9 +744,8 @@ inside an expression or inside a lambda is not seen as one. A loop with `break`
 whose only updates are in such a position reports this code at the update; the
 message says where (`in the loop condition`, `inside a switch statement`, `inside an
 expression`, `inside a lambda`). The code covers only such a loop with `break`: the
-same update in a loop without `break` is still reported as `Unsupported statement:
-SwitchStmt` or `Unsupported expression: AssignExpr`, without a code
-([#206](https://github.com/bloxbean/julc/issues/206)).
+same update in a loop without `break` is reported as `JULC0110` (`a switch statement`) or
+`JULC0114`.
 
 **Fix:** Write the update as a statement of its own.
 
@@ -874,7 +873,12 @@ case A(var v) -> v;
 case A a -> a.v();
 ```
 
-An `instanceof` with a record pattern is `JULC0077`, and the same rewrite applies: `s instanceof A a`, then `a.v()`.
+This holds when the pattern takes every value of the field, as `var` does. `case W(A x)` on `record W(S inner)` also tests that
+`inner` is an `A`, so a rewrite has to keep that test: the error says so, and a value that does not match must go to what the
+next case does.
+
+An `instanceof` with a record pattern is `JULC0077`, and the same rewrite applies: `s instanceof A a`, then `a.v()`. JuLC binds
+the variable only when the `instanceof` is the whole condition of an `if`.
 
 ## 2. Validation Errors (subset rules)
 

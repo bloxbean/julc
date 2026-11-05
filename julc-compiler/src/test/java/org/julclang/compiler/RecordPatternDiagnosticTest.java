@@ -71,11 +71,61 @@ class RecordPatternDiagnosticTest {
     }
 
     @Test
-    void aNestedPatternIsReadTheSameWay() {
+    void aNestedPatternIsATestTheFixKeeps() {
         var source = method(TYPES + "record W(A inner) {} ", "n",
                 "W w = new W(new A(n)); if (w instanceof W(A(var deep))) { return deep; } return BigInteger.ZERO;");
-        assertEquals("Bind the record and read its fields: write `w instanceof W w2`, then use `w2.inner()` and match that value the same way.",
-                rejected(source, "JULC0077").suggestion());
+        assertTrue(rejected(source, "JULC0077").suggestion().contains(
+                "write `w instanceof W w2`, then check that `w2.inner()` matches `A(var deep)`"));
+    }
+
+    /** Three reviews' counterexample: case W(A x) tests the field, so accessors alone would take a B as well. */
+    @Test
+    void aFieldTypeThePatternNarrowsIsATestTheFixKeeps() {
+        var source = method(TYPES + "sealed interface I permits W {} record W(S inner) implements I {} ", "n",
+                "I w = new W(new P(n, n)); return switch (w) { case W(A x) -> BigInteger.ONE; default -> BigInteger.ZERO; };");
+        var fix = rejected(source, "JULC0076").suggestion();
+        assertTrue(fix.contains("then check that `w2.inner()` matches `A x`"), fix);
+        assertTrue(fix.contains("does not match must go to what the next case does"), fix);
+        assertFalse(fix.contains("for `x`"), fix);
+    }
+
+    @Test
+    void aTypeTheFieldAlwaysFitsReadsWithoutATest() {
+        var source = method(TYPES + "sealed interface I permits W {} record W(A inner) implements I {} ", "n",
+                "I w = new W(new A(n)); return switch (w) { case W(A x) -> BigInteger.ONE; };");
+        assertTrue(rejected(source, "JULC0076").suggestion().contains("then use `w2.inner()` for `x`"));
+    }
+
+    @Test
+    void aQualifiedRecordKeepsItsQualifier() {
+        var source = method("sealed interface S permits N.R, Q {} record Q(BigInteger v) implements S {} static class N { record R(BigInteger v) implements S {} } ",
+                "n", "return BigInteger.ZERO; } static BigInteger k(S t) { return switch (t) { case N.R(var v) -> v; default -> BigInteger.ZERO; };")
+                .replace("S s = new A(n); ", "");
+        var fix = rejected(source, "JULC0076").suggestion();
+        assertTrue(fix.contains("write `case N.R r`, then use `r.v()` for `v`"), fix);
+    }
+
+    @Test
+    void aGenericRecordKeepsItsTypeArguments() {
+        var source = SwitchGuardTest.probe("""
+                    static BigInteger m(org.julclang.core.types.Tuple2<BigInteger, BigInteger> t) {
+                        if (t instanceof org.julclang.core.types.Tuple2<BigInteger, BigInteger>(var a, var b)) { return a; }
+                        return BigInteger.ZERO;
+                    }
+                """);
+        var fix = rejected(source, "JULC0077").suggestion();
+        assertTrue(fix.contains("`t instanceof org.julclang.core.types.Tuple2<BigInteger, BigInteger> tuple2`, then use `tuple2.first()` for `a`, `tuple2.second()` for `b`"), fix);
+    }
+
+    @Test
+    void aRawGenericRecordKeepsTheCataloguesFix() {
+        var source = SwitchGuardTest.probe("""
+                    static BigInteger m(org.julclang.core.types.Tuple2<BigInteger, BigInteger> t) {
+                        if (t instanceof org.julclang.core.types.Tuple2(var a, var b)) { return BigInteger.ONE; }
+                        return BigInteger.ZERO;
+                    }
+                """);
+        assertTrue(rejected(source, "JULC0077").suggestion().startsWith("Use a type pattern"));
     }
 
     @Test
@@ -98,7 +148,8 @@ class RecordPatternDiagnosticTest {
         var source = method(TYPES, "n", "if (s instanceof A(var v)) { return v; } return BigInteger.ZERO;");
         var diagnostic = rejected(source, "JULC0077");
         assertEquals("Unsupported instanceof pattern: s instanceof A(var v)", diagnostic.message());
-        assertEquals("Bind the record and read its fields: write `s instanceof A a`, then use `a.v()` for `v`.", diagnostic.suggestion());
+        assertEquals("Bind the record and read its fields: write `s instanceof A a`, then use `a.v()` for `v`."
+                + " JuLC binds the variable only when the `instanceof` is the whole condition of an `if`.", diagnostic.suggestion());
     }
 
     @Test
@@ -113,5 +164,26 @@ class RecordPatternDiagnosticTest {
         var program = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()).compileMethod(source, "m").program();
         var result = CompilerTestVm.pv11().evaluateWithArgs(program, List.<PlutusData>of(new PlutusData.IntData(BigInteger.valueOf(-3))));
         assertEquals(new Term.Const(Constant.integer(BigInteger.valueOf(-3))), ((EvalResult.Success) result).resultTerm());
+    }
+
+    /** The rewrite the narrowing fix describes, with its test kept, takes the same branch as the pattern on a non-matching field. */
+    @Test
+    void theRewriteOfANarrowingPatternKeepsItsTest() {
+        var source = SwitchGuardTest.probe(TYPES + """
+                    sealed interface I permits W {}
+                    record W(S inner) implements I {}
+                    static BigInteger m(BigInteger n) {
+                        I w = new W(new P(n, n));
+                        return switch (w) {
+                            case W w2 -> {
+                                if (w2.inner() instanceof A x) { yield BigInteger.ONE; }
+                                yield BigInteger.ZERO;
+                            }
+                        };
+                    }
+                """);
+        var program = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()).compileMethod(source, "m").program();
+        var result = CompilerTestVm.pv11().evaluateWithArgs(program, List.<PlutusData>of(new PlutusData.IntData(BigInteger.TWO)));
+        assertEquals(new Term.Const(Constant.integer(BigInteger.ZERO)), ((EvalResult.Success) result).resultTerm());
     }
 }

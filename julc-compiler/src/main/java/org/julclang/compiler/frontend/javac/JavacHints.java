@@ -114,7 +114,8 @@ final class JavacHints {
                     + " java.base"
                     : "Package " + pkg + " is not visible to JuLC: only JuLC's on-chain API (julc-core,"
                     + " julc-ledger-api, the stdlib and julc-verification's annotations) and the sources of this"
-                    + " compilation are. A library jar must also be on the annotation processor path";
+                    + " compilation are. Check the import. An on-chain library in a jar must be available to JuLC too: in"
+                    + " Gradle and Maven, add it to the annotation processor path as well as the dependencies";
         }
         if (!key.startsWith("compiler.err.cant.resolve")) return null;
         Matcher symbol = SYMBOL.matcher(message);

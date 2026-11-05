@@ -54,4 +54,20 @@ class SourceExcerptTest {
         assertNull(SourceExcerpt.of("a", 1, 9));
         assertNull(SourceExcerpt.of("a\n   \nb", 2, 1));
     }
+
+    @Test
+    void aCutDoesNotSplitACharacter() {
+        String line = "\uD83D\uDE00".repeat(120) + " target";
+        for (int column = 1; column <= line.length(); column += 7) {
+            var excerpt = SourceExcerpt.of(line, 1, column);
+            assertEquals(excerpt, new String(excerpt.getBytes(java.nio.charset.StandardCharsets.UTF_8), java.nio.charset.StandardCharsets.UTF_8));
+        }
+    }
+
+    @Test
+    void underlinesAQualifiedNameAnAnnotationAndATextBlockOpening() {
+        assertEquals("1 | case I2.A(var w) ->\n  |      ^^^^^^^^^^^", SourceExcerpt.of("case I2.A(var w) ->", 1, 6));
+        assertEquals("1 | @Foo class C\n  | ^^^^", SourceExcerpt.of("@Foo class C", 1, 1));
+        assertEquals("1 | x = \"\"\"\n  |     ^^^", SourceExcerpt.of("x = \"\"\"", 1, 5));
+    }
 }

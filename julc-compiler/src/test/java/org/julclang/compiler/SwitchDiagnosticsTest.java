@@ -276,7 +276,7 @@ class SwitchDiagnosticsTest {
                         S s = new A(a);
                         return switch (s) { case A x when ((S) (Object) new C(a)) instanceof A -> BigInteger.ONE; default -> BigInteger.TWO; };
                     }
-                """), "JULC0072", "#288");
+                """), "JULC0072", "erases the cast");
         accepted(probe(S + """
                     static BigInteger m(BigInteger a, boolean flag) {
                         S s = new A(a);
@@ -555,7 +555,7 @@ class SwitchDiagnosticsTest {
         rejected(switchOver("""
                             case A x when x.v().intValue() < 0 -> BigInteger.ONE;
                             default -> BigInteger.TWO;
-                """), "JULC0072", "#294");
+                """), "JULC0072", "lowers it to the identity");
         rejected(switchOver("""
                             case A x when x.v().longValue() >= 0 -> BigInteger.ONE;
                             default -> BigInteger.TWO;
@@ -608,7 +608,7 @@ class SwitchDiagnosticsTest {
         rejected(switchOver("""
                             case A x when "a".equals(true) -> BigInteger.ONE;
                             default -> BigInteger.TWO;
-                """), "JULC0072", "#292");
+                """), "JULC0072", "not established");
         accepted(probe(S + """
                     static BigInteger m(BigInteger a, String t) {
                         S s = new A(a);
@@ -658,7 +658,7 @@ class SwitchDiagnosticsTest {
         rejected(switchOver("""
                             case A x when ((S) (Object) x) instanceof A -> BigInteger.ONE;
                             default -> BigInteger.TWO;
-                """), "JULC0072", "#288");
+                """), "JULC0072", "erases the cast");
         // F64: an unqualified pattern type resolved by declaration (unqualifiedPatternTypeResolvedByDeclaration).
         rejected(probe("""
                     static final class Other {
@@ -840,7 +840,7 @@ class SwitchDiagnosticsTest {
                         return switch (s) { case A x when (Object) x instanceof C -> BigInteger.ONE; default -> BigInteger.TWO; };
                     }
                 """);
-        rejected(throughAWideningCast, "JULC0072", "#288");
+        rejected(throughAWideningCast, "JULC0072", "erases the cast");
         rejected(probe(S + t + """
                     static BigInteger m(BigInteger a) {
                         S s = new A(a);

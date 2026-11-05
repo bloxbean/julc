@@ -29,6 +29,9 @@ public final class SourceExcerpt {
         int end = Math.max(start + 1, tokenEnd(text, start));
         int from = text.length() <= MAX_WIDTH ? 0 : Math.max(0, start - MAX_WIDTH / 4);
         int to = Math.min(text.length(), from + MAX_WIDTH);
+        // A cut does not split a character that takes two UTF-16 units.
+        if (from > 0 && Character.isLowSurrogate(text.charAt(from))) from++;
+        if (to < text.length() && Character.isHighSurrogate(text.charAt(to - 1))) to--;
         end = Math.min(end, Math.max(to, start + 1));
 
         String shown = (from > 0 ? "..." : "") + text.substring(from, to) + (to < text.length() ? "..." : "");
@@ -43,6 +46,7 @@ public final class SourceExcerpt {
     private static int tokenEnd(String text, int start) {
         if (start >= text.length()) return start + 1;
         char first = text.charAt(start);
+        if (text.startsWith("\"\"\"", start)) return start + 3;
         if (first == '"') {
             for (int i = start + 1; i < text.length(); i++) {
                 if (text.charAt(i) == '\\') i++;
@@ -50,9 +54,13 @@ public final class SourceExcerpt {
             }
             return text.length();
         }
-        if (!Character.isJavaIdentifierPart(first)) return start + 1;
-        int end = start;
-        while (end < text.length() && Character.isJavaIdentifierPart(text.charAt(end))) end++;
+        boolean annotation = first == '@' && start + 1 < text.length() && Character.isJavaIdentifierPart(text.charAt(start + 1));
+        if (!annotation && !Character.isJavaIdentifierPart(first)) return start + 1;
+        int end = annotation ? start + 1 : start;
+        while (end < text.length() && (Character.isJavaIdentifierPart(text.charAt(end))
+                || text.charAt(end) == '.' && end + 1 < text.length() && Character.isJavaIdentifierPart(text.charAt(end + 1)))) {
+            end++;
+        }
         if (end == text.length() || text.charAt(end) != '(') return end;
         int depth = 0;
         for (int i = end; i < text.length(); i++) {

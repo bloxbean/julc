@@ -116,14 +116,14 @@ JULC0078	code	JULC0078	EQUALS_ALWAYS_FALSE	javac frontend: emitted with frontend
 JULC0086	code	JULC0086	REFERENCE_EQUALITY_UNSUPPORTED	javac frontend: emitted with frontend=JAVAC (ADR-068 D6, M3b); not a reference-frontend rejection
 JULC0087	code	JULC0087	ARRAY_EQUALS_UNSUPPORTED	javac frontend: emitted with frontend=JAVAC (ADR-068 D6, M3b); not a reference-frontend rejection
 JULC0090	code	JULC0090	STRING_CONCAT_NON_STRING	javac frontend: emitted with frontend=JAVAC (ADR-068 D6, M3b); not a reference-frontend rejection
-JULC0131	code	JULC0131	PLUTUS_DATA_CAST_TARGET_NOT_LITERAL	javac frontend: emitted with a code after the migration, a text the reference had uncoded
-JULC0132	code	JULC0132	SWITCH_BLOCK_MAY_NOT_YIELD	javac frontend: emitted with a code after the migration, a text the reference had uncoded
-JULC0133	code	JULC0133	NO_CLASS_IN_SOURCE	javac frontend: emitted with a code after the migration, a text the reference had uncoded
-JULC0134	code	JULC0134	ONCHAIN_LIBRARY_WITH_VALIDATOR	javac frontend: emitted with a code after the migration, a text the reference had uncoded
-JULC0135	code	JULC0135	MULTIPLE_VALIDATOR_ANNOTATIONS	javac frontend: emitted with a code after the migration, a text the reference had uncoded
-JULC0136	code	JULC0136	MULTI_VALIDATOR_PURPOSES_MIXED	javac frontend: emitted with a code after the migration, a text the reference had uncoded
-JULC0137	code	JULC0137	MULTI_VALIDATOR_DEFAULT_REPEATED	javac frontend: emitted with a code after the migration, a text the reference had uncoded
-JULC0138	code	JULC0138	MULTI_VALIDATOR_PURPOSE_REPEATED	javac frontend: emitted with a code after the migration, a text the reference had uncoded
+JULC0131	code	JULC0131	PLUTUS_DATA_CAST_TARGET_NOT_LITERAL	source
+JULC0132	code	JULC0132	SWITCH_BLOCK_MAY_NOT_YIELD	source
+JULC0133	code	JULC0133	NO_CLASS_IN_SOURCE	source
+JULC0134	code	JULC0134	ONCHAIN_LIBRARY_WITH_VALIDATOR	source
+JULC0135	code	JULC0135	MULTIPLE_VALIDATOR_ANNOTATIONS	source
+JULC0136	code	JULC0136	MULTI_VALIDATOR_PURPOSES_MIXED	source
+JULC0137	code	JULC0137	MULTI_VALIDATOR_DEFAULT_REPEATED	source
+JULC0138	code	JULC0138	MULTI_VALIDATOR_PURPOSE_REPEATED	source
 U-synchronized	uncoded	^synchronized is not supported on-chain	SubsetValidator:184	source
 U-break-outside-loop	uncoded	break is only supported inside for-each or while loops	SubsetValidator:210	source
 U-method-reference	uncoded	Method references \(::\) are not supported	SubsetValidator:242	source
@@ -137,15 +137,11 @@ U-inheritance	uncoded	^class inheritance is not supported on-chain	SubsetValidat
 U-parse	uncoded	^Failed to parse .* source: 	JulcCompiler:1264 (JavaParser, JavaSourceParser)	source
 U-library-validator-annotation	uncoded	^Library source must not contain validator annotation	JulcCompiler:337	source
 U-legacy-annotation	uncoded	( is no longer supported on |^Unsupported legacy validator annotation @)	JulcCompiler:342,1354 (JavaSourceIntrospector)	source
-U-no-class	uncoded	^No class found in source	JulcCompiler:905	source
 U-no-static-method	uncoded	^No static method '	JulcCompiler:911	source
 U-mutual-recursion	uncoded	^Mutual recursion with more than 2 methods	JulcCompiler:1179	source
 U-newtype-of-arity	uncoded	\.of\(\) requires exactly 1 argument	JulcCompiler:1281,1296	source
-U-role-conflict	uncoded	must not combine @OnchainLibrary with validator annotation	JulcCompiler:1369 (JavaSourceIntrospector:89)	source
-U-multiple-validator-annotations	uncoded	has multiple validator annotations	JulcCompiler:1377	source
 U-unknown-purpose	uncoded	^Unknown purpose '	JulcCompiler:1476	source
 U-multivalidator	uncoded	^@MultiValidator 	JulcCompiler:1495,1504	source
-U-duplicate-purpose	uncoded	^Duplicate purpose 	JulcCompiler:1527	source
 U-method-arity	uncoded	requires (an index|one|a count|a function|a predicate|a key|key and value|a policyId|policyId and tokenName) argument	TypeMethodRegistry:411-906	source
 U-variable-initialized	uncoded	^Variable must be initialized: 	PirGenerator:508, LoopBodyGenerator:881	source
 U-method-body	uncoded	^Method must have a body: 	PirGenerator:415	source
@@ -154,7 +150,6 @@ U-unknown-variant	uncoded	^Unknown variant in switch: 	PirGenerator:2707	defensi
 U-break-outside-loop-pir	uncoded	^(.*: )?break statement outside of a loop	PirGenerator:548	shadowed: SubsetValidator rejects a break outside a for-each or while first (U-break-outside-loop); inside a loop the break is JULC0063
 U-unsupported-statement	uncoded	Unsupported statement: 	PirGenerator:893	source
 U-byte-array-element	uncoded	A byte\[\] initializer element must be an integer literal	PirGenerator:1014	shadowed: SubsetValidator rejects a byte[] initializer with a non-literal element first (arrays are not supported)
-U-assignment-position	uncoded	Assignment to .* is not supported at this position	PirGenerator:1028	source
 U-compound-assignment-target	uncoded	Compound assignment \S+ to '	PirGenerator:1132,1143	source
 U-bigInteger-field	uncoded	Unsupported BigInteger field: 	PirGenerator:1738	source
 U-newtype-constructor	uncoded	@NewType constructor must have exactly 1 argument	PirGenerator:1801	source
@@ -194,10 +189,8 @@ U-unsupported-expression	uncoded	Unsupported expression: 	PirGenerator:1049	sour
 U-unsupported-operator	uncoded	Unsupported operator: 	PirGenerator:1106	source
 U-unsupported-unary	uncoded	Unsupported unary operator: 	PirGenerator:1279	source
 U-unknown-method	uncoded	Unknown method: 	PirGenerator:1587	source
-U-plutusdata-cast	uncoded	PlutusData\.cast\(\) second argument must be a literal	PirGenerator:1356	source
 U-return-in-foreach	uncoded	'return' is not supported inside for-each loop body	PirGenerator:1922	source
 U-yield-in-loop	uncoded	'yield' is not supported inside (for-each|while) loop body	PirGenerator:1930,2416	source
-U-switch-block-yield	uncoded	switch case block may not yield a value on all execution paths	PirGenerator:2941	source
 U-duplicate-record-units	uncoded	Duplicate record type '.*' found across compilation units	TypeRegistrar:54	source
 U-newtype-arity	uncoded	@NewType record '.*' must have exactly 1 field	TypeRegistrar:270	source
 U-recursive-unproductive	uncoded	Recursive type dependency has no finite base constructor	TypeRegistrar:518	source

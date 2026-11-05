@@ -117,7 +117,7 @@ public class JulcCompiler {
         var root = JavacFrontend.Unit.of(source);
         var pool = libraryUnits(librarySources, context);
         try {
-            return DiagnosticExcerpts.attach(JavacRuntime.call(() -> JavacCompilation.subset(root, pool, context)), root, pool);
+            return withExcerpts(JavacRuntime.call(() -> JavacCompilation.subset(root, pool, context)), root, pool);
         } catch (CompilerException e) {
             return withExcerpts(e, root, pool).diagnostics();
         }
@@ -494,8 +494,19 @@ public class JulcCompiler {
     }
 
     private static CompilerException withExcerpts(CompilerException e, JavacFrontend.Unit root, List<JavacFrontend.Unit> pool) {
-        e.attachExcerpts(diagnostics -> DiagnosticExcerpts.attach(diagnostics, root, pool));
+        e.attachExcerpts(diagnostics -> withExcerpts(diagnostics, root, pool));
         return e;
+    }
+
+    /** Building an excerpt never replaces the error it decorates: a failure here leaves the diagnostics as they are. */
+    private static List<CompilerDiagnostic> withExcerpts(List<CompilerDiagnostic> diagnostics, JavacFrontend.Unit root,
+                                                         List<JavacFrontend.Unit> pool) {
+        try {
+            return JavacRuntime.call(() -> DiagnosticExcerpts.attach(diagnostics, root, pool,
+                    unit -> JavacFrontend.shared().sourceName(unit.text())));
+        } catch (RuntimeException e) {
+            return diagnostics;
+        }
     }
 
     private static Program createProgram(CompilationContext context, Term term) {
