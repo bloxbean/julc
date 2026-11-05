@@ -1,5 +1,6 @@
 import type * as Monaco from 'monaco-editor';
 import { METHOD_DOCS, ANNOTATION_DOCS, TYPE_DOCS, INSTANCE_METHODS, type InstanceMethodInfo } from './java-docs';
+import { nextImportSegments } from './java-imports';
 
 const JAVA_LANGUAGE_ID = 'java';
 
@@ -162,6 +163,32 @@ function toCompletionItems(
   });
 }
 
+/** Completes an import one segment at a time; a package reopens the list for the next one. */
+function importCompletions(
+  monaco: typeof Monaco,
+  position: Monaco.Position,
+  match: RegExpMatchArray,
+  afterCursor: string,
+): Monaco.languages.CompletionItem[] {
+  const [, staticKeyword, prefix, partial] = match;
+  const range = {
+    startLineNumber: position.lineNumber,
+    endLineNumber: position.lineNumber,
+    startColumn: position.column - partial.length,
+    endColumn: position.column,
+  };
+  const classEnd = staticKeyword ? '.' : afterCursor.trimStart().startsWith(';') ? '' : ';';
+  return nextImportSegments(prefix).map(({ name, isPackage }, index) => ({
+    label: name,
+    kind: isPackage ? monaco.languages.CompletionItemKind.Module : monaco.languages.CompletionItemKind.Class,
+    detail: prefix + name,
+    insertText: name + (isPackage ? '.' : classEnd),
+    sortText: String(index).padStart(3, '0'),
+    command: isPackage ? { id: 'editor.action.triggerSuggest', title: 'Next segment' } : undefined,
+    range,
+  }));
+}
+
 // --- Registration ---
 
 export function registerJavaCompletions(monaco: typeof Monaco) {
@@ -178,6 +205,12 @@ export function registerJavaCompletions(monaco: typeof Monaco) {
 
       const lineContent = model.getLineContent(position.lineNumber);
       const beforeCursor = lineContent.substring(0, position.column - 1);
+
+      // --- Import lines: packages and classes, never a class's members ---
+      const importMatch = beforeCursor.match(/^\s*import\s+(static\s+)?((?:\w+\.)*)(\w*)$/);
+      if (importMatch) {
+        return { suggestions: importCompletions(monaco, position, importMatch, lineContent.substring(position.column - 1)) };
+      }
 
       // --- Dot-triggered completions ---
       const dotMatch = beforeCursor.match(/(\w+)\.\s*(\w*)$/);

@@ -141,5 +141,6 @@ graalvmNative {
 
 // FrontendSourcesCompileTest reads the Java the frontend puts in the editor, so a change to it reruns the test.
 tasks.named('test') {
-    inputs.files('frontend/src/lib/stores/editor.ts', 'frontend/src/lib/monaco/java-completions.ts')
+    inputs.files('frontend/src/lib/stores/editor.ts', 'frontend/src/lib/monaco/java-completions.ts',
+            'frontend/src/lib/monaco/java-imports.ts')
 }
