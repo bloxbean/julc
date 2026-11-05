@@ -1,7 +1,7 @@
 # JuLC
 
 julcVersion: 0.1.0-pre20
-generatedAt: 2026-10-28T11:18:41.187Z
+generatedAt: 2026-11-05T08:38:06.112Z
 
 > JuLC compiles a safe subset of Java to Plutus V3 UPLC for Cardano smart contracts. Java developers write validators as ordinary classes (records, sealed interfaces, switch expressions); the compiler produces efficient Plutus scripts.
 
@@ -78,10 +78,6 @@ Key facts an AI agent should know before generating JuLC code:
 - [JuLC Compiler Design](https://julc.dev/internals/compiler-design/): JuLC Compiler Design - JuLC documentation
 - [Java to UPLC End to End](https://julc.dev/internals/java-to-uplc-end-to-end/): A beginner-friendly deep dive into how JuLC compiles Java to PIR, UPLC, FLAT bytes, and Cardano script CBOR.
 - [JuLC Compiler Developer Guide](https://julc.dev/internals/compiler-developer-guide/): JuLC Compiler Developer Guide - JuLC documentation
-
-## Experimental
-
-- [JRL (JuLC Rule Language) Guide (Experimental)](https://julc.dev/experimental/jrl-guide/): JRL (JuLC Rule Language) Guide (Experimental) - JuLC documentation
 
 ## Other
 
