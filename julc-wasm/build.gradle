@@ -256,11 +256,11 @@ tasks.register('wasmImageEmbedder', Exec) {
         args '--tool:svm-wasm', '-cp', files.collect { it.absolutePath }.join(File.pathSeparator),
                 '-o', new File(dir, 'demo-lang').absolutePath, '-H:+ReportExceptionStackTraces',
                 // native-image applies every jar's metadata, reachable or not. These jars' metadata registers JuLC's
-                // compiler services, JavaParser and cardano-client-lib for JuLC's full image (19.1 MB instead of
-                // 15.8 MB here); julc-wasm registers what VmApi needs itself (README).
+                // compiler services and cardano-client-lib for JuLC's full image; julc-wasm registers what VmApi needs
+                // itself (README).
                 '--exclude-config', EMBEDDER_EXCLUDED_METADATA_JARS, 'META-INF/native-image/'
-        // The demo language uses no JuLC compiler: the build fails if any of it, JavaParser or cardano-client-lib
-        // becomes reachable, as JuLC's VM image does.
+        // The demo language uses no JuLC compiler: the build fails if any of it or cardano-client-lib becomes
+        // reachable, as JuLC's VM image does. JavaParser left JuLC with ADR-068; its line guards against its return.
         ['com.bloxbean.cardano.*', 'org.julclang.compiler.*', 'org.julclang.decompiler.*',
          'com.github.javaparser.*'].each { args "-H:AbortOnTypeReachable=${it}" }
         args 'org.julclang.wasm.fixture.DemoLangWasm'

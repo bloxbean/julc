@@ -52,7 +52,7 @@ compile its own WebAssembly engine without copying this module ([ADR-064](../adr
 Use the same JuLC version the language already compiles with: the image, the JavaScript files and the compiler
 then come from one build.
 
-[`src/embedderFixture`](src/embedderFixture) is a complete example: a demo language with one operation beside
+[`src/embedderFixture`](src/embedderFixture) is a complete example, kept small so that CI can build it: a demo language with one operation beside
 JuLC's VM operations. `./gradlew :julc-wasm:wasmSmokeEmbedder -PgraalvmHome=<GraalVM 25.3>` builds it as described
 below, from the jars an embedder gets, and runs it in Node.js; CI does this on every native-image build.
 
@@ -105,13 +105,26 @@ available for record class …`), and the client fails with "The engine stopped 
 
    native-image applies the reflection metadata of every jar on the class path, whether or not the code it
    describes is reachable from the entry point. The metadata of `julc-tools`, `julc-blueprint`, cardano-client-lib
-   and the JSON schema validator registers JuLC's compiler services, JavaParser and cardano-client-lib for JuLC's
-   full image; `--exclude-config` leaves it out. Measured with GraalVM 25.3.4.1: the demo language's image is
-   about 15.8 MB with it, close to JuLC's VM image (14.2 MB), and 19.1 MB without it, which also contains
-   JavaParser and cardano-client-lib (JuLC's full image is 24.5 MB). If the language's own
-   operations use cardano-client-lib, drop it from the pattern. Keep the metadata of `julc-wasm` and `julc-bls`.
-   `-H:AbortOnTypeReachable` makes the build fail if JavaParser becomes reachable again; add the packages your
-   image must not contain.
+   and the JSON schema validator registers JuLC's compiler services and cardano-client-lib for JuLC's full image;
+   `--exclude-config` leaves it out. If the language's own operations use cardano-client-lib, drop it from the
+   pattern. Keep the metadata of `julc-compiler`, `julc-wasm` and `julc-bls`. `-H:AbortOnTypeReachable` makes the
+   build fail if a package becomes reachable; add the packages your image must not contain. JavaParser left JuLC with
+   ADR-068, so that line only guards against a dependency bringing it back.
+
+   A language with a compiler on JuLC's backend keeps javac in the image, through `julc-compiler`'s own metadata, and
+   needs nothing more: Elci's providers and its Java libraries work. A language with no compiler needs no
+   `julc-compiler` code at all.
+
+   | Image | `.wasm` size |
+   |---|---:|
+   | JuLC's VM image | 14.2 MB |
+   | A demo language with no compiler | 16.9 MB |
+   | Elci, with its compiler and javac | 30.2 MB |
+   | JuLC's full image | 33.2 MB |
+
+   Measured with GraalVM 25.3.4.1.
+
+   The build also writes a very large `<name>.js.wat`, about 850 MB for Elci. Nothing loads it, so delete it.
 2. In `<name>.js`, after the line `const config = new GraalVM.Config();`, insert the contents of
    `META-INF/julc-wasm/launcher-hook.js` from the `julc-wasm` jar. It lets the worker say where the module is, and
    reports `main` failing before the engine is ready.

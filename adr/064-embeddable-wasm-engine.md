@@ -1,7 +1,7 @@
 # ADR-064: Publish `julc-wasm` so other languages can build their own WebAssembly engine
 
-**Status:** Proposed. Implemented in the same PR; independent review pending.
-**Date:** 2026-10-23
+**Status:** Proposed. Implemented in the same PR; revised on `main` after ADR-068 and checked with a real Elci image (r4).
+**Date:** 2026-10-23 (r1 to r3); revised 2026-11-05 (r4)
 **Builds on:** ADR-054 (browser engine), ADR-057 (`julc-wasm` distribution), ADR-056 and ADR-059 (language-neutral
 backend). **Changes:** ADR-057's "the engine is JuLC's" assumption in the JavaScript runtime and worker.
 
@@ -288,6 +288,21 @@ the exclusion and its size effect, the launcher naming rule and the TypeScript u
   parity fixtures and session lifecycle (I1, I2, I4).
 - Staging: POM scopes and jar contents inspected; an external consumer compiled and run (D1, D3).
 
+### Elci's image, checked by hand (r4)
+
+Not part of CI. A scratch clone of Elci at `a3ec190`, repinned to this branch's published jars, with one entry point of about 100 lines
+(`ElciWasm`: `elci.build`, `elci.eval`, `VmApi`), built as the README says with Oracle GraalVM 25.3.4.1 on macOS arm64. No JuLC code was copied.
+
+| Check | Result |
+|---|---|
+| Image | 30,162,724 bytes, 42 s, about 5 GB of memory to build |
+| 11 examples, 12 cases, in Node.js and in Chrome | FLAT bytes equal to the JVM compiler's; `eval` values equal too |
+| Java library through javac in the image | `custom-library` gives 42; with the library removed, `On-chain Java source not found: example.Pricing` |
+| Compile error | `Signed.elm:12:1: ELCI2002`, status 400 |
+| `vm.evaluate` on the same engine | runs the bytes `elci.eval` compiled, `(con integer 42)` |
+
+Not checked: Linux, Windows, Firefox and Safari, BLS (unavailable by design), and Elci's own test suite against this pin.
+
 ## Open questions
 
 1. **A build-time guard for I5.** Can the substitutions be limited to Web Image builds, for example with a
@@ -314,3 +329,4 @@ the exclusion and its size effect, the launcher naming rule and the TypeScript u
 - r3 (2026-10-24, responds to the review of 9d942f9c): custom `costModel` strings rewritten → D2b, I11;
   `uplc.defaultTransaction` missing from the Promise client → D2b, I11; tests in `codec.test.mjs` and the new
   `client.test.mjs`.
+- r4 (2026-11-05, on `main` after ADR-068): merged `main`. JavaParser is gone from JuLC, so its `-H:AbortOnTypeReachable` line only guards against its return, and the README no longer counts it in image sizes. The sizes in D5 were measured before ADR-068; the README has current ones, with the full image now 33.2 MB because javac runs in it. Added the check with a real Elci image (Verification strategy).
