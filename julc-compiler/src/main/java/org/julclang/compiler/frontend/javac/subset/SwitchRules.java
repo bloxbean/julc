@@ -72,7 +72,7 @@ public final class SwitchRules {
             if (!(entry.getLabels().getFirst() instanceof PatternCaseLabelTree label)) continue;
             if (label.getPattern() instanceof DeconstructionPatternTree recordPattern) {
                 throw facts.rejectionWithFix(DiagnosticCodes.CASE_PATTERN_UNSUPPORTED,
-                        RecordPatternFix.of(facts, recordPattern, "case "), entry, facts.text(label),
+                        RecordPatternFix.of(facts, recordPattern, "case "), label, facts.text(label),
                         "JuLC does not support record patterns yet");
             }
             var pattern = (BindingPatternTree) label.getPattern();

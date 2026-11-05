@@ -574,7 +574,7 @@ class SwitchDiagnosticsTest {
                         S s = new A(a);
                         return switch (s) { case A x when ((int) n) >= 0 -> BigInteger.ONE; default -> BigInteger.TWO; };
                     }
-                """), "JULC0072", "T6");
+                """), "JULC0072", "erases the narrowing");
         // A constant operand is converted exactly.
         accepted(switchOver("""
                             case A x when ((int) 2147483648L) < 0 -> BigInteger.ONE;

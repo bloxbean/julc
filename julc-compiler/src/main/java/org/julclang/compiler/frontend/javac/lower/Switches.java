@@ -305,8 +305,7 @@ final class Switches {
     /** A case block must yield on every path, by the reference's reading, which is stricter than javac's in a bare block. */
     private PirTerm block(BlockTree block, Frame frame) {
         if (!Exits.allPathsYield(block.getStatements())) {
-            throw facts.rejection("switch case block may not yield a value on all execution paths",
-                    "Ensure all code paths in the case block end with a 'yield' statement.", block);
+            throw facts.rejection(DiagnosticCodes.SWITCH_BLOCK_MAY_NOT_YIELD, block);
         }
         return statements.block(block, frame);
     }

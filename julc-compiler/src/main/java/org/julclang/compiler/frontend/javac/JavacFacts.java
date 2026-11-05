@@ -448,8 +448,7 @@ public final class JavacFacts {
                 yield bound;
             }
             case ERROR -> throw new IllegalStateException("an error type reached JuLC: " + type);
-            default -> throw rejection("Cannot resolve type: " + type + ". Supported types: BigInteger,"
-                    + " String, boolean, byte[], List<T>, Map<K,V>, records, sealed interfaces", where);
+            default -> throw rejection(DiagnosticCodes.TYPE_RESOLUTION_FAILED, where, type);
         };
     }
 

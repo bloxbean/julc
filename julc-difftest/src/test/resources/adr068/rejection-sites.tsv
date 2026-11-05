@@ -116,6 +116,14 @@ JULC0078	code	JULC0078	EQUALS_ALWAYS_FALSE	javac frontend: emitted with frontend
 JULC0086	code	JULC0086	REFERENCE_EQUALITY_UNSUPPORTED	javac frontend: emitted with frontend=JAVAC (ADR-068 D6, M3b); not a reference-frontend rejection
 JULC0087	code	JULC0087	ARRAY_EQUALS_UNSUPPORTED	javac frontend: emitted with frontend=JAVAC (ADR-068 D6, M3b); not a reference-frontend rejection
 JULC0090	code	JULC0090	STRING_CONCAT_NON_STRING	javac frontend: emitted with frontend=JAVAC (ADR-068 D6, M3b); not a reference-frontend rejection
+JULC0131	code	JULC0131	PLUTUS_DATA_CAST_TARGET_NOT_LITERAL	javac frontend: emitted with a code after the migration, a text the reference had uncoded
+JULC0132	code	JULC0132	SWITCH_BLOCK_MAY_NOT_YIELD	javac frontend: emitted with a code after the migration, a text the reference had uncoded
+JULC0133	code	JULC0133	NO_CLASS_IN_SOURCE	javac frontend: emitted with a code after the migration, a text the reference had uncoded
+JULC0134	code	JULC0134	ONCHAIN_LIBRARY_WITH_VALIDATOR	javac frontend: emitted with a code after the migration, a text the reference had uncoded
+JULC0135	code	JULC0135	MULTIPLE_VALIDATOR_ANNOTATIONS	javac frontend: emitted with a code after the migration, a text the reference had uncoded
+JULC0136	code	JULC0136	MULTI_VALIDATOR_PURPOSES_MIXED	javac frontend: emitted with a code after the migration, a text the reference had uncoded
+JULC0137	code	JULC0137	MULTI_VALIDATOR_DEFAULT_REPEATED	javac frontend: emitted with a code after the migration, a text the reference had uncoded
+JULC0138	code	JULC0138	MULTI_VALIDATOR_PURPOSE_REPEATED	javac frontend: emitted with a code after the migration, a text the reference had uncoded
 U-synchronized	uncoded	^synchronized is not supported on-chain	SubsetValidator:184	source
 U-break-outside-loop	uncoded	break is only supported inside for-each or while loops	SubsetValidator:210	source
 U-method-reference	uncoded	Method references \(::\) are not supported	SubsetValidator:242	source
@@ -166,7 +174,6 @@ U-duplicate-named-type	uncoded	Duplicate named type: '	TypeResolver:97	shadowed:
 U-duplicate-sealed	uncoded	Duplicate sealed interface: '	TypeResolver:162,231	shadowed: TypeRegistrar rejects a sealed interface declared twice across compilation units first (U-duplicate-sealed-units)
 U-primitive-type	uncoded	Unsupported primitive type: 	TypeResolver:379	source
 U-array-type	uncoded	Arrays are not supported except byte\[\]	TypeResolver:399	source
-U-cannot-resolve-type	uncoded	^Cannot resolve type: 	TypeResolver:404 (a wildcard type argument: List<?>, List<? extends String>, Optional<?>, Map<String,?>; F311)	source
 U-type-variable-arguments	uncoded	cannot take type arguments	TypeResolver:428	shadowed: a template parameter written T<...> is rejected first by its description (JULC0051, Unsupported on-chain source type); outside templates T is an unknown type
 U-unknown-type	uncoded	^Unknown type: 	TypeResolver:537,582	source
 U-ambiguous-type	uncoded	^Ambiguous type '	TypeResolver:576,615, ImportResolver:148	source

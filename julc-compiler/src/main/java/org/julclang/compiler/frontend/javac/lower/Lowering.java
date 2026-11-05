@@ -187,8 +187,8 @@ public final class Lowering {
         if (facts.enclosing(assignment, Tree.Kind.ENHANCED_FOR_LOOP, Tree.Kind.WHILE_LOOP) == null) {
             return facts.rejection(DiagnosticCodes.REASSIGNMENT_OUTSIDE_LOOP, assignment, target.toString());
         }
-        return facts.rejection("Unsupported expression: AssignExpr",
-                "Variables are immutable on-chain. Use the accumulator pattern in for-each/while loops for mutable state.", assignment);
+        var what = target instanceof IdentifierTree identifier ? "'" + identifier.getName() + "'" : "this target";
+        return facts.rejection(DiagnosticCodes.ASSIGNMENT_POSITION_UNSUPPORTED, assignment, what);
     }
 
     /**

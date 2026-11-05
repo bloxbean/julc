@@ -176,12 +176,12 @@ final class Statements {
         };
     }
 
-    /** The reference's name of a statement it has no lowering for. */
+    /** The name of a statement JuLC has no lowering for. */
     static String statementName(StatementTree tree) {
         return switch (tree.getKind()) {
-            case BLOCK -> "BlockStmt";
-            case SWITCH -> "SwitchStmt";
-            default -> "EmptyStmt";
+            case BLOCK -> "a nested block";
+            case SWITCH -> "a switch statement";
+            default -> "an empty statement";
         };
     }
 

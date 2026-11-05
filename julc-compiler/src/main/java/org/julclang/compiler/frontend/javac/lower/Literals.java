@@ -41,8 +41,8 @@ final class Literals {
             case STRING_LITERAL -> string(tree);
             // A char has no on-chain representation, as the reference says of its type (JULC0124). Floating point and null
             // are rejected by their own rules before lowering.
-            // The reference's words for a char literal (I2a); the scan reads a char variable's type first.
-            case CHAR_LITERAL -> throw facts.rejection(DiagnosticCodes.EXPRESSION_UNSUPPORTED, tree, "CharLiteralExpr");
+            // The scan reads a char variable's type first.
+            case CHAR_LITERAL -> throw facts.rejection(DiagnosticCodes.EXPRESSION_UNSUPPORTED, tree, "a char literal");
             case FLOAT_LITERAL, DOUBLE_LITERAL -> throw facts.rejection(DiagnosticCodes.FLOATING_POINT_UNSUPPORTED, tree);
             case NULL_LITERAL -> throw facts.rejection(DiagnosticCodes.NULL_UNSUPPORTED, tree);
             default -> throw facts.rejection(DiagnosticCodes.EXPRESSION_UNSUPPORTED, tree, facts.location(tree).fragment());
@@ -63,8 +63,8 @@ final class Literals {
 
     /** A text block is not a string literal of the subset: the reference does not lower one. */
     private PirTerm string(LiteralTree tree) {
-        // The reference does not lower a text block: "Unsupported expression: TextBlockLiteralExpr" (I2a).
-        if (facts.leadingSource(tree, 3).equals("\"\"\"")) throw facts.rejection(DiagnosticCodes.EXPRESSION_UNSUPPORTED, tree, "TextBlockLiteralExpr");
+        // JuLC does not lower a text block.
+        if (facts.leadingSource(tree, 3).equals("\"\"\"")) throw facts.rejection(DiagnosticCodes.EXPRESSION_UNSUPPORTED, tree, "a text block");
         return new PirTerm.Const(Constant.string((String) tree.getValue()));
     }
 

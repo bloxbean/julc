@@ -241,7 +241,7 @@ public final class CompilationContext {
     /** Fails when a binder is outside the namespace the frontend declared: a compiler bug. */
     public void checkBinderName(String name) {
         if (binderNamespace != null && !binderNamespace.test(name)) {
-            throw new IllegalStateException("ADR-060: binder '" + name
+            throw new IllegalStateException("binder '" + name
                     + "' is neither a reserved '#' name nor a source name");
         }
     }

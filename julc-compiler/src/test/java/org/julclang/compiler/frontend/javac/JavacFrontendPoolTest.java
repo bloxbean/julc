@@ -158,7 +158,7 @@ class JavacFrontendPoolTest {
         assertEquals(analyze(usesHelper).diagnostics(), javacs(rejected));
         assertEquals("compiler.err.cant.resolve.location", javacs(rejected).getFirst().key());
         assertEquals(List.of("Helper.java was not read: it declares app.Shared, also declared by Main.java, which takes"
-                + " precedence (ADR-068 D8). If the program needs another declaration of Helper.java, remove or"
+                + " precedence. If the program needs another declaration of Helper.java, remove or"
                 + " rename the duplicate."), notes(rejected));
         assertEquals("JULC0085", rejected.diagnostics().getLast().code());
     }

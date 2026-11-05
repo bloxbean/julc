@@ -90,7 +90,12 @@ public class JulcCompiler {
                                        CompilationContext context) {
         var request = new JavacCompilation.Request(captureDetails, captureContractSchema,
                 collectDebugMetadata ? pool.stream().map(JavacFrontend.Unit::text).toList() : null);
-        var compiled = JavacRuntime.call(() -> JavacCompilation.validator(root, pool, stdlibLookup, context, request));
+        JavacCompilation.Compiled compiled;
+        try {
+            compiled = JavacRuntime.call(() -> JavacCompilation.validator(root, pool, stdlibLookup, context, request));
+        } catch (CompilerException e) {
+            throw withExcerpts(e, root, pool);
+        }
         var result = compiled.result();
         if (context.isVerbose() && result.program() != null) {
             context.logf("Compilation complete (javac frontend): %s", result.scriptSizeFormatted());
@@ -109,11 +114,12 @@ public class JulcCompiler {
      */
     public List<CompilerDiagnostic> subsetDiagnostics(String source, List<String> librarySources) {
         var context = beginCompilation();
+        var root = JavacFrontend.Unit.of(source);
+        var pool = libraryUnits(librarySources, context);
         try {
-            return JavacRuntime.call(() -> JavacCompilation.subset(JavacFrontend.Unit.of(source),
-                    libraryUnits(librarySources, context), context));
+            return DiagnosticExcerpts.attach(JavacRuntime.call(() -> JavacCompilation.subset(root, pool, context)), root, pool);
         } catch (CompilerException e) {
-            return e.diagnostics();
+            return withExcerpts(e, root, pool).diagnostics();
         }
     }
 
@@ -479,8 +485,17 @@ public class JulcCompiler {
             CompilationContext context) {
         if (CorpusRecorder.ACTIVE != null) recordCorpus("compileMethod", methodName, javaSource, librarySources, context);
         var pool = libraryUnits(librarySources, context);
-        return JavacRuntime.call(() ->
-                JavacCompilation.method(JavacFrontend.Unit.of(javaSource), pool, methodName, stdlibLookup, context));
+        var root = JavacFrontend.Unit.of(javaSource);
+        try {
+            return JavacRuntime.call(() -> JavacCompilation.method(root, pool, methodName, stdlibLookup, context));
+        } catch (CompilerException e) {
+            throw withExcerpts(e, root, pool);
+        }
+    }
+
+    private static CompilerException withExcerpts(CompilerException e, JavacFrontend.Unit root, List<JavacFrontend.Unit> pool) {
+        e.attachExcerpts(diagnostics -> DiagnosticExcerpts.attach(diagnostics, root, pool));
+        return e;
     }
 
     private static Program createProgram(CompilationContext context, Term term) {

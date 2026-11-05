@@ -187,8 +187,8 @@ final class GuardRules {
             // A narrowing cast is erased by the lowering (T6); a constant one is lowered as its Java value.
             if (cast.getType() instanceof PrimitiveTypeTree primitive && primitive.getPrimitiveTypeKind() == TypeKind.INT
                     && !constants.evaluate(cast.getExpression()).constant()) {
-                throw invalid(cast, entry, "'" + facts.text(cast) + "' may narrow a long, and JuLC erases the narrowing "
-                        + "(ADR-062 T6); compare the long value instead");
+                throw invalid(cast, entry, "'" + facts.text(cast) + "' may narrow a long, and JuLC erases the narrowing; "
+                        + "compare the long value instead");
             }
         }
         // int and long arithmetic that is not a constant expression is evaluated without Java's fixed width (T6).
@@ -230,8 +230,8 @@ final class GuardRules {
     }
 
     private String arithmetic(Tree tree) {
-        return "'" + facts.text(tree) + "' is int or long arithmetic, which JuLC evaluates without Java's overflow (ADR-062 T6); "
-                + "use BigInteger arithmetic, or compute the value in a local before the switch (where T6 applies as in any if) "
+        return "'" + facts.text(tree) + "' is int or long arithmetic, which JuLC evaluates without Java's overflow; "
+                + "use BigInteger arithmetic, or compute the value in a local before the switch "
                 + "and compare that";
     }
 

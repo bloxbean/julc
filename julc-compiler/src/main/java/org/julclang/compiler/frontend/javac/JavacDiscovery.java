@@ -32,6 +32,12 @@ import java.util.Set;
 
 import static org.julclang.compiler.error.DiagnosticCodes.ENTRYPOINT_MISSING;
 import static org.julclang.compiler.error.DiagnosticCodes.ENTRYPOINT_WRONG_PARAMETER_COUNT;
+import static org.julclang.compiler.error.DiagnosticCodes.MULTIPLE_VALIDATOR_ANNOTATIONS;
+import static org.julclang.compiler.error.DiagnosticCodes.MULTI_VALIDATOR_DEFAULT_REPEATED;
+import static org.julclang.compiler.error.DiagnosticCodes.MULTI_VALIDATOR_PURPOSES_MIXED;
+import static org.julclang.compiler.error.DiagnosticCodes.MULTI_VALIDATOR_PURPOSE_REPEATED;
+import static org.julclang.compiler.error.DiagnosticCodes.NO_CLASS_IN_SOURCE;
+import static org.julclang.compiler.error.DiagnosticCodes.ONCHAIN_LIBRARY_WITH_VALIDATOR;
 import static org.julclang.compiler.error.DiagnosticCodes.VALIDATOR_ANNOTATION_MISSING;
 
 /**
@@ -91,7 +97,7 @@ final class JavacDiscovery {
     /** The class {@code compileMethod} compiles: the first that is not an interface. */
     ClassTree firstClass(CompilationUnitTree unit) {
         var type = firstClassOrNull(unit);
-        if (type == null) throw new CompilerException("No class found in source");
+        if (type == null) throw validationError(NO_CLASS_IN_SOURCE, NO_CLASS_IN_SOURCE.fix(), null);
         return type;
     }
 
@@ -170,8 +176,8 @@ final class JavacDiscovery {
         var validators = validatorAnnotations(type);
         if (facts.hasAnnotation(element, JavacNames.ONCHAIN_LIBRARY) && !validators.isEmpty()) {
             var annotations = String.join(", ", validators.stream().map(simple -> "@" + simple).toList());
-            throw new CompilerException("Class " + facts.identity((TypeElement) element)
-                    + " must not combine @OnchainLibrary with validator annotation(s): " + annotations);
+            throw validationError(ONCHAIN_LIBRARY_WITH_VALIDATOR, ONCHAIN_LIBRARY_WITH_VALIDATOR.fix(), type,
+                    facts.identity((TypeElement) element), annotations);
         }
     }
 
@@ -190,9 +196,8 @@ final class JavacDiscovery {
     ScriptPurpose purpose(ClassTree type) {
         var found = validatorAnnotations(type);
         if (found.size() > 1) {
-            throw new CompilerException("Class " + type.getSimpleName()
-                    + " has multiple validator annotations: " + found
-                    + ". Only one validator annotation is allowed per class.");
+            throw validationError(MULTIPLE_VALIDATOR_ANNOTATIONS, MULTIPLE_VALIDATOR_ANNOTATIONS.fix(), type,
+                    type.getSimpleName(), found);
         }
         return switch (found.getFirst()) {
             case "SpendingValidator" -> ScriptPurpose.SPENDING;
@@ -344,17 +349,14 @@ final class JavacDiscovery {
         boolean hasDefault = entrypoints.stream().anyMatch(e -> e.purposeName().equals(DEFAULT_PURPOSE));
         boolean hasExplicit = entrypoints.stream().anyMatch(e -> !e.purposeName().equals(DEFAULT_PURPOSE));
         if (hasDefault && hasExplicit) {
-            throw new CompilerException("@MultiValidator " + name + " mixes DEFAULT and explicit purposes. "
-                    + "Either use a single @Entrypoint (manual dispatch) or "
-                    + "annotate all @Entrypoint methods with explicit purposes.");
+            throw validationError(MULTI_VALIDATOR_PURPOSES_MIXED, MULTI_VALIDATOR_PURPOSES_MIXED.fix(),
+                    entrypoints.getFirst().method(), name);
         }
         if (hasDefault) {
             // Manual dispatch: exactly 1 entrypoint, 2 params
             if (entrypoints.size() > 1) {
-                throw new CompilerException("@MultiValidator " + name
-                        + " has multiple @Entrypoint methods with DEFAULT purpose. "
-                        + "Use explicit purposes (e.g. Purpose.MINT) for auto-dispatch, "
-                        + "or use a single @Entrypoint for manual dispatch.");
+                throw validationError(MULTI_VALIDATOR_DEFAULT_REPEATED, MULTI_VALIDATOR_DEFAULT_REPEATED.fix(),
+                        entrypoints.get(1).method(), name);
             }
             var method = entrypoints.getFirst().method();
             int count = method.getParameters().size();
@@ -369,7 +371,8 @@ final class JavacDiscovery {
         var seen = new HashSet<String>();
         for (var entry : entrypoints) {
             if (!seen.add(entry.purposeName())) {
-                throw new CompilerException("Duplicate purpose " + entry.purposeName() + " in @MultiValidator " + name);
+                throw validationError(MULTI_VALIDATOR_PURPOSE_REPEATED, MULTI_VALIDATOR_PURPOSE_REPEATED.fix(),
+                        entry.method(), entry.purposeName(), name);
             }
             var method = entry.method();
             int count = method.getParameters().size();

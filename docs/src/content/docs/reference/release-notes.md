@@ -181,8 +181,13 @@ replacements.
 
 ### Also in this release
 
-- **Clearer record pattern errors.** `JULC0076` and `JULC0077` now show the rewrite with your own names: `case A(var amount)`
-  on `record A(BigInteger v)` suggests ``write `case A a`, then use `a.v()` for `amount` ``. Script bytes do not change.
+- **Clearer errors.** Script bytes do not change.
+  - An error from the compiler, the CLI, the Gradle plugin or the annotation processor now shows the source line with the problem underlined.
+  - `JULC0076` and `JULC0077` show a record pattern's rewrite with your own names: `case A(var amount)` on `record A(BigInteger v)`
+    suggests ``write `case A a`, then use `a.v()` for `amount` ``.
+  - Messages no longer mention design documents or internal names such as `AssignExpr`. `JULC0125` says `a char literal`, and
+    `JULC0110` says `a nested block`.
+  - These errors now have codes: `JULC0131` to `JULC0138`. Some rejections that had no code now report an existing one, such as `JULC0012` and `JULC0114`.
 - **The tools read with javac.** Lint, `julc check`'s test discovery, the MCP tools, the metadata extractor and the
   verification resolvers read sources with javac's parser. Lint and test discovery read the corpus as JavaParser read it;
   the metadata extractor (the playground's check) now reports the javac frontend's diagnostics (ADR-068 M6a).

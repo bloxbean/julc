@@ -92,7 +92,7 @@ final class Precedence {
                 + "; two library sources of equal standing declare it)";
         return JavacDiagnostic.of(DiagnosticCodes.JAVAC_ERROR, KEY, DiagnosticCodes.JAVAC_ERROR.format(message, KEY),
                 declarers.get(1).displayName(), 1, 1, -1, -1, "A qualified name may be declared by one source of a"
-                        + " compilation only: rename one of the types, or remove one of the sources (ADR-068 D8)");
+                        + " compilation only: rename one of the types, or remove one of the sources");
     }
 
     /** The source-path entries: a unit per listed name. Shadowed units are not among them. */
@@ -116,8 +116,8 @@ final class Precedence {
         for (var s : shadowed) {
             String file = s.unit().displayName();
             notes.add(new JavacDiagnostic(DiagnosticCodes.JAVAC_ERROR.code(), null, file + " was not read: it declares "
-                    + s.name() + ", also declared by " + s.winner().displayName() + ", which takes precedence (ADR-068"
-                    + " D8). If the program needs another declaration of " + file + ", remove or rename the duplicate.",
+                    + s.name() + ", also declared by " + s.winner().displayName() + ", which takes precedence."
+                    + " If the program needs another declaration of " + file + ", remove or rename the duplicate.",
                     file, 0, 0, -1, -1, null));
         }
         return notes;

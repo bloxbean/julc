@@ -52,7 +52,7 @@ final class Ownership {
                         DiagnosticCodes.LEDGER_TYPE_REDECLARED.format(unit.displayName(), type, owner),
                         unit.displayName(), 1, 1, -1, -1,
                         "Move the type to a package of your own; JuLC's API packages and bundled libraries"
-                                + " come only from JuLC (ADR-068 D3)"));
+                                + " come only from JuLC"));
             }
         }
         return rejections;

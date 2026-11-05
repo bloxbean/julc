@@ -126,7 +126,7 @@ class JavacLiteralsTest {
         var failure = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions())
                 .compileMethod(returning("int", "'a'"), "m", List.of()));
         assertEquals("JULC0125", failure.diagnostics().getFirst().code(), failure::getMessage);
-        assertEquals("Unsupported expression: CharLiteralExpr", failure.diagnostics().getFirst().message());
+        assertEquals("Unsupported expression: a char literal", failure.diagnostics().getFirst().message());
     }
 
     /** {@code null} is the reference's rejection, with its code: {@code JULC0017}. */

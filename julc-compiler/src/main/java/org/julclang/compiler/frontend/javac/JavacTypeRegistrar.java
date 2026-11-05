@@ -133,7 +133,7 @@ final class JavacTypeRegistrar {
         throw new CompilerException(List.of(new CompilerDiagnostic(CompilerDiagnostic.Level.ERROR,
                 info.format(at.fileName(), facts.identity(type), bundled ? "bundled libraries" : "API"), at.fileName(),
                 at.line(), at.column(),
-                "Rename the type or the class around it: a name of JuLC's API or of the platform means that type (ADR-068 D3)",
+                "Rename the type or the class around it: a name of JuLC's API or of the platform means that type",
                 info.code())));
     }
 

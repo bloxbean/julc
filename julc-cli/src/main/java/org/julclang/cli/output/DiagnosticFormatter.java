@@ -26,6 +26,9 @@ public final class DiagnosticFormatter {
             sb.append('[').append(d.code()).append("] ");
         }
         sb.append(d.message());
+        if (d.excerpt() != null) {
+            sb.append('\n').append(d.excerpt().indent(2).stripTrailing());
+        }
         if (d.hasSuggestion()) {
             sb.append("\n  ").append(AnsiColors.dim("suggestion: " + d.suggestion()));
         }
