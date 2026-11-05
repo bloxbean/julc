@@ -9,7 +9,6 @@ import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.OptimizationConfiguration;
 import org.julclang.compiler.OptimizationLevel;
 import org.julclang.core.text.UplcPrinter;
-import org.julclang.jrl.JrlCompiler;
 import org.julclang.stdlib.StdlibRegistry;
 import org.julclang.blueprint.BlueprintConfig;
 import org.julclang.blueprint.BlueprintFileWriter;
@@ -26,6 +25,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.Callable;
 
@@ -58,6 +58,10 @@ public class BuildCommand implements Callable<Integer> {
             description = "Optional compatibility profile ID (e.g. plutus-v3-pv11-costs-v1); unused by compilation")
     private String costProfile;
 
+    /** ADR-068 M6 removed the option: naming another frontend fails with what to do, and javac is what JuLC does anyway. */
+    @Option(names = "--frontend", hidden = true)
+    private String frontend;
+
     @Override
     public Integer call() {
         try {
@@ -68,6 +72,7 @@ public class BuildCommand implements Callable<Integer> {
                 return 1;
             }
 
+            CompilerOptions.requireJavacFrontend(frontend);
             var config = TomlParser.parse(tomlFile);
             var compilerTarget = CompilerTargetRegistry.targetForProfileId(targetProfile);
             var options = OptimizationConfiguration.apply(
@@ -78,11 +83,20 @@ public class BuildCommand implements Callable<Integer> {
                     + " for " + compilerTarget.profileId()
                     + " (optimization: " + options.getOptimizationLevel().profileId() + ") ...");
 
-            // Scan sources (single walk for .java + .jrl)
-            var scanResult = ProjectScanner.scan(ProjectLayout.srcDir(root));
+            // Scan sources (single walk)
+            ProjectScanner.ScanResult scanResult;
+            try {
+                scanResult = ProjectScanner.scan(ProjectLayout.srcDir(root));
+            } catch (ProjectScanner.UnreadableCandidateException e) {
+                return reportUnreadable(e, options);
+            }
+            if (scanResult.ignoredFiles() > 0) {
+                System.err.println(AnsiColors.yellow("JRL support was removed; " + scanResult.ignoredFiles()
+                        + " .jrl file(s) in src/ are ignored. Write the contract in Java."));
+            }
             Path plutusDir = ProjectLayout.plutusDir(root);
             Files.createDirectories(plutusDir);
-            if (scanResult.validators().isEmpty() && scanResult.jrlFiles().isEmpty()) {
+            if (scanResult.validators().isEmpty()) {
                 cleanupGeneratedArtifacts(plutusDir, Set.of());
                 Files.deleteIfExists(plutusDir.resolve("plutus.json"));
                 System.err.println(AnsiColors.yellow("No validators found in src/"));
@@ -107,7 +121,7 @@ public class BuildCommand implements Callable<Integer> {
 
                 try {
                     var resolvedLibs = ProjectSourceResolver.resolve(source, pool);
-                    var compiler = new JulcCompiler(stdlib, options);
+                    var compiler = new JulcCompiler(stdlib, ProjectSourceResolver.options(options, pool));
                     CompileResult result;
                     org.julclang.compiler.schema.ContractSchema contractSchema = null;
                     if (noBlueprint) {
@@ -148,39 +162,6 @@ public class BuildCommand implements Callable<Integer> {
                     }
                     errorCount++;
                 }
-            }
-
-            // Compile JRL files
-            var jrlCompiler = new JrlCompiler(stdlib, options);
-            for (var entry : scanResult.jrlFiles().entrySet()) {
-                String name = entry.getKey();
-                String jrlSource = entry.getValue();
-
-                System.out.print("  Compiling " + name + ".jrl ... ");
-
-                var jrlResult = noBlueprint
-                        ? jrlCompiler.compile(jrlSource, name + ".jrl")
-                        : jrlCompiler.compileContract(jrlSource, name + ".jrl");
-
-                if (jrlResult.hasErrors()) {
-                    System.out.println(AnsiColors.red("FAILED"));
-                    for (var diag : jrlResult.jrlDiagnostics()) {
-                        if (diag.isError()) {
-                            System.err.println("  " + diag);
-                        }
-                    }
-                    errorCount++;
-                    continue;
-                }
-
-                var result = jrlResult.compileResult();
-                if (!noBlueprint) {
-                    compiledValidators.add(new BlueprintGenerator.CompiledValidator(
-                            name, result, jrlResult.contractSchema()));
-                }
-                compiledOutputs.add(new CompiledOutput(name, result));
-                printCompiledStatus(result);
-                compiledCount++;
             }
 
             String blueprintJson = null;
@@ -231,6 +212,22 @@ public class BuildCommand implements Callable<Integer> {
             System.err.println(AnsiColors.red("Build error: " + e.getMessage()));
             return 1;
         }
+    }
+
+    /**
+     * A validator candidate JuLC could not read: javac's diagnostic (JULC0085) with its position, as a compilation gives
+     * it, and exit 1. Should javac read the file after all, the reader's own problem is the error.
+     */
+    private int reportUnreadable(ProjectScanner.UnreadableCandidateException e, CompilerOptions options) {
+        System.err.println(AnsiColors.red("Cannot read " + e.file()));
+        var diagnostics = new JulcCompiler(StdlibRegistry.defaultRegistry(), options).subsetDiagnostics(e.source(), List.of());
+        if (diagnostics.stream().anyMatch(d -> d.isError())) {
+            System.err.println(DiagnosticFormatter.formatAll(diagnostics));
+        } else {
+            System.err.println("  " + e.getMessage());
+        }
+        System.out.println(AnsiColors.red("Build failed: 1 error(s)"));
+        return 1;
     }
 
     private void writeCompiledOutput(String name, CompileResult result, Path plutusDir)

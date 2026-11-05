@@ -31,7 +31,9 @@ class DiagnosticCatalogConsistencyTest {
     private static final Pattern CONSTANT_FIELD = Pattern.compile("\"constant\"\\s*:\\s*\"([A-Z][A-Z0-9_]*)\"");
     private static final Pattern STATUS_FIELD = Pattern.compile("\"status\"\\s*:\\s*\"([A-Za-z]+)\"");
     private static final Pattern PLACEHOLDER = Pattern.compile("\\{(\\d+)(?:,[^}]*)?}");
-    private static final Set<String> VALID_STATUS = Set.of("emitted", "planned", "lintOnly", "internal");
+    private static final Set<String> RETIRED_CODES = Set.of("JULC0005", "JULC0071", "JULC0073", "JULC0082", "JULC0084", "JULC0100");
+    private static final Set<String> RETIRED_CONSTANTS = Set.of("SWITCH_NOT_EXHAUSTIVE", "SWITCH_LABEL_DOMINATED", "SWITCH_GUARD_VARIABLE_NOT_EFFECTIVELY_FINAL", "SWITCH_DUPLICATE_DEFAULT", "FRONTEND_CONSTRUCT_NOT_PORTED", "TYPE_NAME_READ_BY_SPELLING");
+    private static final Set<String> VALID_STATUS = Set.of("emitted", "planned", "lintOnly", "internal", "retired");
 
     @Test
     void everyProductionCodeIsInCatalog() throws IOException {
@@ -48,8 +50,11 @@ class DiagnosticCatalogConsistencyTest {
 
     @Test
     void generatedConstantsMatchCatalog() throws IOException {
-        Set<String> catalogCodes = loadCatalogFields(CODE_FIELD);
-        Set<String> catalogConstants = loadCatalogFields(CONSTANT_FIELD);
+        // A retired code keeps its entry, so that it is never reused, and has no constant.
+        Set<String> catalogCodes = new HashSet<>(loadCatalogFields(CODE_FIELD));
+        catalogCodes.removeAll(RETIRED_CODES);
+        Set<String> catalogConstants = new HashSet<>(loadCatalogFields(CONSTANT_FIELD));
+        catalogConstants.removeAll(RETIRED_CONSTANTS);
 
         Set<String> generatedCodes = new HashSet<>();
         Set<String> generatedConstants = new HashSet<>();

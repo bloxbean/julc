@@ -3,6 +3,609 @@ title: "Release Notes"
 description: "JuLC release notes and migration guidance"
 ---
 
+## Upcoming preview: javac is JuLC's only Java reader (ADR-068 M5, M6)
+
+JuLC now reads every Java source with javac, on every host: the compiler API, the Gradle plugin, the annotation processor, the testkit (`JulcEval`, `ValidatorTest`, `ContractTest`), the CLI
+(`julc build`, `julc check`, the REPL, the MCP tools), the playground and `julc-wasm`, and Elci's
+`JavaLibraryProvider` and `LedgerTypeProvider`. javac resolves every name, type, overload and literal, and JuLC lowers
+javac's attributed trees. The tools that read Java source without compiling it (lint, test discovery, the MCP tools'
+arity check, the metadata extractor, the verification resolvers) read it with javac's parser too.
+
+### Script hashes can change
+
+A validator whose bytes change gets a new script hash, so a new address or policy ID. Rebuild every validator you have
+deployed, compare its hash with the deployed one, and treat a change as a new script: funds locked at the old address
+and tokens minted under the old policy stay with the old script.
+
+On ADR-068's migration corpus (24,167 compilations), 14,405 give the JavaParser frontend's bytes exactly; 396 give other
+bytes, each classified in the ADR's ledger (a semantic fix, a cost change or a representation change); and 1,075 that the
+JavaParser frontend accepted are rejected with a code (below). Of the 102 external example programs in that corpus, 43
+keep their bytes, 11 change them, and 48 are rejected until rewritten; the examples held 125 `byte[].equals` call sites.
+
+### The JavaParser frontend and the frontend option are gone (ADR-068 M6)
+
+There is no way back to the JavaParser frontend: `javaparser-core` is on no class path, and a build that fails on javac is
+fixed by the rewrites below. What opted back is removed:
+
+| Host | Removed | What a build that still names it gets |
+|---|---|---|
+| Compiler API | `CompilerFrontend`, `CompilerOptions.setFrontend`, `getFrontend`, `setJavacGate`, `getJavacGate`, `setMethodObserver` | A compile error |
+| Lint rules | `BigIntegerParamRule`, a retired no-op kept for code that referenced it | A compile error: remove the reference |
+| Gradle plugin | `julc { frontend = ... }` | `javac` builds; anything else stops, saying the option is gone |
+| Annotation processor | `-Ajulc.frontend` | `javac` compiles; anything else is an error, saying the option is gone |
+| CLI | `julc build --frontend` | `javac` builds; anything else stops, saying the option is gone |
+| Testkit | `JulcEval.frontend(...)`; `ValidatorTest.compile(src, frontend)`, `compileValidator(cls, root, frontend)`, `compileValidatorByName(fqcn, root, frontend)`; `ContractTest.compileValidator(cls, root, frontend)` | A compile error: drop the argument |
+| Source-reading tools | `-Djulc.tools.reader` | Ignored |
+| The javac gate | `-Djulc.javacGate`, `-Pjulc.javacGate`, `CompilerOptions.setJavacGate` | Ignored, or a compile error for the method: javac reads every compilation |
+
+**Retired codes,** never reused: `JULC0084` (a construct the javac frontend had not ported; nothing reaches it), `JULC0100`
+(a name the JavaParser frontend read by its spelling), and `JULC0005`, `JULC0071`, `JULC0073` and `JULC0082` (a switch that is not
+exhaustive, a dominated label, a guard's variable that is reassigned and a second `default`, which javac rejects itself, as `JULC0085`).
+A compilation no longer reports them. `JULC0101` now holds only a
+record's declared `toPlutusData` or explicit accessor, and a generated accessor that implements `ToPlutusData.toPlutusData`;
+its other rows were rules of the JavaParser frontend's gate. So these compile on javac, where each name binds to its
+declaration, and give Java's answer: a method or component named `fromPlutusData`, `of` or like a method of the type a
+`@NewType` lowers to, a variable or type named `Boolean`, `BigInteger`, `Math` or another name of the API. A record's body
+stays `JULC0080`, and a `@NewType`'s instance call keeps its own rejection where there is one.
+
+**A rule written outside JuLC:** `LintRule.check` takes javac's tree (`JavacSyntax`), and `supports` is gone.
+`JavaSourceIntrospector`'s methods on JavaParser nodes and `JavaSourceParser` are gone, and `DiagnosticCollector` reports by line
+and column. `JavacProvenance` has no gate. `CompilerFrontend.DEFAULT` is gone.
+
+### Source javac's frontend rejects
+
+Each of these compiled on the JavaParser frontend, which read it otherwise than Java does or produced a script that fails
+where the Java code returns. Each now stops with a code and a fix:
+
+| Code | Rejected | Write instead |
+|---|---|---|
+| `JULC0087` | An `equals`, `contains`, `get`, `lookup`, `containsKey` or `delete` whose JVM equality compares an array by identity: `byte[].equals`, and a record, variant, `Optional`, tuple or `java.util` collection that holds a `byte[]`; a comparison at a type the check cannot read (a raw collection, `Object`, a type variable); `equals` between two containers of unrelated arguments | `Builtins.equalsByteString(a, b)`, or compare the components; see the guide below |
+| `JULC0086` | `==` or `!=` on `BigInteger`, `byte[]`, `String`, boxed values or records (reference equality in Java), and a comparison of constant strings that is not built from literals and `+` alone | `a.equals(b)`; `Builtins.equalsByteString(a, b)` for bytes |
+| `JULC0078` | `equals` or a collection operation between two types Java keeps distinct (`PubKeyHash.equals(BigInteger)`, `Optional<R1>.equals(Optional<R2>)`'s records) | Compare through one typed value, or compare the components |
+| `JULC0090` | String `+` with a non-`String` operand (`"a" + 1`, #296) | Concatenate `String`s only |
+| `JULC0012` | A conditional, `switch` expression or set of `return`s whose values have two types, or two on-chain representations; a type parameter no call specializes | Give the arms one type, or convert explicitly |
+| `JULC0014` | An array type other than a `byte[]` literal, including a varargs record component (`record R(BigInteger... a)`) | `JulcList` |
+| `JULC0123` | A static call through a package-qualified class name (`java.math.BigInteger.valueOf(1)`) | Import the class and use its simple name |
+| `JULC0124` | A `byte`, `short`, `char`, `float` or `double` type, or a cast to one; `(char)`, `(short)` or `(byte)` of an integer literal stays, with its Java value | `int`, `long` or `BigInteger` |
+| `JULC0125` | A `char` literal, a text block, a class literal outside `PlutusData.cast`, a function that is not a lambda at the call | A string literal, a lambda at the call |
+| `JULC0126` | `instanceof` of a variant on a value whose static type is not the variant's sealed interface (`(Object) x instanceof V v`) | Test a value of the sealed interface's type |
+| `JULC0127` | A variant of a sealed interface that is a class or a `@NewType` record | Make the variant a plain record |
+| `JULC0128` | A value whose on-chain form is not the one the operation reads (Data where a builtin takes bytes, a native list in a Data component, a `new Value(...)` of a map) | Convert explicitly (`Builtins.unBData`, `listData`, `mapData`) or use `ValuesLib` and `MapLib` |
+| `JULC0129` | `new` of a class that is not a record | Declare a record |
+| `JULC0130` | `int x; x += someLong` (any compound assignment of a `long`, or of a `Long` javac inferred as in `var z : JulcList.of(y)`, to an `int`): Java narrows it without saying so, and the on-chain integer does not | Declare `x` as `long`, or write `x = (int) (x + y)` for Java's 32-bit result |
+| `JULC0079`, `JULC0080` | A record with two sealed parents; a record member other than a nested type (ADR-067) | One sealed parent; move logic to a static method |
+| `JULC0088` | A `@Param` field that is a Java constant variable (`static final boolean P = true`) | Drop `final`, or `Boolean.valueOf(true)` |
+| `JULC0092` | A sealed interface with no `permits` clause whose permitted classes are not exactly its nested records | Add a `permits` clause in tag order |
+| `JULC0093` | A string literal with an unpaired surrogate | A surrogate pair, or remove it |
+| `JULC0096`, `JULC0097` | Two validator classes in a source, two entry points in a single-purpose validator, a non-static entry point | One validator; a `static` entry point |
+| `JULC0104`–`JULC0122`, and `JULC0001`, `JULC0002`, `JULC0004`, `JULC0006`, `JULC0011`, `JULC0020`, `JULC0024`, `JULC0077` | The subset's rejections the JavaParser frontend made without a code, in its words | As before |
+| `JULC0055` | `equals` on a value read as Data whose decoded type has no `equals` (a `boolean`, a list or a map read from a generic `head()`) | Compare at the value's declared type |
+
+[Troubleshooting](/reference/troubleshooting/) has the codes' causes and fixes. A few shapes the JavaParser frontend ran
+correctly also stop, failing closed, until a rule for them is written: a for-each variable wider than the element, such as
+`for (Number o : xs)` with `o.longValue()` (`JULC0055`), and `r.a().abs()` where `a` is an integer `@NewType` read from a
+record (`JULC0055`).
+
+### Programs that now do what their Java does
+
+Each of these compiled on the JavaParser frontend to a script that disagreed with its Java code; on javac it agrees:
+
+- A name binds to the declaration Java binds it to: a local, a field, a type of your own named like a ledger type (`TxId`,
+  `PubKeyHash`, ...), a library class named like a variable (#209, #284, #286, #291).
+- Types are Java's (#287, #290, #292): a method dispatches on its resolved declaration; a conditional's arms are typed by
+  both branches, not by the first.
+- A ledger type's `fromPlutusData` checks the shape of its Data on-chain; `contains` on a nested collection encodes its
+  target (#297); a reference `==` in a guard, a lambda or an argument is `JULC0086` as anywhere else.
+- `(int)` of a `long` keeps Java's low 32 bits, where it was the whole value.
+- A constant field read in a `switch` guard has Java's value; a local that shadows a constant field reads the local.
+- `PlutusData` accumulators that hold lists in loops, and an element read as javac types it, no longer cons or read the
+  list as Data.
+
+The ADR-068 ledger (`adr/evidence/068/lowering-accepted-differences.tsv`) gives each difference its class and test.
+
+### The narrowing cast costs only where it can change the value
+
+`(int) x` of a non-constant `long` computes Java's value, with three builtins at the cast: about 527k CPU, 1.2k memory and
+107 lovelace each time it runs, and about 26 bytes in the script. Where the compiler can show the value is already in
+`int`'s range, the cast costs nothing: it has no builtin, and the script is the one the JavaParser frontend gives. The
+compiler shows it for:
+
+- an integer constant, `Builtins.indexByteString` and `ByteStringLib.at` (0 to 255);
+- `x % k` and `a.mod(k)` by a constant `k` from 1 to 2<sup>31</sup>, and a value already narrowed;
+- any of these read through a local, or returned by a method that is not recursive.
+
+Anything else keeps the builtins: a parameter, a length, arithmetic, a choice, a loop's result, or a recursive method. A program
+with such a cast has different bytes and a different hash than on the JavaParser frontend, where the cast was erased and the
+value could differ from Java's. `MerklePatriciaForestry`, whose `nibble` writes `(int) ByteStringLib.at(...)`, keeps its bytes.
+
+### A ledger type's `fromPlutusData` pays for its check
+
+`TxCert.fromPlutusData(d)`, and the same call on the other ledger types, now checks the exact shape of `d` on-chain, as it does on the
+JVM. It used to read `d` as it stood, and so accepted Data the JVM refuses (ADR-068 D6, r15). The check costs +87 to +967 bytes in
+the script, depending on the type, and up to about 28M CPU per call. A program that does not call it pays nothing: none of
+the 43 external example validators does, and their bytes do not change.
+
+- **Use it** where Data comes from outside the script's typed values and a wrong shape must fail the transaction.
+- **Call it once** and keep the result. Do not call it inside a loop or on every path of a helper.
+- **Skip it** where you already hold the value in its type. `PlutusData.cast(d, T.class)` is a view that checks nothing and costs
+  nothing, so a wrong shape is not refused there: it fails or misreads later, where the value is read.
+
+### Migrating `byte[].equals` (`JULC0087`)
+
+On the JVM, `byte[].equals` is `Object.equals`: it compares references, so two arrays with the same bytes are not equal.
+The JavaParser frontend compiled it to a byte comparison, so a JVM test of the validator and the script disagreed. javac's
+frontend rejects it with `JULC0087`:
+
+```
+JULC0087: Object.equals compares byte[], whose equality on the JVM compares an array by identity
+```
+
+Compare the bytes with `Builtins.equalsByteString`, which compares contents on the JVM and is the same builtin call the
+JavaParser frontend made for `a.equals(b)`, so the script keeps its bytes and its hash:
+
+```java
+// Before: identity on the JVM, a byte comparison on-chain
+boolean signed = signer.equals(expected);              // byte[] signer, expected
+boolean same   = !txId.equals(utxoRef.txId().hash());
+
+// After: the same script, and a JVM test that tests it
+import org.julclang.stdlib.Builtins;
+
+boolean signed = Builtins.equalsByteString(signer, expected);
+boolean same   = !Builtins.equalsByteString(txId, utxoRef.txId().hash());
+```
+
+`ByteStringLib.equals(a, b)` is equivalent on the JVM and on-chain, but it is a library method the compiler binds once
+and calls through a variable, so a script that uses it is a few bytes larger (2 to 30 bytes on the external examples)
+and gets a new hash. Use `Builtins.equalsByteString` to keep a deployed script's hash. The external examples were
+migrated that way, and every hash stayed the same.
+
+A ledger hash (`PubKeyHash`, `ScriptHash`, `TxId`, `PolicyId`, `TokenName`, ...) compares by value, so `a.equals(b)` between
+two hashes of one type stays. A `@NewType` byte wrapper is a record, whose `equals` compares its component by identity;
+JuLC never accepted it under the default gate, so compare its component:
+
+```java
+@NewType record OrderId(byte[] value) { }
+
+// Rejected: JULC0087
+boolean same = a.equals(b);                            // OrderId a, b
+// Write
+boolean same = Builtins.equalsByteString(a.value(), b.value());
+```
+
+A record or sealed variant with a `byte[]` component has the same problem through its generated `equals`, and so does
+`contains`, `get` or `containsKey` on a `java.util` collection of `byte[]`: compare the components, or keep the bytes in a
+`JulcList`, `JulcMap` or `JulcArray`, whose JVM equality compares `byte[]` by content (since ADR-068 M1). A source with
+the old form stops at compile time, so there is nothing to look for at run time. The diagnostic's fix names the same
+replacements.
+
+### Also in this release
+
+- **Clearer errors.** Script bytes do not change.
+  - An error from the compiler, the CLI, the Gradle plugin or the annotation processor now shows the source line with the problem underlined.
+  - `JULC0076` and `JULC0077` show a record pattern's rewrite with your own names: `case A(var amount)` on `record A(BigInteger v)`
+    suggests ``write `case A a`, then use `a.v()` for `amount` ``.
+  - Messages no longer mention design documents or internal names such as `AssignExpr`. `JULC0125` says `a char literal`, and
+    `JULC0110` says `a nested block`.
+  - `CompilerDiagnostic` has a new component, `excerpt`. Its constructors and accessors keep working, but a record pattern over it
+    needs eight components, and two diagnostics that differ only in `excerpt` are not equal.
+  - These errors now have codes: `JULC0131` to `JULC0138`. Some rejections that had no code now report an existing one, such as `JULC0012` and `JULC0114`.
+- **The tools read with javac.** Lint, `julc check`'s test discovery, the MCP tools, the metadata extractor and the
+  verification resolvers read sources with javac's parser. Lint and test discovery read the corpus as JavaParser read it;
+  the metadata extractor (the playground's check) now reports the javac frontend's diagnostics (ADR-068 M6a).
+- **`LedgerTypeProvider()`** and `JavaLibraryProvider(..., new CompilerOptions())` describe the ledger and libraries as
+  javac reads them; their types and named definitions are equal to the JavaParser frontend's (ADR-068 M2).
+- **JRL support has been removed.** The experimental JRL rule language, its transpiler, `julc build`'s compilation of
+  `.jrl` files and the JRL guide are gone; `julc build` warns that it ignores any `.jrl` file it finds. Write the contract in Java, as
+  the [first contract](/first-contract/) guide shows. JRL was never published, so no Maven artifact disappears. The
+  playground reads only `JULC_PLAYGROUND_PORT`, `JULC_MAX_COMPILE_THREADS` and `JULC_COMPILE_TIMEOUT_SECONDS`; the older
+  names starting with `JRL_` are no longer read.
+- The annotation processor and the Gradle plugin's `compileJulc` print each diagnostic with its code, position and fix
+  (`CompilerException.describe()`); before, a rejection made of one diagnostic showed its words alone.
+- A sealed interface whose permitted class is a class or a `@NewType` record is `JULC0127` wherever it is declared in
+  a unit the compilation reads, whether or not the program uses it: such a variant has no layout, and the compiler
+  dropped its value wherever the sum was read (a parameter, a datum and its blueprint schema, a record component, a
+  library's exports). Before, only a `new`, `instanceof` or `case` of the variant was rejected. The JavaParser
+  frontend still accepts these shapes, a reason not to opt back.
+
+## Upcoming preview: an entry point takes the script context last
+
+An `@Entrypoint` method's last parameter is `ScriptContext` or `PlutusData`; anything else is `JULC0103`. The script
+receives the script context there, undecoded, so a last parameter typed `BigInteger`, `int`, a record or a subtype of
+`PlutusData` read the context as that type, and the method's JVM test did not test the script. A spending entry point that
+needs two values takes them as datum and redeemer: `validate(BigInteger datum, BigInteger redeemer, ScriptContext ctx)`. An
+entry point with a parameter count its purpose does not take is still `JULC0008`. Scripts that compile do not change.
+
+The subset's rejections carry codes:
+`JULC0104`–`JULC0122` for `synchronized`, method references, calls through a functional local, `this` and `super`, array
+access, inheritance, unsupported statements, the loop and switch-arm rules and unsupported operators, and `JULC0001`,
+`JULC0002`, `JULC0004`, `JULC0006`, `JULC0011`, `JULC0014`, `JULC0020`, `JULC0024` and `JULC0077` for the rest. A source with
+several such errors reports each of them. A record that implements two sealed interfaces is `JULC0079`, and a record that
+declares any member but a nested type is `JULC0080` (ADR-067), so `record R(BigInteger a) { R { } }`, accepted there before,
+is rejected. See [Troubleshooting](/reference/troubleshooting/).
+
+## Upcoming preview: `String.length` counts as Java does, and a method with no parameters runs when called
+
+`s.length()` counts UTF-16 code units, as Java does. It counted the bytes of the string's UTF-8
+encoding, so `"é".length()` was 2 and `"😀".length()` was 4. A constant string folds to Java's value.
+Any other string is now counted byte by byte, so `length` costs in proportion to the string: about
+1.1M CPU and 4,800 memory per UTF-8 byte at `PV11_SAFE`, and 1.7M CPU and 6,900 memory at `BASELINE`.
+
+A method with no parameters whose body may fail, or traces, now runs at each call, and only if it is
+called, as in Java. It ran once at script start, whether or not it was called, so
+`c ? boom() : 2` failed with `c` false. Such a method now costs a call each time, and a trace in it
+shows at each call. A body the compiler can show cannot fail stays one shared value: constants, what
+the literal folds reduce to one, the listed builtins that cannot fail, and calls of non-recursive
+functions whose bodies it can read. Any other body, including a read of a `@Param` field, is delayed.
+A library reached through a provider import stays as it was: its method with no parameters runs once
+when the program starts. A conversion in a helper that may fail is no longer shared with its callers.
+
+A script that uses `length` on a string that is not a constant, or
+has such a method, changes its bytes and its script hash.
+
+On the JVM, these now do what the script does: `lessThanByteString` and `lessThanEqualsByteString`
+compare unsigned bytes; `andByteString`, `orByteString` and `xorByteString` align from the first byte,
+and padding keeps the longer string's tail; `sliceByteString` clamps its counts; `indexByteString`,
+`consByteString` and `replicateByte` throw outside their ranges; `decodeUtf8` throws on bytes that are
+not UTF-8. `JulcList.take` and `drop` throw on any negative count, and `JulcList.get` and
+`JulcArray.get` on an index past an `int`. These change no script, but a test that relied on the old
+result changes.
+
+## Upcoming preview: `mod`, `take` and `drop` fail where Java throws
+
+`a.mod(b)` with `b` below 1, and `take(n)` and `drop(n)` with `n` below 0, throw in Java. They now
+fail in the script too. Before this change `mod` took a negative modulus and
+`take` and `drop` took a negative count.
+
+A literal constant that passes, such as `x.mod(BigInteger.TEN)` or `take(3)`, takes no check and
+compiles as before. A named constant takes one, like any other argument, so a script that calls one
+of these methods that way changes its bytes and costs slightly more, and its script hash changes.
+
+Two differences from Java stay. Neither changes what a script accepts, since both sides still run:
+`prepend`, `contains` and `insert` evaluate their argument before their receiver, and `abs`, `min`,
+`max`, `signum` and `compareTo` outside `compareTo(...) OP 0` can evaluate an operand twice. Only the
+order of traces, which failure shows, and cost differ.
+
+## Upcoming preview: a `+` of string constants warns (`JULC0102`)
+
+`"a" + "b"` of string constants now warns: Java joins them when it compiles, and
+JuLC keeps the `+` as written, so the script joins them when it runs. The warning rejects nothing,
+and script bytes do not change. Write one literal.
+
+## Upcoming preview: a conditional lowers to `Case` on a proven boolean
+
+A conditional lowers to `Case` when the compiler proves its condition produces a real boolean: a
+boolean constant, a comparison or another builtin with a boolean result, a decoded boolean field, a
+local bound to one of these, or a call of a function whose result is one of these. Any other
+condition, such as a method parameter or a loop's accumulator, lowers to builtin `ifThenElse`. The
+two agree on every boolean.
+
+Recompiling can change script bytes and budgets at `pv11-safe` and `pv11-costed`, so a script hash
+can change: about 4 bytes at each conditional on the builtin, and 188,049 CPU and 701 memory each
+time it runs.
+
+## Upcoming preview: sources must be Java that javac accepts (ADR-068 M1)
+
+Every compilation now has javac analyze its sources first, on every host (the compiler API,
+the Gradle plugin, the annotation processor, the testkit, the CLI and its REPL, the
+playground and `julc-wasm`). Source javac rejects is rejected with `JULC0085`: javac's
+message, its key (such as `compiler.err.operator.cant.be.applied.1`) and its position. A
+runtime without a supported javac (JDK 25 with `jdk.compiler`) is rejected with `JULC0089`.
+
+JuLC's dialect beyond Java is no longer accepted. Write it as Java:
+
+| Dialect | Java |
+|---|---|
+| `a + b`, `a - b`, `a * b` on `BigInteger` | `a.add(b)`, `a.subtract(b)`, `a.multiply(b)` |
+| `a > b`, `a <= b` on `BigInteger` | `a.compareTo(b) > 0`, `a.compareTo(b) <= 0` |
+| `BigInteger x = 5;` | `BigInteger x = BigInteger.valueOf(5);` |
+| ledger and stdlib types used without an import | explicit imports (`import org.julclang.ledger.TxInfo;`) |
+| `MyHash.of(bytes)` for a `@NewType` | `new MyHash(bytes)` |
+| a `@Param` field read from a `static` method | declare the field `static` |
+| a for-each over a `JulcMap`, or `head()` entries | loop over `keys()` or `values()` |
+| `ListsLib.any`, `all`, `filter`, `map`, `find` | the `JulcList` instance method |
+| `ListsLib.foldl`, `zip` | a loop with an accumulator; for `zip`, stop at the shorter list |
+| `var f = x -> ...` | pass the lambda at the call, or write a named method |
+| implicit `Data`/`byte[]` coercion at a call | `Builtins.unBData`, `Builtins.bData` and their kin |
+| `.hash()` or `.length()` on `byte[]` | `Builtins.sha2_256`, `Builtins.lengthOfByteString` |
+| `MyRecord.fromPlutusData(d)` | `PlutusData.cast(d, MyRecord.class)` on-chain |
+
+- **Script bytes do not change** for a source javac accepts: the gate only reads the source.
+  A source rewritten from the dialect can compile to different bytes where its meaning needs
+  another call, such as a decode that moves. `a.compareTo(b) > 0` compiles to the same script as
+  the dialect's `a > b`.
+- **Diagnostics change** for invalid Java that JuLC used to reject with its own code. For
+  example, a non-exhaustive or dominated `switch`, a missing `return`, or an undefined name
+  or label is now reported as `JULC0085` with javac's key.
+- **REPL:** javac types each expression. An `int` or `long` result is returned as a
+  `BigInteger`. Integer arithmetic is still JuLC's, which is unbounded on-chain.
+- **Subset rules, with their codes:** an entry point returns `boolean` (`JULC0094`). A field
+  initializer that nothing lowers holds only a constant, and an initializer block is empty
+  (`JULC0095`). A value reaches `boolean` or `Boolean` through a cast only from a boolean
+  (`JULC0098`). A constructor holds no statement (`JULC0099`). A name JuLC reads by its spelling
+  binds at every use to the type JuLC reads, not to a variable, a type parameter or another type,
+  a variable does not take the name of a type of the compilation, a top-level type of the unnamed
+  package takes no name of the ledger, of another type or of a package of the compilation, no class
+  or record is named `Value`, `new` has no class body, and `instanceof` tests a variant of its
+  operand's sealed interface (`JULC0100`, retired at ADR-068 M6: javac binds each name to its declaration). A sealed interface with no `permits` clause holds its
+  variants (`JULC0092`). A method does not take a name JuLC reads in place of its body, and a
+  `@NewType` takes no instance call but its accessor and no field read (`JULC0101`).
+- **Two fixes.** `instanceof` on a qualified variant reads that variant,
+  and a library's unsupported statement or unknown method is a compile error, as in a root. The same rule covers a record component: a `@NewType` of `byte[]` names its
+  component `value`, so rename `record MyHash(byte[] hash)` to `record MyHash(byte[] value)`.
+  See [Compiler Limitations](/getting-started/#16-compiler-limitations).
+- **Value operations are key-based.** `ValuesLib.lovelaceOf` and `Value.lovelaceOf()` look up the
+  empty policy and token name, as `assetOf` does, and give 0 for a Value without them.
+  `ValuesLib.add`, `subtract` and `negate` keep each (policy, token) once with its amounts summed,
+  keep sorted inputs sorted, and keep an amount of 0 as an entry; an input holds no repeated key.
+  `geqMultiAsset`, `leq` and `eq` compare over the keys of both Values, with a missing key as 0,
+  and each key takes one lookup, so `eq` costs about what `geqMultiAsset` costs.
+  The helpers `adjustOuterForAdd`, `adjustInnerForAdd`, `extraOuterEntries`, `extraInnerEntries` and
+  `checkPolicyGeq` are gone; use `add` and `geqMultiAsset`.
+- **`PlutusData.cast`** views Data as a type on-chain. It is an unchecked cast, not a decoder: on
+  the JVM it throws `ClassCastException` for a `ConstrData`.
+- **`CompileResult`** has a new component, `javacProvenance()`: the javac version, the platform
+  and stub digests, and what the gate did in that compilation. Its constructors keep working, but
+  a record pattern on `CompileResult` needs the new arity. Generated artifacts are unchanged, so
+  `plutus.json` is the same across JDK patch releases.
+
+## Upcoming preview: comparisons evaluate each operand once, left to right (#146, #295)
+
+`a.compareTo(b) OP 0` lowered to the three-way `compareTo` result compared with zero, which
+evaluated a non-trivial receiver or argument more than once: a traced operand traced twice,
+and nested comparisons grew the script exponentially
+([#146](https://github.com/bloxbean/julc/issues/146)). And `a > b` and `a >= b` evaluated the
+right operand first, so traces came in the wrong order and, when both operands could fail,
+the script reported a different failure than the Java code
+([#295](https://github.com/bloxbean/julc/issues/295)).
+
+- `a.compareTo(b) OP 0` and `0 OP a.compareTo(b)`, where `0` is the `int` literal zero and `OP`
+  is `<`, `<=`, `>`, `>=`, `==` or `!=`, now compile to one integer comparison that evaluates
+  `a`, then `b`, once each. Other uses of `compareTo` (`> 0L`, `== -1`, a parenthesized call,
+  or the result stored in a variable) keep the previous lowering.
+- `>` and `>=` on `int`, `long` and `BigInteger` evaluate the left operand first, as Java does.
+  When both operands are more than a variable or a literal, the left one is bound once first.
+- **Script bytes change** for validators and libraries that compare with `compareTo(...) OP 0`
+  (the stdlib does, so programs that keep unused stdlib methods change at `NONE` too) and for
+  `>` or `>=` between two computed operands. Scripts that use the `compareTo` form get smaller
+  and cheaper; the `>`/`>=` change can add a few bytes. A new hash means a new script address
+  or policy ID. The two Blaster state-thread verification fixtures use the `compareTo` form;
+  their locked artifacts and counterexample binding are refreshed with the same property
+  outcomes.
+
+## Upcoming preview: `JulcArray` in a Data-encoded position is rejected (JULC0091, #298)
+
+A `JulcArray` is a native UPLC array, which has no Data encoding. A record or sealed-variant
+component, a type argument of `Optional`, `Tuple2`, `Tuple3`, `JulcList`, `List`, `JulcMap` or
+`JulcArray`, and a `@Param` or `compileMethod` input are Data-encoded, so an array in any of
+them compiled but failed on-chain where the Java code succeeds
+([#298](https://github.com/bloxbean/julc/issues/298)). A `JulcArray` is now rejected with
+`JULC0091` wherever a native array would be Data-encoded: where such a type is written, and
+where lowering encodes a value whose type is inferred, such as `JulcList.of(xs.toArray())`,
+`JulcList.<JulcArray<BigInteger>>of(a)`, `Optional.of(array)`, a map key or value, a diamond
+`new Tuple2<>(array, …)` or a lambda result of `map`. The diagnostic points at the value that
+would be encoded. Store a `JulcList` and build the array where it is used
+(`xs.toArray()` in a local). Arrays of Data-encodable elements, such as
+`JulcArray<JulcList<BigInteger>>` in a local, stay supported. A datum or redeemer type that
+holds an array, already rejected by strict boundary validation, now reports `JULC0091`.
+
+## Upcoming preview: diamond tuples encode their components (#299)
+
+`new Tuple2<>(a, b)` and `new Tuple3<>(a, b, c)` resolved to tuples with Data components, so a
+`BigInteger`, `byte[]`, boolean or `String` component was put into the constructor unencoded and
+the script failed on-chain (`MkCons: element type … does not match list element type Data`) where
+the Java code returns ([#299](https://github.com/bloxbean/julc/issues/299)). This happened with and
+without a declared target type (`Tuple2<BigInteger, BigInteger> t = new Tuple2<>(x, y)`, `var t = …`,
+a return, an argument).
+
+- A diamond's component types are now taken from a declared local, `return`, assignment or
+  method-parameter target, else from the arguments, and each component is encoded by its type,
+  exactly as the explicit `new Tuple2<BigInteger, BigInteger>(x, y)` does. `var t = new Tuple2<>(x, y)`
+  reads its components with those types. A `switch` expression used as a component keeps the type its
+  arms agree on.
+- A raw tuple (`new Tuple2(a, b)`) or a diamond whose destination is raw (`Tuple2 t = (new Tuple2<>(…))`,
+  a raw loop variable, a raw parameter or return type) keeps working when its components are already
+  Data (`Builtins.iData(...)`, a record, a sealed value, an `Optional`), as `MathLib.divMod` uses it;
+  any other component is rejected with `JULC0012`: write the type arguments. An explicit
+  `new Tuple2<BigInteger, BigInteger>(…)` keeps its types wherever it is assigned.
+- A value whose type JuLC cannot determine (a `switch` whose arms have different types) is rejected
+  with `JULC0012` where it would be Data-encoded or be a diamond's component, rather than encoded as
+  Data.
+- **Script bytes change** for programs with such a diamond, which failed on-chain before, and for
+  programs that call a method on a `switch` expression whose arms all have one type, such as
+  `(switch (s) { case A a -> a.n(); case B b -> b.n(); }).equals(x)`: the result now has the arms'
+  type, so the call is the integer one and the comparison evaluates correctly, where it used the Data
+  representation before.
+
+## Upcoming preview: JuLC collections compare `byte[]` by content on the JVM
+
+On-chain, `JulcList`, `JulcMap` and `JulcArray` compare elements and keys by Data equality, so
+an equal `byte[]` is found. Off-chain, `JulcArrayList`, `JulcAssocMap` and `JulcArrayImpl`
+compared `byte[]` by identity, so `JulcList<byte[]>.contains(p)` or `JulcMap<byte[], V>.get(k)`
+was `false`/`null` for a distinct but equal array, and the JVM tests did not test the
+validator. They now compare `byte[]` elements, keys and values by content in `contains`,
+`get`, `lookup`, `getOrDefault`, `containsKey`, `delete`, `equals` and `hashCode`; nested JuLC
+collections compare deeply.
+
+- **Off-chain behaviour change:** a JVM test that relied on identity matching now gets the
+  on-chain result. With duplicate equal keys the most recently inserted entry wins, as on-chain.
+- Arrays are not copied: mutating a `byte[]` after adding it changes the collection's lookups,
+  equality and hash.
+- Scripts are unchanged.
+
+## Upcoming preview: integer literals have Java's value (#270)
+
+Integer literals were decoded by hand, not as the JLS defines them (§3.10.1):
+
+- A hexadecimal, octal or binary `int` literal with its top bit set was read as unsigned,
+  so `0xFFFFFFFF` compiled to 4294967295 where Java has -1, and `0x80000000` to 2147483648
+  where Java has -2147483648.
+- An octal `long` literal was read as decimal: `0777L` compiled to 777 where Java has 511.
+- Underscores (`1_000`), non-decimal `long` literals (`0xFFL`) and binary literals with
+  underscores were rejected with a `NumberFormatException` message.
+- A `byte[]` element out of the byte range compiled: `new byte[]{0x100}` gave a zero byte,
+  where javac rejects it, and `new byte[]{-1}`, which javac accepts, was rejected.
+
+Each literal now has the value javac gives it. A literal javac rejects (too large for its
+type, an octal digit 8 or 9, or a `byte[]` element outside -128 to 127) is rejected with
+`JULC0070`.
+
+- **Script bytes change** for validators and libraries with a hexadecimal, octal or binary
+  `int` literal whose top bit is set, or an octal `long` literal. A new hash means a new
+  script address or policy ID. Write `0xFFFFFFFFL` or a `BigInteger` where the unsigned value
+  was meant.
+
+## Upcoming preview: Unicode escapes are read as Java reads them (#268)
+
+javac translates Unicode escapes (a backslash, `u` and four hex digits, such as `\u0061`)
+before it reads anything else. So an escape in a comment can be a line break or the end of
+the comment, and `\u0061` is the name `a`. JuLC's parsers left escapes untranslated, so a
+source with such an escape could compile to a script that computes something other than
+the Java code. Every JuLC parser now reads source through `JavaSourceParser`, which
+translates escapes first: the compiler, library sources, the CLI, the linter, julc-tools
+and the verification resolvers.
+
+- **Script bytes change** only for sources with a Unicode escape outside a string literal,
+  and for a literal with several `u` (`\uuu0041`), which is now accepted as javac accepts it.
+- **Newly rejected, as javac rejects them:**
+  - a malformed Unicode escape anywhere, comments included: `\u00G1`, a lone `\u`, or an
+    escape cut off by the end of the file;
+  - a backslash outside a literal or comment, such as the name `\u005cu0061`;
+  - an illegal escape sequence written with a Unicode backslash, such as `\u005cq`, which
+    the parser now reports.
+- **Rejected although javac accepts them**, because javac's reading differs from the JLS or
+  cannot be kept. Each applies anywhere in the source:
+  - an escape whose digits are not ASCII hex digits;
+  - a backslash written as `\u005c`, after an odd run of such escapes, followed by two
+    or more raw backslashes and then `u`;
+  - an unpaired surrogate.
+- **Positions** in diagnostics, source maps and debug metadata refer to the source as
+  written. This covers node and comment ranges, parse-error locations and lexical-error
+  messages. A range that ends on an escape ends on the escape's last character.
+- **Pre-filters:** before parsing, the Gradle plugin, the CLI and the testkit look for an
+  annotation name in the text. They now also look in the text with its Unicode escapes
+  translated, without validating them, so an escaped annotation name is no longer skipped.
+  A source that names no JuLC annotation is still skipped, so off-chain code that javac
+  compiles but JuLC's stricter reading rejects does not fail the build. A source that only
+  mentions one (in a Javadoc, an import or a link) and cannot be read strictly is read again
+  leniently, and skipped if it declares none. It still fails with its diagnostic if it
+  declares one, or if javac could read it differently from the lenient reading.
+
+## Upcoming preview: string literals are decoded as Java decodes them (#256)
+
+A string literal compiled to its source text, escapes included, so `"a\nb"` held a
+backslash and an `n` on chain where Java holds a line break. Literals now compile to the
+string javac gives them: escape sequences (`\b \s \t \n \f \r \" \' \\` and octal
+escapes) and Unicode escapes (`\u00e9`) are decoded. The same applies to the argument of
+`new BigInteger("...")`.
+
+- **Script bytes change** for validators and libraries with a string literal that contains
+  a backslash, for example a trace message with `\n` or a token name written as
+  `caf\u00e9`. A new hash means a new script address or policy ID. Keep the previously
+  compiled script to spend UTxOs locked at the old address. Literals without a backslash
+  are unchanged.
+- **Newly rejected**, where the literal used to compile to its raw text:
+  - literals javac rejects: a Unicode escape that produces a quote or a line terminator
+    (`\u0022`, `\u000a`), and a backslash written as `\u005c` that starts no escape
+    sequence (`\u005cq`, `\u005cu0041`, or a `\u005c` that ends the literal);
+  - literals javac accepts that JuLC cannot keep or cannot read as javac does: an unpaired
+    surrogate such as `\uD800`, because a UPLC string is Unicode text and the script's FLAT
+    encoding would carry `?` in its place; and a backslash written as `\u005c` followed by
+    two or more raw backslashes and then `u`, such as `\u005c\\\u0030`. javac counts the
+    escaped backslash toward the parity of the raw backslashes after it and the JLS does not, so they
+    disagree on whether that `u` starts a Unicode escape.
+- **Still rejected**, as before, although javac accepts them: `\u005c` before a raw `"`, and
+  a Unicode escape whose digits are not ASCII hex digits. A Unicode escape with more than
+  one `u` (`\uuu0041`) is now accepted (#268, above).
+
+## Upcoming preview: coded diagnostics for rejected loop and statement forms (#257)
+
+Seven forms outside the on-chain subset were already rejected, but without a diagnostic
+code, and two of the messages named the wrong problem. Each now has a code, the
+location of the construct and a remedy:
+
+| Construct | Code | Message |
+|---|---|---|
+| `continue` | `JULC0060` | `continue is not supported on-chain` |
+| `return` inside `while` | `JULC0003` | `'return' is not supported inside while loop body` (located at the `return`) |
+| reassignment outside a loop | `JULC0061` | `Reassigning '<name>' is not supported outside a loop` |
+| `JulcMap.of(...)` in contract code | `JULC0062` | `JulcMap.of is off-chain only and has no on-chain implementation` |
+| `break` in a loop that updates no earlier variable | `JULC0063` | `break is not supported in a loop that updates no variable declared before the loop` |
+| a nested loop in a loop with `break` that updates one earlier variable | `JULC0064` | `A nested while loop is not supported in a loop that contains break and updates one variable declared before the loop` |
+| a loop with `break` whose only update is inside a `switch` statement, an expression or a lambda | `JULC0065` | `Updating '<name>' inside a switch statement is not supported in this loop` (located at the update) |
+| a labelled statement | `JULC0066` | `Labels are not supported on-chain: 'outer:'` |
+
+`JulcMap.of` used to report `Undefined variable: JulcMap`, and the `break` case
+`break statement outside of a loop`, although the `break` is inside one.
+
+- **Newly rejected: a nested loop with `break` that updates nothing (#273).** A
+  for-each or `while` whose body has a `break` but updates no variable declared
+  before it, nested inside a loop that updates one, used to be accepted with its
+  `break` ignored, so the inner loop ran to its end and could fail where Java
+  returns. It is now rejected with `JULC0063`, as the same loop is on its own. The
+  rejection applies whether or not the ignored `break` changed the result, so a
+  program that happened to work is rejected too, for example an inner
+  `for (var y : xs) { if (y.equals(x)) { break; } }`. It applies also to such a loop
+  inside a lambda inside a loop that updates a variable. To keep the early exit,
+  record it in a variable declared before the inner loop
+  (`boolean stopped = false;` and `stopped = true; break;`).
+- **Newly rejected: a `break` or `continue` that names a label (#201).** Labelled
+  statements were already rejected, but a `break` that named a label, even one that no
+  statement carries, was accepted and compiled as a plain `break` of the innermost
+  loop. javac rejects such source, so a Gradle build stopped, but tools that compile
+  source text without javac (the testkit's `compileMethod`, the playground) silently
+  gave it another meaning: `break outer;` in a nested loop left only the inner loop.
+  A labelled statement, a `break` that names a label and a `continue` that names one
+  now report `JULC0066` (`Labels are not supported on-chain: 'break outer'`); the
+  labelled statement used to report `Unsupported statement: LabeledStmt`, without a
+  code. To leave an outer loop, set a variable declared before the loops where the
+  inner loop breaks, and skip the rest of the outer loop while it is set.
+- **Otherwise no program changes outcome.** Every other program is rejected or
+  accepted as before, and script bytes of accepted programs are unchanged. `continue`
+  and labels inside a loop are reported when the compiler lowers that loop, and labels
+  outside any loop when it lowers the statement, so code JuLC never compiles, such as a
+  nested off-chain helper class, still compiles. The exception is a labelled `break`
+  outside any loop: subset validation rejects it in every class, as it did before
+  without a code.
+- **Tools that match message text** see new text for every form except `return`
+  inside `while`. Match the code instead. See the
+  [troubleshooting guide](/reference/troubleshooting/) for each code's fix.
+
+## Upcoming preview: loops with `break` continue after an `if` (GHSA-p9v9-f3g2-cqv9)
+
+In a loop body that contains `break`, a path that did not break could leave the loop, or
+skip the statements after its `if`. The script then computed something other than the
+Java code its tests run. In a loop that scans for a forbidden item behind an outer check,
+for example
+
+```java
+for (var output : outputs) {
+    if (!isScript(output)) {
+        if (hasTokens(output)) { clean = false; break; }
+    }
+}
+```
+
+the script stopped at the first output that passed the outer check without being
+forbidden, never examined the rest, and accepted. The same lowering made some `while`
+loops never terminate (#254) and some for-each loops return a wrong value (#255). A path
+that does not break now continues with the statements after the `if`, then with the next
+iteration, as in Java.
+
+- **Recompile and redeploy** validators and libraries with a loop that contains `break`
+  inside a nested `if`, or an `if` with one breaking branch followed by more statements.
+  Their scripts change hash; a new hash means a new script address or policy ID, and
+  funds at the old address stay governed by the old script.
+- `if (c) { ...; break; }` without `else`, the common search loop, keeps its bytes.
+- **A local that shadows a field or `@Param` accumulator**, declared in a loop body or in one of
+  its `if` branches, no longer replaces the accumulator after its declaration, in loops with or
+  without `break`. Java scopes such a local to its block; the script used the local's value as
+  the accumulator's from then on. Only loops with such a local change bytes.
+- **A local declared in an `if` branch of a loop body** no longer changes how a field or `@Param`
+  of the same name is read after that `if` (#209). The script used the local's record type for
+  the field, so it read the wrong component, or failed at run time. Each branch now has its own
+  scope, as the method-level `if` already had.
+
 ## Upcoming preview: on-chain `JulcMap.keys()` and `values()` keep map order
 
 On chain, `keys()` and `values()` returned the entries in reverse order, while off chain
@@ -789,7 +1392,7 @@ The Java VM supports both forms, although the raw `Program` form cannot carry
 compiler-target provenance. See
 [ADR-033's certification evidence](https://github.com/bloxbean/julc/blob/main/adr/033-scalus-protocol-aware-ledger-target-evaluation.md#certification-evidence).
 
-The CLI, Gradle plugin, annotation processor, JRL compiler, and MCP tools accept
+The CLI, Gradle plugin, annotation processor and MCP tools accept
 and report the same stable profile ID. Supporting a later protocol version will
 add and verify a separate pinned profile; it will not silently change the PV11
 default.

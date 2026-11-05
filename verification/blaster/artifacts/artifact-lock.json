@@ -173,8 +173,8 @@
     {
       "artifactId": "verification-state-thread",
       "title": "VerificationStateThread",
-      "compiledCodeSha256": "0c60951d848fbe3097097cb636386a0035c27f1675f055d81e517e79f72219ba",
-      "cardanoScriptHash": "8a329573d16f9c42fd4084709010ce730a858b967e96272cf59b00ce",
+      "compiledCodeSha256": "39e1bb17cbd4ddede12a2cbed9d9125562c806171c9e920a873aaa4c8d370d16",
+      "cardanoScriptHash": "e6f7580ac4b0ab26e484a563b3a66b6e3fbf7edb5cb40cfc150e1257",
       "uplcVersion": "1.1.0",
       "builtins": [
         {
@@ -256,8 +256,8 @@
     {
       "artifactId": "verification-state-thread-broken",
       "title": "VerificationStateThreadBroken",
-      "compiledCodeSha256": "b05c728d73a8fd25c7d5b3f9bcccba0fe73bd617e6b18a41e8e45c491046b471",
-      "cardanoScriptHash": "e794a51bf14bdf64fbb32a734e057dc2c7beff47dcca5b7c1c9b4a99",
+      "compiledCodeSha256": "5b96f1de609931ef1a63f6d783d90d8b7a8f0432872abba33f9d8eb694e36306",
+      "cardanoScriptHash": "c0c52b8c6115679f56ea6a208a0bccd91a800174e32f62746de4758c",
       "uplcVersion": "1.1.0",
       "builtins": [
         {
@@ -315,8 +315,8 @@
     {
       "artifactId": "verification-multi-sig",
       "title": "VerificationMultiSig",
-      "compiledCodeSha256": "66b2825739bb3ecf3727aaf1fe3eca40ff20e9f70dad704669cdb51d3efab4ef",
-      "cardanoScriptHash": "81bf58b49fd9612e6c55d7e2999388369add18e0cc0079c4211900f7",
+      "compiledCodeSha256": "7b44687933f789d30554f2166f911be49575ecbd1110351a04d092db9deb30f4",
+      "cardanoScriptHash": "b93b672b38ef2bb5fdf792e8a45c8eb8bd3b34178af321c0824e4223",
       "uplcVersion": "1.1.0",
       "builtins": [
         {
@@ -370,8 +370,8 @@
     {
       "artifactId": "verification-multi-sig",
       "title": "VerificationMultiSig",
-      "compiledCodeSha256": "13cf32415f111a877ac3fb168ccf0dbbb80f65d56c0735dfe536f4c18babf7e3",
-      "cardanoScriptHash": "6127d6efb0926c1e4f1bec828d616b0f032365b0dfb2a0b7edaa9a94",
+      "compiledCodeSha256": "6192b038a8dd25d77f986c8c88de80f8bc25da8cca77cff0b9fb2734aeb53534",
+      "cardanoScriptHash": "d7a71bea22ce220edb03712f0004cf976e740c8d2869ac841b9587f7",
       "uplcVersion": "1.1.0",
       "builtins": [
         {

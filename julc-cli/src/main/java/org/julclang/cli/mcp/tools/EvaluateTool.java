@@ -1,5 +1,10 @@
 package org.julclang.cli.mcp.tools;
 
+
+import org.julclang.compiler.frontend.javac.JavacSyntax;
+import org.julclang.cli.mcp.lint.LintEngine;
+import org.julclang.cli.mcp.lint.LintTrees;
+import com.sun.source.tree.MethodTree;
 import org.julclang.compiler.CompileResult;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerOptions;
@@ -13,9 +18,6 @@ import org.julclang.vm.EvalOptions;
 import org.julclang.vm.ExBudget;
 import org.julclang.vm.JulcVm;
 import org.julclang.vm.TermExtractor;
-import com.github.javaparser.JavaParser;
-import com.github.javaparser.ParserConfiguration;
-import com.github.javaparser.ast.body.MethodDeclaration;
 import io.modelcontextprotocol.json.McpJsonMapper;
 import io.modelcontextprotocol.server.McpServerFeatures;
 import io.modelcontextprotocol.spec.McpSchema;
@@ -243,12 +245,11 @@ public final class EvaluateTool {
      */
     static int expectedMethodArity(String source, String methodName) {
         try {
-            var parser = new JavaParser(new ParserConfiguration()
-                    .setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21));
-            var parsed = parser.parse(source);
-            if (parsed.getResult().isEmpty()) return -1;
-            return parsed.getResult().get().findAll(MethodDeclaration.class).stream()
-                    .filter(m -> methodName.equals(m.getNameAsString()))
+            var syntax = JavacSyntax.read(source);
+            if (syntax.hasErrors()) return -1;
+            return LintTrees.methods(syntax).stream()
+                    .map(path -> (MethodTree) path.getLeaf())
+                    .filter(m -> m.getName().contentEquals(methodName))
                     .mapToInt(m -> m.getParameters().size())
                     .findFirst()
                     .orElse(-1);

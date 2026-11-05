@@ -1,0 +1,24 @@
+format: 2
+name: a JulcArray record component is rejected (#298)
+class: Probe
+method: m
+arg: 9f0102ff
+expect: REJECT JULC0091
+note: ADR-068 D6 (#298): a native array has no Data encoding, so a record holding one compiled and failed as soon
+note: as the record was constructed (MkCons: element type ProtoArray does not match Data), where the JVM returns 2.
+note: Under D4 exception 2 both frontends reject it at M1; recorded.base is the reference frontend at B0.
+recorded.jvm: Value 02 []
+recorded.base: Failure [] "MkCons: element type Apply[f=ProtoArray[], arg=Data[]] does not match list element type Data[]"
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcArray;
+import org.julclang.core.types.JulcList;
+
+public class Probe {
+    record R(JulcArray<BigInteger> arr) {}
+
+    public static BigInteger m(JulcList<BigInteger> xs) {
+        R r = new R(xs.toArray());
+        return BigInteger.valueOf(r.arr().length());
+    }
+}

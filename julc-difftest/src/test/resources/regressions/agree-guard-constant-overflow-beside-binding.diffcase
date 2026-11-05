@@ -1,0 +1,28 @@
+format: 3
+name: int constants with overflow inside a non-constant guard (round 3)
+class: Probe
+method: m
+tag: Probe$A Probe$S 0
+tag: Probe$B Probe$S 1
+arg: 05
+expect: AGREE
+recorded.jvm: Value 01 []
+recorded.base: Value 02 []
+note: ADR-067 M1 round 3 (implementer, I9): the guard is not constant, but its int and long constant subexpressions are lowered as their Java values; at a4a7d834 they were evaluated without Java's width (ADR-062 T6) and the first arm was skipped (JVM 1, JuLC 2).
+---
+import java.math.BigInteger;
+
+public class Probe {
+    sealed interface S permits A, B {}
+    record A(BigInteger v) implements S {}
+    record B(BigInteger v) implements S {}
+    static final int N = 2147483647 + 1;
+
+    public static BigInteger m(BigInteger a) {
+        S s = new A(a);
+        return switch (s) {
+            case A x when (2147483647 + 1) < x.v().signum() && N < x.v().signum() && ((int) 2147483648L) < x.v().signum() -> BigInteger.ONE;
+            default -> BigInteger.TWO;
+        };
+    }
+}

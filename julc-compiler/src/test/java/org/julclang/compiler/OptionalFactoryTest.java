@@ -37,6 +37,9 @@ class OptionalFactoryTest {
         var source = """
             import java.math.BigInteger;
             import java.util.Optional;
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class TestValidator {
@@ -60,6 +63,9 @@ class OptionalFactoryTest {
         var source = """
             import java.math.BigInteger;
             import java.util.Optional;
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class TestValidator {
@@ -83,6 +89,9 @@ class OptionalFactoryTest {
         var source = """
             import java.math.BigInteger;
             import java.util.Optional;
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class TestValidator {
@@ -107,6 +116,9 @@ class OptionalFactoryTest {
         var source = """
             import java.math.BigInteger;
             import java.util.Optional;
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class TestValidator {
@@ -130,6 +142,9 @@ class OptionalFactoryTest {
         var source = """
             import java.math.BigInteger;
             import java.util.Optional;
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class TestValidator {
@@ -155,6 +170,9 @@ class OptionalFactoryTest {
             import java.math.BigInteger;
             import java.util.Optional;
             import org.julclang.stdlib.Builtins;
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class TestValidator {

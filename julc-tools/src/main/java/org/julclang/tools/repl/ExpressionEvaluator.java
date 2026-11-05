@@ -4,53 +4,56 @@ import org.julclang.compiler.CompileResult;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.LibrarySource;
 import org.julclang.compiler.LibrarySourceResolver;
+import org.julclang.compiler.frontend.javac.ReplExpressionWrapper;
 import org.julclang.core.PlutusData;
 import org.julclang.core.Term;
 import org.julclang.stdlib.StdlibRegistry;
+import org.julclang.tools.service.ToolsService;
 import org.julclang.vm.EvalOptions;
 import org.julclang.vm.EvalResult;
 import org.julclang.vm.JulcVm;
 import org.julclang.vm.TermExtractor;
 
 import java.math.BigInteger;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
-import java.util.regex.Pattern;
 
 /**
  * Evaluates standalone expressions in the playground.
- * Wraps expressions into synthetic classes, compiles via JulcCompiler.compileMethod(),
- * evaluates via JulcVm, and extracts/formats the result.
+ * Wraps expressions with the typed wrapper JuLC's REPLs share (ADR-068 D9, {@link ReplExpressionWrapper}), compiles
+ * via JulcCompiler.compileMethod(), evaluates via JulcVm, and extracts/formats the result. Integer arithmetic is
+ * JuLC's, unbounded on-chain: {@code 2147483647 + 1} evaluates to 2147483648 where the JVM wraps it.
  */
 public final class ExpressionEvaluator {
 
-    private static final String CLASS_NAME = "__Repl";
-    private static final String METHOD_NAME = "__eval";
+    private static final String CLASS_NAME = ReplExpressionWrapper.CLASS_NAME;
+    private static final String METHOD_NAME = ReplExpressionWrapper.METHOD_NAME;
 
-    private static final Set<String> INTEGER_METHODS = Set.of(
-            "ListsLib.length", "MathLib.abs", "MathLib.max", "MathLib.min",
-            "MathLib.pow", "MathLib.sign", "MathLib.expMod",
-            "Builtins.unIData", "Builtins.lengthOfByteString"
-    );
-    private static final Set<String> BOOLEAN_METHODS = Set.of(
-            "ListsLib.isEmpty", "ListsLib.contains", "ListsLib.containsInt",
-            "MapLib.member", "Builtins.nullList",
-            "ValuesLib.leq", "ValuesLib.eq", "ValuesLib.isZero"
-    );
-    private static final Set<String> BYTES_METHODS = Set.of(
-            "Builtins.sha2_256", "Builtins.sha3_256", "Builtins.blake2b_224", "Builtins.blake2b_256",
-            "ByteStringLib.take", "CryptoLib.ripemd_160", "AddressLib.credentialHash"
-    );
-    private static final Pattern COMPARISON_OPS = Pattern.compile("(==|!=|<=?|>=?|&&|\\|\\|)");
+    /** The wrapper's imports: every stdlib class, the core types and the ledger. */
+    private static final List<String> IMPORTS = imports();
+
+    private static List<String> imports() {
+        var imports = new ArrayList<>(StdlibRegistry.stdlibClassFqcns());
+        imports.add("org.julclang.core.PlutusData");
+        imports.add("org.julclang.core.types.*");
+        imports.add("org.julclang.ledger.*");
+        imports.add("java.math.BigInteger");
+        imports.add("java.util.List");
+        imports.add("java.util.Optional");
+        return List.copyOf(imports);
+    }
 
     private final JulcCompiler compiler;
     private final JulcVm vm;
     private final Map<String, LibrarySource> libraryPool;
 
     public ExpressionEvaluator() {
-        this(new JulcCompiler(StdlibRegistry.defaultRegistry()), JulcVm.create(),
-                LibrarySourceResolver.scanClasspathSources(ExpressionEvaluator.class.getClassLoader()));
+        this(LibrarySourceResolver.scanClasspathSources(ExpressionEvaluator.class.getClassLoader()));
+    }
+
+    private ExpressionEvaluator(Map<String, LibrarySource> classpathLibraries) {
+        this(ToolsService.compilerFor(classpathLibraries), JulcVm.create(), classpathLibraries);
     }
 
     /**
@@ -78,30 +81,26 @@ public final class ExpressionEvaluator {
     ) {}
 
     public EvalExpressionResult evaluate(String expression) {
-        String source = wrap(expression);
-
-        // Resolve libraries
+        // javac types the expression first (ADR-068 D9): its rejection is the evaluator's error.
         List<String> resolvedLibs;
         try {
-            resolvedLibs = LibrarySourceResolver.resolve(source, libraryPool);
+            resolvedLibs = LibrarySourceResolver.resolve(resolutionText(expression), libraryPool);
         } catch (Exception e) {
             resolvedLibs = List.of();
         }
+        var wrapped = ReplExpressionWrapper.wrap(expression, IMPORTS, resolvedLibs);
+        if (!wrapped.isAccepted()) {
+            String errors = wrapped.errors().stream().map(d -> d.message()).reduce((a, b) -> a + "; " + b)
+                    .orElse("Compilation failed");
+            return new EvalExpressionResult(false, null, null, 0, 0, List.of(), "Compilation error: " + errors, null);
+        }
 
-        // Compile
         CompileResult cr;
         try {
-            cr = compiler.compileMethod(source, METHOD_NAME, resolvedLibs);
+            cr = compiler.compileMethod(wrapped.source(), METHOD_NAME, resolvedLibs);
         } catch (Exception e) {
-            // Fallback: try with PlutusData cast
-            try {
-                String fallback = wrapAsData(expression);
-                resolvedLibs = LibrarySourceResolver.resolve(fallback, libraryPool);
-                cr = compiler.compileMethod(fallback, METHOD_NAME, resolvedLibs);
-            } catch (Exception e2) {
-                return new EvalExpressionResult(false, null, null, 0, 0, List.of(),
-                        "Compilation error: " + e.getMessage(), null);
-            }
+            return new EvalExpressionResult(false, null, null, 0, 0, List.of(),
+                    "Compilation error: " + e.getMessage(), null);
         }
 
         if (cr.hasErrors()) {
@@ -136,67 +135,12 @@ public final class ExpressionEvaluator {
         };
     }
 
-    private String wrap(String expression) {
-        String returnType = inferReturnType(expression);
-        String body;
-        if (returnType.equals("PlutusData")) {
-            body = "return (PlutusData)(Object)(" + expression.trim() + ");";
-        } else {
-            body = "return " + expression.trim() + ";";
-        }
-        return buildSource(body, returnType);
-    }
-
-    private String wrapAsData(String expression) {
-        String body = "return (PlutusData)(Object)(" + expression.trim() + ");";
-        return buildSource(body, "PlutusData");
-    }
-
-    private String inferReturnType(String expression) {
-        String t = expression.trim();
-        if (t.equals("true") || t.equals("false")) return "boolean";
-        if (t.matches("-?\\d+")) return "BigInteger";
-        if (t.startsWith("\"")) return "String";
-        if (t.startsWith("new byte[]")) return "byte[]";
-        for (String m : INTEGER_METHODS) if (t.contains(m)) return "BigInteger";
-        for (String m : BOOLEAN_METHODS) if (t.contains(m)) return "boolean";
-        for (String m : BYTES_METHODS) if (t.contains(m)) return "byte[]";
-        if (COMPARISON_OPS.matcher(t).find()) return "boolean";
-        if (hasTopLevelArithmetic(t)) return "BigInteger";
-        return "PlutusData";
-    }
-
-    private boolean hasTopLevelArithmetic(String expr) {
-        int depth = 0;
-        for (int i = 0; i < expr.length(); i++) {
-            char c = expr.charAt(i);
-            if (c == '(' || c == '[' || c == '{') depth++;
-            else if (c == ')' || c == ']' || c == '}') depth--;
-            else if (depth == 0 && (c == '+' || c == '-' || c == '*' || c == '/' || c == '%')) {
-                if (c == '-' && i == 0) continue;
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private String buildSource(String body, String returnType) {
+    /** The text the library resolver scans for the classes an expression uses. */
+    private static String resolutionText(String expression) {
         var sb = new StringBuilder();
-        for (String fqcn : StdlibRegistry.stdlibClassFqcns()) {
-            sb.append("import ").append(fqcn).append(";\n");
-        }
-        sb.append("import org.julclang.core.PlutusData;\n");
-        sb.append("import org.julclang.core.types.*;\n");
-        sb.append("import org.julclang.ledger.*;\n");
-        sb.append("import java.math.BigInteger;\n");
-        sb.append("import java.util.List;\n");
-        sb.append("import java.util.Optional;\n");
-        sb.append("\nclass ").append(CLASS_NAME).append(" {\n");
-        sb.append("    static ").append(returnType).append(" ").append(METHOD_NAME).append("() {\n");
-        sb.append("        ").append(body).append("\n");
-        sb.append("    }\n");
-        sb.append("}\n");
-        return sb.toString();
+        for (String imp : IMPORTS) sb.append("import ").append(imp).append(";\n");
+        return sb.append("class ").append(CLASS_NAME).append(" { Object x = ").append(expression).append("; }\n")
+                .toString();
     }
 
     private String formatValue(Object value) {

@@ -97,6 +97,9 @@ class OptimizerSourceSoundnessTest {
         // pattern semantics where component accessors are always invoked.
         var source = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             sealed interface Status permits Active, Retired {}
             record Active(BigInteger since) implements Status {}
@@ -106,7 +109,7 @@ class OptimizerSourceSoundnessTest {
             class TestValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                    Status s = (Status) redeemer;
+                    Status s = (Status) (Object) redeemer;
                     return switch (s) {
                         case Active a -> true;
                         case Retired r -> false;

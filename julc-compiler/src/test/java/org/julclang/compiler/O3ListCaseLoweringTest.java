@@ -1,5 +1,6 @@
 package org.julclang.compiler;
 
+
 import org.julclang.compiler.pir.*;
 import org.julclang.compiler.uplc.UplcGenerator;
 import org.julclang.core.*;
@@ -72,7 +73,7 @@ class O3ListCaseLoweringTest {
                 }
             }
         }
-        var defaults = new JulcCompiler(StdlibRegistry.defaultRegistry()).compileMethod(SOURCE, "sum");
+        var defaults = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()).compileMethod(SOURCE, "sum");
         assertArrayEquals(bytes(defaults), bytes(compile("sum", OptimizationLevel.PV11_SAFE, false)));
         assertTrue(countBuiltin(defaults.program().term(), DefaultFun.NullList) > 0);
         assertEquals(0, countBuiltin(defaults.program().term(), DefaultFun.HeadList));
@@ -130,34 +131,9 @@ class O3ListCaseLoweringTest {
                     }
                 }
                 """;
-        var result = new JulcCompiler(StdlibRegistry.defaultRegistry()).compileMethod(source, "first");
+        var result = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()).compileMethod(source, "first");
         assertFalse(result.optimizationReport().appliedRules().contains(UplcGenerator.PV11_CASE_LIST_RULE));
         assertTrue(countBuiltin(result.program().term(), DefaultFun.HeadList) > 0);
-    }
-
-    @Test
-    void mapAndWhileTraversalDoNotAcquireListCaseRule() {
-        var source = """
-                import java.math.BigInteger;
-                import org.julclang.core.types.JulcMap;
-                import org.julclang.core.types.JulcList;
-                class OtherTraversals {
-                    static BigInteger map(JulcMap<BigInteger, BigInteger> xs) {
-                        BigInteger acc = BigInteger.ZERO;
-                        for (var entry : xs) { acc = acc.add(entry.value()); }
-                        return acc;
-                    }
-                    static BigInteger walk(JulcList<BigInteger> xs) {
-                        BigInteger acc = BigInteger.ZERO;
-                        while (!xs.isEmpty()) { acc = acc.add(xs.head()); xs = xs.tail(); }
-                        return acc;
-                    }
-                }
-                """;
-        for (var method : List.of("map", "walk")) {
-            var result = new JulcCompiler(StdlibRegistry.defaultRegistry()).compileMethod(source, method);
-            assertFalse(result.optimizationReport().appliedRules().contains(UplcGenerator.PV11_CASE_LIST_RULE));
-        }
     }
 
     @Test

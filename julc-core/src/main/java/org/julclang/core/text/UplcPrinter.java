@@ -355,6 +355,8 @@ public final class UplcPrinter {
                         // Control character: use decimal escape
                         sb.append('\\');
                         sb.append((int) ch);
+                        // The parser reads every following digit into the escape; \& ends it, as in Haskell's show.
+                        if (i + 1 < s.length() && Character.isDigit(s.charAt(i + 1))) sb.append("\\&");
                     } else {
                         sb.append(ch);
                     }

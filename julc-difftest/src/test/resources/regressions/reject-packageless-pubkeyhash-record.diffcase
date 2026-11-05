@@ -1,0 +1,19 @@
+format: 2
+name: a packageless user record named like a ledger hash type
+class: Probe
+method: m
+arg: 420102
+expect: AGREE
+note: ADR-067 D9: rejected with JULC0081 in M3b. Baseline as found in M0: TypeResolver resolves ledger hash names by simple name. A subset rule: a type does not take a name read as a type of JuLC's.
+note: ADR-068 M6: on the only frontend, javac, AGREE; the JavaParser frontend answered REJECT JULC0100.
+---
+import java.math.BigInteger;
+record PubKeyHash(byte[] h) {}
+
+public class Probe {
+
+    public static byte[] m(byte[] h) {
+        PubKeyHash p = new PubKeyHash(h);
+        return p.h();
+    }
+}

@@ -36,14 +36,20 @@ class MultiSigValidatorE2ETest extends PluginTestBase {
 
     static final String MULTI_SIG_VALIDATOR = """
             import org.julclang.core.PlutusData;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.ledger.TxInfo;
+            import org.julclang.stdlib.Builtins;
+            import org.julclang.stdlib.lib.ContextsLib;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class MultiSigValidator {
                 record Keys(PlutusData key1, PlutusData key2) {}
 
-                static boolean checkSignatures(PlutusData txInfo, PlutusData key1, PlutusData key2) {
-                    boolean sig1 = ContextsLib.signedBy(txInfo, key1);
-                    boolean sig2 = ContextsLib.signedBy(txInfo, key2);
+                static boolean checkSignatures(TxInfo txInfo, PlutusData key1, PlutusData key2) {
+                    boolean sig1 = ContextsLib.signedBy(txInfo, Builtins.unBData(key1));
+                    boolean sig2 = ContextsLib.signedBy(txInfo, Builtins.unBData(key2));
                     if (sig1) {
                         return sig2;
                     } else {
@@ -53,7 +59,7 @@ class MultiSigValidatorE2ETest extends PluginTestBase {
 
                 @Entrypoint
                 static boolean validate(Keys datum, PlutusData redeemer, PlutusData ctx) {
-                    PlutusData txInfo = ContextsLib.getTxInfo(ctx);
+                    TxInfo txInfo = ContextsLib.getTxInfo(PlutusData.cast(ctx, ScriptContext.class));
                     return checkSignatures(txInfo, datum.key1(), datum.key2());
                 }
             }

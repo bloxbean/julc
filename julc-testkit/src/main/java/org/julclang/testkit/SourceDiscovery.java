@@ -11,6 +11,7 @@ import org.julclang.stdlib.StdlibRegistry;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -70,6 +71,20 @@ public final class SourceDiscovery {
      * @throws AssertionError if the source file cannot be read or compilation fails
      */
     public static CompileResult compile(String fqcn, Path sourceRoot) {
+        return compile(fqcn, sourceRoot, new CompilerOptions());
+    }
+
+    /**
+     * {@link #compile(String, Path)} with custom compiler options, such as the frontend (ADR-068 D4).
+     * This sets the jar library sources it finds on {@code options}, the caller's object.
+     *
+     * @param fqcn       the fully-qualified class name (e.g., "com.example.MyValidator")
+     * @param sourceRoot the root of the source tree
+     * @param options    compiler options
+     * @return the compilation result
+     * @throws AssertionError if the source file cannot be read or compilation fails
+     */
+    public static CompileResult compile(String fqcn, Path sourceRoot, CompilerOptions options) {
         Path sourceFile = sourceRoot.resolve(fqcn.replace('.', '/') + ".java");
         String validatorSource;
         try {
@@ -79,11 +94,12 @@ public final class SourceDiscovery {
         }
 
         // Build library pool and resolve dependencies
-        Map<String, LibrarySource> pool = buildLibraryPool(validatorSource, sourceRoot);
+        var jarTexts = new ArrayList<String>();
+        Map<String, LibrarySource> pool = buildLibraryPool(validatorSource, sourceRoot, jarTexts);
         List<String> libSources = LibrarySourceResolver.resolve(validatorSource, pool);
 
         // Compile with stdlib
-        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry());
+        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), options.setJarLibrarySources(jarTexts));
         var result = compiler.compile(validatorSource, libSources);
 
         if (result.hasErrors()) {
@@ -119,6 +135,7 @@ public final class SourceDiscovery {
     /**
      * Compile a validator class with auto-discovered library dependencies and custom compiler options.
      * This is the primary way to enable source maps for class-based compilation.
+     * This sets the jar library sources it finds on {@code options}, the caller's object.
      *
      * @param validatorClass the validator class to compile
      * @param sourceRoot     the root of the source tree
@@ -134,10 +151,11 @@ public final class SourceDiscovery {
             throw new AssertionError("Cannot read validator source: " + sourceFile, e);
         }
 
-        Map<String, LibrarySource> pool = buildLibraryPool(validatorSource, sourceRoot);
+        var jarTexts = new ArrayList<String>();
+        Map<String, LibrarySource> pool = buildLibraryPool(validatorSource, sourceRoot, jarTexts);
         List<String> libSources = LibrarySourceResolver.resolve(validatorSource, pool);
 
-        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), options);
+        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), options.setJarLibrarySources(jarTexts));
         var result = compiler.compile(validatorSource, libSources);
 
         if (result.hasErrors()) {
@@ -152,12 +170,13 @@ public final class SourceDiscovery {
      * Build the available library pool from same-project sources (Tier 1)
      * and classpath META-INF/plutus-sources/ (Tier 2).
      */
-    private static Map<String, LibrarySource> buildLibraryPool(String validatorSource, Path sourceRoot) {
+    private static Map<String, LibrarySource> buildLibraryPool(String validatorSource, Path sourceRoot,
+                                                               List<String> jarTexts) {
         var pool = new LinkedHashMap<String, LibrarySource>();
 
         // Tier 2: Classpath sources (added first, lower precedence)
-        pool.putAll(LibrarySourceResolver.scanClasspathSources(
-                Thread.currentThread().getContextClassLoader()));
+        var classpath = LibrarySourceResolver.scanClasspathSources(Thread.currentThread().getContextClassLoader());
+        pool.putAll(classpath);
 
         // Tier 1: Same-project sources from import paths (higher precedence)
         Map<String, String> importPaths = LibrarySourceResolver.extractImportPaths(validatorSource);
@@ -194,6 +213,8 @@ public final class SourceDiscovery {
         //  same-project sources for transitive deps too)
         addTransitiveSameProjectSources(pool, sourceRoot);
 
+        // The class path's sources are JAR sources: the javac gate ranks them below this project's (ADR-068 D8).
+        jarTexts.addAll(LibrarySourceResolver.jarSourceTexts(pool, classpath));
         return pool;
     }
 
@@ -221,6 +242,14 @@ public final class SourceDiscovery {
      * @throws AssertionError if the source file cannot be read or compilation fails
      */
     public static CompileResult compileMethod(Class<?> sourceClass, Path sourceRoot, String methodName) {
+        return compileMethod(sourceClass, sourceRoot, methodName, new CompilerOptions());
+    }
+
+    /**
+     * {@link #compileMethod(Class, Path, String)} with {@code options}: on the javac frontend the whole pool, which it reads
+     * from (ADR-068 D8). This sets the jar library sources it finds on {@code options}, the caller's object.
+     */
+    public static CompileResult compileMethod(Class<?> sourceClass, Path sourceRoot, String methodName, CompilerOptions options) {
         Path sourceFile = sourceFileFor(sourceClass, sourceRoot);
         String source;
         try {
@@ -229,10 +258,11 @@ public final class SourceDiscovery {
             throw new AssertionError("Cannot read source: " + sourceFile, e);
         }
 
-        Map<String, LibrarySource> pool = buildLibraryPool(source, sourceRoot);
+        var jarTexts = new ArrayList<String>();
+        Map<String, LibrarySource> pool = buildLibraryPool(source, sourceRoot, jarTexts);
         List<String> libSources = LibrarySourceResolver.resolve(source, pool);
 
-        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry());
+        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), options.setJarLibrarySources(jarTexts));
         var result = compiler.compileMethod(source, methodName, libSources);
 
         if (result.hasErrors()) {
@@ -273,10 +303,12 @@ public final class SourceDiscovery {
             throw new AssertionError("Cannot read source for " + fqcn + ": " + sourceFile, e);
         }
 
-        Map<String, LibrarySource> pool = buildLibraryPool(source, sourceRoot);
+        var jarTexts = new ArrayList<String>();
+        Map<String, LibrarySource> pool = buildLibraryPool(source, sourceRoot, jarTexts);
         List<String> libSources = LibrarySourceResolver.resolve(source, pool);
 
-        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry());
+        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(),
+                new CompilerOptions().setJarLibrarySources(jarTexts));
         var result = compiler.compileMethod(source, methodName, libSources);
 
         if (result.hasErrors()) {
@@ -350,6 +382,7 @@ public final class SourceDiscovery {
         final boolean[] changed = {false};
         try (var stream = Files.list(pkgDir)) {
             stream.filter(p -> p.toString().endsWith(".java"))
+                    .sorted()
                     .forEach(p -> {
                         try {
                             String src = Files.readString(p);
@@ -381,6 +414,8 @@ public final class SourceDiscovery {
         try {
             sourceInfo = JavaSourceIntrospector.inspect(source);
         } catch (JavaSourceIntrospector.SourceParseException e) {
+            // Read as javac reads it, a source that only mentions the annotation has no JuLC role.
+            if (JavaSourceIntrospector.declaresNoJulcRole(source)) return Optional.empty();
             throw new AssertionError("Could not parse @OnchainLibrary candidate "
                     + sourceFile + ": " + e.problems(), e);
         }

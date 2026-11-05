@@ -1,0 +1,26 @@
+format: 3
+name: a sealed variant that also implements a plain interface (M5)
+class: Probe
+method: m
+tag: Probe$A Probe$S 0
+tag: Probe$B Probe$S 1
+arg: 05
+expect: AGREE
+note: ADR-067 M5: unaffected by D6.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    interface Marker {}
+    sealed interface S permits A, B {}
+    record A(BigInteger v) implements S, Marker {}
+    record B(BigInteger v) implements S {}
+
+    public static BigInteger m(BigInteger a) {
+        S s = new A(a);
+        return switch (s) {
+            case A x -> x.v();
+            case B y -> BigInteger.ZERO;
+        };
+    }
+}

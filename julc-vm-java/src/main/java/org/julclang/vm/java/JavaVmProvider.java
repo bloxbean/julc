@@ -79,35 +79,16 @@ public class JavaVmProvider implements JulcVmProvider {
      */
     public SteppingEvaluation startStepping(Program program, LedgerEvaluationTarget target,
                                             List<PlutusData> args, ExBudget budget, EvalOptions options) {
-        Program applied = applyArgs(program, args);
-        var prepared = prepare(applied, target, budget, options);
-        if (prepared.failure() != null) {
-            return SteppingEvaluation.finished(prepared.failure());
-        }
-        return SteppingEvaluation.start(prepared.machine(), prepared.costTracker(), applied.term());
+        return prepare(applyArgs(program, args), target).startStepping(budget, options);
     }
 
-    private EvalResult evaluateInternal(Program program, LedgerEvaluationTarget target,
-                                        ExBudget budget,
-                                        EvalOptions options) {
-        var prepared = prepare(program, target, budget, options);
-        if (prepared.failure() != null) {
-            return prepared.failure();
-        }
-        var costTracker = prepared.costTracker();
-        var machine = prepared.machine();
-        try {
-            CekValue result = machine.evaluate(program.term());
-            return successOf(result, costTracker, machine);
-        } catch (Exception e) {
-            return failureOf(e, costTracker, machine);
-        }
-    }
-
-    private record Prepared(CostTracker costTracker, CekMachine machine, EvalResult failure) {}
-
-    private Prepared prepare(Program program, LedgerEvaluationTarget target, ExBudget budget,
-                             EvalOptions options) {
+    /**
+     * Check a program and resolve its cost models for a target once, so that it can be evaluated many times without
+     * repeating that work, for example to time CEK evaluation alone. Evaluating the result gives the same
+     * {@link EvalResult} as {@link #evaluate(Program, LedgerEvaluationTarget, ExBudget, EvalOptions)}. The cost model
+     * configured for the target's language now is the one the prepared program keeps; see {@link PreparedProgram}.
+     */
+    public PreparedProgram prepare(Program program, LedgerEvaluationTarget target) {
         ProtocolFeatureProfile profile;
         ConfiguredCostModel configured;
         try {
@@ -121,7 +102,7 @@ public class JavaVmProvider implements JulcVmProvider {
                                 + " but evaluation requested " + target);
             }
         } catch (RuntimeException e) {
-            return new Prepared(null, null, new EvalResult.Failure(messageOf(e), ExBudget.ZERO, List.of()));
+            return PreparedProgram.failed(new EvalResult.Failure(messageOf(e), ExBudget.ZERO, List.of()));
         }
 
         MachineCosts mc;
@@ -133,10 +114,13 @@ public class JavaVmProvider implements JulcVmProvider {
             mc = DefaultCostModel.defaultMachineCosts(profile);
             bcm = DefaultCostModel.defaultBuiltinCostModel(profile);
         }
-        var costTracker = new CostTracker(mc, bcm, profile, budget);
-        var machine = new CekMachine(costTracker, profile,
-                options.sourceMap(), options.tracingEnabled(), options.builtinTraceEnabled());
-        return new Prepared(costTracker, machine, null);
+        return PreparedProgram.ready(program.term(), profile, mc, bcm);
+    }
+
+    private EvalResult evaluateInternal(Program program, LedgerEvaluationTarget target,
+                                        ExBudget budget,
+                                        EvalOptions options) {
+        return prepare(program, target).evaluate(budget, options);
     }
 
     static EvalResult successOf(CekValue result, CostTracker costTracker, CekMachine machine) {

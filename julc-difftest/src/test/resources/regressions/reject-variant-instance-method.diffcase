@@ -1,0 +1,28 @@
+format: 3
+name: #282 an instance method on a sealed variant, called on a switch binding (N10)
+class: Probe
+method: m
+tag: Probe$A Probe$S 0
+tag: Probe$B Probe$S 1
+arg: 05
+expect: REJECT JULC0080
+note: ADR-067 N10: legal Java (10).
+note: ADR-068 M6: on the only frontend, javac, REJECT JULC0080; the JavaParser frontend answered REJECT JULC0055.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    sealed interface S permits A, B {}
+    record A(BigInteger v) implements S {
+        BigInteger d() { return v.add(v); }
+    }
+    record B(BigInteger v) implements S {}
+
+    public static BigInteger m(BigInteger a) {
+        S s = new A(a);
+        return switch (s) {
+            case A x -> x.d();
+            case B y -> BigInteger.ZERO;
+        };
+    }
+}

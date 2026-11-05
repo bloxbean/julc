@@ -1,0 +1,20 @@
+format: 2
+name: a JulcArray of JulcLists stays supported (#298, positive control)
+class: Probe
+method: m
+arg: 9f9f05ff80ff
+expect: AGREE
+note: ADR-068 D6 (#298): JULC0091 rejects a native array in a Data-encoded position, not an array of Data-encodable
+note: elements: a JulcArray<JulcList<BigInteger>> in a local compiles and agrees, as at B0.
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcArray;
+import org.julclang.core.types.JulcList;
+
+public class Probe {
+
+    public static BigInteger m(JulcList<JulcList<BigInteger>> xss) {
+        JulcArray<JulcList<BigInteger>> arr = xss.toArray();
+        return BigInteger.valueOf(arr.length()).add(arr.get(0).head());
+    }
+}

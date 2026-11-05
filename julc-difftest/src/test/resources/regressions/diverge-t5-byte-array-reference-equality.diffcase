@@ -1,0 +1,17 @@
+format: 2
+name: == on byte[] (T5)
+class: Probe
+method: m
+arg: 420102
+arg: 420102
+expect: REJECT JULC0086
+note: ADR-068 M6: on the only frontend, javac, REJECT JULC0086; the JavaParser frontend answered DIVERGE T5 Value/Value.
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+
+public class Probe {
+    public static boolean m(byte[] a, byte[] b) {
+        return a == b;
+    }
+}

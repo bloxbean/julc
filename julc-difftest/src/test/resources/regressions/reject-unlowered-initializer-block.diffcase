@@ -1,0 +1,21 @@
+format: 2
+name: An initializer block is empty
+class: Probe
+method: m
+arg: 05
+expect: REJECT JULC0095
+note: A subset rule: what is not lowered holds only a constant.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    static BigInteger x = BigInteger.ONE;
+
+    static {
+        x = BigInteger.TWO;
+    }
+
+    public static BigInteger m(BigInteger a) {
+        return a;
+    }
+}

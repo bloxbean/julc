@@ -1,0 +1,17 @@
+format: 2
+name: JulcList.drop with a negative count fails on both sides
+class: Probe
+method: m
+arg: 9f01ff
+arg: 20
+expect: AGREE
+note: The JVM throws, and the script fails on the same input (ADR-068 B3). The arguments are the list [1] and -1.
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+
+public class Probe {
+    public static long m(JulcList<BigInteger> a, long n) {
+        return a.drop(n).size();
+    }
+}

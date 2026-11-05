@@ -1,0 +1,21 @@
+format: 2
+name: #282 an instance method declared in a record (N2)
+class: Probe
+method: m
+arg: 05
+expect: REJECT JULC0080
+note: ADR-067 N2: legal Java (10).
+note: ADR-068 M6: on the only frontend, javac, REJECT JULC0080; the JavaParser frontend answered REJECT JULC0055.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    record R(BigInteger x) {
+        BigInteger twice() { return x.add(x); }
+    }
+
+    public static BigInteger m(BigInteger a) {
+        R r = new R(a);
+        return r.twice();
+    }
+}

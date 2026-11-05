@@ -1,0 +1,340 @@
+component	BigInteger	accepted	e5413dd2d92612d3
+in-sealed	BigInteger	accepted	f1fd70d1dd8e0401
+component	int	accepted	e5413dd2d92612d3
+in-sealed	int	accepted	f1fd70d1dd8e0401
+component	long	accepted	e5413dd2d92612d3
+in-sealed	long	accepted	f1fd70d1dd8e0401
+component	boolean	accepted	6f2b193d1dd6c02b
+in-sealed	boolean	accepted	ed7403f5b688f087
+component	byte[]	accepted	22ace0c209c21aa1
+in-sealed	byte[]	accepted	d5ddf67bf4277a19
+component	String	accepted	53f39cbcb16512fe
+in-sealed	String	accepted	2e9f1bf96c48b6e3
+component	Boolean	accepted	6f2b193d1dd6c02b
+in-sealed	Boolean	accepted	ed7403f5b688f087
+component	Integer	rejected	Compilation failed with 1 error(s):   ERROR at .(R.java:7):10 - Unknown type: Integer (resolved to java.lang.Integer). Did you mean: BigInteger? 
+in-sealed	Integer	rejected	Compilation failed with 1 error(s):   ERROR at .(S.java:7):31 - Unknown type: Integer (resolved to java.lang.Integer). Did you mean: BigInteger? 
+component	Long	rejected	Compilation failed with 1 error(s):   ERROR at .(R.java:7):10 - Unknown type: Long (resolved to java.lang.Long). Did you mean: Vote? 
+in-sealed	Long	rejected	Compilation failed with 1 error(s):   ERROR at .(S.java:7):31 - Unknown type: Long (resolved to java.lang.Long). Did you mean: Vote? 
+component	PlutusData	accepted	4b23980ef14be20b
+in-sealed	PlutusData	accepted	68c91c9d33f63668
+component	PlutusData.ConstrData	accepted	4b23980ef14be20b
+in-sealed	PlutusData.ConstrData	accepted	68c91c9d33f63668
+component	PlutusData.MapData	accepted	4b23980ef14be20b
+in-sealed	PlutusData.MapData	accepted	68c91c9d33f63668
+component	PlutusData.ListData	accepted	4b23980ef14be20b
+in-sealed	PlutusData.ListData	accepted	68c91c9d33f63668
+component	PlutusData.IntData	accepted	4b23980ef14be20b
+in-sealed	PlutusData.IntData	accepted	68c91c9d33f63668
+component	PlutusData.BytesData	accepted	4b23980ef14be20b
+in-sealed	PlutusData.BytesData	accepted	68c91c9d33f63668
+component	JulcList<BigInteger>	accepted	07021cb855121023
+in-sealed	JulcList<BigInteger>	accepted	d3987d8674ad403a
+component	List<BigInteger>	accepted	07021cb855121023
+in-sealed	List<BigInteger>	accepted	d3987d8674ad403a
+component	JulcList	accepted	bee62af8dd516661
+in-sealed	JulcList	accepted	352f13ca40680763
+component	List	accepted	bee62af8dd516661
+in-sealed	List	accepted	352f13ca40680763
+component	JulcMap<BigInteger, byte[]>	accepted	e24d3e9a56113b12
+in-sealed	JulcMap<BigInteger, byte[]>	accepted	6b54f4f8e1f2e347
+component	Map<BigInteger, byte[]>	accepted	e24d3e9a56113b12
+in-sealed	Map<BigInteger, byte[]>	accepted	6b54f4f8e1f2e347
+component	JulcMap	accepted	658683b3f6f97daf
+in-sealed	JulcMap	accepted	aea87437a6e78cea
+component	Map	accepted	658683b3f6f97daf
+in-sealed	Map	accepted	aea87437a6e78cea
+component	JulcAssocMap<BigInteger, byte[]>	rejected	Compilation failed with 1 error(s):   ERROR at .(R.java:7):10 - Unknown type: JulcAssocMap (resolved to org.julclang.core.types.JulcAssocMap) 
+in-sealed	JulcAssocMap<BigInteger, byte[]>	rejected	Compilation failed with 1 error(s):   ERROR at .(S.java:7):31 - Unknown type: JulcAssocMap (resolved to org.julclang.core.types.JulcAssocMap) 
+component	JulcAssocMap	rejected	Compilation failed with 1 error(s):   ERROR at .(R.java:7):10 - Unknown type: JulcAssocMap (resolved to org.julclang.core.types.JulcAssocMap) 
+in-sealed	JulcAssocMap	rejected	Compilation failed with 1 error(s):   ERROR at .(S.java:7):31 - Unknown type: JulcAssocMap (resolved to org.julclang.core.types.JulcAssocMap) 
+component	JulcArray<BigInteger>	rejected	Component 'x' of record R needs a Data encoding of the native array Array[Integer], which has none
+in-sealed	JulcArray<BigInteger>	rejected	Component 'x' of record A needs a Data encoding of the native array Array[Integer], which has none
+component	JulcArray	rejected	Component 'x' of record R needs a Data encoding of the native array Array[Data], which has none
+in-sealed	JulcArray	rejected	Component 'x' of record A needs a Data encoding of the native array Array[Data], which has none
+component	Optional<BigInteger>	accepted	9032dd640c3dbfeb
+in-sealed	Optional<BigInteger>	accepted	1d0739dce462d923
+component	Optional	accepted	c04d28d94125159d
+in-sealed	Optional	accepted	fb5947f3da3839f4
+component	Optional<Optional<BigInteger>>	accepted	f26c039813306bec
+in-sealed	Optional<Optional<BigInteger>>	accepted	b253a36c4074aed8
+component	Tuple2<BigInteger, byte[]>	accepted	2246d42aa848fde5
+in-sealed	Tuple2<BigInteger, byte[]>	accepted	a90e6f89b3fa9873
+component	Tuple2	accepted	2349c8dbee0c1923
+in-sealed	Tuple2	accepted	b1fc3e5c11288b88
+component	Tuple3<BigInteger, byte[], String>	accepted	6391f9c44bc33845
+in-sealed	Tuple3<BigInteger, byte[], String>	accepted	11a3fff1c9f92403
+component	Tuple3	accepted	4d5b4babd87cfca7
+in-sealed	Tuple3	accepted	66fdc3c7484266b6
+component	AssetEntry	accepted	eb12f78d06378adf
+in-sealed	AssetEntry	accepted	f662eebffd97d368
+component	JulcValue	accepted	dfec393f2033591c
+in-sealed	JulcValue	accepted	a3077258f84d2dd8
+component	JulcG1	accepted	cb0100ff5213d1e7
+in-sealed	JulcG1	accepted	8b4fa128efef223a
+component	JulcG2	accepted	1e7689aacd1ff49f
+in-sealed	JulcG2	accepted	7a0deaafd759875c
+component	JulcMlResult	accepted	ae68222099a1b164
+in-sealed	JulcMlResult	accepted	2958b3f3bc494b32
+component	JulcScalars	accepted	21597a0c6b1da9a0
+in-sealed	JulcScalars	accepted	fc3f7ab86a986910
+component	JulcG1Points	accepted	bf902ac2fa7c59e1
+in-sealed	JulcG1Points	accepted	1f7f6f0b4c7d01af
+component	JulcG2Points	accepted	ac2672e17d7bb07b
+in-sealed	JulcG2Points	accepted	27a7af1f5174ab17
+component	JulcList<JulcG1>	accepted	39ac91d750922583
+in-sealed	JulcList<JulcG1>	accepted	5a1c22e6491b40aa
+component	JulcList<JulcValue>	accepted	03f1d797b094d38c
+in-sealed	JulcList<JulcValue>	accepted	4f922460e2631bea
+component	Optional<JulcValue>	accepted	a2f47902c1551b46
+in-sealed	Optional<JulcValue>	accepted	2a4ad168a668aa81
+component	JulcMap<BigInteger, JulcG2>	accepted	20961bcf8ba66d2c
+in-sealed	JulcMap<BigInteger, JulcG2>	accepted	1a712c8401ff5c7f
+component	Tuple2<JulcValue, BigInteger>	accepted	4600ace7d9144670
+in-sealed	Tuple2<JulcValue, BigInteger>	accepted	472404e566775b7d
+component	JulcList<JulcArray<BigInteger>>	rejected	A type argument of JulcList needs a Data encoding of the native array Array[Integer], which has none
+in-sealed	JulcList<JulcArray<BigInteger>>	rejected	A type argument of JulcList needs a Data encoding of the native array Array[Integer], which has none
+component	Optional<JulcArray<BigInteger>>	rejected	A type argument of Optional needs a Data encoding of the native array Array[Integer], which has none
+in-sealed	Optional<JulcArray<BigInteger>>	rejected	A type argument of Optional needs a Data encoding of the native array Array[Integer], which has none
+component	Tuple2<JulcArray<BigInteger>, BigInteger>	rejected	A type argument of Tuple2 needs a Data encoding of the native array Array[Integer], which has none
+in-sealed	Tuple2<JulcArray<BigInteger>, BigInteger>	rejected	A type argument of Tuple2 needs a Data encoding of the native array Array[Integer], which has none
+component	Value	accepted	c6f3ff59c68a0a22
+in-sealed	Value	accepted	870045112bb3d57a
+component	TxOut	accepted	8021cffb73d8fae0
+in-sealed	TxOut	accepted	28acd28c0fe50c57
+component	Address	accepted	a58b38d9f5d7cabc
+in-sealed	Address	accepted	e9f287f2897e722b
+component	PubKeyHash	accepted	22ace0c209c21aa1
+in-sealed	PubKeyHash	accepted	d5ddf67bf4277a19
+component	PolicyId	accepted	22ace0c209c21aa1
+in-sealed	PolicyId	accepted	d5ddf67bf4277a19
+component	TokenName	accepted	22ace0c209c21aa1
+in-sealed	TokenName	accepted	d5ddf67bf4277a19
+component	TxId	accepted	22ace0c209c21aa1
+in-sealed	TxId	accepted	d5ddf67bf4277a19
+component	Credential	accepted	b4474ffa60378a6f
+in-sealed	Credential	accepted	63b174533e034ded
+component	Credential.PubKeyCredential	accepted	cba7000f3e505e64
+in-sealed	Credential.PubKeyCredential	accepted	4bab35c06a6c57b8
+component	Interval	accepted	399dc1d62cc07d86
+in-sealed	Interval	accepted	eeb479be7d38930d
+component	ScriptInfo	accepted	cd725fe0194e0aa6
+in-sealed	ScriptInfo	accepted	435b5e9425f7318e
+component	ScriptInfo.SpendingScript	accepted	d1f288bfa53f9790
+in-sealed	ScriptInfo.SpendingScript	accepted	da72f99166b34831
+component	JulcList<Tuple2<BigInteger, BigInteger>>	accepted	514cd501def91729
+in-sealed	JulcList<Tuple2<BigInteger, BigInteger>>	accepted	e9f66e6c597cf3bc
+component	JulcMap<PubKeyHash, JulcList<Value>>	accepted	8059094e9b355cc0
+in-sealed	JulcMap<PubKeyHash, JulcList<Value>>	accepted	21d66c925bab9576
+component	List<JulcList<BigInteger>>	accepted	1d8c1e3f55c84d62
+in-sealed	List<JulcList<BigInteger>>	accepted	40f65943f9dd81fe
+component	Map<String, Map<String, BigInteger>>	accepted	96ecd6a4383b4f20
+in-sealed	Map<String, Map<String, BigInteger>>	accepted	6f0209a0673f51f3
+component	JulcList<?>	rejected	Compilation failed with 1 error(s):   ERROR[JULC0012] at .(R.java:7):19 - Cannot resolve type: ? (suggestion: Ensure the type is imported and is one of: a record, sealed interface, ledger type, JulcList/JulcMap/Optional/Tuple, or primitive (BigInteger, byte[], boolean, String).) 
+in-sealed	JulcList<?>	rejected	Compilation failed with 1 error(s):   ERROR[JULC0012] at .(S.java:7):40 - Cannot resolve type: ? (suggestion: Ensure the type is imported and is one of: a record, sealed interface, ledger type, JulcList/JulcMap/Optional/Tuple, or primitive (BigInteger, byte[], boolean, String).) 
+component	JulcList<? extends BigInteger>	rejected	Compilation failed with 1 error(s):   ERROR[JULC0012] at .(R.java:7):19 - Cannot resolve type: ? extends java.math.BigInteger (suggestion: Ensure the type is imported and is one of: a record, sealed interface, ledger type, JulcList/JulcMap/Optional/Tuple, or primitive (BigInteger, byte[], boolean, String).) 
+in-sealed	JulcList<? extends BigInteger>	rejected	Compilation failed with 1 error(s):   ERROR[JULC0012] at .(S.java:7):40 - Cannot resolve type: ? extends java.math.BigInteger (suggestion: Ensure the type is imported and is one of: a record, sealed interface, ledger type, JulcList/JulcMap/Optional/Tuple, or primitive (BigInteger, byte[], boolean, String).) 
+component	JulcList<? super BigInteger>	rejected	Compilation failed with 1 error(s):   ERROR[JULC0012] at .(R.java:7):19 - Cannot resolve type: ? super java.math.BigInteger (suggestion: Ensure the type is imported and is one of: a record, sealed interface, ledger type, JulcList/JulcMap/Optional/Tuple, or primitive (BigInteger, byte[], boolean, String).) 
+in-sealed	JulcList<? super BigInteger>	rejected	Compilation failed with 1 error(s):   ERROR[JULC0012] at .(S.java:7):40 - Cannot resolve type: ? super java.math.BigInteger (suggestion: Ensure the type is imported and is one of: a record, sealed interface, ledger type, JulcList/JulcMap/Optional/Tuple, or primitive (BigInteger, byte[], boolean, String).) 
+component	Optional<?>	rejected	Compilation failed with 1 error(s):   ERROR[JULC0012] at .(R.java:7):19 - Cannot resolve type: ? (suggestion: Ensure the type is imported and is one of: a record, sealed interface, ledger type, JulcList/JulcMap/Optional/Tuple, or primitive (BigInteger, byte[], boolean, String).) 
+in-sealed	Optional<?>	rejected	Compilation failed with 1 error(s):   ERROR[JULC0012] at .(S.java:7):40 - Cannot resolve type: ? (suggestion: Ensure the type is imported and is one of: a record, sealed interface, ledger type, JulcList/JulcMap/Optional/Tuple, or primitive (BigInteger, byte[], boolean, String).) 
+component	Object	rejected	Compilation failed with 1 error(s):   ERROR at .(R.java:7):10 - Unknown type: Object (resolved to java.lang.Object) 
+in-sealed	Object	rejected	Compilation failed with 1 error(s):   ERROR at .(S.java:7):31 - Unknown type: Object (resolved to java.lang.Object) 
+component	Comparable<BigInteger>	rejected	Compilation failed with 1 error(s):   ERROR at .(R.java:7):10 - Unknown type: Comparable (resolved to java.lang.Comparable) 
+in-sealed	Comparable<BigInteger>	rejected	Compilation failed with 1 error(s):   ERROR at .(S.java:7):31 - Unknown type: Comparable (resolved to java.lang.Comparable) 
+component	ArrayList<BigInteger>	rejected	Compilation failed with 1 error(s):   ERROR at .(R.java:7):10 - Unknown type: ArrayList (resolved to java.util.ArrayList) 
+in-sealed	ArrayList<BigInteger>	rejected	Compilation failed with 1 error(s):   ERROR at .(S.java:7):31 - Unknown type: ArrayList (resolved to java.util.ArrayList) 
+component	byte	rejected	Compilation failed with 1 error(s):   ERROR[JULC0124] at .(R.java:7):10 - Unsupported primitive type: byte. Supported types: boolean, int, long (suggestion: Use int or long for a number, BigInteger for an unbounded integer, boolean for a flag, and String or byte[] for text and bytes.) 
+in-sealed	byte	rejected	Compilation failed with 1 error(s):   ERROR[JULC0124] at .(S.java:7):31 - Unsupported primitive type: byte. Supported types: boolean, int, long (suggestion: Use int or long for a number, BigInteger for an unbounded integer, boolean for a flag, and String or byte[] for text and bytes.) 
+component	short	rejected	Compilation failed with 1 error(s):   ERROR[JULC0124] at .(R.java:7):10 - Unsupported primitive type: short. Supported types: boolean, int, long (suggestion: Use int or long for a number, BigInteger for an unbounded integer, boolean for a flag, and String or byte[] for text and bytes.) 
+in-sealed	short	rejected	Compilation failed with 1 error(s):   ERROR[JULC0124] at .(S.java:7):31 - Unsupported primitive type: short. Supported types: boolean, int, long (suggestion: Use int or long for a number, BigInteger for an unbounded integer, boolean for a flag, and String or byte[] for text and bytes.) 
+component	char	rejected	Compilation failed with 1 error(s):   ERROR[JULC0124] at .(R.java:7):10 - Unsupported primitive type: char. Supported types: boolean, int, long (suggestion: Use int or long for a number, BigInteger for an unbounded integer, boolean for a flag, and String or byte[] for text and bytes.) 
+in-sealed	char	rejected	Compilation failed with 1 error(s):   ERROR[JULC0124] at .(S.java:7):31 - Unsupported primitive type: char. Supported types: boolean, int, long (suggestion: Use int or long for a number, BigInteger for an unbounded integer, boolean for a flag, and String or byte[] for text and bytes.) 
+component	float	rejected	Compilation failed with 1 error(s):   ERROR[JULC0124] at .(R.java:7):10 - Unsupported primitive type: float. Supported types: boolean, int, long (suggestion: Use int or long for a number, BigInteger for an unbounded integer, boolean for a flag, and String or byte[] for text and bytes.) 
+in-sealed	float	rejected	Compilation failed with 1 error(s):   ERROR[JULC0124] at .(S.java:7):31 - Unsupported primitive type: float. Supported types: boolean, int, long (suggestion: Use int or long for a number, BigInteger for an unbounded integer, boolean for a flag, and String or byte[] for text and bytes.) 
+component	double	rejected	Compilation failed with 1 error(s):   ERROR[JULC0124] at .(R.java:7):10 - Unsupported primitive type: double. Supported types: boolean, int, long (suggestion: Use int or long for a number, BigInteger for an unbounded integer, boolean for a flag, and String or byte[] for text and bytes.) 
+in-sealed	double	rejected	Compilation failed with 1 error(s):   ERROR[JULC0124] at .(S.java:7):31 - Unsupported primitive type: double. Supported types: boolean, int, long (suggestion: Use int or long for a number, BigInteger for an unbounded integer, boolean for a flag, and String or byte[] for text and bytes.) 
+component	int[]	rejected	Compilation failed with 1 error(s):   ERROR[JULC0014] at .(R.java:7):10 - arrays are not supported on-chain (suggestion: Use List<T> instead of arrays, or byte[] with literal initializers) 
+in-sealed	int[]	rejected	Compilation failed with 1 error(s):   ERROR[JULC0014] at .(S.java:7):31 - arrays are not supported on-chain (suggestion: Use List<T> instead of arrays, or byte[] with literal initializers) 
+component	long[]	rejected	Compilation failed with 1 error(s):   ERROR[JULC0014] at .(R.java:7):10 - arrays are not supported on-chain (suggestion: Use List<T> instead of arrays, or byte[] with literal initializers) 
+in-sealed	long[]	rejected	Compilation failed with 1 error(s):   ERROR[JULC0014] at .(S.java:7):31 - arrays are not supported on-chain (suggestion: Use List<T> instead of arrays, or byte[] with literal initializers) 
+component	byte[][]	rejected	Compilation failed with 1 error(s):   ERROR[JULC0014] at .(R.java:7):10 - arrays are not supported on-chain (suggestion: Use List<T> instead of arrays, or byte[] with literal initializers) 
+in-sealed	byte[][]	rejected	Compilation failed with 1 error(s):   ERROR[JULC0014] at .(S.java:7):31 - arrays are not supported on-chain (suggestion: Use List<T> instead of arrays, or byte[] with literal initializers) 
+component	boolean[]	rejected	Compilation failed with 1 error(s):   ERROR[JULC0014] at .(R.java:7):10 - arrays are not supported on-chain (suggestion: Use List<T> instead of arrays, or byte[] with literal initializers) 
+in-sealed	boolean[]	rejected	Compilation failed with 1 error(s):   ERROR[JULC0014] at .(S.java:7):31 - arrays are not supported on-chain (suggestion: Use List<T> instead of arrays, or byte[] with literal initializers) 
+component	String[]	rejected	Compilation failed with 1 error(s):   ERROR[JULC0014] at .(R.java:7):10 - arrays are not supported on-chain (suggestion: Use List<T> instead of arrays, or byte[] with literal initializers) 
+in-sealed	String[]	rejected	Compilation failed with 1 error(s):   ERROR[JULC0014] at .(S.java:7):31 - arrays are not supported on-chain (suggestion: Use List<T> instead of arrays, or byte[] with literal initializers) 
+component	BigInteger[]	rejected	Compilation failed with 1 error(s):   ERROR[JULC0014] at .(R.java:7):10 - arrays are not supported on-chain (suggestion: Use List<T> instead of arrays, or byte[] with literal initializers) 
+in-sealed	BigInteger[]	rejected	Compilation failed with 1 error(s):   ERROR[JULC0014] at .(S.java:7):31 - arrays are not supported on-chain (suggestion: Use List<T> instead of arrays, or byte[] with literal initializers) 
+component	Short	rejected	Compilation failed with 1 error(s):   ERROR at .(R.java:7):10 - Unknown type: Short (resolved to java.lang.Short). Did you mean: TxOut? 
+in-sealed	Short	rejected	Compilation failed with 1 error(s):   ERROR at .(S.java:7):31 - Unknown type: Short (resolved to java.lang.Short). Did you mean: TxOut? 
+component	Byte	rejected	Compilation failed with 1 error(s):   ERROR at .(R.java:7):10 - Unknown type: Byte (resolved to java.lang.Byte). Did you mean: Vote? 
+in-sealed	Byte	rejected	Compilation failed with 1 error(s):   ERROR at .(S.java:7):31 - Unknown type: Byte (resolved to java.lang.Byte). Did you mean: Vote? 
+component	Character	rejected	Compilation failed with 1 error(s):   ERROR at .(R.java:7):10 - Unknown type: Character (resolved to java.lang.Character) 
+in-sealed	Character	rejected	Compilation failed with 1 error(s):   ERROR at .(S.java:7):31 - Unknown type: Character (resolved to java.lang.Character) 
+component	Double	rejected	Compilation failed with 1 error(s):   ERROR at .(R.java:7):10 - Unknown type: Double (resolved to java.lang.Double) 
+in-sealed	Double	rejected	Compilation failed with 1 error(s):   ERROR at .(S.java:7):31 - Unknown type: Double (resolved to java.lang.Double) 
+component	Float	rejected	Compilation failed with 1 error(s):   ERROR at .(R.java:7):10 - Unknown type: Float (resolved to java.lang.Float). Did you mean: TxOut? 
+in-sealed	Float	rejected	Compilation failed with 1 error(s):   ERROR at .(S.java:7):31 - Unknown type: Float (resolved to java.lang.Float). Did you mean: TxOut? 
+component	Void	rejected	Compilation failed with 1 error(s):   ERROR at .(R.java:7):10 - Unknown type: Void (resolved to java.lang.Void). Did you mean: Vote? 
+in-sealed	Void	rejected	Compilation failed with 1 error(s):   ERROR at .(S.java:7):31 - Unknown type: Void (resolved to java.lang.Void). Did you mean: Vote? 
+component	Number	rejected	Compilation failed with 1 error(s):   ERROR at .(R.java:7):10 - Unknown type: Number (resolved to java.lang.Number) 
+in-sealed	Number	rejected	Compilation failed with 1 error(s):   ERROR at .(S.java:7):31 - Unknown type: Number (resolved to java.lang.Number) 
+component	CharSequence	rejected	Compilation failed with 1 error(s):   ERROR at .(R.java:7):10 - Unknown type: CharSequence (resolved to java.lang.CharSequence) 
+in-sealed	CharSequence	rejected	Compilation failed with 1 error(s):   ERROR at .(S.java:7):31 - Unknown type: CharSequence (resolved to java.lang.CharSequence) 
+component	Runnable	rejected	Compilation failed with 1 error(s):   ERROR[JULC0085] at .(R.java:7):10 - cannot find symbol   symbol:   class Runnable   location: class R (compiler.err.cant.resolve.location) (suggestion: If Runnable is a JDK type (from import java.util.*), it is not available on-chain: JuLC compiles against a fixed subset of java.base; otherwise check the import or the source that declares it) 
+in-sealed	Runnable	rejected	Compilation failed with 1 error(s):   ERROR[JULC0085] at .(S.java:7):31 - cannot find symbol   symbol:   class Runnable   location: class S.A (compiler.err.cant.resolve.location) (suggestion: If Runnable is a JDK type (from import java.util.*), it is not available on-chain: JuLC compiles against a fixed subset of java.base; otherwise check the import or the source that declares it) 
+component	java.math.BigInteger	accepted	e5413dd2d92612d3
+in-sealed	java.math.BigInteger	accepted	f1fd70d1dd8e0401
+component	java.util.List<java.math.BigInteger>	accepted	07021cb855121023
+in-sealed	java.util.List<java.math.BigInteger>	accepted	d3987d8674ad403a
+component	org.julclang.ledger.Value	accepted	c6f3ff59c68a0a22
+in-sealed	org.julclang.ledger.Value	accepted	870045112bb3d57a
+component	org.julclang.ledger.Credential.PubKeyCredential	accepted	cba7000f3e505e64
+in-sealed	org.julclang.ledger.Credential.PubKeyCredential	accepted	4bab35c06a6c57b8
+decl	record R<T>(T v) {} class P {}	rejected	Compilation failed with 1 error(s):   ERROR[JULC0012] at .(R.java:7):13 - Cannot resolve type: type parameter T (suggestion: Ensure the type is imported and is one of: a record, sealed interface, ledger type, JulcList/JulcMap/Optional/Tuple, or primitive (BigInteger, byte[], boolean, String).) 
+decl	record R<T>(BigInteger v) {} class P {}	accepted	d8ab6491e8205932
+decl	record R<T extends BigInteger>(T v) {} class P {}	rejected	Compilation failed with 1 error(s):   ERROR[JULC0012] at .(R.java:7):32 - Cannot resolve type: type parameter T (suggestion: Ensure the type is imported and is one of: a record, sealed interface, ledger type, JulcList/JulcMap/Optional/Tuple, or primitive (BigInteger, byte[], boolean, String).) 
+decl	record Box<T>(T v) {} record H(Box<BigInteger> b) {} class P {}	rejected	Compilation failed with 1 error(s):   ERROR[JULC0012] at .(Box.java:7):15 - Cannot resolve type: type parameter T (suggestion: Ensure the type is imported and is one of: a record, sealed interface, ledger type, JulcList/JulcMap/Optional/Tuple, or primitive (BigInteger, byte[], boolean, String).) 
+decl	sealed interface S<T> { record A(BigInteger v) implements S<BigInteger> {} record B() implements S<BigInteger> {} } class P {}	accepted	6b8fbdee9f62a362
+decl	sealed interface S<T> { record A<T>(T v) implements S<T> {} record B<T>() implements S<T> {} } class P {}	rejected	Compilation failed with 1 error(s):   ERROR[JULC0012] at .(S.java:7):37 - Cannot resolve type: type parameter T (suggestion: Ensure the type is imported and is one of: a record, sealed interface, ledger type, JulcList/JulcMap/Optional/Tuple, or primitive (BigInteger, byte[], boolean, String).) 
+decl	sealed interface S<T> { record A<T>(T v) implements S<T> {} } record H(S<BigInteger> s) {} class P {}	rejected	Compilation failed with 1 error(s):   ERROR[JULC0012] at .(S.java:7):37 - Cannot resolve type: type parameter T (suggestion: Ensure the type is imported and is one of: a record, sealed interface, ledger type, JulcList/JulcMap/Optional/Tuple, or primitive (BigInteger, byte[], boolean, String).) 
+decl	sealed interface S permits A, B {} record A() implements S {} record B() implements S {} class P {}	accepted	a2fb0d857b64931f
+decl	sealed interface S permits S.A, B {record A() implements S {}} record B() implements S {} class P {}	accepted	4b6e83aab7efb82c
+decl	sealed interface S permits S.B, S.A { record A() implements S {} record B(BigInteger v) implements S {} } class P {}	accepted	815c4c15168269e4
+decl	sealed interface S {} final class C implements S {} class P {}	rejected	Sealed interface 'S' has no permits clause, and its permitted subclasses (C) are not exactly the records nested in it
+decl	sealed interface S permits C {} final class C implements S {} class P {}	accepted	11386059a467a870
+decl	sealed interface S permits T {} sealed interface T extends S permits R {} record R() implements T {} class P {}	accepted	7013f3f9dd7a5ad6
+decl	sealed interface S permits S.A, T {record A() implements S {}} non-sealed interface T extends S {} class P {}	accepted	6a5440d0a4dbbd81
+decl	sealed interface S { record A() implements S {} final class C implements S {} } class P {}	rejected	Sealed interface 'S' has no permits clause, and its permitted subclasses (A, C) are not exactly the records nested in it
+decl	sealed interface S { record A() implements S {} enum E implements S { X } } class P {}	rejected	Compilation failed with 1 error(s):   ERROR[JULC0085] at .(S.java:7):49 - cannot access java.lang.Enum.EnumDesc   class file for java.lang.Enum$EnumDesc not found (compiler.err.cant.access) 
+decl	sealed abstract class S permits A {} final class A extends S {} class P {}	accepted	3e9ea8a0a69a9a73
+decl	sealed interface S1 { record A() implements S1, S2 {} } sealed interface S2 permits S1.A {} class P {}	accepted	a9a75545eee499c9
+decl	sealed interface S1 permits R {} sealed interface S2 permits R {} record R(BigInteger v) implements S1, S2 {} class P {}	accepted	5fe93ee0aafd9857
+decl	interface I { record R(BigInteger v) {} } class P {}	accepted	b8be7d81e02e6e3a
+decl	interface I { record R(BigInteger v) implements I {} } class P {}	accepted	b8be7d81e02e6e3a
+decl	enum E { A, B } record R(E e) {} class P {}	rejected	Compilation failed with 1 error(s):   ERROR[JULC0085] at .(E.java:7):1 - cannot access java.lang.Enum.EnumDesc   class file for java.lang.Enum$EnumDesc not found (compiler.err.cant.access) 
+decl	record R(BigInteger a, BigInteger b) { R { } } class P {}	accepted	c35b71a90a30af6e
+decl	record R(BigInteger a, BigInteger b) { R(BigInteger b, BigInteger a) { this.a = a; this.b = b; } } class P {}	rejected	Compilation failed with 1 error(s):   ERROR[JULC0085] at .(R.java:7):40 - invalid canonical constructor in record R   (invalid parameter names in canonical constructor) (compiler.err.invalid.canonical.constructor.in.record) 
+decl	record R(BigInteger a) { static BigInteger z = BigInteger.ZERO; } class P {}	accepted	c67cc29be413dccf
+decl	record R(BigInteger a) { record N(R r) {} } class P {}	accepted	6a6c264c03450787
+decl	record R(BigInteger a) implements Comparable<R> { public int compareTo(R o) { return 0; } } class P {}	accepted	c67cc29be413dccf
+decl	record R(BigInteger... xs) {} class P {}	rejected	Compilation failed with 1 error(s):   ERROR[JULC0014] at .(R.java:7):10 - arrays are not supported on-chain (suggestion: Use List<T> instead of arrays, or byte[] with literal initializers) 
+decl	record R(byte... xs) {} class P {}	rejected	Compilation failed with 1 error(s):   ERROR[JULC0124] at .(R.java:7):10 - Unsupported primitive type: byte. Supported types: boolean, int, long (suggestion: Use int or long for a number, BigInteger for an unbounded integer, boolean for a flag, and String or byte[] for text and bytes.) 
+decl	record R(final BigInteger a) {} class P {}	rejected	Compilation failed with 1 error(s):   ERROR[JULC0085] at .(R.java:7):10 - record components cannot have modifiers (compiler.err.record.cant.declare.field.modifiers) 
+decl	record R(@Deprecated BigInteger a) {} class P {}	accepted	c67cc29be413dccf
+decl	class P { record R(BigInteger a) {} static class Q { record R(byte[] b) {} } record H(R r, Q.R q) {} }	accepted	6f4a5ba4dafc15d0
+decl	class P { interface A { record R(BigInteger a) {} } interface B { record R(byte[] a) {} } record H(A.R a, B.R b) {} }	accepted	a9364de7c5de7d80
+decl	@NewType record N(byte[] v) {} class P {}	accepted	488b12b7f784da11
+decl	@NewType record N(BigInteger v) {} class P {}	accepted	8a834401725528d0
+decl	@NewType record N(String v) {} class P {}	accepted	1b7becd527829ba6
+decl	@NewType record N(boolean v) {} class P {}	accepted	a2d8d7fa927a03bb
+decl	@NewType record N(Boolean v) {} class P {}	rejected	Compilation failed with 1 error(s):   ERROR at .(N.java:7):1 - @NewType record 'N' field type 'Boolean' is not supported. Supported types: byte[], BigInteger, String, boolean 
+decl	@NewType record N(int v) {} class P {}	rejected	Compilation failed with 1 error(s):   ERROR at .(N.java:7):1 - @NewType record 'N' field type 'int' is not supported. Supported types: byte[], BigInteger, String, boolean 
+decl	@NewType record N(long v) {} class P {}	rejected	Compilation failed with 1 error(s):   ERROR at .(N.java:7):1 - @NewType record 'N' field type 'long' is not supported. Supported types: byte[], BigInteger, String, boolean 
+decl	@NewType record N(PlutusData v) {} class P {}	rejected	Compilation failed with 1 error(s):   ERROR at .(N.java:7):1 - @NewType record 'N' field type 'PlutusData' is not supported. Supported types: byte[], BigInteger, String, boolean 
+decl	@NewType record N(java.math.BigInteger v) {} class P {}	accepted	8a834401725528d0
+decl	@NewType record N(java.lang.String v) {} class P {}	accepted	1b7becd527829ba6
+decl	@NewType record N(byte... v) {} class P {}	rejected	Compilation failed with 1 error(s):   ERROR at .(N.java:7):1 - @NewType record 'N' field type 'byte' is not supported. Supported types: byte[], BigInteger, String, boolean 
+decl	@NewType() record N(byte[] v) {} class P {}	accepted	488b12b7f784da11
+decl	@org.julclang.stdlib.annotation.NewType record N(byte[] v) {} class P {}	accepted	488b12b7f784da11
+decl	@NewType record N<T>(byte[] v) {} class P {}	accepted	488b12b7f784da11
+decl	@NewType record N(byte[] v) implements PlutusDataConvertible { public PlutusData toPlutusData() { return null; } } class P {}	accepted	488b12b7f784da11
+decl	@NewType record N(byte[] v) {} record H(N n, JulcList<N> ns, Optional<N> o) {} class P {}	accepted	c9abde428b737274
+decl	@NewType record N(byte[] v) {} @NewType record M(N n) {} class P {}	rejected	Compilation failed with 1 error(s):   ERROR at .(N.java:7):32 - @NewType record 'M' field type 'N' is not supported. Supported types: byte[], BigInteger, String, boolean 
+decl	@NewType sealed interface S { record A() implements S {} } class P {}	accepted	fc853a6e8e3bcb76
+decl	@NewType class N {} class P {}	accepted	3e9ea8a0a69a9a73
+decl	sealed interface S { @NewType record A(byte[] v) implements S {} record B() implements S {} } class P {}	accepted	718fdd8bb53b302d
+decl	record A(B b) {} record B(JulcList<A> as) {} class P {}	accepted	d4a8d633fc8ee62c
+decl	record A(Optional<A> next) {} class P {}	accepted	593e0d9e13a76cf2
+decl	record A(JulcList<A> kids) {} class P {}	accepted	9664692656e2b8ad
+decl	record A(JulcMap<BigInteger, A> kids) {} class P {}	accepted	b2ae1951874899ac
+decl	sealed interface T { record Leaf() implements T {} record Node(T l, T r) implements T {} } class P {}	accepted	5958d5a3f5ab0f38
+decl	sealed interface T { record Node(T l) implements T {} } class P {}	rejected	Compilation failed with 1 error(s):   ERROR at .(T.java:7):22 - Recursive type dependency has no finite base constructor: [T.Node, T] 
+decl	record Value(BigInteger x) {} record H(Value v) {} class P {}	accepted	c8b1c21a33a65b4a
+decl	record TxOut(BigInteger x) {} record H(TxOut v) {} class P {}	accepted	bb3d325902af9b3e
+decl	record Address(BigInteger x) {} class P {}	accepted	1c0bde89dbdf3612
+decl	sealed interface Credential { record A() implements Credential {} } record H(Credential c) {} class P {}	accepted	f024e0deee570c7b
+decl	sealed interface Vote permits Vote.Yes { record Yes() implements Vote {} } class P {}	accepted	2af750e5a44cd436
+decl	class P { record Value(BigInteger x) {} record H(Value v) {} }	accepted	cd10b772e7c43e25
+decl	class P { record PubKeyHash(byte[] h) {} record H(PubKeyHash v) {} }	accepted	7417f393edb93fba
+decl	class Q { record Inner(BigInteger x) {} } record H(Q.Inner i) {} class P {}	accepted	eaed16ac58a57636
+decl	class P { static void m() { record L(BigInteger v) {} } }	accepted	2fa3cfdf3aa0d55a
+decl	class P { static void m() { record L(BigInteger v) {} record M(L l) {} } }	accepted	a9f36620c200c33f
+decl	class P { static void m() { sealed interface S permits A {} record A() implements S {} } }	rejected	Compilation failed with 3 error(s):   ERROR[JULC0085] at .(P.java:7):29 - sealed or non-sealed local classes are not allowed (compiler.err.sealed.or.non.sealed.local.classes.not.allowed)   ERROR[JULC0085] at .(P.java:7):48 - invalid permits clause   (interface must be sealed) (compiler.err.invalid.permits.clause)   ERROR[JULC0085] at .(P.java:7):56 - cannot find symbol   symbol:   class A   location: class P (compiler.err.cant.resolve.location) (suggestion: If A is a JDK type (from import java.util.*), it is not available on-chain: JuLC compiles against a fixed subset of java.base; otherwise check the import or the source that declares it) 
+decl	class Other { interface S {} } sealed interface S { record A() implements Other.S {} record B() implements S {} } class P {}	rejected	Sealed interface 'S' has no permits clause, and its permitted subclasses (B) are not exactly the records nested in it
+decl	class P { record R(BigInteger x, byte[] a) { R(byte[] y, byte... z) { this(BigInteger.ONE, z); } } }	accepted	ef85e3dddb070c80
+decl	class P { sealed interface S permits A, B {} record A() implements S {} record B() implements S {} static <T> boolean u(T x) { record S(byte[] b) {} return true; } }	accepted	54158c334a2664fd
+pkg	record R<T>(T v) {} class P {}	rejected	Compilation failed with 1 error(s):   ERROR[JULC0012] at .(R.java:8):13 - Cannot resolve type: type parameter T (suggestion: Ensure the type is imported and is one of: a record, sealed interface, ledger type, JulcList/JulcMap/Optional/Tuple, or primitive (BigInteger, byte[], boolean, String).) 
+pkg	record R<T>(BigInteger v) {} class P {}	accepted	0a995d44e49422f0
+pkg	record R<T extends BigInteger>(T v) {} class P {}	rejected	Compilation failed with 1 error(s):   ERROR[JULC0012] at .(R.java:8):32 - Cannot resolve type: type parameter T (suggestion: Ensure the type is imported and is one of: a record, sealed interface, ledger type, JulcList/JulcMap/Optional/Tuple, or primitive (BigInteger, byte[], boolean, String).) 
+pkg	record Box<T>(T v) {} record H(Box<BigInteger> b) {} class P {}	rejected	Compilation failed with 1 error(s):   ERROR[JULC0012] at .(Box.java:8):15 - Cannot resolve type: type parameter T (suggestion: Ensure the type is imported and is one of: a record, sealed interface, ledger type, JulcList/JulcMap/Optional/Tuple, or primitive (BigInteger, byte[], boolean, String).) 
+pkg	sealed interface S<T> { record A(BigInteger v) implements S<BigInteger> {} record B() implements S<BigInteger> {} } class P {}	accepted	cf6fa660e910c201
+pkg	sealed interface S<T> { record A<T>(T v) implements S<T> {} record B<T>() implements S<T> {} } class P {}	rejected	Compilation failed with 1 error(s):   ERROR[JULC0012] at .(S.java:8):37 - Cannot resolve type: type parameter T (suggestion: Ensure the type is imported and is one of: a record, sealed interface, ledger type, JulcList/JulcMap/Optional/Tuple, or primitive (BigInteger, byte[], boolean, String).) 
+pkg	sealed interface S<T> { record A<T>(T v) implements S<T> {} } record H(S<BigInteger> s) {} class P {}	rejected	Compilation failed with 1 error(s):   ERROR[JULC0012] at .(S.java:8):37 - Cannot resolve type: type parameter T (suggestion: Ensure the type is imported and is one of: a record, sealed interface, ledger type, JulcList/JulcMap/Optional/Tuple, or primitive (BigInteger, byte[], boolean, String).) 
+pkg	sealed interface S permits A, B {} record A() implements S {} record B() implements S {} class P {}	accepted	664f4d841062ba4b
+pkg	sealed interface S permits S.A, B {record A() implements S {}} record B() implements S {} class P {}	accepted	fee821c95fc98580
+pkg	sealed interface S permits S.B, S.A { record A() implements S {} record B(BigInteger v) implements S {} } class P {}	accepted	6de1c7dd6fe56459
+pkg	sealed interface S {} final class C implements S {} class P {}	rejected	Sealed interface 'S' has no permits clause, and its permitted subclasses (C) are not exactly the records nested in it
+pkg	sealed interface S permits C {} final class C implements S {} class P {}	accepted	8e3a4cfd4baf76c4
+pkg	sealed interface S permits T {} sealed interface T extends S permits R {} record R() implements T {} class P {}	accepted	1a3100be84dffb64
+pkg	sealed interface S permits S.A, T {record A() implements S {}} non-sealed interface T extends S {} class P {}	accepted	d2cb5954f93c6df2
+pkg	sealed interface S { record A() implements S {} final class C implements S {} } class P {}	rejected	Sealed interface 'S' has no permits clause, and its permitted subclasses (A, C) are not exactly the records nested in it
+pkg	sealed interface S { record A() implements S {} enum E implements S { X } } class P {}	rejected	Compilation failed with 1 error(s):   ERROR[JULC0085] at .(S.java:8):49 - cannot access java.lang.Enum.EnumDesc   class file for java.lang.Enum$EnumDesc not found (compiler.err.cant.access) 
+pkg	sealed abstract class S permits A {} final class A extends S {} class P {}	accepted	3e9ea8a0a69a9a73
+pkg	sealed interface S1 { record A() implements S1, S2 {} } sealed interface S2 permits S1.A {} class P {}	accepted	613158206617a8fa
+pkg	sealed interface S1 permits R {} sealed interface S2 permits R {} record R(BigInteger v) implements S1, S2 {} class P {}	accepted	8a368f8e6361057e
+pkg	interface I { record R(BigInteger v) {} } class P {}	accepted	61708dbabf6d0562
+pkg	interface I { record R(BigInteger v) implements I {} } class P {}	accepted	61708dbabf6d0562
+pkg	enum E { A, B } record R(E e) {} class P {}	rejected	Compilation failed with 1 error(s):   ERROR[JULC0085] at .(E.java:8):1 - cannot access java.lang.Enum.EnumDesc   class file for java.lang.Enum$EnumDesc not found (compiler.err.cant.access) 
+pkg	record R(BigInteger a, BigInteger b) { R { } } class P {}	accepted	b132873f2d7cbff3
+pkg	record R(BigInteger a, BigInteger b) { R(BigInteger b, BigInteger a) { this.a = a; this.b = b; } } class P {}	rejected	Compilation failed with 1 error(s):   ERROR[JULC0085] at .(R.java:8):40 - invalid canonical constructor in record R   (invalid parameter names in canonical constructor) (compiler.err.invalid.canonical.constructor.in.record) 
+pkg	record R(BigInteger a) { static BigInteger z = BigInteger.ZERO; } class P {}	accepted	afc7bd54a24da700
+pkg	record R(BigInteger a) { record N(R r) {} } class P {}	accepted	d5a4116a5cbb67cf
+pkg	record R(BigInteger a) implements Comparable<R> { public int compareTo(R o) { return 0; } } class P {}	accepted	afc7bd54a24da700
+pkg	record R(BigInteger... xs) {} class P {}	rejected	Compilation failed with 1 error(s):   ERROR[JULC0014] at .(R.java:8):10 - arrays are not supported on-chain (suggestion: Use List<T> instead of arrays, or byte[] with literal initializers) 
+pkg	record R(byte... xs) {} class P {}	rejected	Compilation failed with 1 error(s):   ERROR[JULC0124] at .(R.java:8):10 - Unsupported primitive type: byte. Supported types: boolean, int, long (suggestion: Use int or long for a number, BigInteger for an unbounded integer, boolean for a flag, and String or byte[] for text and bytes.) 
+pkg	record R(final BigInteger a) {} class P {}	rejected	Compilation failed with 1 error(s):   ERROR[JULC0085] at .(R.java:8):10 - record components cannot have modifiers (compiler.err.record.cant.declare.field.modifiers) 
+pkg	record R(@Deprecated BigInteger a) {} class P {}	accepted	afc7bd54a24da700
+pkg	class P { record R(BigInteger a) {} static class Q { record R(byte[] b) {} } record H(R r, Q.R q) {} }	accepted	40e4bafb0c4a4201
+pkg	class P { interface A { record R(BigInteger a) {} } interface B { record R(byte[] a) {} } record H(A.R a, B.R b) {} }	accepted	59ae334edfcfc8ad
+pkg	@NewType record N(byte[] v) {} class P {}	accepted	16045875cd05b03b
+pkg	@NewType record N(BigInteger v) {} class P {}	accepted	037076e8488a6f2f
+pkg	@NewType record N(String v) {} class P {}	accepted	c5c5054a472e37db
+pkg	@NewType record N(boolean v) {} class P {}	accepted	393acb631cedd2db
+pkg	@NewType record N(Boolean v) {} class P {}	rejected	Compilation failed with 1 error(s):   ERROR at .(N.java:8):1 - @NewType record 'N' field type 'Boolean' is not supported. Supported types: byte[], BigInteger, String, boolean 
+pkg	@NewType record N(int v) {} class P {}	rejected	Compilation failed with 1 error(s):   ERROR at .(N.java:8):1 - @NewType record 'N' field type 'int' is not supported. Supported types: byte[], BigInteger, String, boolean 
+pkg	@NewType record N(long v) {} class P {}	rejected	Compilation failed with 1 error(s):   ERROR at .(N.java:8):1 - @NewType record 'N' field type 'long' is not supported. Supported types: byte[], BigInteger, String, boolean 
+pkg	@NewType record N(PlutusData v) {} class P {}	rejected	Compilation failed with 1 error(s):   ERROR at .(N.java:8):1 - @NewType record 'N' field type 'PlutusData' is not supported. Supported types: byte[], BigInteger, String, boolean 
+pkg	@NewType record N(java.math.BigInteger v) {} class P {}	accepted	037076e8488a6f2f
+pkg	@NewType record N(java.lang.String v) {} class P {}	accepted	c5c5054a472e37db
+pkg	@NewType record N(byte... v) {} class P {}	rejected	Compilation failed with 1 error(s):   ERROR at .(N.java:8):1 - @NewType record 'N' field type 'byte' is not supported. Supported types: byte[], BigInteger, String, boolean 
+pkg	@NewType() record N(byte[] v) {} class P {}	accepted	16045875cd05b03b
+pkg	@org.julclang.stdlib.annotation.NewType record N(byte[] v) {} class P {}	accepted	16045875cd05b03b
+pkg	@NewType record N<T>(byte[] v) {} class P {}	accepted	16045875cd05b03b
+pkg	@NewType record N(byte[] v) implements PlutusDataConvertible { public PlutusData toPlutusData() { return null; } } class P {}	accepted	16045875cd05b03b
+pkg	@NewType record N(byte[] v) {} record H(N n, JulcList<N> ns, Optional<N> o) {} class P {}	accepted	e09c6b05e2469031
+pkg	@NewType record N(byte[] v) {} @NewType record M(N n) {} class P {}	rejected	Compilation failed with 1 error(s):   ERROR at .(N.java:8):32 - @NewType record 'M' field type 'N' is not supported. Supported types: byte[], BigInteger, String, boolean 
+pkg	@NewType sealed interface S { record A() implements S {} } class P {}	accepted	486f42481deed7cf
+pkg	@NewType class N {} class P {}	accepted	3e9ea8a0a69a9a73
+pkg	sealed interface S { @NewType record A(byte[] v) implements S {} record B() implements S {} } class P {}	accepted	129bb59380e3e75d
+pkg	record A(B b) {} record B(JulcList<A> as) {} class P {}	accepted	570ff680ebfee5ac
+pkg	record A(Optional<A> next) {} class P {}	accepted	d0e04f02969ab5e5
+pkg	record A(JulcList<A> kids) {} class P {}	accepted	5a3ea02420f6d468
+pkg	record A(JulcMap<BigInteger, A> kids) {} class P {}	accepted	edb8abcc899e0f51
+pkg	sealed interface T { record Leaf() implements T {} record Node(T l, T r) implements T {} } class P {}	accepted	d178a02aba310a0f
+pkg	sealed interface T { record Node(T l) implements T {} } class P {}	rejected	Compilation failed with 1 error(s):   ERROR at .(T.java:8):22 - Recursive type dependency has no finite base constructor: [a.b.T.Node, a.b.T] 
+pkg	record Value(BigInteger x) {} record H(Value v) {} class P {}	accepted	8fa5535ee348685d
+pkg	record TxOut(BigInteger x) {} record H(TxOut v) {} class P {}	accepted	f045e453f21122c3
+pkg	record Address(BigInteger x) {} class P {}	accepted	c0d2239711977bf8
+pkg	sealed interface Credential { record A() implements Credential {} } record H(Credential c) {} class P {}	accepted	fb025277710c3ee7
+pkg	sealed interface Vote permits Vote.Yes { record Yes() implements Vote {} } class P {}	accepted	5d09c64186ae851a
+pkg	class P { record Value(BigInteger x) {} record H(Value v) {} }	accepted	a2bab1cdbc314e6a
+pkg	class P { record PubKeyHash(byte[] h) {} record H(PubKeyHash v) {} }	accepted	e50eb6e0213e25a4
+pkg	class Q { record Inner(BigInteger x) {} } record H(Q.Inner i) {} class P {}	accepted	112021e35180ab4e
+pkg	class P { static void m() { record L(BigInteger v) {} } }	accepted	5f8d6ff47a66329d
+pkg	class P { static void m() { record L(BigInteger v) {} record M(L l) {} } }	accepted	7646902541081c1a
+pkg	class P { static void m() { sealed interface S permits A {} record A() implements S {} } }	rejected	Compilation failed with 3 error(s):   ERROR[JULC0085] at .(P.java:8):29 - sealed or non-sealed local classes are not allowed (compiler.err.sealed.or.non.sealed.local.classes.not.allowed)   ERROR[JULC0085] at .(P.java:8):48 - invalid permits clause   (interface must be sealed) (compiler.err.invalid.permits.clause)   ERROR[JULC0085] at .(P.java:8):56 - cannot find symbol   symbol:   class A   location: class a.b.P (compiler.err.cant.resolve.location) (suggestion: If A is a JDK type (from import java.util.*), it is not available on-chain: JuLC compiles against a fixed subset of java.base; otherwise check the import or the source that declares it) 
+pkg	class Other { interface S {} } sealed interface S { record A() implements Other.S {} record B() implements S {} } class P {}	rejected	Sealed interface 'S' has no permits clause, and its permitted subclasses (B) are not exactly the records nested in it
+pkg	class P { record R(BigInteger x, byte[] a) { R(byte[] y, byte... z) { this(BigInteger.ONE, z); } } }	accepted	539871f4fc090722
+pkg	class P { sealed interface S permits A, B {} record A() implements S {} record B() implements S {} static <T> boolean u(T x) { record S(byte[] b) {} return true; } }	accepted	7285d3f761906b47

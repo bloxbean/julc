@@ -1,0 +1,22 @@
+format: 2
+name: a switch over a record type (K2)
+class: Probe
+method: m
+arg: 03
+expect: REJECT JULC0007
+note: ADR-067 K2, open question 4: legal Java (3).
+note: ADR-067 M1 (interim): the selector rejection is now coded, JULC0007; open question 4 decides the final verdict in M2b. REJECT none at the base.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    record R1(BigInteger x) {}
+    record R2(BigInteger x) {}
+
+    public static BigInteger m(BigInteger a) {
+        R1 r = new R1(a);
+        return switch (r) {
+            case R1(var x) -> x;
+        };
+    }
+}

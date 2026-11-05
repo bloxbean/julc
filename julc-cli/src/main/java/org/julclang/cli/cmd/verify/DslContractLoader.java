@@ -2,6 +2,7 @@ package org.julclang.cli.cmd.verify;
 
 import org.julclang.clientlib.JulcScriptAdapter;
 import org.julclang.compiler.CompilerException;
+import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.schema.ContractSchema;
 import org.julclang.stdlib.StdlibRegistry;
@@ -40,9 +41,10 @@ final class DslContractLoader {
             throw new IllegalArgumentException("Unknown validator '" + validatorTitle
                     + "'; available: " + scan.validators().keySet());
         }
-        var libraries = ProjectSourceResolver.resolve(
-                source, ProjectSourceResolver.buildPool(scan.libraries()));
-        var compiled = new JulcCompiler(StdlibRegistry.defaultRegistry())
+        var pool = ProjectSourceResolver.buildPool(scan.libraries());
+        var libraries = ProjectSourceResolver.resolve(source, pool);
+        var compiled = new JulcCompiler(StdlibRegistry.defaultRegistry(),
+                ProjectSourceResolver.options(new CompilerOptions(), pool))
                 .compileContract(source, libraries);
         if (compiled.compileResult().hasErrors()) {
             throw new CompilerException(compiled.compileResult().diagnostics());

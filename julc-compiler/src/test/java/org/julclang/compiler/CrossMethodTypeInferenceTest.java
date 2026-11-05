@@ -11,6 +11,12 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class CrossMethodTypeInferenceTest {
 
+    /** On javac, the default from ADR-068 M5, {@code ==} between references is reference equality: {@code JULC0086} (D6). */
+    private static void assertReferenceEqualityRejected(String source) {
+        var e = assertThrows(CompilerException.class, () -> new JulcCompiler().compile(source));
+        assertEquals("JULC0086", e.diagnostics().getFirst().code(), e.getMessage());
+    }
+
     /**
      * Helper with long param + == comparison should use EqualsInteger.
      */
@@ -18,6 +24,9 @@ class CrossMethodTypeInferenceTest {
     void helperWithLongParamUsesEqualsInteger() {
         var source = """
                 import java.math.BigInteger;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class MyValidator {
@@ -26,7 +35,7 @@ class CrossMethodTypeInferenceTest {
                     }
 
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         return isEqual(5, 10);
                     }
                 }
@@ -48,6 +57,9 @@ class CrossMethodTypeInferenceTest {
     void helperWithBigIntegerParamUsesEqualsInteger() {
         var source = """
                 import java.math.BigInteger;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class MyValidator {
@@ -56,17 +68,14 @@ class CrossMethodTypeInferenceTest {
                     }
 
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
-                        return isEqual(redeemer, ctx);
+                    static boolean validate(BigInteger datum, BigInteger redeemer, PlutusData ctx) {
+                        return isEqual(datum, redeemer);
                     }
                 }
                 """;
-        var result = new JulcCompiler().compileWithDetails(source);
-        assertNotNull(result.program());
-        assertFalse(result.hasErrors());
-        var pir = result.pirFormatted();
-        assertTrue(pir.contains("equalsInteger"),
-                "Helper with BigInteger params should use equalsInteger, PIR: " + pir);
+        assertReferenceEqualityRejected(source);
+        // javac compiles the Java form, a.equals(b), to the same builtin.
+        assertTrue(new JulcCompiler().compileWithDetails(source.replace("a == b", "a.equals(b)")).pirFormatted().contains("equalsInteger"));
     }
 
     /**
@@ -75,6 +84,9 @@ class CrossMethodTypeInferenceTest {
     @Test
     void helperWithByteArrayParamUsesEqualsByteString() {
         var source = """
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
                 @SpendingValidator
                 class MyValidator {
                     record BsHolder(byte[] a, byte[] b) {}
@@ -89,12 +101,7 @@ class CrossMethodTypeInferenceTest {
                     }
                 }
                 """;
-        var result = new JulcCompiler().compileWithDetails(source);
-        assertNotNull(result.program());
-        assertFalse(result.hasErrors());
-        var pir = result.pirFormatted();
-        assertTrue(pir.contains("equalsByteString"),
-                "Helper with byte[] params should use equalsByteString, PIR: " + pir);
+        assertReferenceEqualityRejected(source);
     }
 
     /**
@@ -104,17 +111,20 @@ class CrossMethodTypeInferenceTest {
     void varInferredHelperReturnUsesEqualsInteger() {
         var source = """
                 import java.math.BigInteger;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class MyValidator {
                     static BigInteger doubleIt(BigInteger x) {
-                        return x + x;
+                        return x.add(x);
                     }
 
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         var result = doubleIt(redeemer);
-                        return result == 10;
+                        return result.equals(BigInteger.TEN);
                     }
                 }
                 """;
@@ -133,20 +143,23 @@ class CrossMethodTypeInferenceTest {
     void chainedHelpersPreserveType() {
         var source = """
                 import java.math.BigInteger;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class MyValidator {
                     static BigInteger addOne(BigInteger x) {
-                        return x + 1;
+                        return x.add(BigInteger.ONE);
                     }
 
                     static BigInteger doubleAndAdd(BigInteger x) {
-                        return addOne(x + x);
+                        return addOne(x.add(x));
                     }
 
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
-                        return doubleAndAdd(redeemer) == 21;
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
+                        return doubleAndAdd(redeemer).equals(BigInteger.valueOf(21));
                     }
                 }
                 """;
@@ -166,12 +179,15 @@ class CrossMethodTypeInferenceTest {
     void literalComparisonUsesEqualsInteger() {
         var source = """
                 import java.math.BigInteger;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class MyValidator {
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
-                        return redeemer == 42;
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
+                        return redeemer.equals(BigInteger.valueOf(42));
                     }
                 }
                 """;
@@ -191,20 +207,23 @@ class CrossMethodTypeInferenceTest {
     void helperWithArithmeticResultUsesEqualsInteger() {
         var source = """
                 import java.math.BigInteger;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class MyValidator {
                     static BigInteger compute(BigInteger x) {
-                        return x * 2 + 1;
+                        return x.multiply(BigInteger.TWO).add(BigInteger.ONE);
                     }
 
                     static boolean checkComputed(BigInteger x) {
                         var result = compute(x);
-                        return result == 43;
+                        return result.equals(BigInteger.valueOf(43));
                     }
 
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         return checkComputed(redeemer);
                     }
                 }
@@ -225,18 +244,21 @@ class CrossMethodTypeInferenceTest {
     void entrypointParamComparisonUsesEqualsInteger() {
         var source = """
                 import java.math.BigInteger;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class MyValidator {
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
-                        return redeemer == ctx;
+                    static boolean validate(BigInteger datum, BigInteger redeemer, PlutusData ctx) {
+                        return datum == redeemer;
                     }
                 }
                 """;
-        var result = new JulcCompiler().compileWithDetails(source);
-        assertNotNull(result.program());
-        assertFalse(result.hasErrors());
+        assertReferenceEqualityRejected(source);
+        // javac compiles the Java form, datum.equals(redeemer), to the same builtin.
+        assertTrue(new JulcCompiler().compileWithDetails(source.replace("datum == redeemer", "datum.equals(redeemer)")).pirFormatted().contains("equalsInteger"));
     }
 
     /**
@@ -245,6 +267,10 @@ class CrossMethodTypeInferenceTest {
     @Test
     void helperWithStringParamUsesEqualsString() {
         var source = """
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
                 @SpendingValidator
                 class MyValidator {
                     static boolean matches(String a, String b) {
@@ -257,11 +283,9 @@ class CrossMethodTypeInferenceTest {
                     }
                 }
                 """;
-        var result = new JulcCompiler().compileWithDetails(source);
-        assertNotNull(result.program());
-        assertFalse(result.hasErrors());
-        var pir = result.pirFormatted();
-        assertTrue(pir.contains("equalsString"),
-                "Helper with String params should use equalsString, PIR: " + pir);
+        assertReferenceEqualityRejected(source);
+        // javac compiles the Java form, a.equals(b), to the same builtin.
+        assertTrue(new JulcCompiler().compileWithDetails(source.replace("a == b", "a.equals(b)")).pirFormatted().contains("equalsString"));
     }
+
 }

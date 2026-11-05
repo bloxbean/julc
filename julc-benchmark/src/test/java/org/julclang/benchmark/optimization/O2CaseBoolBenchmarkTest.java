@@ -17,7 +17,8 @@ class O2CaseBoolBenchmarkTest {
         comparison.verifyEquivalent();
         assertTrue(comparison.candidateArtifact().appliedRules()
                 .contains("pv11.o2.case-bool"));
-        assertEquals(0, comparison.candidateArtifact().termMetrics().builtins()
+        // The fixture's first conditional reads a lambda parameter, so it keeps the builtin.
+        assertEquals(1, comparison.candidateArtifact().termMetrics().builtins()
                 .getOrDefault(DefaultFun.IfThenElse, 0));
         assertTrue(comparison.candidateArtifact().flatBytes()
                 < comparison.baselineArtifact().flatBytes());

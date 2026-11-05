@@ -1,0 +1,15 @@
+format: 3
+name: a helper walks a pair list, the only accumulator
+class: Case
+method: m
+arg: a201020304
+expect: AGREE
+note: A helper's parameter that a direct assignment reads as a list keeps that reading on both frontends.
+---
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.stdlib.Builtins;
+
+public class Case {
+    static boolean walk(PlutusData c) { while (!Builtins.nullList(c)) { c = Builtins.tailList(c); } return Builtins.nullList(c); } public static boolean m(PlutusData d) { return walk(Builtins.unMapData(d)); }
+}

@@ -2,8 +2,10 @@ package org.julclang.cli.mcp.lint.rules;
 
 import org.julclang.cli.mcp.lint.LintFinding;
 import org.julclang.cli.mcp.lint.LintRule;
-import com.github.javaparser.ast.CompilationUnit;
-import com.github.javaparser.ast.expr.MethodCallExpr;
+import org.julclang.cli.mcp.lint.LintTrees;
+import org.julclang.compiler.frontend.javac.JavacSyntax;
+import com.sun.source.util.TreePath;
+import com.sun.source.tree.MethodInvocationTree;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -36,16 +38,13 @@ public final class ByteStringLibOffChainRule implements LintRule {
     }
 
     @Override
-    public List<LintFinding> check(CompilationUnit cu) {
+    public List<LintFinding> check(JavacSyntax syntax) {
         var findings = new ArrayList<LintFinding>();
-        cu.findAll(MethodCallExpr.class).forEach(call -> {
-            String name = call.getNameAsString();
-            if (!OFFCHAIN_BROKEN.contains(name)) return;
-            var scope = call.getScope().orElse(null);
-            if (scope == null) return;
-            if (!"ByteStringLib".equals(scope.toString())) return;
-            int line = call.getBegin().map(p -> p.line).orElse(0);
-            int col = call.getBegin().map(p -> p.column).orElse(0);
+        for (TreePath path : LintTrees.findAll(syntax, MethodInvocationTree.class)) {
+            var call = (MethodInvocationTree) path.getLeaf();
+            String name = LintTrees.methodName(call);
+            if (!OFFCHAIN_BROKEN.contains(name)) continue;
+            if (!"ByteStringLib".equals(LintTrees.dottedName(LintTrees.receiver(call)))) continue;
             String builtinSuggestion = switch (name) {
                 case "zeros" -> "`Builtins.replicateByte(n, (byte) 0)`";
                 case "empty" -> "`new byte[0]`";
@@ -58,10 +57,10 @@ public final class ByteStringLibOffChainRule implements LintRule {
                     null,
                     "`ByteStringLib." + name + "(...)` uses an on-chain-only cast and throws " +
                             "`ClassCastException` when called from JVM (tests/REPL).",
-                    line, col,
+                    syntax.line(call), syntax.column(call),
                     "On-chain code: leave it. JVM/test code: call " + builtinSuggestion + " directly."
             ));
-        });
+        }
         return findings;
     }
 }

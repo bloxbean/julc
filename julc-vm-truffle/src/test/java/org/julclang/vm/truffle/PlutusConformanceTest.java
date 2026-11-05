@@ -25,10 +25,10 @@ class PlutusConformanceTest {
 
     private static final TruffleVmProvider PROVIDER = new TruffleVmProvider();
 
-    private static final int EXPECTED_CASE_COUNT = 999;
-    private static final int EXPECTED_BASE_NUMERIC_BUDGETS = 545;
-    private static final int EXPECTED_PV11_NUMERIC_BUDGETS = 724;
-    private static final int EXPECTED_PV10_APPLICABLE_CASES = 737;
+    private static final int EXPECTED_CASE_COUNT = 1003;
+    private static final int EXPECTED_BASE_NUMERIC_BUDGETS = 542;
+    private static final int EXPECTED_PV11_NUMERIC_BUDGETS = 721;
+    private static final int EXPECTED_PV10_APPLICABLE_CASES = 741;
     private static final int EXPECTED_PV11_OVERRIDES = 65;
     private static final int EXPECTED_PV11_BUDGET_OVERRIDES = 61;
     private static final int EXPECTED_PV11_RESULT_OVERRIDES = 4;

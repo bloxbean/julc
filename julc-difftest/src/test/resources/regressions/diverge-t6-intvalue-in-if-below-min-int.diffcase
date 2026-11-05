@@ -1,0 +1,20 @@
+format: 2
+name: intValue() just below Integer.MIN_VALUE in an if (F81, #294)
+class: Probe
+method: m
+arg: 3a80000000
+expect: DIVERGE T6 Value/Value
+jvm: Value 02 []
+uplc: Value 01 []
+note: ADR-067 M1 round 4, F81 (#294), outside guards: JuLC lowers intValue() to the identity; Java narrows -2147483649 to 2147483647 (2), JuLC keeps it negative (1).
+---
+import java.math.BigInteger;
+
+public class Probe {
+    public static BigInteger m(BigInteger a) {
+        if (a.intValue() < 0) {
+            return BigInteger.ONE;
+        }
+        return BigInteger.TWO;
+    }
+}

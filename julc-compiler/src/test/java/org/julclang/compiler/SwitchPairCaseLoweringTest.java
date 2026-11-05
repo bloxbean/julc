@@ -25,6 +25,9 @@ import static org.junit.jupiter.api.Assertions.*;
 class SwitchPairCaseLoweringTest {
     static final String SWITCH = """
             import java.math.BigInteger;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.MintingValidator;
             @MintingValidator class SwitchPair {
                 sealed interface Action permits Pay, Cancel {}
                 record Pay(BigInteger amount, BigInteger unused) implements Action {}
@@ -39,6 +42,9 @@ class SwitchPairCaseLoweringTest {
             """;
     static final String NESTED = """
             import java.math.BigInteger;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.MintingValidator;
             @MintingValidator class NestedSwitchPair {
                 sealed interface Node permits End, Link {}
                 record End() implements Node {}
@@ -56,6 +62,9 @@ class SwitchPairCaseLoweringTest {
             """;
     static final String SINGLE = """
             import java.math.BigInteger;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.MintingValidator;
             @MintingValidator class SingleSwitchPair {
                 sealed interface Action permits Only {}
                 record Only(BigInteger value) implements Action {}

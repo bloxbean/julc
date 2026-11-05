@@ -1,0 +1,1 @@
+@OnchainLibrary class Test { public record Item(int x) {} public static int value(int x) { return x; } }

@@ -218,6 +218,9 @@ class O5IntegerCaseLoweringTest {
                 import java.math.BigInteger;
                 import org.julclang.stdlib.lib.ContextsLib;
                 import org.julclang.stdlib.Builtins;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.MintingValidator;
                 @MintingValidator class TracedWay {
                     sealed interface Step permits A, B, C, D {}
                     record A() implements Step {}

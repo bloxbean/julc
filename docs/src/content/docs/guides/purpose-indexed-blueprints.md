@@ -8,6 +8,11 @@ UPLC program and one Cardano script hash. JuLC publishes one CIP-57 validator
 entry per supported purpose so each datum/redeemer schema remains unambiguous.
 
 ```java
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.MultiValidator;
+import org.julclang.stdlib.annotation.Purpose;
+
 @MultiValidator
 class Protocol {
     record State(long counter) {}

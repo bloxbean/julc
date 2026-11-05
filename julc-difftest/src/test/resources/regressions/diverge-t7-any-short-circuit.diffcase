@@ -1,0 +1,18 @@
+format: 2
+name: any stops at the first match on the JVM only (T7)
+class: Probe
+method: m
+arg: 820500
+expect: DIVERGE T7 Value/Failure
+jvm: Value d87a80 []
+uplc: Failure []
+note: The JVM returns true at 5; UPLC also evaluates 10 / 0 and fails.
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+
+public class Probe {
+    public static boolean m(JulcList<BigInteger> xs) {
+        return xs.any(x -> BigInteger.TEN.divide(x).compareTo(BigInteger.ONE) > 0);
+    }
+}

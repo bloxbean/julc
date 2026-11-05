@@ -4,7 +4,10 @@ import org.julclang.blueprint.BlueprintConfig;
 import org.julclang.blueprint.BlueprintFileWriter;
 import org.julclang.blueprint.BlueprintGenerator;
 import org.julclang.clientlib.JulcScriptAdapter;
+import org.julclang.compiler.CompileResult;
+import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerOptions;
+import org.julclang.compiler.schema.ContractCompileResult;
 import org.julclang.compiler.CompilerTargetRegistry;
 import org.julclang.compiler.JavaSourceIntrospector;
 import org.julclang.compiler.JulcCompiler;
@@ -23,6 +26,8 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -72,6 +77,11 @@ public abstract class CompileJulcTask extends DefaultTask {
     @Optional
     public abstract Property<String> getCostProfile();
 
+    /** Removed (ADR-068 M6): only for {@link CompilerOptions#requireJavacFrontend}'s message. */
+    @Input
+    @Optional
+    public abstract Property<String> getFrontend();
+
     /** Blueprint preamble title. */
     @Input
     public abstract Property<String> getProjectName();
@@ -87,6 +97,7 @@ public abstract class CompileJulcTask extends DefaultTask {
         outDir.mkdirs();
         boolean blueprintEnabled = Boolean.TRUE.equals(getBlueprint().getOrElse(true));
         boolean sourceMapEnabled = Boolean.TRUE.equals(getSourceMap().getOrElse(false));
+        CompilerOptions.requireJavacFrontend(getFrontend().getOrNull());
         var compilerTarget = CompilerTargetRegistry.targetForProfileId(getTarget().get());
 
         var stdlib = StdlibRegistry.defaultRegistry();
@@ -113,6 +124,12 @@ public abstract class CompileJulcTask extends DefaultTask {
             }
 
             JavaSourceIntrospector.SourceInfo sourceInfo = inspect(javaFile, source);
+            if (sourceInfo == null) {
+                getLogger().info("Treating {} as a library source: text matched a validator annotation, but read as"
+                        + " javac reads it the source declares no JuLC annotation", javaFile);
+                libraryFiles.add(javaFile);
+                continue;
+            }
             rejectRoleConflicts(sourceInfo);
             if (sourceInfo.legacyValidatorType().isPresent()) {
                 throw new GradleException(JavaSourceIntrospector.legacyAnnotationMigrationMessage(
@@ -142,12 +159,19 @@ public abstract class CompileJulcTask extends DefaultTask {
             String validatorSource = Files.readString(validatorFile.file().toPath());
 
             // Compile with multi-file support
-            var contractResult = blueprintEnabled
-                    ? compiler.compileContract(validatorSource, librarySources)
-                    : null;
-            var result = blueprintEnabled
-                    ? contractResult.compileResult()
-                    : compiler.compile(validatorSource, librarySources);
+            ContractCompileResult contractResult;
+            CompileResult result;
+            try {
+                contractResult = blueprintEnabled
+                        ? compiler.compileContract(validatorSource, librarySources)
+                        : null;
+                result = blueprintEnabled
+                        ? contractResult.compileResult()
+                        : compiler.compile(validatorSource, librarySources);
+            } catch (CompilerException e) {
+                // Each diagnostic with its code, position and fix (ADR-068 M5: javac's rejections carry one diagnostic).
+                throw new GradleException("Compilation failed for " + validatorFile.file().getName() + ": " + e.describe(), e);
+            }
             if (result.hasErrors()) {
                 throw new GradleException("Compilation failed for " + validatorFile.file().getName()
                         + ": " + result.diagnostics());
@@ -233,9 +257,11 @@ public abstract class CompileJulcTask extends DefaultTask {
         return files;
     }
 
+    /** In name order: a file system lists a directory in any order, and the library {@code let}s follow this one (I4). */
     private void collectJavaFiles(File dir, List<File> result) {
         File[] children = dir.listFiles();
         if (children == null) return;
+        Arrays.sort(children, Comparator.comparing(File::getName));
         for (File child : children) {
             if (child.isDirectory()) {
                 collectJavaFiles(child, result);
@@ -280,10 +306,12 @@ public abstract class CompileJulcTask extends DefaultTask {
         }
     }
 
+    /** The source's info, or null for a candidate JuLC cannot read that plainly declares no JuLC annotation. */
     private static JavaSourceIntrospector.SourceInfo inspect(File javaFile, String source) {
         try {
             return JavaSourceIntrospector.inspect(source);
         } catch (JavaSourceIntrospector.SourceParseException e) {
+            if (JavaSourceIntrospector.declaresNoJulcRole(source)) return null;
             throw new GradleException("Could not parse validator candidate " + javaFile
                     + ": " + e.problems(), e);
         }

@@ -540,10 +540,11 @@ class O9ListIndexPromotionTest {
     void validatorObservesTheIndexFailureContractThroughTheStrictBoundary() {
         var validator = O9ListIndexFixtures.IMPORTS + """
                 import org.julclang.ledger.*;
+                import org.julclang.stdlib.annotation.*;
                 @SpendingValidator class IndexedByRedeemer {
-                    @Param JulcList<BigInteger> allowed;
+                    @Param static JulcList<BigInteger> allowed;
                     @Entrypoint static boolean validate(PlutusData datum, BigInteger index, ScriptContext ctx) {
-                        return allowed.get(index).add(allowed.get(0)).equals(BigInteger.valueOf(70));
+                        return allowed.get(index.longValue()).add(allowed.get(0)).equals(BigInteger.valueOf(70));
                     }
                 }
                 """;
@@ -693,12 +694,12 @@ class O9ListIndexPromotionTest {
 
     /**
      * The PR #144 review finding end to end: a spending validator whose entry point passes a
-     * callback's element (raw Data under a {@code JulcList} type) into a helper that indexes
-     * twice behind conditionals. With a valid typed redeemer whose mode never indexes, the
-     * validator must accept at the costed level exactly as at the safe level, on all three VMs,
-     * and the costed artifact must be the safe artifact byte for byte. The well-typed
-     * counterpart, an entrypoint list the wrapper decodes and passes to the same helper, still
-     * promotes and shows only the documented out-of-range substitution.
+     * callback's element into a helper that indexes twice behind conditionals. On javac the
+     * calling convention decodes the element (ADR-068 F1042), so the parameter is proven and the
+     * rule applies. A valid redeemer must be accepted at the costed level with the safe level's
+     * answer, whether it indexes or not, on all three VMs, and past the end the only difference is
+     * the documented out-of-range substitution. The well-typed counterpart, an entrypoint list the
+     * wrapper decodes and passes to the same helper, promotes the same way.
      */
     @Test
     void callbackToHelperCompositionKeepsValidatorAcceptanceAtTheCostedLevel() {
@@ -711,6 +712,7 @@ class O9ListIndexPromotionTest {
                 """;
         var viaCallback = O9ListIndexFixtures.IMPORTS + """
                 import org.julclang.ledger.*;
+                import org.julclang.stdlib.annotation.*;
                 @SpendingValidator class CallbackValidator {
                     record Input(JulcList<JulcList<BigInteger>> groups, BigInteger mode) {}
                 """ + helper + """
@@ -722,17 +724,26 @@ class O9ListIndexPromotionTest {
                 """;
         var safe = compileValidator(viaCallback, OptimizationLevel.PV11_SAFE);
         var costed = compileValidator(viaCallback, OptimizationLevel.PV11_COSTED);
-        assertFalse(costed.optimizationReport().appliedRules().contains(ListIndexPromotionPass.RULE));
-        assertArrayEquals(UplcFlatEncoder.encodeProgram(safe.program()), UplcFlatEncoder.encodeProgram(costed.program()));
+        // On javac the calling convention decodes the callback's element (ADR-068 F1042), so the helper's parameter is
+        // a proven list and the rule applies; acceptance and answers stay those of the safe artifact.
+        assertTrue(costed.optimizationReport().appliedRules().contains(ListIndexPromotionPass.RULE));
         var neverIndexes = spendingContext(PlutusData.constr(0, PlutusData.list(ints(10, 20)), PlutusData.integer(0)));
+        var indexes = spendingContext(PlutusData.constr(0, PlutusData.list(ints(0, 20)), PlutusData.integer(1)));
+        var pastTheEnd = spendingContext(PlutusData.constr(0, PlutusData.list(ints(0)), PlutusData.integer(2)));
         for (String provider : PROVIDERS) {
-            var before = assertInstanceOf(EvalResult.Success.class, evaluate(safe.program(), List.of(neverIndexes), provider), provider);
-            var after = assertInstanceOf(EvalResult.Success.class, evaluate(costed.program(), List.of(neverIndexes), provider), provider);
-            assertEquals(before.budgetConsumed(), after.budgetConsumed(), provider);
+            for (var accepted : List.of(neverIndexes, indexes)) {
+                var before = assertInstanceOf(EvalResult.Success.class, evaluate(safe.program(), List.of(accepted), provider), provider);
+                var after = assertInstanceOf(EvalResult.Success.class, evaluate(costed.program(), List.of(accepted), provider), provider);
+                assertEquals(before.resultTerm(), after.resultTerm(), provider);
+            }
+            var b = assertInstanceOf(EvalResult.Failure.class, evaluate(safe.program(), List.of(pastTheEnd), provider), provider);
+            var a = assertInstanceOf(EvalResult.Failure.class, evaluate(costed.program(), List.of(pastTheEnd), provider), provider);
+            IndexFailureEquivalence.assertPromotedFailure(b, a, 1, 1, provider);
         }
 
         var typed = O9ListIndexFixtures.IMPORTS + """
                 import org.julclang.ledger.*;
+                import org.julclang.stdlib.annotation.*;
                 @SpendingValidator class TypedValidator {
                 """ + helper + """
                     @Entrypoint static boolean validate(PlutusData datum, JulcList<BigInteger> xs, ScriptContext ctx) {
@@ -828,8 +839,9 @@ class O9ListIndexPromotionTest {
     void validatorParametersAndDatumFieldsPromoteInsideTheirScopes() {
         var validator = O9ListIndexFixtures.IMPORTS + """
                 import org.julclang.ledger.*;
+                import org.julclang.stdlib.annotation.*;
                 @SpendingValidator class ParamValidator {
-                    @Param JulcList<BigInteger> allowed;
+                    @Param static JulcList<BigInteger> allowed;
                     record Datum(JulcList<BigInteger> items, BigInteger n) {}
                     static boolean firstTwoAllowed(BigInteger a, BigInteger b) {
                         return allowed.get(0).equals(a) && allowed.get(1).equals(b);
@@ -853,8 +865,9 @@ class O9ListIndexPromotionTest {
         }
 
         var source = O9ListIndexFixtures.IMPORTS + """
+                import org.julclang.stdlib.annotation.Param;
                 class ParamShapes {
-                    @Param JulcList<BigInteger> allowed;
+                    @Param static JulcList<BigInteger> allowed;
                     static BigInteger firstTwo() { return allowed.get(0).add(allowed.get(1)); }
                 }
                 """;

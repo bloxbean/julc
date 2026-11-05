@@ -39,11 +39,14 @@ class CompileControllerTest {
         JavalinTest.test(app(), (server, client) -> {
             var body = mapper.writeValueAsString(new CompileRequest("""
                     import java.math.BigInteger;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.PlutusData;
 
                     @SpendingValidator
                     class SimpleValidator {
                         @Entrypoint
-                        static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                        static boolean validate(BigInteger redeemer, PlutusData ctx) {
                             return true;
                         }
                     }
@@ -73,6 +76,8 @@ class CompileControllerTest {
         JavalinTest.test(app(), (server, client) -> {
             var body = mapper.writeValueAsString(new CompileRequest("""
                     import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.MultiValidator;
 
                     @MultiValidator
                     class MultiGate {
@@ -175,10 +180,13 @@ class CompileControllerTest {
                 // We'll test with a source that's valid enough to parse but slow
                 var body = mapper.writeValueAsString(new CompileRequest("""
                         import java.math.BigInteger;
+                        import org.julclang.stdlib.annotation.Entrypoint;
+                        import org.julclang.stdlib.annotation.SpendingValidator;
+                        import org.julclang.core.PlutusData;
                         @SpendingValidator
                         class V {
                             @Entrypoint
-                            static boolean validate(BigInteger r, BigInteger c) { return true; }
+                            static boolean validate(BigInteger r, PlutusData c) { return true; }
                         }
                         """));
                 var res = client.post("/api/compile", body);

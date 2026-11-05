@@ -3,6 +3,8 @@ import org.julclang.stdlib.annotation.SpendingValidator;
 import org.julclang.ledger.ScriptContext;
 import org.julclang.ledger.TxInfo;
 import org.julclang.core.PlutusData;
+import org.julclang.ledger.PubKeyHash;
+import org.julclang.stdlib.Builtins;
 
 @SpendingValidator
 public class VerificationMultiSig {
@@ -13,6 +15,6 @@ public class VerificationMultiSig {
         TxInfo txInfo = ctx.txInfo();
         var signatories = txInfo.signatories();
         // Deliberately vulnerable negative-control fixture: key2 is ignored.
-        return signatories.contains(datum.key1());
+        return signatories.contains(PubKeyHash.of(Builtins.unBData(datum.key1())));
     }
 }

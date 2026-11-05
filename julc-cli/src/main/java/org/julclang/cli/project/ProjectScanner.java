@@ -12,7 +12,7 @@ import java.util.Map;
 import java.util.stream.Stream;
 
 /**
- * Scans project source directories for validator (.java) and JRL (.jrl) files
+ * Scans project source directories for Java validator and library files
  * in a single directory walk.
  */
 public final class ProjectScanner {
@@ -22,32 +22,34 @@ public final class ProjectScanner {
     public record ScanResult(
             Map<String, String> validators,  // simpleName -> source (.java validators)
             Map<String, String> libraries,   // FQCN -> source (.java libraries)
-            Map<String, String> jrlFiles     // simpleName -> source (.jrl files)
+            int ignoredFiles                 // .jrl files: JRL support was removed, so they are not compiled
     ) {}
 
     /**
-     * Scan a directory for .java and .jrl files in a single walk.
+     * Scan a directory for .java files in a single walk.
      * Java files are split into validators (with annotations) and libraries (without).
      */
     public static ScanResult scan(Path srcDir) throws IOException {
         var validators = new LinkedHashMap<String, String>();
         var libraries = new LinkedHashMap<String, String>();
-        var jrlFiles = new LinkedHashMap<String, String>();
+        var ignored = new int[1];
 
         if (!Files.isDirectory(srcDir)) {
-            return new ScanResult(validators, libraries, jrlFiles);
+            return new ScanResult(validators, libraries, 0);
         }
 
         try (Stream<Path> paths = Files.walk(srcDir)) {
             paths.filter(Files::isRegularFile)
+                    .sorted()
                     .forEach(p -> {
                         try {
                             String fileName = p.getFileName().toString();
                             if (fileName.endsWith(".java")) {
                                 String source = Files.readString(p);
                                 String simpleName = fileName.replace(".java", "");
-                                if (JavaSourceIntrospector.mightContainValidatorAnnotation(source)) {
-                                    var sourceInfo = inspect(p, source);
+                                var sourceInfo = JavaSourceIntrospector.mightContainValidatorAnnotation(source)
+                                        ? inspect(p, source) : null;
+                                if (sourceInfo != null) {
                                     rejectRoleConflicts(sourceInfo);
                                     if (sourceInfo.legacyValidatorType().isPresent()) {
                                         throw new IllegalArgumentException(
@@ -63,9 +65,7 @@ public final class ProjectScanner {
                                     libraries.put(libraryKey(simpleName, source), source);
                                 }
                             } else if (fileName.endsWith(".jrl")) {
-                                String source = Files.readString(p);
-                                String simpleName = fileName.replace(".jrl", "");
-                                jrlFiles.put(simpleName, source);
+                                ignored[0]++;
                             }
                         } catch (IOException e) {
                             throw new RuntimeException("Failed to read " + p, e);
@@ -73,7 +73,7 @@ public final class ProjectScanner {
                     });
         }
 
-        return new ScanResult(validators, libraries, jrlFiles);
+        return new ScanResult(validators, libraries, ignored[0]);
     }
 
     /**
@@ -101,12 +101,33 @@ public final class ProjectScanner {
                 });
     }
 
+    /** A validator candidate JuLC cannot read: its file and text, so that a host can report javac's diagnostic. */
+    public static final class UnreadableCandidateException extends IllegalArgumentException {
+        private final Path file;
+        private final String source;
+
+        UnreadableCandidateException(Path file, String source, JavaSourceIntrospector.SourceParseException cause) {
+            super("Could not parse validator candidate " + file + ": " + cause.problems(), cause);
+            this.file = file;
+            this.source = source;
+        }
+
+        public Path file() {
+            return file;
+        }
+
+        public String source() {
+            return source;
+        }
+    }
+
+    /** The source's info, or null for a candidate JuLC cannot read that plainly declares no JuLC annotation. */
     private static JavaSourceIntrospector.SourceInfo inspect(Path path, String source) {
         try {
             return JavaSourceIntrospector.inspect(source);
         } catch (JavaSourceIntrospector.SourceParseException e) {
-            throw new IllegalArgumentException("Could not parse validator candidate "
-                    + path + ": " + e.problems(), e);
+            if (JavaSourceIntrospector.declaresNoJulcRole(source)) return null;
+            throw new UnreadableCandidateException(path, source, e);
         }
     }
 

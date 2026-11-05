@@ -1,0 +1,31 @@
+format: 3
+name: a guard whose signum receiver is a traced call (F36, #146)
+class: Probe
+method: m
+tag: Probe$A Probe$S 0
+tag: Probe$B Probe$S 1
+arg: 05
+expect: DIVERGE T12 Value/Value
+jvm: Value 01 ["receiver"]
+uplc: Value 01 ["receiver", "receiver"]
+note: ADR-067 review F36, retained: signum evaluates a call receiver twice (#146), so the guard traces twice on-chain and once on the JVM. Values agree.
+---
+import java.math.BigInteger;
+import org.julclang.stdlib.Builtins;
+
+public class Probe {
+    sealed interface S permits A, B {}
+    record A(BigInteger v) implements S {}
+    record B(BigInteger v) implements S {}
+    static BigInteger said(BigInteger v) {
+        return Builtins.unIData(Builtins.trace("receiver", Builtins.iData(v)));
+    }
+
+    public static BigInteger m(BigInteger a) {
+        S s = new A(a);
+        return switch (s) {
+            case A x when said(x.v()).signum() > 0 -> BigInteger.ONE;
+            default -> BigInteger.TWO;
+        };
+    }
+}

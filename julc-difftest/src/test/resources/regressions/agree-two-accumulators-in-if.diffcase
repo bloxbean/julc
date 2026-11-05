@@ -1,0 +1,26 @@
+format: 2
+name: if/else updating different accumulators in a loop
+class: Probe
+method: m
+arg: 850102030405
+expect: AGREE
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+
+public class Probe {
+    public static BigInteger m(JulcList<BigInteger> xs) {
+        BigInteger evens = BigInteger.ZERO;
+        BigInteger odds = BigInteger.ZERO;
+        long count = 0;
+        for (var x : xs) {
+            if (x.mod(BigInteger.TWO).signum() == 0) {
+                evens = evens.add(x);
+            } else {
+                odds = odds.add(x);
+                count = count + 1;
+            }
+        }
+        return evens.multiply(BigInteger.valueOf(1000)).add(odds.multiply(BigInteger.TEN)).add(BigInteger.valueOf(count));
+    }
+}

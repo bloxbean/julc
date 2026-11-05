@@ -1,0 +1,22 @@
+format: 2
+name: break out of a while loop, then return
+class: Probe
+method: m
+arg: 0a
+expect: AGREE
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+
+public class Probe {
+    public static long m(long n) {
+        long i = 0;
+        long acc = 0;
+        while (i < n) {
+            if (acc > 20) { break; }
+            acc = acc + i;
+            i = i + 1;
+        }
+        return acc * 100 + i;
+    }
+}

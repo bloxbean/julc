@@ -10,6 +10,10 @@ class LintEngineTest {
 
     private final LintEngine engine = new LintEngine();
 
+    private List<LintFinding> lint(String source) {
+        return engine.lint(source);
+    }
+
     @Test
     void clean_validator_produces_no_findings() {
         String src = """
@@ -27,7 +31,7 @@ class LintEngineTest {
                     }
                 }
                 """;
-        assertTrue(engine.lint(src).isEmpty(),
+        assertTrue(lint(src).isEmpty(),
                 "clean validator should produce no findings");
     }
 
@@ -41,7 +45,7 @@ class LintEngineTest {
                     }
                 }
                 """;
-        var findings = engine.lint(src);
+        var findings = lint(src);
         assertEquals(1, findings.size(), "should flag one mkSome call: " + findings);
         var f = findings.get(0);
         assertEquals("error", f.level());
@@ -57,7 +61,7 @@ class LintEngineTest {
                     static Object none() { return Optional.mkNone(); }
                 }
                 """;
-        var findings = engine.lint(src);
+        var findings = lint(src);
         assertEquals(1, findings.size(), "should flag mkNone");
         assertTrue(findings.get(0).suggestion().contains("Optional.empty()"));
     }
@@ -79,7 +83,7 @@ class LintEngineTest {
                     }
                 }
                 """;
-        var findings = engine.lint(src);
+        var findings = lint(src);
         assertTrue(findings.stream().anyMatch(f -> "JULC-LINT-SWITCH-SHADOW".equals(f.ruleId())
                         && "JULC0021".equals(f.diagnostic())),
                 "expected canonical switch-field-shadow finding: " + findings);
@@ -102,7 +106,7 @@ class LintEngineTest {
                     }
                 }
                 """;
-        var findings = engine.lint(src);
+        var findings = lint(src);
         assertTrue(findings.stream().noneMatch(f -> "JULC-LINT-SWITCH-SHADOW".equals(f.ruleId())),
                 "distinct parameter name should not produce shadow finding: " + findings);
     }
@@ -123,7 +127,7 @@ class LintEngineTest {
                     }
                 }
                 """;
-        var findings = engine.lint(src);
+        var findings = lint(src);
         assertTrue(findings.stream().anyMatch(f -> "JULC-LINT-SWITCH-SHADOW".equals(f.ruleId())
                         && "JULC0021".equals(f.diagnostic())),
                 "expected imported IntervalBoundType.Finite field-shadow finding: " + findings);
@@ -144,7 +148,7 @@ class LintEngineTest {
                     }
                 }
                 """;
-        var findings = engine.lint(src);
+        var findings = lint(src);
         assertTrue(findings.stream().anyMatch(f -> "JULC-LINT-SWITCH-SHADOW".equals(f.ruleId())),
                 "expected switch-shadow finding: " + findings);
     }
@@ -161,7 +165,7 @@ class LintEngineTest {
                     }
                 }
                 """;
-        var findings = engine.lint(src);
+        var findings = lint(src);
         assertTrue(findings.stream().anyMatch(f -> "JULC-LINT-RAW-PLUTUSDATA".equals(f.ruleId())),
                 "expected raw-PlutusData finding: " + findings);
     }
@@ -176,7 +180,7 @@ class LintEngineTest {
                     @Param static BigInteger maxAmount;
                 }
                 """;
-        var findings = engine.lint(src);
+        var findings = lint(src);
         assertTrue(findings.isEmpty(),
                 "@Param BigInteger is supported and should not produce lint findings: " + findings);
     }
@@ -192,7 +196,7 @@ class LintEngineTest {
                 """;
         // The cast wrapping makes this awkward to parse, but the .hash().hash()
         // pattern still appears.
-        var findings = engine.lint(src);
+        var findings = lint(src);
         assertTrue(findings.stream().anyMatch(f -> "JULC-LINT-DOUBLE-HASH".equals(f.ruleId())),
                 "expected double-hash finding: " + findings);
     }
@@ -201,7 +205,7 @@ class LintEngineTest {
     void malformed_source_returns_empty() {
         // Lint must be best-effort: a parse failure returns no findings, the
         // compile tool will surface the parse error.
-        List<LintFinding> findings = engine.lint("class { not valid Java");
+        List<LintFinding> findings = lint("class { not valid Java");
         assertTrue(findings.isEmpty());
     }
 
@@ -223,7 +227,7 @@ class LintEngineTest {
                     }
                 }
                 """;
-        var findings = engine.lint(src);
+        var findings = lint(src);
         assertTrue(findings.stream().anyMatch(f -> "JULC-LINT-MUTABLE-VAR".equals(f.ruleId())),
                 "expected mutable-var finding: " + findings);
     }
@@ -244,7 +248,7 @@ class LintEngineTest {
                     }
                 }
                 """;
-        var findings = engine.lint(src);
+        var findings = lint(src);
         assertTrue(findings.stream().noneMatch(f -> "JULC-LINT-MUTABLE-VAR".equals(f.ruleId())),
                 "while-loop accumulator pattern should NOT be flagged: " + findings);
     }
@@ -264,7 +268,7 @@ class LintEngineTest {
                     }
                 }
                 """;
-        var findings = engine.lint(src);
+        var findings = lint(src);
         assertTrue(findings.stream().noneMatch(f -> "JULC-LINT-SWITCH-SHADOW".equals(f.ruleId())),
                 "unreferenced shadow should not be flagged: " + findings);
     }
@@ -279,7 +283,7 @@ class LintEngineTest {
                 }
                 """;
         // The cast adds a layer; verify the rule still fires.
-        var findings = engine.lint(src);
+        var findings = lint(src);
         assertTrue(findings.stream().anyMatch(f -> "JULC-LINT-DOUBLE-HASH".equals(f.ruleId())),
                 "expected double-hash on cast-wrapped chain: " + findings);
     }
@@ -298,7 +302,7 @@ class LintEngineTest {
                     }
                 }
                 """;
-        var findings = engine.lint(src);
+        var findings = lint(src);
         assertTrue(findings.stream().anyMatch(f -> "JULC-LINT-RAW-PLUTUSDATA".equals(f.ruleId())),
                 "expected raw-PlutusData finding for IntData: " + findings);
     }
@@ -313,7 +317,7 @@ class LintEngineTest {
                     static Object mk() { return new ConstrData(0, List.of()); }
                 }
                 """;
-        var findings = engine.lint(src);
+        var findings = lint(src);
         assertTrue(findings.stream().anyMatch(f -> "JULC-LINT-RAW-PLUTUSDATA".equals(f.ruleId())),
                 "direct-imported ConstrData should be flagged: " + findings);
     }
@@ -336,7 +340,7 @@ class LintEngineTest {
                     }
                 }
                 """;
-        var findings = engine.lint(src);
+        var findings = lint(src);
         assertTrue(findings.stream().anyMatch(f -> "JULC-LINT-RETURN-IN-LOOP".equals(f.ruleId())),
                 "expected return-in-loop finding: " + findings);
     }
@@ -356,7 +360,7 @@ class LintEngineTest {
                     }
                 }
                 """;
-        var findings = engine.lint(src);
+        var findings = lint(src);
         assertTrue(findings.stream().noneMatch(f -> "JULC-LINT-RETURN-IN-LOOP".equals(f.ruleId())),
                 "post-loop return should NOT be flagged: " + findings);
     }
@@ -374,7 +378,7 @@ class LintEngineTest {
                     }
                 }
                 """;
-        var findings = engine.lint(src);
+        var findings = lint(src);
         assertTrue(findings.stream().noneMatch(f -> "JULC-LINT-RETURN-IN-LOOP".equals(f.ruleId())),
                 "return inside a lambda should NOT be flagged as in-loop: " + findings);
     }
@@ -391,7 +395,7 @@ class LintEngineTest {
                     }
                 }
                 """;
-        var findings = engine.lint(src);
+        var findings = lint(src);
         assertTrue(findings.stream().anyMatch(f -> "JULC-LINT-UNINITIALIZED-VAR".equals(f.ruleId())),
                 "expected uninitialized-var finding: " + findings);
     }
@@ -407,7 +411,7 @@ class LintEngineTest {
                     }
                 }
                 """;
-        var findings = engine.lint(src);
+        var findings = lint(src);
         assertTrue(findings.stream().noneMatch(f -> "JULC-LINT-UNINITIALIZED-VAR".equals(f.ruleId())),
                 "initialized local should NOT be flagged: " + findings);
     }
@@ -427,7 +431,7 @@ class LintEngineTest {
                     }
                 }
                 """;
-        var findings = engine.lint(src);
+        var findings = lint(src);
         assertTrue(findings.stream().noneMatch(f -> "JULC-LINT-UNINITIALIZED-VAR".equals(f.ruleId())),
                 "enhanced-for loop variable should NOT be flagged as uninitialized: " + findings);
     }
@@ -441,7 +445,7 @@ class LintEngineTest {
                     @Param static PlutusData.BytesData salt;
                 }
                 """;
-        var findings = engine.lint(src);
+        var findings = lint(src);
         assertTrue(findings.stream().anyMatch(f -> "JULC-LINT-BANNED-PARAM-TYPE".equals(f.ruleId())),
                 "expected banned-param-type finding: " + findings);
     }
@@ -455,7 +459,7 @@ class LintEngineTest {
                     @Param static MapData m;
                 }
                 """;
-        var findings = engine.lint(src);
+        var findings = lint(src);
         assertTrue(findings.stream().anyMatch(f -> "JULC-LINT-BANNED-PARAM-TYPE".equals(f.ruleId())),
                 "expected banned-param-type finding for direct-imported MapData: " + findings);
     }
@@ -470,7 +474,7 @@ class LintEngineTest {
                     @Param static PlutusData.ListData xs;
                 }
                 """;
-        var findings = engine.lint(src);
+        var findings = lint(src);
         assertTrue(findings.stream().anyMatch(f -> "JULC-LINT-BANNED-PARAM-TYPE".equals(f.ruleId())),
                 "expected banned-param-type finding for ListData: " + findings);
     }
@@ -485,7 +489,7 @@ class LintEngineTest {
                     @Param static PlutusData.IntData n;
                 }
                 """;
-        var findings = engine.lint(src);
+        var findings = lint(src);
         assertTrue(findings.stream().anyMatch(f -> "JULC-LINT-BANNED-PARAM-TYPE".equals(f.ruleId())),
                 "expected banned-param-type finding for IntData: " + findings);
     }
@@ -498,7 +502,7 @@ class LintEngineTest {
                     @Param static byte[] salt;
                 }
                 """;
-        var findings = engine.lint(src);
+        var findings = lint(src);
         assertTrue(findings.stream().noneMatch(f -> "JULC-LINT-BANNED-PARAM-TYPE".equals(f.ruleId())),
                 "byte[] @Param should NOT be flagged: " + findings);
     }
@@ -508,14 +512,15 @@ class LintEngineTest {
         String src = """
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
                 public class V {
                     @Entrypoint
-                    public static boolean validate(BigInteger amount, Object r, Object ctx) {
+                    public static boolean validate(BigInteger amount, Object r, PlutusData ctx) {
                         return true;
                     }
                 }
                 """;
-        var findings = engine.lint(src);
+        var findings = lint(src);
         assertTrue(findings.stream().anyMatch(f -> "JULC-LINT-ENTRYPOINT-BIGINT-PARAM".equals(f.ruleId())),
                 "expected entrypoint-bigint-param finding: " + findings);
     }
@@ -525,15 +530,16 @@ class LintEngineTest {
         String src = """
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
                 public class V {
                     record D(BigInteger amount) {}
                     @Entrypoint
-                    public static boolean validate(D d, Object r, Object ctx) {
+                    public static boolean validate(D d, Object r, PlutusData ctx) {
                         return true;
                     }
                 }
                 """;
-        var findings = engine.lint(src);
+        var findings = lint(src);
         assertTrue(findings.stream().noneMatch(f -> "JULC-LINT-ENTRYPOINT-BIGINT-PARAM".equals(f.ruleId())),
                 "record-wrapped BigInteger should NOT be flagged: " + findings);
     }
@@ -550,7 +556,7 @@ class LintEngineTest {
                     }
                 }
                 """;
-        var findings = engine.lint(src);
+        var findings = lint(src);
         assertTrue(findings.stream().anyMatch(f -> "JULC-LINT-LAMBDA-APPLY".equals(f.ruleId())),
                 "expected lambda-apply finding: " + findings);
     }
@@ -566,7 +572,7 @@ class LintEngineTest {
                     }
                 }
                 """;
-        var findings = engine.lint(src);
+        var findings = lint(src);
         assertTrue(findings.stream().noneMatch(f -> "JULC-LINT-LAMBDA-APPLY".equals(f.ruleId())),
                 "inline lambda HOF should NOT be flagged: " + findings);
     }
@@ -584,7 +590,7 @@ class LintEngineTest {
                     record Tuple2<A, B>(A first, B second) {}
                 }
                 """;
-        var findings = engine.lint(src);
+        var findings = lint(src);
         assertTrue(findings.stream().anyMatch(f -> "JULC-LINT-TUPLE-SWITCH".equals(f.ruleId())),
                 "expected tuple-switch finding: " + findings);
     }
@@ -602,7 +608,7 @@ class LintEngineTest {
                     record Tuple3<A, B, C>(A first, B second, C third) {}
                 }
                 """;
-        var findings = engine.lint(src);
+        var findings = lint(src);
         assertTrue(findings.stream().anyMatch(f -> "JULC-LINT-TUPLE-SWITCH".equals(f.ruleId())),
                 "expected tuple-switch finding for type-pattern: " + findings);
     }
@@ -623,7 +629,7 @@ class LintEngineTest {
                     }
                 }
                 """;
-        var findings = engine.lint(src);
+        var findings = lint(src);
         assertTrue(findings.stream().noneMatch(f -> "JULC-LINT-TUPLE-SWITCH".equals(f.ruleId())),
                 "sealed interface switch should NOT be flagged: " + findings);
     }
@@ -637,7 +643,7 @@ class LintEngineTest {
                     }
                 }
                 """;
-        var findings = engine.lint(src);
+        var findings = lint(src);
         assertTrue(findings.stream().anyMatch(f -> "JULC-LINT-BYTESTRINGLIB-OFFCHAIN".equals(f.ruleId())),
                 "expected bytestringlib-offchain finding: " + findings);
     }
@@ -652,7 +658,7 @@ class LintEngineTest {
                     }
                 }
                 """;
-        var findings = engine.lint(src);
+        var findings = lint(src);
         assertTrue(findings.stream().noneMatch(f -> "JULC-LINT-BYTESTRINGLIB-OFFCHAIN".equals(f.ruleId())),
                 "ByteStringLib.take should NOT be flagged: " + findings);
     }
@@ -669,7 +675,7 @@ class LintEngineTest {
                     }
                 }
                 """;
-        var findings = engine.lint(src);
+        var findings = lint(src);
         assertTrue(findings.stream().anyMatch(f -> "JULC-LINT-MKCONS-PAIR-LIST".equals(f.ruleId())),
                 "expected mkcons-pair-list finding: " + findings);
     }
@@ -685,7 +691,7 @@ class LintEngineTest {
                     }
                 }
                 """;
-        var findings = engine.lint(src);
+        var findings = lint(src);
         assertTrue(findings.stream().noneMatch(f -> "JULC-LINT-MKCONS-PAIR-LIST".equals(f.ruleId())),
                 "data-only list should NOT be flagged: " + findings);
     }
@@ -701,7 +707,7 @@ class LintEngineTest {
                     }
                 }
                 """;
-        var findings = engine.lint(src);
+        var findings = lint(src);
         assertTrue(findings.stream().anyMatch(f -> "JULC-LINT-MAP-RETURN-TYPE".equals(f.ruleId())),
                 "expected map-return-type finding: " + findings);
     }
@@ -718,7 +724,7 @@ class LintEngineTest {
                     }
                 }
                 """;
-        var findings = engine.lint(src);
+        var findings = lint(src);
         assertTrue(findings.stream().noneMatch(f -> "JULC-LINT-MAP-RETURN-TYPE".equals(f.ruleId())),
                 "bare .map() should NOT be flagged: " + findings);
     }
@@ -734,7 +740,7 @@ class LintEngineTest {
                     }
                 }
                 """;
-        var findings = engine.lint(src);
+        var findings = lint(src);
         assertTrue(findings.stream().anyMatch(f -> "JULC-LINT-INCREMENT".equals(f.ruleId())),
                 "expected increment finding: " + findings);
     }
@@ -748,7 +754,7 @@ class LintEngineTest {
                     }
                 }
                 """;
-        var findings = engine.lint(src);
+        var findings = lint(src);
         assertTrue(findings.stream().anyMatch(f -> "JULC-LINT-INCREMENT".equals(f.ruleId())),
                 "expected increment finding for --i: " + findings);
     }
@@ -762,7 +768,7 @@ class LintEngineTest {
                     }
                 }
                 """;
-        var findings = engine.lint(src);
+        var findings = lint(src);
         assertTrue(findings.stream().noneMatch(f -> "JULC-LINT-INCREMENT".equals(f.ruleId())),
                 "unary minus should NOT be flagged: " + findings);
     }

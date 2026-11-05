@@ -42,7 +42,9 @@ class ProjectionSharingDecompileTest {
                     }
                 }
                 """;
-        var expectedProjections = List.of(4, 1);
+        // Three source projections of b.amount(); since ADR-068 M1 the compareTo comparison evaluates its receiver
+        // once (#146), so BASELINE projects three times where it projected four.
+        var expectedProjections = List.of(3, 1);
         var levels = List.of(OptimizationLevel.BASELINE, OptimizationLevel.PV11_SAFE);
         for (int i = 0; i < levels.size(); i++) {
             var level = levels.get(i);

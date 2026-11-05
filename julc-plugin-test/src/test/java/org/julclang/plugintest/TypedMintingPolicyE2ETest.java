@@ -28,13 +28,19 @@ class TypedMintingPolicyE2ETest extends PluginTestBase {
 
     static final String TYPED_MINTING_POLICY = """
             import org.julclang.core.PlutusData;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.ledger.TxInfo;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.MintingValidator;
+            import org.julclang.ledger.PubKeyHash;
+            import org.julclang.stdlib.Builtins;
 
             @MintingValidator
             class TypedMintingPolicy {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                     TxInfo txInfo = ctx.txInfo();
-                    return txInfo.signatories().contains(redeemer);
+                    return txInfo.signatories().contains(PubKeyHash.of(Builtins.unBData(redeemer)));
                 }
             }
             """;

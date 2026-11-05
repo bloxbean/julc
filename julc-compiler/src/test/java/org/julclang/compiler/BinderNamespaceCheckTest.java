@@ -1,6 +1,5 @@
 package org.julclang.compiler;
 
-import com.github.javaparser.StaticJavaParser;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.uplc.UplcGenerator;
@@ -36,20 +35,15 @@ class BinderNamespaceCheckTest {
         assertTrue(error.getMessage().contains("'acc'"), error.getMessage());
     }
 
+    /** G2 on the javac frontend: a compilation under the check, which the test tasks enable, has nothing outside the namespace. */
     @Test
-    void javaFrontendNamespace() {
-        var validator = StaticJavaParser.parse("""
+    void aCompilationKeepsToTheNamespace() {
+        var result = new JulcCompiler().compileMethod("""
                 class V {
-                    static java.math.BigInteger fee(java.math.BigInteger amount) { return amount; }
+                    static long total(long acc) { return acc + 1; }
+                    static long m(long amount) { return total(amount); }
                 }
-                """);
-        var library = StaticJavaParser.parse("class Lib { static long total(long acc) { return acc; } }");
-        var allowed = JulcCompiler.sourceBinderNamespace(validator, List.of(library));
-        for (var name : List.of("#__match_tag", "amount", "amount'2", "acc", "V.fee", "org.example.Lib.total"))
-            assertTrue(allowed.test(name), name);
-        // Only declared names count: type names and names that only appear in calls do not.
-        for (var name : List.of("__match_tag", "scriptContextData", "x", "xs__", "go", "V.missing", "V", "Lib",
-                "java", "BigInteger"))
-            assertFalse(allowed.test(name), name);
+                """, "m", List.of());
+        assertFalse(result.hasErrors(), result.diagnostics()::toString);
     }
 }

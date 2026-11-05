@@ -329,7 +329,8 @@ class StrictDataBoundaryTest {
         String annotated = plain.replace("@MintingValidator class Opaque", """
                 @org.julclang.verification.annotation.ControlledMint(
                     authority=\"00000000000000000000000000000000000000000000000000000000\",
-                    tokenName=\"01\", quantity=\"1\")
+                    tokenName=\"01\", quantity=1,
+                    action=org.julclang.verification.annotation.MintAction.MINT)
                 @MintingValidator class Opaque""");
         var compiler = new JulcCompiler(STDLIB);
         var plainProgram = compiler.compile(plain).program();
@@ -430,9 +431,11 @@ class StrictDataBoundaryTest {
                         import java.util.List;""")
                 .replace("JulcArray<BigInteger> redeemer",
                         "List<JulcArray<BigInteger>> redeemer");
+        // A list's elements are Data-encoded, so the nested array is rejected where its type is written, before
+        // the boundary check (JULC0091, ADR-068 D6, #298).
         var nestedError = assertThrows(CompilerException.class,
                 () -> new JulcCompiler(STDLIB).compile(nested));
-        assertTrue(nestedError.getMessage().contains("Unsupported strict boundary type ArrayType"));
+        assertEquals("JULC0091", nestedError.diagnostics().getFirst().code(), nestedError.getMessage());
         assertTrue(nestedError.diagnostics().getFirst().line() > 0);
     }
 

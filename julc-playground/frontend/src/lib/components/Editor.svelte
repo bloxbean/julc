@@ -15,20 +15,19 @@
 
   onMount(async () => {
     monacoInstance = await import('monaco-editor');
-    const jrlLang = await import('../monaco/jrl-language');
+    const { JULC_THEME } = await import('../monaco/theme');
     const { registerJavaCompletions, registerJavaHoverProvider, registerJavaSignatureHelpProvider, registerJavaDefinitionProvider, setLibrarySource: setLibSrc } = await import('../monaco/java-completions');
 
-    jrlLang.registerJrlLanguage(monacoInstance);
     registerJavaCompletions(monacoInstance);
     registerJavaHoverProvider(monacoInstance);
     registerJavaSignatureHelpProvider(monacoInstance);
     registerJavaDefinitionProvider(monacoInstance);
-    monacoInstance.editor.defineTheme('jrl-dark', jrlLang.JRL_THEME);
+    monacoInstance.editor.defineTheme('julc-dark', JULC_THEME);
 
     editor = monacoInstance.editor.create(editorContainer, {
       value: $source,
       language: 'java',
-      theme: 'jrl-dark',
+      theme: 'julc-dark',
       fontSize: 14,
       fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
       minimap: { enabled: false },
@@ -44,7 +43,7 @@
     decorations = editor.createDecorationsCollection([]);
 
     // Expose for Playwright testing
-    (window as any).__jrlEditor = editor;
+    (window as any).__julcEditor = editor;
 
     editor.onDidChangeModelContent(() => {
       const value = editor.getValue();

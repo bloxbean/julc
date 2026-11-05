@@ -3,6 +3,8 @@ package org.julclang.core.types;
 import org.julclang.core.PlutusData;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
@@ -147,6 +149,30 @@ class JulcArrayListTest {
             assertEquals(2, taken.size());
             assertEquals("a", taken.get(0));
             assertEquals("b", taken.get(1));
+        }
+
+        @ParameterizedTest
+        @ValueSource(longs = {-1, -2147483648L, -4294967295L, -4294967296L, -4294967297L, Long.MIN_VALUE, Long.MIN_VALUE + 1})
+        void aNegativeCountThrows(long n) {
+            JulcList<String> list = JulcList.of("a", "b", "c");
+            assertThrows(IllegalArgumentException.class, () -> list.take(n));
+            assertThrows(IllegalArgumentException.class, () -> list.drop(n));
+        }
+
+        @ParameterizedTest
+        @ValueSource(longs = {3, 4294967295L, 4294967296L, 4294967297L, Long.MAX_VALUE})
+        void aCountPastTheSizeTakesItAll(long n) {
+            JulcList<String> list = JulcList.of("a", "b", "c");
+            assertEquals(3, list.take(n).size());
+            assertTrue(list.drop(n).isEmpty());
+        }
+
+        @ParameterizedTest
+        @ValueSource(longs = {-1, 3, 4294967296L, -4294967296L, 4294967297L, Long.MIN_VALUE, Long.MAX_VALUE})
+        void anIndexOutOfRangeThrows(long index) {
+            JulcList<String> list = JulcList.of("a", "b", "c");
+            assertThrows(RuntimeException.class, () -> list.get(index));
+            assertThrows(RuntimeException.class, () -> list.toArray().get(index));
         }
 
         @Test

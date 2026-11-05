@@ -202,14 +202,19 @@ class JulcScriptAdapterTest {
         // Compile a parameterized validator, decode it, apply CCL params, re-encode
         var source = """
                 import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.Param;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class ThresholdValidator {
-                    @Param BigInteger threshold;
+                    @Param static BigInteger threshold;
 
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                        return threshold > 0;
+                        return threshold.compareTo(BigInteger.ZERO) > 0;
                     }
                 }
                 """;

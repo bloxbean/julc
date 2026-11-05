@@ -93,6 +93,15 @@ class UplcTextRoundTripTest {
         assertConstRoundTrip(Constant.string("backslash \\"));
     }
 
+    /** A digit after a decimal escape must stay a character (found by DecoderFuzzTest.uplcText). */
+    @Test
+    void controlCharacterFollowedByDigitKeepsTheDigit() {
+        for (String value : List.of("\u00001", "\u000412", "\u007f9", "\u0004\u0000\u00001", "\u0001٣")) {
+            var printed = UplcPrinter.print(Term.const_(Constant.string(value)));
+            assertEquals(Term.const_(Constant.string(value)), UplcParser.parseTerm(printed), printed);
+        }
+    }
+
     @Test
     void roundTripConstUnit() {
         assertConstRoundTrip(Constant.unit());

@@ -26,6 +26,10 @@ class DecompilerIntegrationTest {
     private static final HexFormat HEX = HexFormat.of();
 
     static final String SIMPLE_ALWAYS_TRUE = """
+            import org.julclang.core.PlutusData;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
             @SpendingValidator
             class AlwaysTrue {
                 @Entrypoint
@@ -37,27 +41,35 @@ class DecompilerIntegrationTest {
 
     static final String SIMPLE_ADDITION = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class AddValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                    BigInteger a = 10;
-                    BigInteger b = 20;
-                    return a + b == 30;
+                    BigInteger a = BigInteger.TEN;
+                    BigInteger b = BigInteger.valueOf(20);
+                    return a.add(b).equals(BigInteger.valueOf(30));
                 }
             }
             """;
 
     static final String IF_ELSE_VALIDATOR = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class IfElseValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                    BigInteger x = 42;
-                    if (x > 10) {
+                    BigInteger x = BigInteger.valueOf(42);
+                    if (x.compareTo(BigInteger.TEN) > 0) {
                         return true;
                     } else {
                         return false;
@@ -68,16 +80,20 @@ class DecompilerIntegrationTest {
 
     static final String HELPER_METHOD_VALIDATOR = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class HelperValidator {
                 static boolean isPositive(BigInteger n) {
-                    return n > 0;
+                    return n.compareTo(BigInteger.ZERO) > 0;
                 }
 
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                    return isPositive(42);
+                    return isPositive(BigInteger.valueOf(42));
                 }
             }
             """;

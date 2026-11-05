@@ -56,6 +56,9 @@ class ByteStringLibTest {
     static final String RECORD_HEADER = """
             import java.math.BigInteger;
             import org.julclang.stdlib.lib.ByteStringLib;
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.MintingValidator;
 
             @MintingValidator
             class TestValidator {
@@ -81,6 +84,9 @@ class ByteStringLibTest {
         return """
                 import java.math.BigInteger;
                 import org.julclang.stdlib.lib.ByteStringLib;
+                import org.julclang.core.PlutusData;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.MintingValidator;
 
                 @MintingValidator
                 class TestValidator {
@@ -98,7 +104,7 @@ class ByteStringLibTest {
         void atReturnsCorrectByte() {
             // at(#"ab", 0) should be 0xab = 171
             var source = validator("""
-                        int b = ByteStringLib.at(data, 0);
+                        long b = ByteStringLib.at(data, 0);
                         return b == 171;
                     """);
             var program = compile(source);
@@ -109,7 +115,7 @@ class ByteStringLibTest {
         void atSecondByte() {
             // at(#"abcd", 1) should be 0xcd = 205
             var source = validator("""
-                        int b = ByteStringLib.at(data, 1);
+                        long b = ByteStringLib.at(data, 1);
                         return b == 205;
                     """);
             var program = compile(source);
@@ -135,7 +141,7 @@ class ByteStringLibTest {
             // cons(171, empty()) → at(result, 0) == 171
             var source = validatorNoData("""
                         byte[] result = ByteStringLib.cons(171, ByteStringLib.empty());
-                        int b = ByteStringLib.at(result, 0);
+                        long b = ByteStringLib.at(result, 0);
                         return b == 171;
                     """);
             var program = compile(source);
@@ -161,7 +167,7 @@ class ByteStringLibTest {
             // slice(#"0102030405", 2, 2) → at(result, 0) == 3
             var source = validator("""
                         byte[] result = ByteStringLib.slice(data, 2, 2);
-                        int b = ByteStringLib.at(result, 0);
+                        long b = ByteStringLib.at(result, 0);
                         return b == 3;
                     """);
             var program = compile(source);
@@ -187,7 +193,7 @@ class ByteStringLibTest {
             // drop(#"0102030405", 3) → at(result, 0) == 4
             var source = validator("""
                         byte[] result = ByteStringLib.drop(data, 3);
-                        int b = ByteStringLib.at(result, 0);
+                        long b = ByteStringLib.at(result, 0);
                         return b == 4;
                     """);
             var program = compile(source);
@@ -251,7 +257,7 @@ class ByteStringLibTest {
         void consAndAtRoundTrip() {
             var source = validatorNoData("""
                         byte[] bs = ByteStringLib.cons(42, ByteStringLib.empty());
-                        int b = ByteStringLib.at(bs, 0);
+                        long b = ByteStringLib.at(bs, 0);
                         return b == 42;
                     """);
             var program = compile(source);

@@ -15,7 +15,16 @@ package org.julclang.compiler.error;
  * code.
  */
 public record CompilerDiagnostic(Level level, String message, String fileName,
-                                 int line, int column, String suggestion, String code) {
+                                 int line, int column, String suggestion, String code, String excerpt) {
+
+    public CompilerDiagnostic(Level level, String message, String fileName, int line, int column, String suggestion, String code) {
+        this(level, message, fileName, line, column, suggestion, code, null);
+    }
+
+    /** This diagnostic with its source line shown ({@link SourceExcerpt}). */
+    public CompilerDiagnostic withExcerpt(String excerpt) {
+        return new CompilerDiagnostic(level, message, fileName, line, column, suggestion, code, excerpt);
+    }
 
     public enum Level { ERROR, WARNING, INFO }
 
@@ -47,6 +56,7 @@ public record CompilerDiagnostic(Level level, String message, String fileName,
         if (hasSuggestion()) {
             sb.append(" (suggestion: ").append(suggestion).append(")");
         }
+        if (excerpt != null) sb.append("\n").append(excerpt.indent(4).stripTrailing());
         return sb.toString();
     }
 }

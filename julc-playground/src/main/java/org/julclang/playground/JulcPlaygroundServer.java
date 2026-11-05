@@ -30,22 +30,22 @@ public class JulcPlaygroundServer {
     private static final long MAX_REQUEST_SIZE = 256 * 1024; // 256KB (source + library + metadata)
 
     public static void main(String[] args) {
-        int port = intEnv("JULC_PLAYGROUND_PORT", intEnv("JRL_PLAYGROUND_PORT", DEFAULT_PORT));
-        int maxThreads = intEnv("JULC_MAX_COMPILE_THREADS", intEnv("JRL_MAX_COMPILE_THREADS", DEFAULT_MAX_THREADS));
-        long timeout = longEnv("JULC_COMPILE_TIMEOUT_SECONDS", longEnv("JRL_COMPILE_TIMEOUT_SECONDS", DEFAULT_TIMEOUT_SECONDS));
+        int port = intEnv("JULC_PLAYGROUND_PORT", DEFAULT_PORT);
+        int maxThreads = intEnv("JULC_MAX_COMPILE_THREADS", DEFAULT_MAX_THREADS);
+        long timeout = longEnv("JULC_COMPILE_TIMEOUT_SECONDS", DEFAULT_TIMEOUT_SECONDS);
 
         var app = createApp(port, maxThreads, timeout);
         printBanner(port);
     }
 
     public static Javalin createApp(int port, int maxThreads, long timeoutSeconds) {
-        var stdlib = org.julclang.stdlib.StdlibRegistry.defaultRegistry();
-        var julcCompiler = new JulcCompiler(stdlib);
         var sandbox = new CompilationSandbox(maxThreads, timeoutSeconds);
 
         // Cache stdlib source scan once at startup (classpath doesn't change at runtime)
         var cachedLibSources = org.julclang.compiler.LibrarySourceResolver
                 .scanClasspathSources(JulcCompiler.class.getClassLoader());
+        // Its sources are JAR sources; the editor's are project sources (ADR-068 D8).
+        var julcCompiler = org.julclang.tools.service.ToolsService.compilerFor(cachedLibSources);
 
         boolean behindProxy = "true".equalsIgnoreCase(System.getenv("JULC_BEHIND_PROXY"));
         var checkLimiter = new RateLimiter(300, 60_000, behindProxy);

@@ -1,0 +1,4 @@
+# The 189 DIFFERENT rows of m5-corpus-head-2 the script did not classify, owed by hand: key, row class, detail, origin test.
+# Section 16 settled 184 of them; section 17 settled the last 5 under the maintainer's decisions on O7 and O9 (r17: "Policy
+# rejection at run time" under M3f decision 1, and "Representation only" for a DIFFERENT-pir row both frontends accept), and
+# they are in m5a-head2-accepted-differences.tsv. No row is owed.

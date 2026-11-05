@@ -1,0 +1,23 @@
+format: 2
+name: JulcMap lookup with an equal byte[] key (T10)
+class: Probe
+method: m
+arg: a142010201
+arg: 420102
+expect: AGREE
+note: Off-chain JulcAssocMap compares keys with Objects.equals, so an equal but distinct byte[] is not found.
+note: ADR-068 M1 (D6) makes JuLC's JVM collections compare byte[] elements, keys and values by content, as on-chain,
+note: so the JVM now finds the key and the case agrees at every level; recorded.jvm and recorded.base keep the old
+note: pins. T10's record-with-byte[]-component form stays open (ADR-068 D6, JULC0087 in M3).
+recorded.jvm: Value d87980 []
+recorded.base: Value d87a80 []
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+import org.julclang.core.types.JulcMap;
+
+public class Probe {
+    public static boolean m(JulcMap<byte[], BigInteger> map, byte[] key) {
+        return map.containsKey(key);
+    }
+}

@@ -1,0 +1,48 @@
+{
+  "comment": "ADR-068 I6: the javac frontend's native-image metadata. The only file naming JDK-internal classes; JavacNativeImageMetadataTest checks every type, method and bundle against the JDK the build runs on.",
+  "reflection": [
+    {
+      "type": "com.sun.tools.javac.api.JavacTrees",
+      "methods": [
+        {
+          "name": "instance",
+          "parameterTypes": [
+            "javax.tools.JavaCompiler$CompilationTask"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "javax.tools.JavaCompiler$CompilationTask"
+    },
+    {
+      "type": "sun.text.resources.cldr.FormatData"
+    },
+    {
+      "type": "sun.text.resources.cldr.FormatData_en"
+    }
+  ],
+  "resources": [
+    {
+      "glob": "org/julclang/compiler/frontend/javac/platform.bin"
+    },
+    {
+      "glob": "org/julclang/compiler/frontend/javac/stubs.bin"
+    },
+    {
+      "glob": "META-INF/julc/bundled-sources.sha256"
+    },
+    {
+      "glob": "META-INF/plutus-sources/**"
+    },
+    {
+      "glob": "META-INF/services/com.sun.source.util.Plugin"
+    },
+    {
+      "bundle": "com.sun.tools.javac.resources.compiler"
+    },
+    {
+      "bundle": "com.sun.tools.javac.resources.javac"
+    }
+  ]
+}

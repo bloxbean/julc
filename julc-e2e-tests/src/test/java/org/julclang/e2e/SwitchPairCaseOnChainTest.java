@@ -44,6 +44,9 @@ import static org.junit.jupiter.api.Assertions.*;
 class SwitchPairCaseOnChainTest extends E2ETestBase {
     private static final String SOURCE = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
             @SpendingValidator class SwitchPairGate {
                 sealed interface Action permits Pay, Cancel {}
                 record Pay(BigInteger amount, BigInteger unused) implements Action {}

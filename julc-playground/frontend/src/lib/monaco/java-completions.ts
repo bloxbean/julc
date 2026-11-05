@@ -1,5 +1,6 @@
 import type * as Monaco from 'monaco-editor';
 import { METHOD_DOCS, ANNOTATION_DOCS, TYPE_DOCS, INSTANCE_METHODS, type InstanceMethodInfo } from './java-docs';
+import { nextImportSegments } from './java-imports';
 
 const JAVA_LANGUAGE_ID = 'java';
 
@@ -162,6 +163,32 @@ function toCompletionItems(
   });
 }
 
+/** Completes an import one segment at a time; a package reopens the list for the next one. */
+function importCompletions(
+  monaco: typeof Monaco,
+  position: Monaco.Position,
+  match: RegExpMatchArray,
+  afterCursor: string,
+): Monaco.languages.CompletionItem[] {
+  const [, staticKeyword, prefix, partial] = match;
+  const range = {
+    startLineNumber: position.lineNumber,
+    endLineNumber: position.lineNumber,
+    startColumn: position.column - partial.length,
+    endColumn: position.column,
+  };
+  const classEnd = staticKeyword ? '.' : afterCursor.trimStart().startsWith(';') ? '' : ';';
+  return nextImportSegments(prefix).map(({ name, isPackage }, index) => ({
+    label: name,
+    kind: isPackage ? monaco.languages.CompletionItemKind.Module : monaco.languages.CompletionItemKind.Class,
+    detail: prefix + name,
+    insertText: name + (isPackage ? '.' : classEnd),
+    sortText: String(index).padStart(3, '0'),
+    command: isPackage ? { id: 'editor.action.triggerSuggest', title: 'Next segment' } : undefined,
+    range,
+  }));
+}
+
 // --- Registration ---
 
 export function registerJavaCompletions(monaco: typeof Monaco) {
@@ -178,6 +205,12 @@ export function registerJavaCompletions(monaco: typeof Monaco) {
 
       const lineContent = model.getLineContent(position.lineNumber);
       const beforeCursor = lineContent.substring(0, position.column - 1);
+
+      // --- Import lines: packages and classes, never a class's members ---
+      const importMatch = beforeCursor.match(/^\s*import\s+(static\s+)?((?:\w+\.)*)(\w*)$/);
+      if (importMatch) {
+        return { suggestions: importCompletions(monaco, position, importMatch, lineContent.substring(position.column - 1)) };
+      }
 
       // --- Dot-triggered completions ---
       const dotMatch = beforeCursor.match(/(\w+)\.\s*(\w*)$/);
@@ -558,15 +591,20 @@ function snippets(monaco: typeof Monaco, range: Monaco.IRange): Monaco.languages
       kind: monaco.languages.CompletionItemKind.Snippet,
       detail: 'Spending validator template',
       insertText: [
-        'import java.math.BigInteger;',
+        'import org.julclang.core.PlutusData;',
+        'import org.julclang.ledger.ScriptContext;',
+        'import org.julclang.ledger.TxInfo;',
+        'import org.julclang.stdlib.annotation.Entrypoint;',
+        'import org.julclang.stdlib.annotation.SpendingValidator;',
+        'import org.julclang.stdlib.lib.ContextsLib;',
         '',
         '@SpendingValidator',
         'class ${1:MyValidator} {',
-        '    record ${2:MyDatum}(PlutusData ${3:owner}) {}',
+        '    record ${2:MyDatum}(byte[] ${3:owner}) {}',
         '',
         '    @Entrypoint',
         '    static boolean validate(${2:MyDatum} datum, PlutusData redeemer, ScriptContext ctx) {',
-        '        PlutusData txInfo = ContextsLib.getTxInfo(ctx);',
+        '        TxInfo txInfo = ContextsLib.getTxInfo(ctx);',
         '        return ContextsLib.signedBy(txInfo, datum.${3:owner}());',
         '    }',
         '}',
@@ -579,7 +617,10 @@ function snippets(monaco: typeof Monaco, range: Monaco.IRange): Monaco.languages
       kind: monaco.languages.CompletionItemKind.Snippet,
       detail: 'Minting validator template',
       insertText: [
-        'import java.math.BigInteger;',
+        'import org.julclang.core.PlutusData;',
+        'import org.julclang.ledger.ScriptContext;',
+        'import org.julclang.stdlib.annotation.Entrypoint;',
+        'import org.julclang.stdlib.annotation.MintingValidator;',
         '',
         '@MintingValidator',
         'class ${1:MyPolicy} {',

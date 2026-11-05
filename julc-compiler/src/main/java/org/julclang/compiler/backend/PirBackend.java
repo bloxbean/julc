@@ -11,6 +11,7 @@ import org.julclang.core.source.SourceMap;
 
 import java.util.IdentityHashMap;
 import java.util.Map;
+import java.util.Set;
 
 /** Shared post-wrapper pipeline. The caller owns frontend diagnostics and metadata. */
 public final class PirBackend {
@@ -42,13 +43,60 @@ public final class PirBackend {
             Map<PirTerm, SourceLocation> positions,
             boolean optimize,
             PirDebugProvenance provenance) {
-        var values = new ValueLiteralFoldPass(context, positions, provenance).lower(term);
+        return lower(term, context, positions, optimize, provenance, Bindings.NONE, true);
+    }
+
+    /** {@link #lower} of a program whose methods and fields are {@code bindings}. */
+    public static Result lower(
+            PirTerm term,
+            CompilationContext context,
+            Map<PirTerm, SourceLocation> positions,
+            boolean optimize,
+            PirDebugProvenance provenance,
+            Bindings bindings) {
+        return lower(term, context, positions, optimize, provenance, bindings, true);
+    }
+
+    /**
+     * The binders of a program's methods and static fields, which {@link DelayedMethodPass} reads. A term that comes
+     * with none, as a linked program does, has no method to delay.
+     */
+    public record Bindings(Set<String> methods, Set<String> fields) {
+        static final Bindings NONE = new Bindings(Set.of(), Set.of());
+    }
+
+    /** {@link #lower} without the stage log lines: {@code compileMethod} has never written them. */
+    public static Result lowerQuietly(
+            PirTerm term,
+            CompilationContext context,
+            Map<PirTerm, SourceLocation> positions,
+            Bindings bindings) {
+        return lower(term, context, positions, true, null, bindings, false);
+    }
+
+    private static Result lower(
+            PirTerm term,
+            CompilationContext context,
+            Map<PirTerm, SourceLocation> positions,
+            boolean optimize,
+            PirDebugProvenance provenance,
+            Bindings bindings,
+            boolean logStages) {
+        // First, at every level: it decides how a cast lowers, and needs only every method's body in the term.
+        var narrowing = new NarrowingElisionPass(positions, provenance).lower(term);
+        var values = new ValueLiteralFoldPass(context, narrowing.positions(), provenance).lower(narrowing.term());
         var folding =
                 new ArrayLiteralFoldPass(context, values.positions(), provenance)
                         .lower(values.term());
-        var sharing =
-                new ValueConversionSharingPass(context, folding.positions(), provenance)
+        // After the folds, whose constants need no delay, and before the passes that move a
+        // conversion, which must see each delayed read as the call it is.
+        var delayed =
+                new DelayedMethodPass(
+                                bindings.methods(), bindings.fields(), folding.positions(), provenance)
                         .lower(folding.term());
+        var sharing =
+                new ValueConversionSharingPass(context, delayed.positions(), provenance)
+                        .lower(delayed.term());
         var promotion =
                 new ListIndexPromotionPass(context, sharing.positions(), provenance)
                         .lower(sharing.term());
@@ -64,8 +112,9 @@ public final class PirBackend {
         String stage = "UPLC lowering";
         if (context.isSourceMapEnabled()) {
             sourceMap = SourceMap.of(generator.getUplcPositions());
-            context.logf(
-                    "Source map generated: %d entries (optimization skipped)", sourceMap.size());
+            if (logStages) {
+                context.logf("Source map generated: %d entries (optimization skipped)", sourceMap.size());
+            }
         } else if (optimize) {
             var optimized = new UplcOptimizer(context).optimizeWithReport(uplc);
             uplc = optimized.term();
@@ -74,7 +123,7 @@ public final class PirBackend {
                     optimized.appliedPasses().isEmpty()
                             ? "UPLC optimizer (no rewrites)"
                             : "UPLC optimizer passes " + optimized.appliedPasses();
-            context.log("UPLC optimization complete");
+            if (logStages) context.log("UPLC optimization complete");
         }
         var version = context.target().uplcVersion();
         var program = new Program(version.major(), version.minor(), version.patch(), uplc);

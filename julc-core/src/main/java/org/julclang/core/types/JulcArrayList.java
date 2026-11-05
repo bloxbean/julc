@@ -3,11 +3,16 @@ package org.julclang.core.types;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Off-chain implementation of {@link JulcList} backed by a {@code java.util.List<T>}.
  * All operations are immutable — mutations return new instances.
+ * <p>
+ * Elements compare as on-chain, where a list compares by Data equality: a {@code byte[]} element by
+ * its content, any other element by its own {@code equals} (so a nested JuLC collection compares
+ * deeply). This applies to {@link #contains}, {@link #equals} and {@link #hashCode}. Arrays are
+ * held, not copied: mutating one after it is added changes the list's equality and hash, as with
+ * any mutable element.
  *
  * @param <T> the element type
  */
@@ -27,7 +32,7 @@ public final class JulcArrayList<T> implements JulcList<T> {
 
     @Override
     public T get(long index) {
-        return delegate.get((int) index);
+        return delegate.get(Math.toIntExact(index));
     }
 
     @Override
@@ -38,14 +43,18 @@ public final class JulcArrayList<T> implements JulcList<T> {
 
     @Override
     public JulcList<T> take(long n) {
-        int count = (int) Math.min(n, delegate.size());
-        return new JulcArrayList<>(delegate.subList(0, count));
+        return new JulcArrayList<>(delegate.subList(0, count(n)));
     }
 
     @Override
     public JulcList<T> drop(long n) {
-        int skip = (int) Math.min(n, delegate.size());
-        return new JulcArrayList<>(delegate.subList(skip, delegate.size()));
+        return new JulcArrayList<>(delegate.subList(count(n), delegate.size()));
+    }
+
+    /** The elements {@code take} or {@code drop} counts: {@code n}, up to the size. A negative {@code n} throws. */
+    private int count(long n) {
+        if (n < 0) throw new IllegalArgumentException("negative count: " + n);
+        return (int) Math.min(n, delegate.size());
     }
 
     @Override
@@ -86,7 +95,10 @@ public final class JulcArrayList<T> implements JulcList<T> {
 
     @Override
     public boolean contains(T element) {
-        return delegate.contains(element);
+        for (T elem : delegate) {
+            if (ContentEquality.equal(elem, element)) return true;
+        }
+        return false;
     }
 
     @Override
@@ -139,13 +151,13 @@ public final class JulcArrayList<T> implements JulcList<T> {
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
-        if (o instanceof JulcArrayList<?> that) return delegate.equals(that.delegate);
+        if (o instanceof JulcArrayList<?> that) return ContentEquality.equalLists(delegate, that.delegate);
         return false;
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(delegate);
+        return ContentEquality.hashList(delegate);
     }
 
     @Override

@@ -2,7 +2,9 @@ package org.julclang.compiler;
 
 import org.julclang.vm.OptimizationCostProfile;
 
+import java.util.Collection;
 import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
 import java.util.Objects;
 import java.util.Set;
@@ -22,6 +24,7 @@ public class CompilerOptions {
     private OptimizationCostProfile optimizationCostProfile;
     private final Set<String> disabledOptimizationRules = new LinkedHashSet<>();
     private Consumer<String> logger = System.out::println;
+    private Set<String> jarLibrarySources = Set.of();
 
     /**
      * Select the ledger target for this compilation.
@@ -110,6 +113,25 @@ public class CompilerOptions {
         return sourceMapEnabled;
     }
 
+    /**
+     * Experimental (ADR-068 M1, D8): the library sources of this compilation that came from JARs (a class-path scan),
+     * by provenance: the {@code String} objects the scan returned, compared by identity, never by text, so a project
+     * source whose text equals a JAR copy stays a project source. javac ranks JAR sources below project
+     * sources (a JAR unit declaring a project unit's name is shadowed); every other library source is a project
+     * source.
+     */
+    public CompilerOptions setJarLibrarySources(Collection<String> sources) {
+        var identities = Collections.newSetFromMap(new IdentityHashMap<String, Boolean>());
+        identities.addAll(sources);
+        this.jarLibrarySources = Collections.unmodifiableSet(identities);
+        return this;
+    }
+
+    /** The library sources marked as JAR sources, an identity set ({@link #setJarLibrarySources}). */
+    public Set<String> getJarLibrarySources() {
+        return jarLibrarySources;
+    }
+
     public CompilerOptions setLogger(Consumer<String> logger) {
         this.logger = Objects.requireNonNull(logger, "logger");
         return this;
@@ -138,5 +160,18 @@ public class CompilerOptions {
      */
     public void warnf(String fmt, Object... args) {
         logger.accept("[julc] WARN: " + String.format(fmt, args));
+    }
+
+    /**
+     * For a host that still takes the old frontend option (ADR-068 M6 removed it): {@code null} and {@code javac} are what JuLC
+     * does anyway, and anything else stops with what to do.
+     *
+     * @throws CompilerException for any other value
+     */
+    public static void requireJavacFrontend(String frontend) {
+        if (frontend == null || frontend.equalsIgnoreCase("javac")) return;
+        throw new CompilerException("The Java frontend option is gone: JuLC reads Java with javac alone, and '"
+                + frontend + "' is no longer selectable. Remove the option from the build; the release notes list the rewrites"
+                + " for sources javac rejects.");
     }
 }

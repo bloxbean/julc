@@ -156,7 +156,7 @@ class ValueOrientedExamplesTest {
                     }
                     return limit;
                 }
-                """, "limitFor", "Unsupported expression: AssignExpr"));
+                """, "limitFor", "Reassigning 'limit' is not supported outside a loop"));
         BEFORE.put("switch-arm-update", new Before("""
                 static BigInteger armTotal(Action action, JulcList<BigInteger> xs) {
                     BigInteger total = BigInteger.ZERO;

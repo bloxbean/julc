@@ -73,10 +73,9 @@ class ExplainDiagnosticToolTest {
         @SuppressWarnings("unchecked")
         var candidates = (List<String>) body.get("candidates");
         assertNotNull(candidates);
-        // Should give nearby JULC#### codes; catalog has JULC0001-JULC0030,
-        // so all candidates should be in that range.
+        // Should give nearby JULC#### codes.
         for (String c : candidates) {
-            assertTrue(c.startsWith("JULC00"), "candidate must be JULC00xx: " + c);
+            assertTrue(c.matches("JULC\\d{4}"), "candidate must be JULC####: " + c);
         }
     }
 

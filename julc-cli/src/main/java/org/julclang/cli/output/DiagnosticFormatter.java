@@ -18,14 +18,20 @@ public final class DiagnosticFormatter {
             case WARNING -> AnsiColors.yellow("warning");
             case INFO -> AnsiColors.blue("info");
         };
-        sb.append("./").append(d.fileName()).append(':').append(d.line()).append(':').append(d.column())
-                .append(": ").append(levelStr).append(": ");
+        if (d.fileName() != null && !d.fileName().equals("<source>")) {
+            sb.append(d.fileName().startsWith("/") ? "" : "./").append(d.fileName()).append(':').append(d.line()).append(':').append(d.column())
+                    .append(": ");
+        }
+        sb.append(levelStr).append(": ");
         if (d.hasCode()) {
             // Show the JULC#### code so users / AI agents can look up the
             // canonical fix in /ai/diagnostics.json or the troubleshooting docs.
             sb.append('[').append(d.code()).append("] ");
         }
         sb.append(d.message());
+        if (d.excerpt() != null) {
+            sb.append('\n').append(d.excerpt().indent(2).stripTrailing());
+        }
         if (d.hasSuggestion()) {
             sb.append("\n  ").append(AnsiColors.dim("suggestion: " + d.suggestion()));
         }

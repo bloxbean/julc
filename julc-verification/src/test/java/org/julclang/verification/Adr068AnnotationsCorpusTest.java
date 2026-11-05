@@ -1,0 +1,86 @@
+package org.julclang.verification;
+
+import org.junit.jupiter.api.Assumptions;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+
+import java.io.File;
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.stream.Stream;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+/**
+ * ADR-068 M6's equivalence gate for the verification resolvers: on every {@code .java} file of the corpus, what it gives equals what it gave at
+ * M6's start, when javac's reading had been compared with JavaParser's ({@code adr/evidence/068-m6a-tools.md}, and the
+ * baseline's digests in {@code adr/evidence/068/m6-tools-baseline.tsv}). Run by
+ * {@code :julc-verification:adr068Tools -Padr068.tools.sources=<dir>[:<dir>...] -Padr068.tools.baseline=<dir> [-Padr068.tools.out=<dir>]}.
+ */
+@Tag("adr068-tools")
+class Adr068AnnotationsCorpusTest {
+
+    @Test
+    void theAnnotationsAreTheBaselines() throws IOException {
+        String sources = System.getProperty("adr068.tools.sources");
+        Assumptions.assumeTrue(sources != null && !sources.isBlank(), "-Padr068.tools.sources is not set");
+        Path out = Path.of(System.getProperty("adr068.tools.out", "build/adr068-tools"));
+        Files.createDirectories(out);
+        var files = new ArrayList<Path>();
+        for (String dir : sources.split(File.pathSeparator)) {
+            try (Stream<Path> walk = Files.walk(Path.of(dir))) {
+                walk.filter(p -> p.toString().endsWith(".java") && Files.isRegularFile(p)).sorted().forEach(files::add);
+            }
+        }
+        var outputs = new ArrayList<String>();
+        for (Path file : files) {
+            String text;
+            try {
+                text = StandardCharsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(Files.readAllBytes(file))).toString();
+            } catch (CharacterCodingException e) {
+                continue;
+            }
+            outputs.add(output("annotations", sources, file, read(text)));
+        }
+        Files.write(out.resolve("annotations-outputs.tsv"), outputs);
+        assertBaseline("annotations-outputs.tsv", outputs);
+    }
+
+    private static String read(String text) {
+        try {
+            return SourceAnnotations.read(text).toString();
+        } catch (RuntimeException e) {
+            return "ERROR";
+        }
+    }
+
+    /** What the tool gives for a corpus file, one line. */
+    private static String output(String tool, String sources, Path file, Object value) {
+        String key = file.toString();
+        for (String dir : sources.split(File.pathSeparator)) {
+            if (file.startsWith(dir)) key = Path.of(dir).getFileName() + "/" + Path.of(dir).relativize(file);
+        }
+        return tool + "\t" + key + "\t" + String.valueOf(value).replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
+    }
+
+    /** ADR-068 M6's gate: this run's lines against the frozen baseline {@code adr068.tools.baseline}, if one is named; they must be equal. */
+    private static void assertBaseline(String file, List<String> lines) throws IOException {
+        String baseline = System.getProperty("adr068.tools.baseline");
+        if (baseline == null) return;
+        var frozen = Files.readAllLines(Path.of(baseline).resolve(file));
+        var moved = new ArrayList<String>();
+        for (int i = 0; i < Math.max(frozen.size(), lines.size()) && moved.size() < 20; i++) {
+            String was = i < frozen.size() ? frozen.get(i) : "(none)";
+            String is = i < lines.size() ? lines.get(i) : "(none)";
+            if (!was.equals(is)) moved.add(was + "  ->  " + is);
+        }
+        assertEquals(List.of(), moved, file + " moved");
+        assertEquals(frozen.size(), lines.size());
+    }
+}

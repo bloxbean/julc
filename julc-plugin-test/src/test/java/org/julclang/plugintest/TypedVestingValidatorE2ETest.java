@@ -33,7 +33,12 @@ class TypedVestingValidatorE2ETest extends PluginTestBase {
 
     static final String TYPED_VESTING_VALIDATOR = """
             import org.julclang.core.PlutusData;
+            import org.julclang.ledger.PubKeyHash;
             import java.math.BigInteger;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.ledger.TxInfo;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class TypedVestingValidator {
@@ -43,9 +48,9 @@ class TypedVestingValidatorE2ETest extends PluginTestBase {
                 static boolean validate(VestingDatum datum, PlutusData redeemer, ScriptContext ctx) {
                     TxInfo txInfo = ctx.txInfo();
                     var sigs = txInfo.signatories();
-                    boolean hasSigner = sigs.contains(datum.beneficiary());
+                    boolean hasSigner = sigs.contains(PubKeyHash.of(datum.beneficiary()));
                     BigInteger deadline = datum.deadline();
-                    return hasSigner && deadline > 0;
+                    return hasSigner && deadline.compareTo(BigInteger.ZERO) > 0;
                 }
             }
             """;

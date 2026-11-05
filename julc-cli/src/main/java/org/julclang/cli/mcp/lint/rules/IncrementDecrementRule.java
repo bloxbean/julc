@@ -2,8 +2,11 @@ package org.julclang.cli.mcp.lint.rules;
 
 import org.julclang.cli.mcp.lint.LintFinding;
 import org.julclang.cli.mcp.lint.LintRule;
-import com.github.javaparser.ast.CompilationUnit;
-import com.github.javaparser.ast.expr.UnaryExpr;
+import org.julclang.cli.mcp.lint.LintTrees;
+import org.julclang.compiler.frontend.javac.JavacSyntax;
+import com.sun.source.util.TreePath;
+import com.sun.source.tree.Tree;
+import com.sun.source.tree.UnaryTree;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -17,14 +20,6 @@ import java.util.Set;
  * {@link UnaryExpr} and slips past — this rule fills that gap.
  */
 public final class IncrementDecrementRule implements LintRule {
-
-    private static final Set<UnaryExpr.Operator> MUTATING = Set.of(
-            UnaryExpr.Operator.PREFIX_INCREMENT,
-            UnaryExpr.Operator.POSTFIX_INCREMENT,
-            UnaryExpr.Operator.PREFIX_DECREMENT,
-            UnaryExpr.Operator.POSTFIX_DECREMENT
-    );
-
     @Override
     public String id() {
         return "JULC-LINT-INCREMENT";
@@ -35,23 +30,29 @@ public final class IncrementDecrementRule implements LintRule {
         return "Increment / decrement operators (++ / --) — JuLC is single-assignment";
     }
 
+    private static final Set<Tree.Kind> MUTATING_KINDS = Set.of(
+            Tree.Kind.PREFIX_INCREMENT,
+            Tree.Kind.POSTFIX_INCREMENT,
+            Tree.Kind.PREFIX_DECREMENT,
+            Tree.Kind.POSTFIX_DECREMENT
+    );
+
     @Override
-    public List<LintFinding> check(CompilationUnit cu) {
+    public List<LintFinding> check(JavacSyntax syntax) {
         var findings = new ArrayList<LintFinding>();
-        cu.findAll(UnaryExpr.class).forEach(u -> {
-            if (!MUTATING.contains(u.getOperator())) return;
-            int line = u.getBegin().map(p -> p.line).orElse(0);
-            int col = u.getBegin().map(p -> p.column).orElse(0);
+        for (TreePath path : LintTrees.findAll(syntax, UnaryTree.class)) {
+            var u = (UnaryTree) path.getLeaf();
+            if (!MUTATING_KINDS.contains(u.getKind())) continue;
             findings.add(LintFinding.error(
                     id(),
                     null,
                     "`" + u + "` mutates an existing variable. JuLC is single-assignment.",
-                    line, col,
+                    syntax.line(u), syntax.column(u),
                     "Introduce a new binding: `var i2 = i.add(BigInteger.ONE);`. " +
                             "For loop counters use `var i = i.add(BigInteger.ONE);` inside the " +
                             "while-loop accumulator pattern."
             ));
-        });
+        }
         return findings;
     }
 }

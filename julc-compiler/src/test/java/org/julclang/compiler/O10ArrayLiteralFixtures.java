@@ -61,7 +61,7 @@ final class O10ArrayLiteralFixtures {
     static final String GET_RUNTIME = method("""
                 static BigInteger getRuntime(BigInteger i) {
                     %s
-                    return t.get(i);
+                    return t.get(i.longValue());
                 }""".formatted(TABLE));
 
     /** 3: a literal index out of bounds stays and fails at runtime with the builtin's text. */
@@ -75,14 +75,14 @@ final class O10ArrayLiteralFixtures {
     static final String NEGATIVE_LITERAL = method("""
                 static BigInteger negativeLiteral() {
                     %s
-                    return t.get(new BigInteger("-1"));
+                    return t.get(new BigInteger("-1").longValue());
                 }""".formatted(TABLE));
 
     /** 5: a literal index beyond the machine range stays and fails with the other text. */
     static final String HUGE_INDEX = method("""
                 static BigInteger hugeIndex() {
                     %s
-                    return t.get(new BigInteger("9223372036854775808"));
+                    return t.get(new BigInteger("9223372036854775808").longValue());
                 }""".formatted(TABLE));
 
     /** 6: byte string elements fold through the byte string decode. */
@@ -198,7 +198,7 @@ final class O10ArrayLiteralFixtures {
      */
     static final String HELPER_GET = method("""
                 static BigInteger at(JulcArray<BigInteger> a, BigInteger i) {
-                    return a.get(i);
+                    return a.get(i.longValue());
                 }
                 static BigInteger helperGet() {
                     return at(JulcArray.of(BigInteger.ONE, BigInteger.TWO), BigInteger.ONE);
@@ -227,7 +227,7 @@ final class O10ArrayLiteralFixtures {
                 static byte[] sharedElement(BigInteger i) {
                     byte[] b = %s;
                     JulcArray<byte[]> a = JulcArray.of(b, b);
-                    return Builtins.appendByteString(a.get(i), b);
+                    return Builtins.appendByteString(a.get(i.longValue()), b);
                 }""".formatted(B256));
 
     /** 20: the local's only uses are the two elements: the array would hold two copies against the one binding that dies, so the conversion stays. */
@@ -257,7 +257,7 @@ final class O10ArrayLiteralFixtures {
                     byte[] b = %s;
                     JulcList<byte[]> xs = JulcList.of(b, b);
                     JulcArray<byte[]> a = xs.toArray();
-                    return Builtins.appendByteString(a.get(i), b);
+                    return Builtins.appendByteString(a.get(i.longValue()), b);
                 }""".formatted(B256));
 
     /** 24: a 32-byte local as the single element of a list local converted once: both die with the conversion, both are credited, everything folds. */

@@ -1,13 +1,14 @@
 package org.julclang.compiler;
 
 import org.julclang.compiler.error.DiagnosticCollector;
-import com.github.javaparser.JavaParser;
-import com.github.javaparser.ParserConfiguration;
-import com.github.javaparser.ast.CompilationUnit;
-import com.github.javaparser.ast.ImportDeclaration;
-import com.github.javaparser.ast.Node;
-import com.github.javaparser.ast.expr.FieldAccessExpr;
-import com.github.javaparser.ast.expr.MethodCallExpr;
+import org.julclang.compiler.frontend.javac.ExpressionRoles;
+import org.julclang.compiler.frontend.javac.JavacSyntax;
+import com.sun.source.tree.ClassTree;
+import com.sun.source.tree.ImportTree;
+import com.sun.source.tree.MemberSelectTree;
+import com.sun.source.tree.MethodInvocationTree;
+import com.sun.source.tree.Tree;
+import org.julclang.compiler.frontend.javac.SourceOrderScanner;
 
 import java.io.File;
 import java.io.IOException;
@@ -21,6 +22,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -192,6 +194,26 @@ public final class LibrarySourceResolver {
     }
 
     /**
+     * The sources of a host's merged pool that are JAR sources (ADR-068 D8), by provenance: the entries of
+     * {@code pool} that are still the very {@link LibrarySource} {@code jarSources} has for that key; a project source
+     * put over one is a project source even when its text is the same. A host passes them to
+     * {@link CompilerOptions#setJarLibrarySources}, which compares them by identity; it prunes nothing itself.
+     */
+    public static List<String> jarSourceTexts(Map<String, LibrarySource> pool, Map<String, LibrarySource> jarSources) {
+        var sources = new ArrayList<String>();
+        pool.forEach((key, source) -> {
+            if (jarSources.get(key) == source) sources.add(source.source());
+        });
+        return sources;
+    }
+
+    /** {@code options} with every source of a class-path pool marked as a JAR source (a host with no project pool). */
+    public static CompilerOptions withJarSources(CompilerOptions options, Map<String, LibrarySource> classpathPool) {
+        return options.setJarLibrarySources(classpathPool.values().stream().map(LibrarySource::source).toList());
+    }
+
+
+    /**
      * Scan classpath for {@code META-INF/plutus-sources/} entries and collect
      * all {@code .java} files found within them.
      * <p>
@@ -263,6 +285,8 @@ public final class LibrarySourceResolver {
         if (!dir.exists() || !dir.isDirectory()) return;
         File[] files = dir.listFiles();
         if (files == null) return;
+        // In name order: which of two sources of one name is kept must not depend on the file system (I4).
+        Arrays.sort(files, Comparator.comparing(File::getName));
         for (File file : files) {
             if (file.isDirectory()) {
                 scanFileSystemSources(root, file, result);
@@ -291,6 +315,11 @@ public final class LibrarySourceResolver {
      * @param availableLibraries map of FQCN to library source metadata, or a legacy
      *                           map of class name/FQCN to source string
      * @return list of resolved library source strings (in discovery order)
+     */
+    /**
+     * The library sources a host gives a compilation from its pool: what the source's imports and references resolve to,
+     * transitively, in that order. Both frontends compile exactly these as libraries (ADR-068 D8); the javac frontend also
+     * reads the bundled stdlib sources for their types alone.
      */
     public static List<String> resolve(String source, Map<String, ?> availableLibraries) {
         return resolveLibrarySources(source, normalizeLibrarySources(availableLibraries)).stream()
@@ -337,7 +366,7 @@ public final class LibrarySourceResolver {
                                                    Queue<LibrarySource> toProcess,
                                                    DiagnosticCollector diagnostics) {
         diagnostics.setFileName(fileName);
-        SourceContext context = parseSourceContext(source, packageName, diagnostics);
+        SourceContext context = parseSourceContext(source, packageName);
 
         for (String fqcn : context.importsBySimpleName().values()) {
             enqueue(availableLibraries.get(fqcn), resolved, queued, toProcess);
@@ -382,7 +411,7 @@ public final class LibrarySourceResolver {
             return wildcardCandidates.get(0);
         }
         if (wildcardCandidates.size() > 1) {
-            diagnostics.error(reference.node(),
+            diagnostics.error(reference.line(), reference.column(),
                     "Ambiguous on-chain library reference '" + reference.simpleName() + "'",
                     "Add an explicit import for one of: " + wildcardCandidates.stream()
                             .map(LibrarySource::fqcn)
@@ -396,7 +425,7 @@ public final class LibrarySourceResolver {
             return candidates.get(0);
         }
         if (candidates.size() > 1) {
-            diagnostics.error(reference.node(),
+            diagnostics.error(reference.line(), reference.column(),
                     "Ambiguous on-chain library reference '" + reference.simpleName() + "'",
                     "Add an explicit import for one of: " + candidates.stream()
                             .map(LibrarySource::fqcn)
@@ -415,46 +444,78 @@ public final class LibrarySourceResolver {
         }
         toProcess.add(librarySource);
     }
+    /** A source's package, imports and class references, as javac's parser reads them; a regex reading if it cannot. */
+    static SourceContext parseSourceContext(String source, String packageName) {
+        var syntax = JavacSyntax.read(source);
+        if (!syntax.hasErrors()) return sourceContext(syntax, packageName);
+        return fallbackSourceContext(source, packageName);
+    }
 
-    private static SourceContext parseSourceContext(String source,
-                                                    String packageName,
-                                                    DiagnosticCollector diagnostics) {
-        try {
-            var cu = parseCompilationUnit(source);
-            var resolvedPackageName = packageName == null || packageName.isBlank()
-                    ? cu.getPackageDeclaration().map(pd -> pd.getName().asString()).orElse("")
-                    : packageName;
-            var importsBySimpleName = new LinkedHashMap<String, String>();
-            var wildcardPackages = new LinkedHashSet<String>();
-            var staticReferences = new ArrayList<ClassReference>();
+    private static SourceContext fallbackSourceContext(String source, String packageName) {
+        var fallbackPackageName = packageName == null ? extractPackageName(source) : packageName;
+        var staticReferences = extractFallbackClassReferences(source);
+        return new SourceContext(fallbackPackageName, extractImportPaths(source),
+                extractWildcardImportPackages(source), staticReferences);
+    }
 
-            for (ImportDeclaration importDeclaration : cu.getImports()) {
-                if (importDeclaration.isAsterisk()) {
-                    if (!importDeclaration.isStatic()) {
-                        wildcardPackages.add(importDeclaration.getName().asString());
-                    }
-                    continue;
-                }
-                if (importDeclaration.isStatic()) {
-                    continue;
-                }
-                String fqcn = importDeclaration.getName().asString();
-                importsBySimpleName.put(simpleName(fqcn), fqcn);
+    /**
+     * javac's reading: the imports, then every call's qualifier, then every field access's qualifier, each in pre-order,
+     * as JavaParser's reading lists them.
+     */
+    private static SourceContext sourceContext(JavacSyntax syntax, String packageName) {
+        var unit = syntax.unit();
+        var resolvedPackageName = packageName == null || packageName.isBlank()
+                ? (unit.getPackageName() == null ? "" : unit.getPackageName().toString())
+                : packageName;
+        var importsBySimpleName = new LinkedHashMap<String, String>();
+        var wildcardPackages = new LinkedHashSet<String>();
+        for (ImportTree importTree : unit.getImports()) {
+            var name = (MemberSelectTree) importTree.getQualifiedIdentifier();
+            if (name.getIdentifier().contentEquals("*")) {
+                if (!importTree.isStatic()) wildcardPackages.add(name.getExpression().toString());
+                continue;
+            }
+            if (importTree.isStatic()) continue;
+            String fqcn = name.toString();
+            importsBySimpleName.put(simpleName(fqcn), fqcn);
+        }
+        var staticReferences = new ArrayList<ClassReference>();
+        var calls = new ArrayList<Tree>();
+        var fieldAccesses = new ArrayList<Tree>();
+        new SourceOrderScanner<Void, Void>() {
+            @Override
+            public Void visitMethodInvocation(MethodInvocationTree call, Void unused) {
+                if (call.getMethodSelect() instanceof MemberSelectTree select) calls.add(select.getExpression());
+                return super.visitMethodInvocation(call, unused);
             }
 
-            cu.findAll(MethodCallExpr.class).forEach(methodCall -> methodCall.getScope().ifPresent(scope -> {
-                classReferenceFromScope(scope).ifPresent(staticReferences::add);
-            }));
-            cu.findAll(FieldAccessExpr.class).forEach(fieldAccess ->
-                    classReferenceFromScope(fieldAccess.getScope()).ifPresent(staticReferences::add));
+            @Override
+            public Void visitMemberSelect(MemberSelectTree select, Void unused) {
+                if (ExpressionRoles.isFieldAccess(getCurrentPath())) fieldAccesses.add(select.getExpression());
+                return super.visitMemberSelect(select, unused);
+            }
+        }.scan(unit, null);
+        for (Tree scope : calls) javacReference(syntax, scope).ifPresent(staticReferences::add);
+        for (Tree scope : fieldAccesses) javacReference(syntax, scope).ifPresent(staticReferences::add);
+        return new SourceContext(resolvedPackageName, importsBySimpleName, wildcardPackages, staticReferences);
+    }
 
-            return new SourceContext(resolvedPackageName, importsBySimpleName, wildcardPackages, staticReferences);
-        } catch (RuntimeException e) {
-            var fallbackPackageName = packageName == null ? extractPackageName(source) : packageName;
-            var staticReferences = extractFallbackClassReferences(source);
-            return new SourceContext(fallbackPackageName, extractImportPaths(source),
-                    extractWildcardImportPackages(source), staticReferences);
-        }
+    private static Optional<ClassReference> javacReference(JavacSyntax syntax, Tree scope) {
+        return classReferenceFromText(scope.toString(), syntax.line(scope), syntax.column(scope));
+    }
+
+    /**
+     * {@link #parseSourceContext} for the ADR-068 tools gate: what each reader reads, as text, with the references that
+     * can resolve, those whose name is a Java identifier. A call chain's qualifier such as {@code f(x).g} yields a "name"
+     * that is each parser's printing of it, and no library has such a name.
+     */
+    static String describeSourceContext(String source) {
+        var context = parseSourceContext(source, null);
+        var references = context.staticReferences().stream()
+                .filter(reference -> javax.lang.model.SourceVersion.isIdentifier(reference.simpleName()))
+                .toList();
+        return new SourceContext(context.packageName(), context.importsBySimpleName(), context.wildcardPackages(),
+                references).toString();
     }
 
     private static Map<String, LibrarySource> normalizeLibrarySources(Map<String, ?> availableLibraries) {
@@ -510,27 +571,14 @@ public final class LibrarySourceResolver {
     }
 
     public static Optional<String> extractTopLevelTypeName(String source) {
-        try {
-            var cu = parseCompilationUnit(source);
-            if (!cu.getTypes().isEmpty()) {
-                return Optional.of(cu.getTypes().get(0).getNameAsString());
+        var syntax = JavacSyntax.read(source);
+        if (!syntax.hasErrors()) {
+            for (Tree declaration : syntax.unit().getTypeDecls()) {
+                if (declaration instanceof ClassTree type) return Optional.of(type.getSimpleName().toString());
             }
-        } catch (RuntimeException ignored) {
-            // Fall through to regex extraction for partial or otherwise unparsable source.
         }
         Matcher matcher = TYPE_PATTERN.matcher(source);
         return matcher.find() ? Optional.of(matcher.group(1)) : Optional.empty();
-    }
-
-    private static CompilationUnit parseCompilationUnit(String source) {
-        var configuration = new ParserConfiguration()
-                .setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
-        var result = new JavaParser(configuration).parse(source);
-        if (!result.isSuccessful()) {
-            throw new IllegalArgumentException("Could not parse Java source: " + result.getProblems());
-        }
-        return result.getResult().orElseThrow(() ->
-                new IllegalArgumentException("Could not parse Java source: " + result.getProblems()));
     }
 
     private static String simpleName(String fqcn) {
@@ -547,21 +595,16 @@ public final class LibrarySourceResolver {
         return !name.isBlank() && Character.isUpperCase(name.charAt(0));
     }
 
-    private static Optional<ClassReference> classReferenceFromScope(Node scope) {
-        String scopeText = scope.toString();
-        return classReferenceFromText(scopeText, scope);
-    }
-
     private static List<ClassReference> extractFallbackClassReferences(String source) {
         var result = new ArrayList<ClassReference>();
         Matcher matcher = STATIC_REFERENCE_PATTERN.matcher(source);
         while (matcher.find()) {
-            classReferenceFromText(matcher.group(1), null).ifPresent(result::add);
+            classReferenceFromText(matcher.group(1), 0, 0).ifPresent(result::add);
         }
         return result;
     }
 
-    private static Optional<ClassReference> classReferenceFromText(String scopeText, Node node) {
+    private static Optional<ClassReference> classReferenceFromText(String scopeText, int line, int column) {
         String className = simpleName(scopeText);
         if (!looksLikeClassName(className)) {
             return Optional.empty();
@@ -569,7 +612,7 @@ public final class LibrarySourceResolver {
         String fqcn = scopeText.contains(".") && Character.isLowerCase(scopeText.charAt(0))
                 ? scopeText
                 : null;
-        return Optional.of(new ClassReference(className, fqcn, node));
+        return Optional.of(new ClassReference(className, fqcn, line, column));
     }
 
     private static String normalizeResourcePath(String resourcePath) {
@@ -582,6 +625,7 @@ public final class LibrarySourceResolver {
                                  List<ClassReference> staticReferences) {
     }
 
-    private record ClassReference(String simpleName, String fqcn, Node node) {
+    /** A class a source names as a call's or a field access's qualifier, and where (0, 0 when unknown). */
+    private record ClassReference(String simpleName, String fqcn, int line, int column) {
     }
 }

@@ -3,15 +3,15 @@ package org.julclang.testkit;
 import org.julclang.stdlib.CryptoProvider;
 import org.bouncycastle.crypto.digests.Blake2bDigest;
 import org.bouncycastle.crypto.digests.RIPEMD160Digest;
-import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters;
-import org.bouncycastle.crypto.signers.Ed25519Signer;
+
+import org.julclang.vm.crypto.Ed25519Verifier;
 
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
 /**
  * JVM-based implementation of {@link CryptoProvider} for off-chain testing.
- * Uses java.security.MessageDigest for SHA-2/SHA-3/Keccak and BouncyCastle for Blake2b/Ed25519.
+ * Uses java.security.MessageDigest for SHA-2/SHA-3/Keccak and BouncyCastle for Blake2b; Ed25519 is {@link Ed25519Verifier}.
  */
 public class JvmCryptoProvider implements CryptoProvider {
 
@@ -44,17 +44,13 @@ public class JvmCryptoProvider implements CryptoProvider {
         return result;
     }
 
+    /**
+     * As {@code PlutusCore.Crypto.Ed25519} at Plutus 1.63.0.0: a key of another length than 32 bytes or a signature of another
+     * length than 64 is a failure, and false is for what the two of them, as they stand, do not verify.
+     */
     @Override
     public boolean verifyEd25519Signature(byte[] pubKey, byte[] msg, byte[] sig) {
-        try {
-            var publicKeyParams = new Ed25519PublicKeyParameters(pubKey, 0);
-            var signer = new Ed25519Signer();
-            signer.init(false, publicKeyParams);
-            signer.update(msg, 0, msg.length);
-            return signer.verifySignature(sig);
-        } catch (Exception e) {
-            return false;
-        }
+        return Ed25519Verifier.verify(pubKey, msg, sig);
     }
 
     @Override

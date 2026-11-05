@@ -10,6 +10,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.jar.JarFile;
 
@@ -161,6 +162,8 @@ class JulcPluginTest {
 
         Files.writeString(plutusSrcDir.resolve("AlwaysMint.java"), """
                 import org.julclang.core.PlutusData;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.MintingValidator;
 
                 @MintingValidator
                 class AlwaysMint {
@@ -195,6 +198,8 @@ class JulcPluginTest {
                 """);
         Files.writeString(plutusSrcDir.resolve("MultiGate.java"), """
                 import org.julclang.core.PlutusData;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.MultiValidator;
 
                 @MultiValidator
                 class MultiGate {
@@ -263,6 +268,8 @@ class JulcPluginTest {
                 import org.julclang.core.types.JulcArray;
                 import org.julclang.ledger.ScriptContext;
                 import java.math.BigInteger;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class AlwaysTrue {
@@ -481,6 +488,8 @@ class JulcPluginTest {
 
         Files.writeString(customSrcDir.resolve("AlwaysTrue.java"), """
                 import org.julclang.core.PlutusData;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class AlwaysTrue {
@@ -565,6 +574,8 @@ class JulcPluginTest {
     private void writeAlwaysTrueValidator() throws IOException {
         Files.writeString(plutusSrcDir.resolve("AlwaysTrue.java"), """
                 import org.julclang.core.PlutusData;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class AlwaysTrue {
@@ -620,10 +631,16 @@ class JulcPluginTest {
                 """);
     }
 
+    /**
+     * {@code --no-watch-fs}: these tests change files between builds, and under file churn file watching can miss the
+     * change, so a task reports up to date (see {@code JulcPluginBuildLifecycleTest}).
+     */
     private GradleRunner createRunner(String... args) {
+        var arguments = new ArrayList<>(List.of(args));
+        arguments.add("--no-watch-fs");
         return GradleRunner.create()
                 .withProjectDir(testProjectDir.toFile())
-                .withArguments(args)
+                .withArguments(arguments)
                 .withPluginClasspath()
                 .forwardOutput();
     }

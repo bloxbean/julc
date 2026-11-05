@@ -1,7 +1,10 @@
 package org.julclang.cli.check;
 
+import org.julclang.cli.project.ProjectSourceResolver;
 import org.julclang.compiler.CompileResult;
+import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.CompilerException;
+import org.julclang.compiler.error.CompilerDiagnostic;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.LibrarySourceResolver;
 import org.julclang.core.Constant;
@@ -37,13 +40,15 @@ public final class TestRunner {
             var resolvedLibs = LibrarySourceResolver.resolve(test.source(), libraryPool);
 
             // Compile the test method
-            var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry());
+            var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(),
+                    ProjectSourceResolver.options(new CompilerOptions(), libraryPool));
             CompileResult result = compiler.compileMethod(test.source(), test.methodName(), resolvedLibs);
 
             if (result.hasErrors()) {
                 return TestResult.fail(test.className(), test.methodName(),
                         new ExBudget(0, 0), List.of(),
-                        "Compilation error: " + result.diagnostics().getFirst().message());
+                        "Compilation error: " + new CompilerException(result.diagnostics().stream()
+                                .filter(CompilerDiagnostic::isError).toList()).describe());
             }
 
             // Evaluate the compiled program
@@ -72,7 +77,7 @@ public final class TestRunner {
         } catch (CompilerException e) {
             return TestResult.fail(test.className(), test.methodName(),
                     new ExBudget(0, 0), List.of(),
-                    "Compilation failed: " + e.getMessage());
+                    "Compilation failed: " + e.describe());
         } catch (Exception e) {
             return TestResult.fail(test.className(), test.methodName(),
                     new ExBudget(0, 0), List.of(),

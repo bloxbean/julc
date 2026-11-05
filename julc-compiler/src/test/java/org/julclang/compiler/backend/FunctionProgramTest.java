@@ -509,6 +509,7 @@ class FunctionProgramTest {
         static final String LIBRARY = """
                 package demo;
                 import java.math.BigInteger;
+                import org.julclang.stdlib.annotation.OnchainLibrary;
                 @OnchainLibrary
                 public class Pricing {
                     public record Quote(BigInteger amount, boolean approved) {}

@@ -89,10 +89,6 @@ const SECTIONS = [
       'internals/compiler-developer-guide.md',
     ],
   },
-  {
-    title: 'Experimental',
-    files: ['experimental/jrl-guide.md'],
-  },
 ];
 
 function stripFrontmatter(content) {

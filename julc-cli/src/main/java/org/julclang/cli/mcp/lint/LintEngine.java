@@ -1,5 +1,6 @@
 package org.julclang.cli.mcp.lint;
 
+import org.julclang.compiler.frontend.javac.JavacSyntax;
 import org.julclang.cli.mcp.lint.rules.BannedParamTypesRule;
 import org.julclang.cli.mcp.lint.rules.ByteStringLibOffChainRule;
 import org.julclang.cli.mcp.lint.rules.DoubleHashRule;
@@ -15,8 +16,6 @@ import org.julclang.cli.mcp.lint.rules.ReturnInLoopRule;
 import org.julclang.cli.mcp.lint.rules.SwitchFieldShadowRule;
 import org.julclang.cli.mcp.lint.rules.Tuple2SwitchRule;
 import org.julclang.cli.mcp.lint.rules.UninitializedVarRule;
-import com.github.javaparser.JavaParser;
-import com.github.javaparser.ParserConfiguration;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -53,7 +52,6 @@ public final class LintEngine {
             new MapReturnTypeRule(),
             new IncrementDecrementRule()
     );
-
     private final List<LintRule> rules;
 
     public LintEngine() {
@@ -75,19 +73,24 @@ public final class LintEngine {
      * surface the parse error). Lint is best-effort.
      */
     public List<LintFinding> lint(String source) {
-        // JavaParser 3.26.3 maxes out at JAVA_21; JuLC source uses sealed
-        // interfaces + records (Java 21 features) so this is sufficient.
-        var parser = new JavaParser(new ParserConfiguration()
-                .setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21));
-        var parseResult = parser.parse(source);
-        if (parseResult.getResult().isEmpty()) {
+        JavacSyntax syntax;
+        try {
+            syntax = JavacSyntax.read(source);
+        } catch (IllegalStateException unsupportedJavac) {
+            // JULC0089: this host has no supported javac, which compiling reports; lint is best-effort.
             return List.of();
         }
-        var cu = parseResult.getResult().get();
+        if (syntax.hasErrors()) {
+            return List.of();
+        }
+        return run(syntax);
+    }
+
+    private List<LintFinding> run(JavacSyntax syntax) {
         var all = new ArrayList<LintFinding>();
         for (var rule : rules) {
             try {
-                all.addAll(rule.check(cu));
+                all.addAll(rule.check(syntax));
             } catch (Exception e) {
                 // A buggy lint rule must not crash the whole linter — surface as
                 // an info-level finding so the maintainer notices but the agent

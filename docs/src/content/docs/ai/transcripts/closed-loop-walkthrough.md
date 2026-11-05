@@ -54,6 +54,11 @@ Without this rule, the agent would have hit a generic "unknown method" compile e
 The agent's first cut at a vesting validator manually iterates to check the deadline and uses `return` inside `while`:
 
 ```java
+import java.math.BigInteger;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 public class VestingV1 {
     record VestingDatum(byte[] beneficiary, BigInteger deadline) {}
@@ -94,6 +99,12 @@ Server returns:
 The agent realizes the manual loop is wrong on two fronts: `return` inside `while` is rejected, and the loop is conceptually unnecessary — the validator should check the *transaction's signatories* and let the time check happen via the script's validity range. Idiomatic JuLC:
 
 ```java
+import java.math.BigInteger;
+import org.julclang.ledger.PubKeyHash;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 public class VestingV2 {
     record VestingDatum(byte[] beneficiary, BigInteger deadline) {}
@@ -125,6 +136,7 @@ For confidence, the agent ran a pure helper:
 
 ```java
 import java.math.BigInteger;
+
 public class M {
     public static BigInteger sq(BigInteger x) { return x.multiply(x); }
 }

@@ -7,8 +7,6 @@ import org.julclang.compiler.CompilerTestVm;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.CompilerTarget;
 import org.julclang.compiler.OptimizationLevel;
-import org.julclang.compiler.resolve.SymbolTable;
-import org.julclang.compiler.resolve.TypeResolver;
 import org.julclang.compiler.uplc.UplcGenerator;
 import org.julclang.core.Constant;
 import org.julclang.core.DefaultFun;
@@ -121,8 +119,6 @@ class PairDestructuringPassTest {
         var substituted = PirSubstitution.substitute(open, "a", integer(999));
         assertEquals(open, substituted);
         assertFalse(PirSubstitution.collectFreeVarNames(PirSubstitution.substitute(open, "free", integer(7))).contains("free"));
-        var inference = new TypeInferenceHelper(new SymbolTable(), new TypeResolver(), null, null);
-        assertEquals(INT, inference.inferPirType(new PirTerm.PairMatch(data(), PAIR, "a", "b", new PirTerm.Error(INT))));
     }
 
     @Test

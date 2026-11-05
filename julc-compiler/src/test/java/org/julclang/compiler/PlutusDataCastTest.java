@@ -70,6 +70,10 @@ class PlutusDataCastTest {
     void castToCustomRecord_fieldAccess() {
         var source = """
                 import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class TestValidator {
@@ -78,7 +82,7 @@ class PlutusDataCastTest {
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                         var datum = PlutusData.cast(redeemer, MyDatum.class);
-                        return datum.amount() == 42;
+                        return datum.amount().equals(BigInteger.valueOf(42));
                     }
                 }
                 """;
@@ -100,6 +104,10 @@ class PlutusDataCastTest {
         var source = """
                 import java.math.BigInteger;
                 import org.julclang.core.types.JulcMap;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class TestValidator {
@@ -131,6 +139,10 @@ class PlutusDataCastTest {
         var source = """
                 import java.math.BigInteger;
                 import org.julclang.core.types.JulcList;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class TestValidator {
@@ -163,6 +175,10 @@ class PlutusDataCastTest {
     void castWithVar_typeInferred() {
         var source = """
                 import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class TestValidator {
@@ -171,7 +187,7 @@ class PlutusDataCastTest {
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                         var p = PlutusData.cast(redeemer, Point.class);
-                        return p.x() == 10 && p.y() == 20;
+                        return p.x().equals(BigInteger.TEN) && p.y().equals(BigInteger.valueOf(20));
                     }
                 }
                 """;
@@ -192,6 +208,10 @@ class PlutusDataCastTest {
     void castToSealedInterface_switchWorks() {
         var source = """
                 import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class TestValidator {
@@ -203,8 +223,8 @@ class PlutusDataCastTest {
                     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                         var action = PlutusData.cast(redeemer, Action.class);
                         return switch (action) {
-                            case Mint m -> m.amount() == 100;
-                            case Burn b -> b.amount() == 0;
+                            case Mint m -> m.amount().equals(BigInteger.valueOf(100));
+                            case Burn b -> b.amount().equals(BigInteger.ZERO);
                         };
                     }
                 }
@@ -227,7 +247,11 @@ class PlutusDataCastTest {
     void castToLedgerType_fieldAccess() {
         var source = """
                 import java.math.BigInteger;
-                import org.julclang.ledger.api.v3.Value;
+                import org.julclang.ledger.Value;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class TestValidator {
@@ -256,6 +280,10 @@ class PlutusDataCastTest {
     void doubleCastPattern_stillWorks() {
         var source = """
                 import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class TestValidator {
@@ -264,7 +292,7 @@ class PlutusDataCastTest {
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                         MyDatum datum = (MyDatum)(Object) redeemer;
-                        return datum.amount() == 42;
+                        return datum.amount().equals(BigInteger.valueOf(42));
                     }
                 }
                 """;
@@ -285,6 +313,10 @@ class PlutusDataCastTest {
     void castProducesIdentityPir() {
         var castSource = """
                 import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class TestValidator {
@@ -293,12 +325,16 @@ class PlutusDataCastTest {
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                         var datum = PlutusData.cast(redeemer, MyDatum.class);
-                        return datum.amount() == 42;
+                        return datum.amount().equals(BigInteger.valueOf(42));
                     }
                 }
                 """;
         var doubleCastSource = """
                 import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class TestValidator {
@@ -307,7 +343,7 @@ class PlutusDataCastTest {
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                         MyDatum datum = (MyDatum)(Object) redeemer;
-                        return datum.amount() == 42;
+                        return datum.amount().equals(BigInteger.valueOf(42));
                     }
                 }
                 """;
@@ -342,6 +378,10 @@ class PlutusDataCastTest {
     void castChainedFieldAccess() {
         var source = """
                 import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class TestValidator {
@@ -349,7 +389,7 @@ class PlutusDataCastTest {
 
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                        return PlutusData.cast(redeemer, Wrapper.class).inner() == 99;
+                        return PlutusData.cast(redeemer, Wrapper.class).inner().equals(BigInteger.valueOf(99));
                     }
                 }
                 """;
@@ -370,6 +410,10 @@ class PlutusDataCastTest {
     void castWithExplicitType_works() {
         var source = """
                 import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class TestValidator {
@@ -378,7 +422,7 @@ class PlutusDataCastTest {
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                         MyDatum datum = PlutusData.cast(redeemer, MyDatum.class);
-                        return datum.amount() == 77;
+                        return datum.amount().equals(BigInteger.valueOf(77));
                     }
                 }
                 """;
@@ -400,6 +444,10 @@ class PlutusDataCastTest {
     void castWithNonClassExprArg_producesError() {
         var source = """
                 import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class TestValidator {
@@ -408,7 +456,7 @@ class PlutusDataCastTest {
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                         MyDatum datum = PlutusData.cast(redeemer, redeemer);
-                        return datum.amount() == 42;
+                        return datum.amount().equals(BigInteger.valueOf(42));
                     }
                 }
                 """;
@@ -422,8 +470,9 @@ class PlutusDataCastTest {
                     "Error should mention literal ClassName.class requirement. Errors: " + result.diagnostics());
         } catch (CompilerException e) {
             // CompilerException with our message is also acceptable
-            assertTrue(e.getMessage().contains("literal ClassName.class")
-                            || e.getMessage().contains("PlutusData.cast"),
+            // javac rejects the non-Class argument first (ADR-068 I2b), naming PlutusData.cast.
+            assertTrue(e.getMessage().contains("(compiler.err.cant.apply.symbol)")
+                            && e.getMessage().contains("method cast"),
                     "Exception should relate to PlutusData.cast error. Got: " + e.getMessage());
         }
     }

@@ -1,5 +1,6 @@
 package org.julclang.compiler;
 
+
 import org.julclang.compiler.error.CompilerDiagnostic;
 import org.junit.jupiter.api.Test;
 
@@ -12,69 +13,19 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class CrossLibraryTypeWarningTest {
 
-    @Test
-    void testByteStringToDataWarns() {
-        var libSource = """
-                @OnchainLibrary
-                class DataLib {
-                    static boolean check(PlutusData x) {
-                        return true;
-                    }
-                }
-                """;
-        // Use @Param byte[] to get a ByteString-typed variable
-        var validatorSource = """
-                @SpendingValidator
-                class TestValidator {
-                    @Param byte[] bs;
-
-                    @Entrypoint
-                    static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                        return DataLib.check(bs);
-                    }
-                }
-                """;
-        var result = new JulcCompiler().compile(validatorSource, List.of(libSource));
-        assertNotNull(result.program(), "Should still compile successfully");
-        var warnings = result.diagnostics().stream()
-                .filter(d -> d.level() == CompilerDiagnostic.Level.WARNING)
-                .toList();
-        assertFalse(warnings.isEmpty(), "Should produce a warning for ByteString -> Data mismatch");
-    }
-
-    @Test
-    void testIntegerToDataWarns() {
-        var libSource = """
-                @OnchainLibrary
-                class DataLib {
-                    static boolean check(PlutusData x) {
-                        return true;
-                    }
-                }
-                """;
-        var validatorSource = """
-                import java.math.BigInteger;
-
-                @SpendingValidator
-                class TestValidator {
-                    @Entrypoint
-                    static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                        long n = 42;
-                        return DataLib.check(n);
-                    }
-                }
-                """;
-        var result = new JulcCompiler().compile(validatorSource, List.of(libSource));
-        assertNotNull(result.program(), "Should still compile successfully");
-        var warnings = result.diagnostics().stream()
-                .filter(d -> d.level() == CompilerDiagnostic.Level.WARNING)
-                .toList();
-        assertFalse(warnings.isEmpty(), "Should produce a warning for Integer -> Data mismatch");
+    /**
+     * ADR-068 M1b: the warning reported an argument JuLC encoded implicitly (bytes or an integer passed where a
+     * library takes {@code PlutusData}), which javac rejects.
+     */
+    private static JulcCompiler dialectCompiler() {
+        return new JulcCompiler(null, new CompilerOptions());
     }
 
     @Test
     void testNoWarningWhenTypesMatch() {
         var libSource = """
+                import org.julclang.core.PlutusData;
+                import org.julclang.stdlib.annotation.OnchainLibrary;
                 @OnchainLibrary
                 class DataLib {
                     static boolean check(PlutusData x) {
@@ -83,6 +34,10 @@ class CrossLibraryTypeWarningTest {
                 }
                 """;
         var validatorSource = """
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
                 @SpendingValidator
                 class TestValidator {
                     @Entrypoint
@@ -103,6 +58,10 @@ class CrossLibraryTypeWarningTest {
     void testNoWarningForNonLibrary() {
         // A validator with no library calls should not produce warnings
         var source = """
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
                 @SpendingValidator
                 class TestValidator {
                     @Entrypoint
@@ -119,93 +78,4 @@ class CrossLibraryTypeWarningTest {
         assertTrue(warnings.isEmpty(), "Should not produce warnings without library calls");
     }
 
-    @Test
-    void testWarningDoesNotBlockCompilation() {
-        var libSource = """
-                @OnchainLibrary
-                class DataLib {
-                    static boolean check(PlutusData x) {
-                        return true;
-                    }
-                }
-                """;
-        var validatorSource = """
-                @SpendingValidator
-                class TestValidator {
-                    @Param byte[] bs;
-
-                    @Entrypoint
-                    static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                        return DataLib.check(bs);
-                    }
-                }
-                """;
-        var result = new JulcCompiler().compile(validatorSource, List.of(libSource));
-        assertNotNull(result.program(), "Warning should not block compilation — program should be non-null");
-        assertFalse(result.hasErrors(), "Warnings should not count as errors");
-    }
-
-    @Test
-    void testWarningHasSuggestion() {
-        var libSource = """
-                @OnchainLibrary
-                class DataLib {
-                    static boolean check(PlutusData x) {
-                        return true;
-                    }
-                }
-                """;
-        var validatorSource = """
-                @SpendingValidator
-                class TestValidator {
-                    @Param byte[] bs;
-
-                    @Entrypoint
-                    static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                        return DataLib.check(bs);
-                    }
-                }
-                """;
-        var result = new JulcCompiler().compile(validatorSource, List.of(libSource));
-        var warnings = result.diagnostics().stream()
-                .filter(d -> d.level() == CompilerDiagnostic.Level.WARNING)
-                .toList();
-        assertFalse(warnings.isEmpty());
-        var warning = warnings.get(0);
-        assertTrue(warning.hasSuggestion(), "Warning should have a suggestion");
-        assertTrue(warning.suggestion().contains("PlutusData"),
-                "Suggestion should mention PlutusData");
-    }
-
-    @Test
-    void testMultiArgOnlyBadOnesWarn() {
-        var libSource = """
-                @OnchainLibrary
-                class DataLib {
-                    static boolean check(PlutusData a, PlutusData b) {
-                        return true;
-                    }
-                }
-                """;
-        var validatorSource = """
-                @SpendingValidator
-                class TestValidator {
-                    @Param byte[] bs;
-
-                    @Entrypoint
-                    static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                        return DataLib.check(redeemer, bs);
-                    }
-                }
-                """;
-        var result = new JulcCompiler().compile(validatorSource, List.of(libSource));
-        assertNotNull(result.program());
-        var warnings = result.diagnostics().stream()
-                .filter(d -> d.level() == CompilerDiagnostic.Level.WARNING)
-                .toList();
-        // Only arg 2 (bs: ByteString) should produce a warning; arg 1 (redeemer: Data) is fine
-        assertEquals(1, warnings.size(), "Only the mismatched arg should produce a warning");
-        assertTrue(warnings.get(0).message().contains("Argument 2"),
-                "Warning should be about argument 2");
-    }
 }

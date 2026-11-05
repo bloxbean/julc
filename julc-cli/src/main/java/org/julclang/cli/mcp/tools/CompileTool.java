@@ -43,7 +43,7 @@ import java.util.Map;
  *   "ok": boolean,
  *   "compilerTarget": "plutus-v3-pv11-uplc-1.1.0",
  *   "diagnostics": [
- *     { "level":"error|warning|info", "code":"JULC0003"?, "message":..., "line":..., "column":..., "suggestion":... }
+ *     { "level":"error|warning|info", "code":"JULC0003"?, "message":..., "line":..., "column":..., "excerpt":string?, "suggestion":... }
  *   ],
  *   "scriptSizeBytes": number?,
  *   "uplc": string?,    // only when includeUplc and ok
@@ -259,6 +259,7 @@ public final class CompileTool {
             m.put("message", d.message());
             if (d.line() > 0) m.put("line", d.line());
             if (d.column() > 0) m.put("column", d.column());
+            if (d.excerpt() != null) m.put("excerpt", d.excerpt());
             if (d.hasSuggestion()) m.put("suggestion", d.suggestion());
             if (d.fileName() != null && !d.fileName().equals("<source>")) {
                 m.put("file", d.fileName());

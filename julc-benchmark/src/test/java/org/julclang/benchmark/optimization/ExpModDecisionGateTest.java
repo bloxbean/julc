@@ -20,7 +20,7 @@ class ExpModDecisionGateTest {
                 input("non-invertible", 2, -1, 4), input("zero-modulus", 2, 5, 0),
                 input("negative-modulus", 2, 5, -7), input("one-modulus", 2, -1, 1),
                 input("zero-base-exponent", 0, 0, 7));
-        for (var expression : List.of("MathLib.pow(base, exponent) % modulus",
+        for (var expression : List.of("MathLib.pow(base, exponent).remainder(modulus)",
                 "MathLib.expMod(base, exponent, modulus)")) {
             boolean explicit = expression.contains("expMod");
             String source = """

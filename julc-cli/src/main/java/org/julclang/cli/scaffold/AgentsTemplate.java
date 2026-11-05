@@ -66,7 +66,7 @@ public final class AgentsTemplate {
                    `BytesData`, `MapData`, `ListData`.)
                 2. **No mutation, no uninitialized variables.** Initialize at declaration: `var x = BigInteger.ZERO;`.
                 3. **No `return` inside `while` loops.** Use a boolean accumulator and return after the loop.
-                4. **Use `.compareTo()` / `.equals()` for `BigInteger` and `byte[]`.** Never `==`.
+                4. **Compare references by value.** `.compareTo()` / `.equals()` for `BigInteger` and `String`, `Builtins.equalsByteString(a, b)` for `byte[]` (`byte[].equals` is `JULC0087`). `==` only on `int`, `long` and `boolean` (`JULC0086`).
                 5. **Lambdas only inline at HOFs.** `list.map(x -> ...)`, `list.filter(...)`, `list.any(...)`. Never store + `.apply()`.
                 6. **Switches on sealed interfaces must be exhaustive** (or include `default ->`).
                 7. **Switch case binding names must differ from method parameter names** (the field shadows the param).

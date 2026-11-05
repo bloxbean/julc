@@ -5,9 +5,11 @@ import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.LoweringRequirements;
 import org.julclang.core.Constant;
 import org.julclang.core.DefaultFun;
+import org.julclang.core.PlutusData;
 
 import java.math.BigInteger;
 import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * Registry mapping (PirType, methodName) to instance method handlers.
@@ -47,6 +49,8 @@ public final class TypeMethodRegistry {
 
     // Key: "IntegerType.abs", "ListType.contains", etc.
     private final Map<String, MethodRegistration> registry = new HashMap<>();
+    /** The default registry's integer {@code compareTo} lowering, or null (ADR-068 D6). */
+    private MethodRegistration integerCompareTo;
 
     public void register(String typeKey, String method,
                          InstanceMethodHandler handler, ReturnTypeResolver returnType) {
@@ -139,6 +143,47 @@ public final class TypeMethodRegistry {
         return registry.containsKey(typeKey + "." + method);
     }
 
+    /** Whether {@link #dispatch} of {@code method} on {@code scopeType} has a row. */
+    public boolean serves(PirType scopeType, String method) {
+        return registry.containsKey(scopeType.getClass().getSimpleName() + "." + method);
+    }
+
+    /**
+     * Whether {@code method} on {@code scopeType} lowers to the receiver itself, read from the row and not from a list: its
+     * handler is asked for a term with no arguments, so a row that needs one is no such row.
+     */
+    public boolean lowersToTheReceiver(PirType scopeType, String method) {
+        var registration = registry.get(scopeType.getClass().getSimpleName() + "." + method);
+        if (registration == null) return false;
+        PirTerm receiver = new PirTerm.Var("#receiver", scopeType);
+        try {
+            return registration.handler().handle(CompilationContext.pv11Defaults(), receiver, List.of(), scopeType, List.of()) == receiver;
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
+    /**
+     * Dispatch under one exact key (ADR-068 I12). The javac frontend names the key from the identity of the method javac
+     * bound, so no record is taken for a ledger type because of its name, as {@link #dispatch} does with {@code rt.name()}.
+     *
+     * @return the lowering, or empty if the key has none
+     */
+    public Optional<PirTerm> dispatchExact(CompilationContext context, String typeKey, String method, PirTerm scope,
+                                           List<PirTerm> args, PirType scopeType, List<PirType> argTypes) {
+        Objects.requireNonNull(context, "context");
+        var registration = registry.get(typeKey + "." + method);
+        if (registration == null) return Optional.empty();
+        return Optional.of(registration.handler().handle(context, scope, args, scopeType, argTypes));
+    }
+
+    /** Protocol requirements of the lowering under one exact key. */
+    public LoweringRequirements requirementsExact(CompilationContext context, String typeKey, String method) {
+        Objects.requireNonNull(context, "context");
+        var registration = registry.get(typeKey + "." + method);
+        return registration != null ? registration.requirements().resolve(context) : LoweringRequirements.NONE;
+    }
+
     /**
      * Create a registry with all standard instance methods registered.
      */
@@ -165,11 +210,11 @@ public final class TypeMethodRegistry {
 
         // abs: if x < 0 then 0 - x else x
         reg.register("IntegerType", "abs",
-                (scope, args, scopeType, argTypes) ->
+                (scope, args, scopeType, argTypes) -> PirHelpers.readOnce(scope, new PirType.IntegerType(), x ->
                         new PirTerm.IfThenElse(
-                                PirHelpers.builtinApp2(DefaultFun.LessThanInteger, scope, zero),
-                                PirHelpers.builtinApp2(DefaultFun.SubtractInteger, zero, scope),
-                                scope),
+                                PirHelpers.builtinApp2(DefaultFun.LessThanInteger, x, zero),
+                                PirHelpers.builtinApp2(DefaultFun.SubtractInteger, zero, x),
+                                x)),
                 scopeType -> new PirType.IntegerType());
 
         // negate: 0 - x
@@ -180,22 +225,14 @@ public final class TypeMethodRegistry {
 
         // max: if a < b then b else a
         reg.register("IntegerType", "max",
-                (scope, args, scopeType, argTypes) -> {
-                    var argPir = args.get(0);
-                    return new PirTerm.IfThenElse(
-                            PirHelpers.builtinApp2(DefaultFun.LessThanInteger, scope, argPir),
-                            argPir, scope);
-                },
+                (scope, args, scopeType, argTypes) -> PirHelpers.readOnce(scope, args.get(0), new PirType.IntegerType(), (a, b) ->
+                        new PirTerm.IfThenElse(PirHelpers.builtinApp2(DefaultFun.LessThanInteger, a, b), b, a)),
                 scopeType -> new PirType.IntegerType());
 
         // min: if a <= b then a else b
         reg.register("IntegerType", "min",
-                (scope, args, scopeType, argTypes) -> {
-                    var argPir = args.get(0);
-                    return new PirTerm.IfThenElse(
-                            PirHelpers.builtinApp2(DefaultFun.LessThanEqualsInteger, scope, argPir),
-                            scope, argPir);
-                },
+                (scope, args, scopeType, argTypes) -> PirHelpers.readOnce(scope, args.get(0), new PirType.IntegerType(), (a, b) ->
+                        new PirTerm.IfThenElse(PirHelpers.builtinApp2(DefaultFun.LessThanEqualsInteger, a, b), a, b)),
                 scopeType -> new PirType.IntegerType());
 
         // equals: EqualsInteger (with Data→Integer coercion on arg)
@@ -236,9 +273,10 @@ public final class TypeMethodRegistry {
                         PirHelpers.builtinApp2(DefaultFun.RemainderInteger, scope, args.get(0)),
                 scopeType -> new PirType.IntegerType());
 
+        // mod: BigInteger.mod throws unless the modulus is positive, and ModInteger takes a negative one
         reg.register("IntegerType", "mod",
-                (scope, args, scopeType, argTypes) ->
-                        PirHelpers.builtinApp2(DefaultFun.ModInteger, scope, args.get(0)),
+                (scope, args, scopeType, argTypes) -> PirHelpers.failingBelow(1, scope, new PirType.IntegerType(), args.get(0),
+                        new PirType.IntegerType(), (a, b) -> PirHelpers.builtinApp2(DefaultFun.ModInteger, a, b)),
                 scopeType -> new PirType.IntegerType());
 
         // signum: if x < 0 then -1 else if x == 0 then 0 else 1
@@ -246,31 +284,32 @@ public final class TypeMethodRegistry {
                 (scope, args, scopeType, argTypes) -> {
                     var one = new PirTerm.Const(Constant.integer(BigInteger.ONE));
                     var negOne = new PirTerm.Const(Constant.integer(BigInteger.valueOf(-1)));
-                    return new PirTerm.IfThenElse(
-                            PirHelpers.builtinApp2(DefaultFun.LessThanInteger, scope, zero),
+                    return PirHelpers.readOnce(scope, new PirType.IntegerType(), x -> new PirTerm.IfThenElse(
+                            PirHelpers.builtinApp2(DefaultFun.LessThanInteger, x, zero),
                             negOne,
                             new PirTerm.IfThenElse(
-                                    PirHelpers.builtinApp2(DefaultFun.EqualsInteger, scope, zero),
+                                    PirHelpers.builtinApp2(DefaultFun.EqualsInteger, x, zero),
                                     zero,
-                                    one));
+                                    one)));
                 },
                 scopeType -> new PirType.IntegerType());
 
         // compareTo: if a < b then -1 else if a == b then 0 else 1
         reg.register("IntegerType", "compareTo",
                 (scope, args, scopeType, argTypes) -> {
-                    var argPir = args.get(0);
                     var one = new PirTerm.Const(Constant.integer(BigInteger.ONE));
                     var negOne = new PirTerm.Const(Constant.integer(BigInteger.valueOf(-1)));
-                    return new PirTerm.IfThenElse(
-                            PirHelpers.builtinApp2(DefaultFun.LessThanInteger, scope, argPir),
+                    return PirHelpers.readOnce(scope, args.get(0), new PirType.IntegerType(), (a, b) -> new PirTerm.IfThenElse(
+                            PirHelpers.builtinApp2(DefaultFun.LessThanInteger, a, b),
                             negOne,
                             new PirTerm.IfThenElse(
-                                    PirHelpers.builtinApp2(DefaultFun.EqualsInteger, scope, argPir),
+                                    PirHelpers.builtinApp2(DefaultFun.EqualsInteger, a, b),
                                     zero,
-                                    one));
+                                    one)));
                 },
                 scopeType -> new PirType.IntegerType());
+        // In an `OP 0` comparison, PirGenerator lowers the comparison itself (ADR-068 D6).
+        reg.integerCompareTo = reg.registry.get("IntegerType.compareTo");
 
         // intValue / longValue: identity (int, long, BigInteger are all IntegerType on-chain)
         reg.register("IntegerType", "intValue",
@@ -339,11 +378,9 @@ public final class TypeMethodRegistry {
     // --- String methods (2) ---
 
     private static void registerStringMethods(TypeMethodRegistry reg) {
-        // length: LengthOfByteString(EncodeUtf8(s))
+        // length: UTF-16 code units, as Java counts
         reg.register("StringType", "length",
-                (scope, args, scopeType, argTypes) ->
-                        new PirTerm.App(new PirTerm.Builtin(DefaultFun.LengthOfByteString),
-                                new PirTerm.App(new PirTerm.Builtin(DefaultFun.EncodeUtf8), scope)),
+                (scope, args, scopeType, argTypes) -> PirHelpers.utf16Length(scope),
                 scopeType -> new PirType.IntegerType());
 
         // equals: EqualsString
@@ -499,37 +536,8 @@ public final class TypeMethodRegistry {
         reg.register("ListType", "take",
                 (scope, args, scopeType, argTypes) -> {
                     if (args.isEmpty()) throw new CompilerException("take() requires a count argument. Usage: list.take(n)");
-                    var lstVar = new PirTerm.Var("#lst_take", new PirType.ListType(new PirType.DataType()));
-                    var nVar = new PirTerm.Var("#n_take", new PirType.IntegerType());
-                    // The receiver and count are applied under go_take.
-                    var goVar = new PirTerm.Var(PirHelpers.hygienicName("#go_take",
-                            PirHelpers.freeVariables(scope, args.get(0))), new PirType.FunType(
-                            new PirType.ListType(new PirType.DataType()),
-                            new PirType.FunType(new PirType.IntegerType(),
-                                    new PirType.ListType(new PirType.DataType()))));
-
-                    var zero = new PirTerm.Const(Constant.integer(BigInteger.ZERO));
-                    var nIsZero = PirHelpers.builtinApp2(DefaultFun.LessThanEqualsInteger, nVar, zero);
-                    var nullCheck = new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), lstVar);
-                    var nilData = new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkNilData),
-                            new PirTerm.Const(Constant.unit()));
-
-                    var headExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), lstVar);
-                    var tailExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), lstVar);
-                    var decN = PirHelpers.builtinApp2(DefaultFun.SubtractInteger, nVar,
-                            new PirTerm.Const(Constant.integer(BigInteger.ONE)));
-                    var recurse = new PirTerm.App(new PirTerm.App(goVar, tailExpr), decN);
-                    var consExpr = PirHelpers.builtinApp2(DefaultFun.MkCons, headExpr, recurse);
-
-                    // if n<=0 then nil else if null(lst) then nil else mkCons(head, go(tail, n-1))
-                    var body = new PirTerm.IfThenElse(nIsZero, nilData,
-                            new PirTerm.IfThenElse(nullCheck, nilData, consExpr));
-                    var goBody = new PirTerm.Lam("#lst_take", new PirType.ListType(new PirType.DataType()),
-                            new PirTerm.Lam("#n_take", new PirType.IntegerType(), body));
-                    var binding = new PirTerm.Binding(goVar.name(), goBody);
-
-                    return new PirTerm.LetRec(List.of(binding),
-                            new PirTerm.App(new PirTerm.App(goVar, scope), args.get(0)));
+                    // JulcList.take throws on a negative count.
+                    return PirHelpers.failingBelow(0, scope, scopeType, args.get(0), scopeType, TypeMethodRegistry::takeLoop);
                 },
                 scopeType -> scopeType);
 
@@ -547,33 +555,13 @@ public final class TypeMethodRegistry {
                         var countVar = new PirTerm.Var(countName, new PirType.IntegerType());
                         var nativeDrop = PirHelpers.builtinApp2(
                                 DefaultFun.DropList, countVar, listVar);
+                        // JulcList.drop throws on a negative count, and DropList takes one.
+                        var checked = PirHelpers.isConstantAtLeast(args.get(0), 0) ? nativeDrop
+                                : PirHelpers.failIfBelow(0, countVar, scopeType, nativeDrop);
                         return new PirTerm.Let(listName, scope,
-                                new PirTerm.Let(countName, args.get(0), nativeDrop));
+                                new PirTerm.Let(countName, args.get(0), checked));
                     }
-                    var lstVar = new PirTerm.Var("#lst_drop", new PirType.ListType(new PirType.DataType()));
-                    var nVar = new PirTerm.Var("#n_drop", new PirType.IntegerType());
-                    // The receiver and count are applied under go_drop.
-                    var goVar = new PirTerm.Var(PirHelpers.hygienicName("#go_drop",
-                            PirHelpers.freeVariables(scope, args.get(0))), new PirType.FunType(
-                            new PirType.ListType(new PirType.DataType()),
-                            new PirType.FunType(new PirType.IntegerType(),
-                                    new PirType.ListType(new PirType.DataType()))));
-
-                    var zero = new PirTerm.Const(Constant.integer(BigInteger.ZERO));
-                    var nIsZero = PirHelpers.builtinApp2(DefaultFun.LessThanEqualsInteger, nVar, zero);
-                    var nullCheck = new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), lstVar);
-                    var tailExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), lstVar);
-                    var decN = PirHelpers.builtinApp2(DefaultFun.SubtractInteger, nVar,
-                            new PirTerm.Const(Constant.integer(BigInteger.ONE)));
-                    var recurse = new PirTerm.App(new PirTerm.App(goVar, tailExpr), decN);
-
-                    var body = new PirTerm.IfThenElse(nIsZero, lstVar,
-                            new PirTerm.IfThenElse(nullCheck, lstVar, recurse));
-                    var goBody = new PirTerm.Lam("#lst_drop", new PirType.ListType(new PirType.DataType()),
-                            new PirTerm.Lam("#n_drop", new PirType.IntegerType(), body));
-                    var binding = new PirTerm.Binding(goVar.name(), goBody);
-                    return new PirTerm.LetRec(List.of(binding),
-                            new PirTerm.App(new PirTerm.App(goVar, scope), args.get(0)));
+                    return PirHelpers.failingBelow(0, scope, scopeType, args.get(0), scopeType, TypeMethodRegistry::dropLoop);
                 },
                 scopeType -> scopeType,
                 context -> context.optimizationLevel().pv11SafeRulesEnabled()
@@ -608,6 +596,69 @@ public final class TypeMethodRegistry {
                 },
                 scopeType -> ((PirType.ArrayType) scopeType).elemType(),
                 LoweringRequirements.builtin(DefaultFun.IndexArray));
+    }
+
+    /** {@code take} over a count that passed: {@code go(lst, n) = if n<=0 || null(lst) then nil else mkCons(head(lst), go(tail(lst), n-1))}. */
+    private static PirTerm takeLoop(PirTerm scope, PirTerm count) {
+        var lstVar = new PirTerm.Var("#lst_take", new PirType.ListType(new PirType.DataType()));
+        var nVar = new PirTerm.Var("#n_take", new PirType.IntegerType());
+        // The receiver and count are applied under go_take.
+        var goVar = new PirTerm.Var(PirHelpers.hygienicName("#go_take",
+                PirHelpers.freeVariables(scope, count)), new PirType.FunType(
+                new PirType.ListType(new PirType.DataType()),
+                new PirType.FunType(new PirType.IntegerType(),
+                        new PirType.ListType(new PirType.DataType()))));
+
+        var zero = new PirTerm.Const(Constant.integer(BigInteger.ZERO));
+        var nIsZero = PirHelpers.builtinApp2(DefaultFun.LessThanEqualsInteger, nVar, zero);
+        var nullCheck = new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), lstVar);
+        var nilData = new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkNilData),
+                new PirTerm.Const(Constant.unit()));
+
+        var headExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), lstVar);
+        var tailExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), lstVar);
+        var decN = PirHelpers.builtinApp2(DefaultFun.SubtractInteger, nVar,
+                new PirTerm.Const(Constant.integer(BigInteger.ONE)));
+        var recurse = new PirTerm.App(new PirTerm.App(goVar, tailExpr), decN);
+        var consExpr = PirHelpers.builtinApp2(DefaultFun.MkCons, headExpr, recurse);
+
+        // if n<=0 then nil else if null(lst) then nil else mkCons(head, go(tail, n-1))
+        var body = new PirTerm.IfThenElse(nIsZero, nilData,
+                new PirTerm.IfThenElse(nullCheck, nilData, consExpr));
+        var goBody = new PirTerm.Lam("#lst_take", new PirType.ListType(new PirType.DataType()),
+                new PirTerm.Lam("#n_take", new PirType.IntegerType(), body));
+        var binding = new PirTerm.Binding(goVar.name(), goBody);
+
+        return new PirTerm.LetRec(List.of(binding),
+                new PirTerm.App(new PirTerm.App(goVar, scope), count));
+    }
+
+    /** {@code drop} over a count that passed: {@code go(lst, n) = if n<=0 then lst else if null(lst) then lst else go(tail(lst), n-1)}. */
+    private static PirTerm dropLoop(PirTerm scope, PirTerm count) {
+        var lstVar = new PirTerm.Var("#lst_drop", new PirType.ListType(new PirType.DataType()));
+        var nVar = new PirTerm.Var("#n_drop", new PirType.IntegerType());
+        // The receiver and count are applied under go_drop.
+        var goVar = new PirTerm.Var(PirHelpers.hygienicName("#go_drop",
+                PirHelpers.freeVariables(scope, count)), new PirType.FunType(
+                new PirType.ListType(new PirType.DataType()),
+                new PirType.FunType(new PirType.IntegerType(),
+                        new PirType.ListType(new PirType.DataType()))));
+
+        var zero = new PirTerm.Const(Constant.integer(BigInteger.ZERO));
+        var nIsZero = PirHelpers.builtinApp2(DefaultFun.LessThanEqualsInteger, nVar, zero);
+        var nullCheck = new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), lstVar);
+        var tailExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), lstVar);
+        var decN = PirHelpers.builtinApp2(DefaultFun.SubtractInteger, nVar,
+                new PirTerm.Const(Constant.integer(BigInteger.ONE)));
+        var recurse = new PirTerm.App(new PirTerm.App(goVar, tailExpr), decN);
+
+        var body = new PirTerm.IfThenElse(nIsZero, lstVar,
+                new PirTerm.IfThenElse(nullCheck, lstVar, recurse));
+        var goBody = new PirTerm.Lam("#lst_drop", new PirType.ListType(new PirType.DataType()),
+                new PirTerm.Lam("#n_drop", new PirType.IntegerType(), body));
+        var binding = new PirTerm.Binding(goVar.name(), goBody);
+        return new PirTerm.LetRec(List.of(binding),
+                new PirTerm.App(new PirTerm.App(goVar, scope), count));
     }
 
     // --- List HOF instance methods (5): map, filter, any, all, find ---
@@ -861,18 +912,9 @@ public final class TypeMethodRegistry {
     // Registered under named key "Value" so they only match RecordType(name="Value", ...)
 
     private static void registerValueMethods(TypeMethodRegistry reg) {
-        // lovelaceOf(): extract lovelace from Value (Map<BS, Map<BS, Int>>)
-        // Value → UnMapData → HeadList → SndPair → UnMapData → HeadList → SndPair → UnIData
+        // lovelaceOf(): assetOf under the empty policy and the empty token name, by key
         reg.register("Value", "lovelaceOf",
-                (scope, args, scopeType, argTypes) -> {
-                    var innerMap = new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnMapData), scope);
-                    var firstPair = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), innerMap);
-                    var tokenMapData = new PirTerm.App(new PirTerm.Builtin(DefaultFun.SndPair), firstPair);
-                    var tokenPairs = new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnMapData), tokenMapData);
-                    var firstTokenPair = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), tokenPairs);
-                    var amountData = new PirTerm.App(new PirTerm.Builtin(DefaultFun.SndPair), firstTokenPair);
-                    return new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnIData), amountData);
-                },
+                (scope, args, scopeType, argTypes) -> assetOf(scope, adaKey(), adaKey()),
                 scopeType -> new PirType.IntegerType());
 
         // isEmpty(): NullList(UnMapData(value))
@@ -907,80 +949,90 @@ public final class TypeMethodRegistry {
                     var policyArg = PirHelpers.wrapEncode(args.get(0), argTypes.size() >= 1 ? argTypes.get(0) : new PirType.DataType());
                     var tokenArg = PirHelpers.wrapEncode(args.get(1), argTypes.size() >= 2 ? argTypes.get(1) : new PirType.DataType());
 
-                    // Let-bind value, policyId, tokenName
-                    // policyId is evaluated under v__ao and tokenName under v__ao and pol__ao.
-                    var valVar = new PirTerm.Var(PirHelpers.hygienicName("#v__ao",
-                            PirHelpers.freeVariables(policyArg, tokenArg)), new PirType.DataType());
-                    var polVar = new PirTerm.Var(PirHelpers.hygienicName("#pol__ao",
-                            PirHelpers.freeVariables(tokenArg)), new PirType.DataType());
-                    var tokVar = new PirTerm.Var("#tok__ao", new PirType.DataType());
-
-                    // Outer loop: search for matching policy in UnMapData(value)
-                    var outerPairs = new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnMapData), valVar);
-                    var outerPairsVar = new PirTerm.Var("#ops__ao", new PirType.ListType(
-                            new PirType.PairType(new PirType.DataType(), new PirType.DataType())));
-
-                    // Inner loop: search for matching token in the inner map
-                    var innerLstVar = new PirTerm.Var("#ils__ao", new PirType.ListType(
-                            new PirType.PairType(new PirType.DataType(), new PirType.DataType())));
-                    var innerGoVar = new PirTerm.Var("#igo__ao", new PirType.FunType(
-                            new PirType.ListType(new PirType.PairType(new PirType.DataType(), new PirType.DataType())),
-                            new PirType.IntegerType()));
-
-                    var innerNull = new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), innerLstVar);
-                    var innerHead = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), innerLstVar);
-                    var innerHVar = new PirTerm.Var("#ih__ao", new PirType.PairType(new PirType.DataType(), new PirType.DataType()));
-                    var innerFst = new PirTerm.App(new PirTerm.Builtin(DefaultFun.FstPair), innerHVar);
-                    var innerSnd = new PirTerm.App(new PirTerm.Builtin(DefaultFun.SndPair), innerHVar);
-                    var innerEq = PirHelpers.builtinApp2(DefaultFun.EqualsData, innerFst, tokVar);
-                    var innerTail = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), innerLstVar);
-                    var innerRecurse = new PirTerm.App(innerGoVar, innerTail);
-                    var innerAmount = new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnIData), innerSnd);
-                    var innerIf = new PirTerm.IfThenElse(innerEq, innerAmount, innerRecurse);
-                    var innerLet = new PirTerm.Let("#ih__ao", innerHead, innerIf);
-                    var innerOuter = new PirTerm.IfThenElse(innerNull,
-                            new PirTerm.Const(Constant.integer(BigInteger.ZERO)), innerLet);
-                    var innerBody = new PirTerm.Lam("#ils__ao", new PirType.ListType(
-                            new PirType.PairType(new PirType.DataType(), new PirType.DataType())), innerOuter);
-                    var innerBinding = new PirTerm.Binding("#igo__ao", innerBody);
-
-                    // Outer loop
-                    var outerLstVar = new PirTerm.Var("#ols__ao", new PirType.ListType(
-                            new PirType.PairType(new PirType.DataType(), new PirType.DataType())));
-                    var outerGoVar = new PirTerm.Var("#ogo__ao", new PirType.FunType(
-                            new PirType.ListType(new PirType.PairType(new PirType.DataType(), new PirType.DataType())),
-                            new PirType.IntegerType()));
-
-                    var outerNull = new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), outerLstVar);
-                    var outerHead = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), outerLstVar);
-                    var outerHVar = new PirTerm.Var("#oh__ao", new PirType.PairType(new PirType.DataType(), new PirType.DataType()));
-                    var outerFst = new PirTerm.App(new PirTerm.Builtin(DefaultFun.FstPair), outerHVar);
-                    var outerSnd = new PirTerm.App(new PirTerm.Builtin(DefaultFun.SndPair), outerHVar);
-                    var outerEq = PirHelpers.builtinApp2(DefaultFun.EqualsData, outerFst, polVar);
-                    var outerTail = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), outerLstVar);
-                    var outerRecurse = new PirTerm.App(outerGoVar, outerTail);
-
-                    // When policy matches, search inner map
-                    var innerMapPairs = new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnMapData), outerSnd);
-                    var innerSearch = new PirTerm.LetRec(List.of(innerBinding),
-                            new PirTerm.App(innerGoVar, innerMapPairs));
-
-                    var outerIf = new PirTerm.IfThenElse(outerEq, innerSearch, outerRecurse);
-                    var outerLet = new PirTerm.Let("#oh__ao", outerHead, outerIf);
-                    var outerOuter = new PirTerm.IfThenElse(outerNull,
-                            new PirTerm.Const(Constant.integer(BigInteger.ZERO)), outerLet);
-                    var outerBody = new PirTerm.Lam("#ols__ao", new PirType.ListType(
-                            new PirType.PairType(new PirType.DataType(), new PirType.DataType())), outerOuter);
-                    var outerBinding = new PirTerm.Binding("#ogo__ao", outerBody);
-
-                    var search = new PirTerm.LetRec(List.of(outerBinding),
-                            new PirTerm.App(outerGoVar, outerPairsVar));
-
-                    return new PirTerm.Let(valVar.name(), scope,
-                            new PirTerm.Let(polVar.name(), policyArg,
-                                    new PirTerm.Let("#tok__ao", tokenArg,
-                                            new PirTerm.Let("#ops__ao", outerPairs, search))));
+                    return assetOf(scope, policyArg, tokenArg);
                 },
                 scopeType -> new PirType.IntegerType());
+    }
+
+    /** The empty bytestring, as Data: the key of ADA's policy and of its token. */
+    private static PirTerm adaKey() {
+        return new PirTerm.Const(Constant.data(new PlutusData.BytesData(new byte[0])));
+    }
+
+    /** The amount of a (policy, token) in a Value, looked up by key in both maps, or 0: both keys are Data. */
+    private static PirTerm assetOf(PirTerm scope, PirTerm policyArg, PirTerm tokenArg) {
+        // Let-bind value, policyId, tokenName
+        // policyId is evaluated under v__ao and tokenName under v__ao and pol__ao.
+        var valVar = new PirTerm.Var(PirHelpers.hygienicName("#v__ao",
+                PirHelpers.freeVariables(policyArg, tokenArg)), new PirType.DataType());
+        var polVar = new PirTerm.Var(PirHelpers.hygienicName("#pol__ao",
+                PirHelpers.freeVariables(tokenArg)), new PirType.DataType());
+        var tokVar = new PirTerm.Var("#tok__ao", new PirType.DataType());
+
+        // Outer loop: search for matching policy in UnMapData(value)
+        var outerPairs = new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnMapData), valVar);
+        var outerPairsVar = new PirTerm.Var("#ops__ao", new PirType.ListType(
+                new PirType.PairType(new PirType.DataType(), new PirType.DataType())));
+
+        // Inner loop: search for matching token in the inner map
+        var innerLstVar = new PirTerm.Var("#ils__ao", new PirType.ListType(
+                new PirType.PairType(new PirType.DataType(), new PirType.DataType())));
+        var innerGoVar = new PirTerm.Var("#igo__ao", new PirType.FunType(
+                new PirType.ListType(new PirType.PairType(new PirType.DataType(), new PirType.DataType())),
+                new PirType.IntegerType()));
+
+        var innerNull = new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), innerLstVar);
+        var innerHead = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), innerLstVar);
+        var innerHVar = new PirTerm.Var("#ih__ao", new PirType.PairType(new PirType.DataType(), new PirType.DataType()));
+        var innerFst = new PirTerm.App(new PirTerm.Builtin(DefaultFun.FstPair), innerHVar);
+        var innerSnd = new PirTerm.App(new PirTerm.Builtin(DefaultFun.SndPair), innerHVar);
+        var innerEq = PirHelpers.builtinApp2(DefaultFun.EqualsData, innerFst, tokVar);
+        var innerTail = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), innerLstVar);
+        var innerRecurse = new PirTerm.App(innerGoVar, innerTail);
+        var innerAmount = new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnIData), innerSnd);
+        var innerIf = new PirTerm.IfThenElse(innerEq, innerAmount, innerRecurse);
+        var innerLet = new PirTerm.Let("#ih__ao", innerHead, innerIf);
+        var innerOuter = new PirTerm.IfThenElse(innerNull,
+                new PirTerm.Const(Constant.integer(BigInteger.ZERO)), innerLet);
+        var innerBody = new PirTerm.Lam("#ils__ao", new PirType.ListType(
+                new PirType.PairType(new PirType.DataType(), new PirType.DataType())), innerOuter);
+        var innerBinding = new PirTerm.Binding("#igo__ao", innerBody);
+
+        // Outer loop
+        var outerLstVar = new PirTerm.Var("#ols__ao", new PirType.ListType(
+                new PirType.PairType(new PirType.DataType(), new PirType.DataType())));
+        var outerGoVar = new PirTerm.Var("#ogo__ao", new PirType.FunType(
+                new PirType.ListType(new PirType.PairType(new PirType.DataType(), new PirType.DataType())),
+                new PirType.IntegerType()));
+
+        var outerNull = new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), outerLstVar);
+        var outerHead = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), outerLstVar);
+        var outerHVar = new PirTerm.Var("#oh__ao", new PirType.PairType(new PirType.DataType(), new PirType.DataType()));
+        var outerFst = new PirTerm.App(new PirTerm.Builtin(DefaultFun.FstPair), outerHVar);
+        var outerSnd = new PirTerm.App(new PirTerm.Builtin(DefaultFun.SndPair), outerHVar);
+        var outerEq = PirHelpers.builtinApp2(DefaultFun.EqualsData, outerFst, polVar);
+        var outerTail = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), outerLstVar);
+        var outerRecurse = new PirTerm.App(outerGoVar, outerTail);
+
+        // When policy matches, search inner map
+        var innerMapPairs = new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnMapData), outerSnd);
+        var innerSearch = new PirTerm.LetRec(List.of(innerBinding),
+                new PirTerm.App(innerGoVar, innerMapPairs));
+
+        var outerIf = new PirTerm.IfThenElse(outerEq, innerSearch, outerRecurse);
+        var outerLet = new PirTerm.Let("#oh__ao", outerHead, outerIf);
+        var outerOuter = new PirTerm.IfThenElse(outerNull,
+                new PirTerm.Const(Constant.integer(BigInteger.ZERO)), outerLet);
+        var outerBody = new PirTerm.Lam("#ols__ao", new PirType.ListType(
+                new PirType.PairType(new PirType.DataType(), new PirType.DataType())), outerOuter);
+        var outerBinding = new PirTerm.Binding("#ogo__ao", outerBody);
+
+        var search = new PirTerm.LetRec(List.of(outerBinding),
+                new PirTerm.App(outerGoVar, outerPairsVar));
+
+        return new PirTerm.Let(valVar.name(), scope,
+                new PirTerm.Let(polVar.name(), policyArg,
+                        new PirTerm.Let("#tok__ao", tokenArg,
+                                new PirTerm.Let("#ops__ao", outerPairs, search))));
     }
 }

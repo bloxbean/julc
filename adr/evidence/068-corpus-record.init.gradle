@@ -1,0 +1,24 @@
+// Gradle init script (ADR-068 M0, F304): record the ADR-068 corpus from an external build without editing it. It
+// turns on JuLC's test-only corpus and evaluation recorders (CorpusRecorder, EvaluationRecorder) in every JVM that
+// compiles or evaluates JuLC code: the test JVMs, the forked javac of a compile task that runs JuLC's annotation
+// processor, and (through -Dorg.gradle.jvmargs, see below) the Gradle daemon that runs the JuLC plugin's tasks.
+// Layer it on the Maven-local override of ADR-041, which pins the JuLC artifacts to a local snapshot:
+//
+//   ./gradlew clean test --refresh-dependencies --continue \
+//       -I <julc>/adr/evidence/041-local-examples.init.gradle \
+//       -I <julc>/adr/evidence/068-corpus-record.init.gradle \
+//       -Djulc.localVersion=<snapshot> -Djulc.corpus.dir=<absolute corpus dir> \
+//       "-Dorg.gradle.jvmargs=-Xmx2g -Djulc.corpus.record=<absolute corpus dir>"
+def corpusDir = System.getProperty('julc.corpus.dir')
+if (!corpusDir) throw new GradleException('Set -Djulc.corpus.dir to the absolute corpus directory')
+allprojects {
+    tasks.withType(Test).configureEach {
+        systemProperty 'julc.corpus.record', corpusDir
+        outputs.upToDateWhen { false }
+    }
+    tasks.withType(JavaCompile).configureEach {
+        options.fork = true
+        options.forkOptions.jvmArgs = (options.forkOptions.jvmArgs ?: []) + ["-Djulc.corpus.record=${corpusDir}".toString()]
+        outputs.upToDateWhen { false }
+    }
+}

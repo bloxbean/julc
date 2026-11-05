@@ -1,0 +1,17 @@
+format: 2
+name: BigInteger.mod with a negative modulus fails on both sides (T11, fixed)
+class: Probe
+method: m
+arg: 07
+arg: 21
+expect: AGREE
+note: The JVM throws ArithmeticException, and the script fails on the same input (ADR-068 B3).
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+
+public class Probe {
+    public static BigInteger m(long a, long b) {
+        return BigInteger.valueOf(a).mod(BigInteger.valueOf(b));
+    }
+}

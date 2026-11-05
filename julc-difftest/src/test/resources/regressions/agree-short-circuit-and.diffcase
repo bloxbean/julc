@@ -1,0 +1,15 @@
+format: 2
+name: && does not evaluate a failing right operand
+class: Probe
+method: m
+arg: 00
+expect: AGREE
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+
+public class Probe {
+    public static boolean m(long n) {
+        return n != 0 && 10 / n > 1;
+    }
+}

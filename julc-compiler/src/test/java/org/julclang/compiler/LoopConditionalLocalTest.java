@@ -116,7 +116,9 @@ class LoopConditionalLocalTest {
                 }
                 return acc;
                 """, "local");
-        for (String loop : List.of("for (var y : xs)", "while (true)")) {
+        // A while loop whose body cannot end the loop: javac rejects `while (true)` here (the yield after it is
+        // unreachable), so the condition is one javac cannot decide.
+        for (String loop : List.of("for (var y : xs)", "while (local.compareTo(BigInteger.TEN) < 0)")) {
             assertRejected("""
                     Action action = new Only();
                     BigInteger acc = BigInteger.ZERO;
@@ -168,8 +170,12 @@ class LoopConditionalLocalTest {
         for (String invalidScope : List.of(
                 "if (action instanceof Only p) {} else { for (var y : xs) { p = new Only(); } }",
                 "if (action instanceof Only p) {} for (var y : xs) { p = new Only(); }")) {
-            assertSwitchRejected("return switch (action) { case Only o -> { " + invalidScope
-                    + " yield BigInteger.ZERO; } };", "p");
+            // p is not in scope where it is assigned: javac rejects it first (ADR-068 I2b).
+            String source = HEADER + "static BigInteger m(JulcList<BigInteger> xs, Action action) { "
+                    + "return switch (action) { case Only o -> { " + invalidScope + " yield BigInteger.ZERO; } }; } }";
+            var error = assertThrows(CompilerException.class, () -> compile(source, OptimizationLevel.NONE));
+            assertTrue(error.getMessage().contains("(compiler.err.cant.resolve.location)")
+                    && error.getMessage().contains("variable p"), error.getMessage());
         }
     }
 
@@ -180,7 +186,7 @@ class LoopConditionalLocalTest {
                 var error = assertThrows(CompilerException.class, () -> compile(source, level, sourceMaps));
                 assertTrue(error.getMessage().contains("Switch-expression arm cannot update enclosing variable '" + name + "'"), error.getMessage());
                 assertTrue(error.getMessage().contains("yield its result"), error.getMessage());
-                assertTrue(error.getMessage().matches("(?s).*Loops\\.java:\\d+:\\d+:.*"), error.getMessage());
+                assertTrue(error.getMessage().matches("(?s).*ERROR\\[JULC01\\d\\d] at \\.\\(Loops\\.java:\\d+\\):\\d+ - .*"), error.getMessage());
             }
         }
     }
@@ -204,7 +210,7 @@ class LoopConditionalLocalTest {
                         var error = assertThrows(CompilerException.class, () -> compile(source, level, maps));
                         assertTrue(error.getMessage().contains("Reassignment of switch case-pattern variable 'p' is not supported"), error.getMessage());
                         assertTrue(error.getMessage().contains("fresh local accumulator"), error.getMessage());
-                        assertTrue(error.getMessage().matches("(?s).*Loops\\.java:\\d+:\\d+:.*"), error.getMessage());
+                        assertTrue(error.getMessage().matches("(?s).*ERROR\\[JULC01\\d\\d] at \\.\\(Loops\\.java:\\d+\\):\\d+ - .*"), error.getMessage());
                     }
                 }
             }
@@ -218,7 +224,7 @@ class LoopConditionalLocalTest {
             assertTrue(error.getMessage().contains("conditional initializer"), error.getMessage());
             assertTrue(error.getMessage().contains("before the loop"), error.getMessage());
             assertTrue(error.getMessage().contains("declare it inside the branch"), error.getMessage());
-            assertTrue(error.getMessage().matches("(?s).*Loops\\.java:\\d+:\\d+:.*"), error.getMessage());
+            assertTrue(error.getMessage().matches("(?s).*ERROR\\[JULC01\\d\\d] at \\.\\(Loops\\.java:\\d+\\):\\d+ - .*"), error.getMessage());
             var mapped = assertThrows(CompilerException.class, () -> compile(source, level, true));
             assertEquals(error.getMessage(), mapped.getMessage());
         }
@@ -370,7 +376,7 @@ class LoopConditionalLocalTest {
                     """, 18, 6),
             new Supported("while conditional initializer", """
                     BigInteger acc = BigInteger.ZERO;
-                    BigInteger remaining = xs.size();
+                    BigInteger remaining = BigInteger.valueOf(xs.size());
                     while (remaining.compareTo(BigInteger.ZERO) > 0) {
                         BigInteger step = remaining.compareTo(BigInteger.ONE) > 0 ? BigInteger.TWO : BigInteger.ONE;
                         acc = acc.add(step);

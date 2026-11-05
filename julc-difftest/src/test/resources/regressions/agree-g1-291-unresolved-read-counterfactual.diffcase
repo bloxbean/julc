@@ -1,0 +1,62 @@
+format: 3
+name: the #291 reproducer 291-unresolved-read with its trigger removed agrees (counterfactual)
+class: Probe
+method: m
+tag: Probe$A0 Probe$S0 1
+tag: Probe$A1 Probe$S1 2
+tag: Probe$B0 Probe$S0 0
+tag: Probe$B1 Probe$S1 0
+tag: Probe$C1 Probe$S1 1
+profile: G1 r6 -GUARDS -RECORD_PATTERNS -CROSS_TYPE_EQUALS -SHARED_VARIANT -ASSIGN_PATTERN_BINDING -ZERO_ARG_HELPERS -SHADOW_IN_LOOP_BRANCH -LOOP_BREAK_SHAPES -TRACE_IN_COMPARISON +DEFAULT_BLOCK_SCOPE steer=291
+arg: 04
+arg: 25
+arg: 9f20ff
+arg: d87a80
+arg: d8799fd8799f00ffd8799f0421ffd8799f2401ffff
+expect: AGREE
+note: ADR-066 D10.1 cause check for #291: only the trigger changes (the default arm block's local is renamed apart
+note: from the field); the JVM observation is unchanged and UPLC agrees.
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+import org.julclang.stdlib.Builtins;
+
+public class Probe {
+    record R1(BigInteger w, BigInteger v) {}
+    sealed interface S0 permits B0, A0 {}
+    record B0(BigInteger v) implements S0 {}
+    record A0() implements S0 {}
+    sealed interface S1 permits B1, C1, A1 {}
+    record B1(B0 v, R1 p, R1 w) implements S1 {}
+    record C1(R1 f, R1 p) implements S1 {}
+    record A1(B0 p) implements S1 {}
+    record R0(BigInteger v, BigInteger w) {}
+
+    static final R0 v = new R0(BigInteger.valueOf(-5), BigInteger.valueOf(-5));
+
+    static BigInteger t(String k, BigInteger v) {
+        return Builtins.unIData(Builtins.trace(k, Builtins.iData(v)));
+    }
+
+    static BigInteger fail(BigInteger z) {
+        return Builtins.unIData(Builtins.error());
+    }
+
+    public static BigInteger m(BigInteger a, BigInteger b, JulcList<BigInteger> xs, A0 w, B1 w1) {
+        S1 f = w1;
+        BigInteger f1 = switch (f) {
+            case B1 x -> v.w();
+            default -> {
+                BigInteger v2 = BigInteger.valueOf(-5);
+                BigInteger v1 = BigInteger.valueOf(-5);
+                long i0 = 0;
+                while (i0 < 0) {
+                    v1 = BigInteger.valueOf(-5);
+                    i0 = i0 + 1;
+                }
+                yield BigInteger.valueOf(-5);
+            }
+        };
+        return v.v();
+    }
+}

@@ -1,0 +1,423 @@
+true	true	false	BOOLEAN	true
+false	true	false	BOOLEAN	false
+1	true	false	INT	1
+1L	true	false	LONG	1
+"a"	true	false	STRING	a
+'c'	true	true	-	-
+1.5	true	true	-	-
+1.5f	true	true	-	-
+null	false	false	-	-
+(1)	true	false	INT	1
+((1L))	true	false	LONG	1
+-1	true	false	INT	-1
+- 1	true	false	INT	-1
++1	true	false	INT	1
+~1	true	false	INT	-2
+!true	true	false	BOOLEAN	false
+-2147483648	true	false	INT	-2147483648
+-2_147_483_648	true	false	INT	-2147483648
+-9223372036854775808L	true	false	LONG	-9223372036854775808
+-9223372036854775808l	true	false	LONG	-9223372036854775808
+0xFFFFFFFF	true	false	INT	-1
+0x80000000	true	false	INT	-2147483648
+-0x80000000	true	false	INT	-2147483648
+017	true	false	INT	15
+0b11	true	false	INT	3
+1_000	true	false	INT	1000
+0xFFFFFFFFFFFFFFFFL	true	false	LONG	-1
+2147483647 + 1	true	false	INT	-2147483648
+2147483647L + 1	true	false	LONG	2147483648
+-2147483648 - 1	true	false	INT	2147483647
+65536 * 65536	true	false	INT	0
+7 / 2	true	false	INT	3
+-7 / 2	true	false	INT	-3
+7 % 3	true	false	INT	1
+-7 % 3	true	false	INT	-1
+1 / 0	true	true	-	-
+1 % 0	true	true	-	-
+1L / 0L	true	true	-	-
+1 << 31	true	false	INT	-2147483648
+1 << 32	true	false	INT	1
+1L << 32	true	false	LONG	4294967296
+-1 >> 1	true	false	INT	-1
+-1 >>> 28	true	false	INT	15
+-1L >>> 60	true	false	LONG	15
+1 << 33L	true	false	INT	2
+5 & 3	true	false	INT	1
+5 | 3	true	false	INT	7
+5 ^ 3	true	false	INT	6
+5L & 3	true	false	LONG	1
+1 == 1	true	false	BOOLEAN	true
+1 != 1	true	false	BOOLEAN	false
+1 < 2	true	false	BOOLEAN	true
+1 <= 1	true	false	BOOLEAN	true
+2 > 1	true	false	BOOLEAN	true
+1 >= 2	true	false	BOOLEAN	false
+1 == 1L	true	false	BOOLEAN	true
+1L < 2	true	false	BOOLEAN	true
+true && false	true	false	BOOLEAN	false
+true || false	true	false	BOOLEAN	true
+true & false	true	false	BOOLEAN	false
+true | false	true	false	BOOLEAN	true
+true ^ true	true	false	BOOLEAN	false
+true == true	true	false	BOOLEAN	true
+true != true	true	false	BOOLEAN	false
+"a" + "b"	true	false	STRING	ab
+"a" + 1	true	false	STRING	a1
+1 + "a"	true	false	STRING	1a
+"a" + true	true	false	STRING	atrue
+"a" + 1L	true	false	STRING	a1
+"a" == "a"	true	false	BOOLEAN	true
+"a" != "a"	true	false	BOOLEAN	false
+"a" + "b" == "ab"	true	false	BOOLEAN	true
+"a" + (2147483647 + 1)	true	false	STRING	a-2147483648
+true ? 1 : 2	true	false	INT	1
+false ? 1 : 2	true	false	INT	2
+true ? 2147483647 : 0L	true	false	LONG	2147483647
+(true ? 2147483647 : 0L) + 1	true	false	LONG	2147483648
+true ? "a" : "b"	true	false	STRING	a
+true ? true : false	true	false	BOOLEAN	true
+true ? 1 : "a"	false	false	-	-
+true ? true : 0	false	false	-	-
+(int) 2147483648L	true	false	INT	-2147483648
+(int) 1	true	false	INT	1
+(long) 1	true	false	LONG	1
+(long) 2147483647 + 1	true	false	LONG	2147483648
+(boolean) true	true	false	BOOLEAN	true
+(String) "a"	true	false	STRING	a
+(byte) 1	true	true	-	-
+(short) 1	true	true	-	-
+(char) 65	true	true	-	-
+(double) 1	true	true	-	-
+(float) 1	true	true	-	-
+(Object) 1	false	false	-	-
+N	true	false	INT	2147483647
+N + 1	true	false	INT	-2147483648
+W << 32	true	false	LONG	4294967296
+M + 1	true	false	LONG	2147483648
+ON	true	false	BOOLEAN	true
+!ON	true	false	BOOLEAN	false
+T	true	false	STRING	t
+U	true	false	STRING	tu
+T + "v"	true	false	STRING	tv
+A	true	false	INT	2147483647
+A + 1	true	false	INT	-2147483648
+B	true	true	-	-
+C	true	true	-	-
+H	true	true	-	-
+B + 1	true	true	-	-
+X	true	true	-	-
+Y	true	true	-	-
+Z	true	true	-	-
+NF	true	false	LONG	5
+Probe.N	true	false	INT	2147483647
+Probe.W << 32	true	false	LONG	4294967296
+mutable	false	false	-	-
+mutable + 1	false	false	-	-
+Integer.MAX_VALUE	false	false	-	-
+Long.MAX_VALUE	false	false	-	-
+Math.abs(1)	false	false	-	-
+(((int) (M ^ 0)) >>> 0xFFFFFFFF)	true	false	INT	0
+((int) (((int) 1L) >> ((int) 1L)))	true	false	INT	0
+-1L	true	false	LONG	-1
+((-1 ^ (- 33)) > ((int) (-2147483648 - M)) ? -1L : (- (- 2147483647)))	true	false	LONG	-1
+31	true	false	INT	31
+((- (- 33)) ^ (- 1L))	true	false	LONG	-34
+0	true	false	INT	0
+(- ((int) (- -1)))	true	false	INT	-1
+2147483647	true	false	INT	2147483647
+(((2147483647 + M) > M ? -1L : (- M)) >> ((2 > 0xFFFFFFFF ? -2147483648 : 33) % -2147483648))	true	false	LONG	-1
+((0xFFFFFFFF >> (33 >>> 0xFFFFFFFF)) > ((int) (- N)) ? (31 | (M > -1 ? 2147483647 : 2147483647)) : ((int) (31 - M)))	true	false	INT	2147483647
+(- ((int) (~N)))	true	false	INT	-2147483648
+(((~W) > (- 1L) ? (W > 0 ? 33 : 0xFFFFFFFF) : -1) - -2147483648)	true	false	INT	2147483647
+((((int) 1) & (~-1L)) | ((33 ^ 2147483647) > (W > M ? 1 : -1) ? 33 : (-2147483648 + 0xFFFFFFFF)))	true	false	LONG	33
+(W - (~(~M)))	true	false	LONG	-2147483646
+(((-2147483648 | N) / (- 31)) > -2147483648 ? (~(~1L)) : ((~N) >>> 2147483647))	true	false	LONG	1
+((1 > (0 > 2 ? 9223372036854775807L : 1) ? ((int) M) : (- 1L)) >> ((int) 2147483647))	true	false	LONG	-1
+(1L > ((int) (~-2147483648)) ? (- 1L) : -1)	true	false	LONG	-1
+((int) (- ((int) M)))	true	false	INT	-2147483647
+((int) (2147483647 | ((int) 2147483647)))	true	false	INT	2147483647
+M	true	false	LONG	2147483647
+(- ((- 0xFFFFFFFF) > -1L ? (~-2147483648) : (2 ^ 33)))	true	false	INT	-2147483647
+(~((int) ((int) 33)))	true	false	INT	-34
+(~((int) (31 > -1 ? N : 0xFFFFFFFF)))	true	false	INT	-2147483648
+(((33 * 31) + (~N)) > ((N * M) & W) ? (~((int) M)) : (- (9223372036854775807L > 31 ? N : -1)))	true	false	INT	-2147483647
+(2147483647 > -1 ? 9223372036854775807L : ((0xFFFFFFFF > 31 ? W : -1L) > (~9223372036854775807L) ? (N << -1L) : (2147483647 > 31 ? 9223372036854775807L : 1L)))	true	false	LONG	9223372036854775807
+(- -2147483648)	true	false	INT	-2147483648
+(~((int) (2147483647 ^ 31)))	true	false	INT	-2147483617
+W	true	false	LONG	1
+((int) 2)	true	false	INT	2
+((int) (((int) 2) % (~0)))	true	false	INT	0
+(- ((9223372036854775807L > -1 ? -1 : -1L) + ((int) W)))	true	false	LONG	0
+((- (~9223372036854775807L)) > (M - (~0xFFFFFFFF)) ? ((-2147483648 << 33) * (- 0)) : (- N))	true	false	INT	-2147483647
+(((9223372036854775807L >>> 9223372036854775807L) > M ? (~33) : ((int) M)) ^ (- W))	true	false	LONG	-2147483648
+(~31)	true	false	INT	-32
+((int) ((int) (- 1)))	true	false	INT	-1
+(~(~-1))	true	false	INT	-1
+(- ((int) M))	true	false	INT	-2147483647
+(~2147483647)	true	false	INT	-2147483648
+((- ((int) 1)) > ((~N) / (2147483647 > 1L ? M : M)) ? 2147483647 : (- 1L))	true	false	LONG	-1
+(~(- 31))	true	false	INT	30
+(-1 ^ ((int) (0xFFFFFFFF > 0 ? -1 : 2)))	true	false	INT	-3
+(((int) 33) / (((int) -1L) >>> (M > -2147483648 ? 2 : 0xFFFFFFFF)))	true	false	INT	0
+(~(- ((int) 2147483647)))	true	false	INT	2147483646
+(((1L * 0) - (2147483647 > 2147483647 ? 0 : 0)) > (- (~1)) ? ((2 << 2) + 2147483647) : (((int) 1L) > (M / W) ? -1L : (~1L)))	true	false	LONG	-2
+((0xFFFFFFFF > (~N) ? (- M) : -1L) ^ (((int) 0xFFFFFFFF) >> -1L))	true	false	LONG	2147483646
+((~(0 > -2147483648 ? M : 1L)) << ((31 ^ 33) * (2 > 2 ? -1L : -2147483648)))	true	false	LONG	-2147483648
+((- (N | W)) > (- (-1 + -1L)) ? ((int) 1L) : ((~33) > (1L | 0xFFFFFFFF) ? (- 33) : (- 2)))	true	false	INT	-2
+(~(((int) M) | (N | 9223372036854775807L)))	true	false	LONG	-9223372036854775808
+((~((int) M)) - 9223372036854775807L)	true	false	LONG	9223372034707292161
+(-1L >> (- 33))	true	false	LONG	-1
+((~-2147483648) / ((W > -1 ? 2147483647 : 33) ^ (-1L + 1L)))	true	false	LONG	1
+(((- M) | ((int) 0xFFFFFFFF)) > (~(~M)) ? (~-1L) : ((int) 1))	true	false	LONG	1
+((int) (-1 > (1 - -1L) ? ((int) 33) : 0))	true	false	INT	0
+(-2147483648 >>> ((-2147483648 > 1 ? 9223372036854775807L : 9223372036854775807L) > ((int) M) ? (2 << N) : 33))	true	false	INT	-2147483648
+((~(31 > 9223372036854775807L ? 2147483647 : N)) % ((int) (M > M ? W : 0)))	true	true	-	-
+(~(~((int) 2)))	true	false	INT	2
+(((W | N) % ((int) -1)) > (((int) 1L) + -1) ? 33 : (~(-2147483648 >>> -1L)))	true	false	INT	-2
+((int) (N % (2147483647 > 1 ? 33 : N)))	true	false	INT	1
+((((int) -1L) ^ (1 > -1 ? W : 0xFFFFFFFF)) > (~(- 31)) ? 1 : 0)	true	false	INT	0
+(1 * ((- 33) | ((int) 9223372036854775807L)))	true	false	INT	-1
+(- (-1L / (- -1L)))	true	false	LONG	1
+(~2)	true	false	INT	-3
+((int) ((int) 2147483647))	true	false	INT	2147483647
+(-2147483648 > ((int) (1 > W ? 31 : M)) ? 0 : -1)	true	false	INT	-1
+9223372036854775807L	true	false	LONG	9223372036854775807
+(((int) ((int) 1)) & (- (1 > 31 ? 2147483647 : -1L)))	true	false	LONG	1
+(- ((0 + W) & (1 * 0)))	true	false	LONG	0
+((- (31 - 2147483647)) >>> ((int) ((int) 0)))	true	false	INT	2147483616
+(~((int) -2147483648))	true	false	INT	2147483647
+(~((- -1L) > ((int) W) ? (M | W) : (9223372036854775807L > 2 ? 2 : 0)))	true	false	LONG	-3
+(2 << -1)	true	false	INT	0
+(~((M >> 31) > (9223372036854775807L % -2147483648) ? (~-2147483648) : (- 0xFFFFFFFF)))	true	false	INT	-2
+33	true	false	INT	33
+((int) ((int) (~0)))	true	false	INT	-1
+(((- 0xFFFFFFFF) | ((int) -1L)) > (-2147483648 ^ 2) ? (((int) N) > (- 2) ? 31 : (31 / M)) : (- (- 1)))	true	false	LONG	31
+((int) (((int) N) >> (-2147483648 | 2)))	true	false	INT	536870911
+(~((~9223372036854775807L) >>> (~9223372036854775807L)))	true	false	LONG	9223372036854775807
+((int) ((2147483647 + 1L) / (31 >>> 31)))	true	true	-	-
+(((int) ((int) W)) > ((- -2147483648) >> ((int) 1L)) ? ((0xFFFFFFFF > 31 ? 2147483647 : 31) > ((int) -1L) ? (~1) : (-2147483648 > W ? -1L : 1L)) : (~(-1L > M ? -2147483648 : -2147483648)))	true	false	LONG	-2
+(((- 2) > -2147483648 ? (1L - 9223372036854775807L) : 1) >> ((~0xFFFFFFFF) + ((int) 9223372036854775807L)))	true	false	LONG	-1
+(- -1)	true	false	INT	1
+((~(~-2147483648)) >>> ((2147483647 > 1 ? 2 : W) % (1 > -1 ? M : 2147483647)))	true	false	INT	536870912
+(~((2147483647 * N) >>> (2147483647 > 1 ? N : 0xFFFFFFFF)))	true	false	INT	-1
+(~(((int) -2147483648) - (0 >>> N)))	true	false	INT	2147483647
+(~((31 > 2 ? 0 : 33) >> (M > 1L ? 2 : 33)))	true	false	INT	-1
+(- ((int) ((int) 33)))	true	false	INT	-33
+((((int) 2) & (- -1L)) > (~(-2147483648 - N)) ? ((9223372036854775807L > M ? 1 : -2147483648) > ((int) -1L) ? (M | -1L) : 33) : N)	true	false	LONG	-1
+((~(-1 - 1)) * (~(33 + M)))	true	false	LONG	-2147483681
+(~((- 0xFFFFFFFF) > (- -1) ? 9223372036854775807L : -2147483648))	true	false	LONG	2147483647
+(1L - 2147483647)	true	false	LONG	-2147483646
+(~((int) (- -2147483648)))	true	false	INT	2147483647
+2	true	false	INT	2
+((~(- -1)) & ((1 > -1L ? -1 : -1) + -2147483648))	true	false	INT	2147483646
+(- (~((int) -1)))	true	false	INT	0
+((~(2 >> 2147483647)) % (M ^ (~1L)))	true	false	LONG	-1
+(- (~1))	true	false	INT	2
+(- (- 33))	true	false	INT	33
+(- (- M))	true	false	LONG	2147483647
+((int) 1L)	true	false	INT	1
+(((N - -1L) >> 33) >>> 9223372036854775807L)	true	false	LONG	0
+(- ((33 >>> -2147483648) > (1L * -1L) ? W : W))	true	false	LONG	-1
+((int) 0)	true	false	INT	0
+((- (M << 0)) > -1 ? (~(- N)) : -1L)	true	false	LONG	-1
+(2147483647 & 9223372036854775807L)	true	false	LONG	2147483647
+(- (0xFFFFFFFF % (1 >>> 0)))	true	false	INT	0
+(-2147483648 & (~((int) -1)))	true	false	INT	0
+(2 / (31 > ((int) 9223372036854775807L) ? (0xFFFFFFFF > N ? 2147483647 : -2147483648) : W))	true	false	LONG	0
+((- (9223372036854775807L > -1L ? W : 0)) > ((int) (2 * 2147483647)) ? (- N) : ((int) (-2147483648 > -1 ? -2147483648 : 2147483647)))	true	false	INT	-2147483647
+(~(- (- -1L)))	true	false	LONG	0
+(- ((~1L) & (9223372036854775807L << 33)))	true	false	LONG	8589934592
+(- ((M >> 31) ^ (-1 > 1 ? -2147483648 : 1L)))	true	false	LONG	-1
+((((int) 31) % (-1 + 9223372036854775807L)) << (- M))	true	false	LONG	62
+(- (- (9223372036854775807L | -2147483648)))	true	false	LONG	-1
+(((0 * N) ^ (9223372036854775807L & 9223372036854775807L)) > N ? ((0 * W) << ((int) -1L)) : 9223372036854775807L)	true	false	LONG	0
+((((int) 0) & (0 % 33)) ^ N)	true	false	INT	2147483647
+((- N) >> (- N))	true	false	INT	-1073741824
+(~1L)	true	false	LONG	-2
+((~(-2147483648 * W)) + (N > (1L % -1L) ? (- 0) : (2147483647 & N)))	true	false	LONG	2147483647
+(0 + 9223372036854775807L)	true	false	LONG	9223372036854775807
+(((~N) >> (~9223372036854775807L)) << (~-1L))	true	false	INT	-2147483648
+(- ((~0xFFFFFFFF) | ((int) -2147483648)))	true	false	INT	-2147483648
+((~(9223372036854775807L / -1)) ^ (- (W > 1L ? 2 : 31)))	true	false	LONG	-9223372036854775777
+(- ((- 33) > (N >> 2) ? N : N))	true	false	INT	-2147483647
+(- ((0xFFFFFFFF % 1) + (0xFFFFFFFF ^ -1)))	true	false	INT	0
+(((- -1L) > 2 ? (-1L >> 33) : (~0xFFFFFFFF)) * (- ((int) 0)))	true	false	LONG	0
+(9223372036854775807L > 33 ? (- (- 2147483647)) : 2)	true	false	INT	2147483647
+((((int) 2) > (2147483647 > 9223372036854775807L ? 9223372036854775807L : W) ? ((int) 1L) : (- 2)) & W)	true	false	LONG	1
+(31 << ((- 2) - (- M)))	true	false	INT	-536870912
+((- (- 31)) & (- (1 - 1)))	true	false	INT	0
+(((int) (~-2147483648)) / ((- 1) >> (-2147483648 << -1)))	true	false	INT	-2147483647
+(- (~(- M)))	true	false	LONG	-2147483646
+((- (2 | 2)) ^ ((~-1) > (~9223372036854775807L) ? (- -1) : ((int) -1)))	true	false	INT	-1
+(- (~(~31)))	true	false	INT	-31
+(~N)	true	false	INT	-2147483648
+((-2147483648 >>> (~0xFFFFFFFF)) ^ (- N))	true	false	INT	1
+(~9223372036854775807L)	true	false	LONG	-9223372036854775808
+(((~0) / (0xFFFFFFFF & 1L)) | N)	true	false	LONG	-1
+(- ((~33) % 1))	true	false	INT	0
+(~((-2147483648 > 0 ? -1 : 31) >>> (W >>> 1L)))	true	false	INT	-32
+(-1L & (~2147483647))	true	false	LONG	-2147483648
+(- ((-1L % 9223372036854775807L) > (~1L) ? (- 2147483647) : -1L))	true	false	LONG	2147483647
+(M % ((int) (1L > 1L ? -1L : 1L)))	true	false	LONG	0
+(~-1L)	true	false	LONG	0
+((int) ((9223372036854775807L >>> W) > ((int) 31) ? 2 : 1))	true	false	INT	2
+(- ((~W) > ((int) N) ? (-1 & -1) : (- 0)))	true	false	INT	0
+(1L + ((int) (-2147483648 * 1L)))	true	false	LONG	-2147483647
+((-1 | (~33)) > ((int) (2147483647 > 9223372036854775807L ? 9223372036854775807L : 31)) ? (((int) 2147483647) ^ (~31)) : ((0xFFFFFFFF >>> 33) > (-1L > 31 ? 2147483647 : 0xFFFFFFFF) ? (~2) : (1L ^ 0xFFFFFFFF)))	true	false	LONG	-3
+(((33 - 2147483647) * (- 2147483647)) ^ (~((int) M)))	true	false	INT	34
+((~(- 2)) + (- 0))	true	false	INT	1
+((int) 2147483647)	true	false	INT	2147483647
+(((- -1L) ^ (31 - M)) > (31 & (~2147483647)) ? 2 : 1L)	true	false	LONG	1
+(1L % 2147483647)	true	false	LONG	1
+(((- 31) > ((int) -1) ? (0 >>> 9223372036854775807L) : ((int) -2147483648)) ^ (-1L >> (W * 2)))	true	false	LONG	2147483647
+((int) ((- N) << (~1)))	true	false	INT	1073741824
+((~(1 > 2 ? 0xFFFFFFFF : 0)) >>> 0xFFFFFFFF)	true	false	INT	1
+(~(~(M > 9223372036854775807L ? 33 : 31)))	true	false	INT	31
+(- (1L & ((int) M)))	true	false	LONG	-1
+(((0 + -1) | 0) >> ((0 << 0) - ((int) 1)))	true	false	INT	-1
+(((N + 2) > ((int) 33) ? N : -2147483648) << ((~-2147483648) / (~1)))	true	false	INT	0
+(- 2)	true	false	INT	-2
+(- ((int) (33 >>> -1L)))	true	false	INT	0
+((int) (~0))	true	false	INT	-1
+(((0 >>> 2) / (M ^ M)) > (- 31) ? 31 : 33)	true	true	-	-
+(0 >>> (~(-2147483648 + -1)))	true	false	INT	0
+(33 << (~-1))	true	false	INT	33
+(~((~2147483647) * (31 * -2147483648)))	true	false	INT	-1
+(((- N) & (- 31)) - (~(M >> -1L)))	true	false	LONG	-2147483646
+(~(~-2147483648))	true	false	INT	-2147483648
+(-2147483648 > (- W) ? (~(- 33)) : ((~2) / ((int) 0xFFFFFFFF)))	true	false	INT	3
+((int) ((int) 0xFFFFFFFF))	true	false	INT	-1
+((~(0xFFFFFFFF + -2147483648)) ^ ((int) (-2147483648 > 31 ? 33 : 2147483647)))	true	false	INT	-1
+(- (1L << ((int) W)))	true	false	LONG	-2
+(~((N > -1L ? W : 0xFFFFFFFF) > (- 1) ? (0 / -1) : ((int) 33)))	true	false	INT	-1
+((-1 > -2147483648 ? (31 > N ? 33 : M) : (33 + 1)) * ((1L > W ? M : M) > (- -2147483648) ? 2147483647 : (-1L & -1)))	true	false	LONG	4611686014132420609
+(((~31) / (- 1)) * ((1L & 1) > ((int) -2147483648) ? 31 : (~1)))	true	false	INT	992
+(9223372036854775807L > ((- M) + (- W)) ? ((~0xFFFFFFFF) > -1 ? (~-1) : (0xFFFFFFFF << 2)) : (- (-1 >> 2)))	true	false	INT	0
+((~(- 1L)) | ((0 > N ? -1L : 9223372036854775807L) * (M >> 1L)))	true	false	LONG	9223372035781033985
+(~1)	true	false	INT	-2
+(- (~(- N)))	true	false	INT	-2147483646
+(((int) (31 > W ? -2147483648 : -2147483648)) << 0xFFFFFFFF)	true	false	INT	0
+(((1 * 9223372036854775807L) * 2147483647) & ((- -2147483648) > 31 ? (33 > N ? 9223372036854775807L : 2) : (31 - 0xFFFFFFFF)))	true	false	LONG	0
+(((int) (~W)) / N)	true	false	INT	0
+(- 1L)	true	false	LONG	-1
+(((~-1) % 9223372036854775807L) & (((int) M) << (- -1)))	true	false	LONG	0
+(((1L - 2147483647) % -2147483648) > ((2 & 31) | (2 >>> M)) ? 2147483647 : ((1 / 9223372036854775807L) ^ (-1L | 1)))	true	false	LONG	-1
+((int) (- (0 >> 2147483647)))	true	false	INT	0
+((int) -1)	true	false	INT	-1
+(((- 0xFFFFFFFF) * -1L) * W)	true	false	LONG	-1
+((- (-1 & W)) > ((2147483647 % 33) & ((int) 0)) ? (~(31 >> 33)) : (- (- 0)))	true	false	INT	0
+(((int) -1) > (- (- -1L)) ? (-1 > (-1L > 2 ? 0xFFFFFFFF : 0) ? (-1 + 0xFFFFFFFF) : 9223372036854775807L) : (- (M & N)))	true	false	LONG	-2147483647
+(- ((int) (- 0xFFFFFFFF)))	true	false	INT	-1
+(((int) (9223372036854775807L > -1 ? 2 : W)) ^ 0)	true	false	INT	2
+(((- -2147483648) > (-1L > 2 ? 9223372036854775807L : 0) ? (~33) : 1) / (~(~0)))	true	true	-	-
+(- ((31 >> W) > (33 ^ -2147483648) ? W : (~W)))	true	false	LONG	-1
+((int) (- (-1 | 1L)))	true	false	INT	1
+((~(~9223372036854775807L)) >> ((N | 1) > (-1L > -1L ? M : N) ? (-2147483648 > -2147483648 ? -1 : 2147483647) : (0xFFFFFFFF & 31)))	true	false	LONG	4294967295
+(~((- N) << (1 - -1L)))	true	false	INT	-5
+((int) ((M | W) + (1L > 2 ? N : 0xFFFFFFFF)))	true	false	INT	2147483646
+(2147483647 ^ (~((int) 33)))	true	false	INT	-2147483615
+(~((- -1) > (- 0) ? W : (~-2147483648)))	true	false	LONG	-2
+(((int) (0 >>> 0xFFFFFFFF)) > -1 ? (M > (N & -2147483648) ? ((int) 33) : (0 * 2147483647)) : (((int) 33) & (M > 0 ? 33 : 9223372036854775807L)))	true	false	LONG	33
+(- ((1 << 0) > 33 ? (0 & 1) : (~1L)))	true	false	LONG	2
+(~(- (2147483647 > -2147483648 ? 2 : -1L)))	true	false	LONG	1
+((M > (M >> N) ? (~-1) : (0 + 9223372036854775807L)) >>> M)	true	false	LONG	0
+(1L % (((int) 2147483647) & 2))	true	false	LONG	1
+(((0 & 9223372036854775807L) > ((int) 33) ? -1L : (- 0xFFFFFFFF)) / 33)	true	false	LONG	0
+(((2147483647 ^ M) ^ (~0)) % ((- 31) << (- 0xFFFFFFFF)))	true	false	LONG	-1
+(~(~(- 0)))	true	false	INT	0
+(((0xFFFFFFFF | 1) << (~W)) > 9223372036854775807L ? N : 1L)	true	false	LONG	1
+((N > ((int) -1L) ? (- N) : -2147483648) ^ (- W))	true	false	LONG	2147483646
+(~((int) (1L > 1L ? 1 : 31)))	true	false	INT	-32
+(((int) (~-1L)) | ((0 << N) - M))	true	false	LONG	-2147483647
+(~((2 ^ -1) & ((int) N)))	true	false	INT	-2147483646
+(1L * (- M))	true	false	LONG	-2147483647
+(~(31 > (- 1) ? (N / 33) : (1 ^ 9223372036854775807L)))	true	false	LONG	-65075263
+(~(- (~-2147483648)))	true	false	INT	2147483646
+(~(- 2))	true	false	INT	1
+((int) (- (2 + 1)))	true	false	INT	-3
+(1 % 1)	true	false	INT	0
+(((int) (W > 33 ? -2147483648 : N)) / (- (~M)))	true	false	LONG	0
+((int) (- ((int) 1L)))	true	false	INT	-1
+(~((2 >>> -2147483648) > (-1L - 1L) ? (33 >>> 1L) : ((int) -1L)))	true	false	INT	-17
+((- -1) > (- ((int) 9223372036854775807L)) ? (~(~2147483647)) : ((0 ^ -1) > (-1L > 2 ? 2147483647 : 33) ? (- N) : (0 > 33 ? N : 1)))	true	false	INT	1
+(- ((31 > -2147483648 ? 31 : 2147483647) >> W))	true	false	INT	-15
+(- 0)	true	false	INT	0
+(((int) (W + 1L)) >> M)	true	false	INT	0
+(- ((N > 0 ? M : -2147483648) > (~0) ? (- 9223372036854775807L) : (N ^ N)))	true	false	LONG	9223372036854775807
+((~(- 33)) >>> ((1 >>> W) & (M > W ? 1L : 2)))	true	false	INT	32
+(~(- M))	true	false	LONG	2147483646
+((- (2147483647 ^ 2)) ^ -1L)	true	false	LONG	2147483644
+(- 9223372036854775807L)	true	false	LONG	-9223372036854775807
+(((- 9223372036854775807L) - (-2147483648 >>> 2147483647)) > ((int) -1) ? (- (33 > 0xFFFFFFFF ? 1 : 31)) : (9223372036854775807L - W))	true	false	LONG	9223372036854775806
+((int) (- (- -1)))	true	false	INT	-1
+(((int) (0 ^ -1)) > 2147483647 ? ((-1L & M) / (2 > 2 ? W : 31)) : (~((int) -1L)))	true	false	LONG	0
+((int) ((int) -2147483648))	true	false	INT	-2147483648
+(- ((int) (-1 >>> -2147483648)))	true	false	INT	1
+(-1 >> (~(~W)))	true	false	INT	-1
+((int) M)	true	false	INT	2147483647
+(((int) N) > 2 ? ((int) (- 2147483647)) : 1)	true	false	INT	-2147483647
+(((1L + 1L) & (~-1)) + (- 2))	true	false	LONG	-2
+(~(~(2 > 9223372036854775807L ? 2 : 0)))	true	false	INT	0
+((- 1) & (1L % (- 9223372036854775807L)))	true	false	LONG	1
+(((- 33) > (- W) ? 2147483647 : (~N)) | ((int) M))	true	false	INT	-1
+(0 > (((int) -1) + (~0)) ? ((31 > W ? M : 1) >> (- N)) : (-1 & (- 1L)))	true	false	LONG	1073741823
+(((0xFFFFFFFF << M) + (~2)) | (- ((int) 2)))	true	false	INT	-1
+((int) 0xFFFFFFFF)	true	false	INT	-1
+(~((- 2147483647) & 9223372036854775807L))	true	false	LONG	-9223372034707292162
+(N ^ (- 33))	true	false	INT	-2147483616
+((int) (((int) M) % (-1L % 31)))	true	false	INT	0
+((int) (~((int) 31)))	true	false	INT	-32
+(- (~(- 2147483647)))	true	false	INT	-2147483646
+(- 0xFFFFFFFF)	true	false	INT	1
+((- W) | N)	true	false	LONG	-1
+(~((W | 31) > ((int) -2147483648) ? -2147483648 : (2 ^ W)))	true	false	LONG	2147483647
+(- ((~31) % (0 > 1 ? 2147483647 : W)))	true	false	LONG	0
+(~((int) (~9223372036854775807L)))	true	false	INT	-1
+(33 | N)	true	false	INT	2147483647
+(- N)	true	false	INT	-2147483647
+(~33)	true	false	INT	-34
+(((-1 | W) + (~-1)) * (- (~-1)))	true	false	LONG	0
+(- (2 + 0))	true	false	INT	-2
+(((~0) > ((int) 1) ? N : ((int) 0)) + ((33 > 2147483647 ? -1 : N) * (~M)))	true	false	LONG	-4611686016279904256
+((- (~0)) > 33 ? N : ((~-2147483648) > ((int) 1) ? (- 1L) : (2 ^ M)))	true	false	LONG	-1
+(~((-2147483648 | 2147483647) >>> (31 % 0xFFFFFFFF)))	true	false	INT	0
+((int) ((-2147483648 & 0xFFFFFFFF) > (- 2) ? (1L >> 31) : (~-1L)))	true	false	INT	0
+(- 2147483647)	true	false	INT	-2147483647
+((0 > (- 33) ? (- M) : 0) / (- (- -1L)))	true	false	LONG	2147483647
+(9223372036854775807L | (- 0xFFFFFFFF))	true	false	LONG	9223372036854775807
+(~((~9223372036854775807L) >>> -1))	true	false	LONG	-2
+(((33 ^ 2147483647) > (~0xFFFFFFFF) ? (1 | 0) : (9223372036854775807L ^ 31)) % (- (-2147483648 % 0xFFFFFFFF)))	true	true	-	-
+(- ((0 % N) > (1L > 2147483647 ? 33 : W) ? (- 0) : -1))	true	false	INT	1
+(~(- (M / 9223372036854775807L)))	true	false	LONG	-1
+(W > ((int) 9223372036854775807L) ? (- 1) : 33)	true	false	INT	-1
+(- ((~1) > 2147483647 ? (33 > 9223372036854775807L ? N : -2147483648) : 2147483647))	true	false	INT	-2147483647
+(M + (((int) M) > N ? (-2147483648 - N) : (9223372036854775807L > 2 ? 1 : 33)))	true	false	LONG	2147483648
+((- N) % ((~W) % 1L))	true	true	-	-
+((int) (~(33 ^ -1)))	true	false	INT	33
+(~((W % -1L) << (0xFFFFFFFF >> 1)))	true	false	LONG	-1
+(((0xFFFFFFFF / 33) >>> (2147483647 >>> 1)) - (~(- 9223372036854775807L)))	true	false	LONG	-9223372036854775806
+(33 >>> ((- 31) % (~-1L)))	true	true	-	-
+(- (M >>> (~-1)))	true	false	LONG	-2147483647
+((- N) << ((- 31) > (- 0) ? (W - 31) : (0 * 2)))	true	false	INT	-2147483647
+(- (((int) 33) + 1))	true	false	INT	-34
+(- (((int) M) << 9223372036854775807L))	true	false	INT	-2147483648
+(((int) (-1L > -1L ? 2147483647 : 9223372036854775807L)) * (33 > (-1L % 33) ? ((int) 9223372036854775807L) : (~2)))	true	false	INT	1
+(~((-1L > W ? 1L : -1) << (1L > N ? M : 9223372036854775807L)))	true	false	LONG	9223372036854775807
+(~(((int) 2) + (M > M ? M : 2)))	true	false	LONG	-5
+((((int) 1L) | (0 * 0)) >>> 2147483647)	true	false	INT	0
+(((9223372036854775807L / 1) > (- 33) ? (- M) : (2147483647 - 2)) * W)	true	false	LONG	-2147483647
+((- (9223372036854775807L * 1)) > -1L ? (0xFFFFFFFF >> (~0)) : -1L)	true	false	LONG	-1
+((N > -1 ? (1L & -2147483648) : ((int) 33)) > ((int) -1) ? (- (2147483647 & N)) : M)	true	false	LONG	-2147483647
+((int) (- (1 % 0xFFFFFFFF)))	true	false	INT	0
+(~(-1L | (9223372036854775807L & 33)))	true	false	LONG	0
+((~(1 > N ? 9223372036854775807L : 0xFFFFFFFF)) / 0xFFFFFFFF)	true	false	LONG	0
+((~((int) W)) - 0)	true	false	INT	-2
+(~(- ((int) 1L)))	true	false	INT	0
+((~(1 >>> 33)) >> ((int) ((int) 1)))	true	false	INT	-1
+(- W)	true	false	LONG	-1
+(9223372036854775807L > 33 ? ((int) ((int) 2147483647)) : -1)	true	false	INT	2147483647
+((M > (- 2147483647) ? (~0xFFFFFFFF) : (-1L / -2147483648)) > -1 ? (~(- 2147483647)) : ((~M) > (~-1) ? ((int) 0) : (-2147483648 > 0 ? -1L : 2)))	true	false	LONG	2147483646
+(- (0 > (- 0xFFFFFFFF) ? ((int) 0) : (W * 9223372036854775807L)))	true	false	LONG	-9223372036854775807
+(((int) (~-1)) >> (N > (~0) ? 1L : ((int) 0xFFFFFFFF)))	true	false	INT	0
+((9223372036854775807L | (-1L > -1L ? 0xFFFFFFFF : 1L)) | (((int) 2) + (-1 > 31 ? 31 : 1)))	true	false	LONG	9223372036854775807

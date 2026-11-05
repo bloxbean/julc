@@ -1,0 +1,29 @@
+format: 3
+name: a nested user record named like a ledger hash is that record
+class: Case
+method: m
+tag: Case$Action$Pay Case$Action 0
+tag: Case$Action$Stop Case$Action 1
+arg: 43010203
+arg: 05
+expect: AGREE
+note: #286, T33, and the fixture M2Sealed: the JavaParser frontend reads the name as the ledger hash, so its Data would be the bytes. The gate rejects the name.
+note: ADR-068 D13: on frontend=JAVAC this agrees with the JVM (Adr068SavedCasesOnJavacTest).
+note: ADR-068 M6: on the only frontend, javac, AGREE; the JavaParser frontend answered REJECT JULC0100.
+---
+import java.math.BigInteger;
+
+public class Case {
+    public record PolicyId(byte[] raw) { }
+    public record Note(BigInteger v) { }
+    public sealed interface Action {
+        record Pay(PolicyId to, Note note) implements Action { }
+        record Stop() implements Action { }
+    }
+    public record Datum(PolicyId policy, Action action) { }
+
+    public static Datum m(byte[] raw, BigInteger v) {
+        var policy = new PolicyId(raw);
+        return new Datum(policy, new Action.Pay(policy, new Note(v)));
+    }
+}

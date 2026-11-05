@@ -1,0 +1,81 @@
+cases	24167
+DIFFERENT-bytes	385
+DIFFERENT-diagnostics	78
+DIFFERENT-javac-accepts	89
+DIFFERENT-javac-rejects	1075
+DIFFERENT-pir	12
+DIFFERENT-pir-unaccepted	3
+DIFFERENT-provenance	52
+DIFFERENT-rejection	570
+both-reject	763
+both-reject-javac-first	1314
+i1a-identical	14405
+javac-rejects	5366
+ledger-source	38
+unreplayable	17
+coverage	programs	14405	21361
+coverage	distinct programs	5880
+coverage	programs of more than one method	9284
+coverage	methods	135129	194999
+coverage	distinct methods	7481
+provenance	-	38
+provenance	fragment	12537
+provenance	same	1830
+first-construct	(rejected)	670
+first-construct	a library method	22
+part	blaster	i1a-identical	7
+part	c7	i1a-identical	6
+part	diffcase	DIFFERENT-bytes	24
+part	diffcase	DIFFERENT-javac-accepts	8
+part	diffcase	DIFFERENT-javac-rejects	38
+part	diffcase	DIFFERENT-pir-unaccepted	1
+part	diffcase	DIFFERENT-rejection	11
+part	diffcase	both-reject	43
+part	diffcase	both-reject-javac-first	1
+part	diffcase	i1a-identical	114
+part	elci	i1a-identical	4
+part	external	DIFFERENT-javac-rejects	46
+part	external	DIFFERENT-pir	11
+part	external	i1a-identical	43
+part	external	javac-rejects	2
+part	g0	i1a-identical	376
+part	g1	DIFFERENT-javac-rejects	1
+part	g1	i1a-identical	122
+part	head	DIFFERENT-bytes	378
+part	head	DIFFERENT-diagnostics	76
+part	head	DIFFERENT-javac-accepts	88
+part	head	DIFFERENT-javac-rejects	1017
+part	head	DIFFERENT-pir	1
+part	head	DIFFERENT-pir-unaccepted	2
+part	head	DIFFERENT-provenance	50
+part	head	DIFFERENT-rejection	566
+part	head	both-reject	762
+part	head	both-reject-javac-first	1314
+part	head	i1a-identical	14255
+part	head	javac-rejects	128
+part	head	unreplayable	10
+part	ledger	i1a-identical	1
+part	ledger	ledger-source	38
+part	m2	DIFFERENT-bytes	1
+part	m2	DIFFERENT-provenance	2
+part	m3a	DIFFERENT-bytes	2
+part	m3a	DIFFERENT-diagnostics	1
+part	m3a	DIFFERENT-javac-accepts	1
+part	m3a	i1a-identical	5
+part	m3b	DIFFERENT-bytes	3
+part	m3b	DIFFERENT-diagnostics	1
+part	m3b	both-reject	1
+part	m3b	i1a-identical	4
+part	recorded	DIFFERENT-bytes	39
+part	recorded	DIFFERENT-diagnostics	3
+part	recorded	DIFFERENT-javac-accepts	10
+part	recorded	DIFFERENT-javac-rejects	43
+part	recorded	DIFFERENT-rejection	233
+part	recorded	both-reject	217
+part	recorded	both-reject-javac-first	1265
+part	recorded	i1a-identical	4173
+part	recorded	javac-rejects	5241
+part	recorded	unreplayable	10
+part	rules	DIFFERENT-javac-rejects	4
+part	stdlib	DIFFERENT-rejection	4
+part	stdlib	i1a-identical	13

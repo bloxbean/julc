@@ -18,8 +18,8 @@ class O2CaseBoolLoweringTest {
     private static final String SOURCE = """
             import java.math.BigInteger;
             class BoolCaseSample {
-                static BigInteger choose(boolean condition) {
-                    if (condition) return BigInteger.valueOf(7);
+                static BigInteger choose(BigInteger n) {
+                    if (n.signum() > 0) return BigInteger.valueOf(7);
                     return BigInteger.valueOf(9);
                 }
             }

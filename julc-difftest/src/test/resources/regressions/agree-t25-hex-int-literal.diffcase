@@ -1,0 +1,18 @@
+format: 2
+name: a hexadecimal int literal with its top bit set has Java's value (T25, fixed)
+class: Probe
+method: m
+expect: AGREE
+note: JLS 21 §3.10.1: 0xFFFFFFFF as an int literal is -1, and 0x80000000 is -2147483648. JuLC read
+note: them as unsigned. Fixed for T25: IntegerLiterals follows §3.10.1. Before the fix the expectation
+note: was DIVERGE T25 Value/Value, the JVM returning -2147483648 and UPLC 6442450944.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    public static BigInteger m() {
+        int all = 0xFFFFFFFF;
+        int top = 0x80000000;
+        return BigInteger.valueOf(all).add(BigInteger.valueOf(top)).add(BigInteger.ONE);
+    }
+}

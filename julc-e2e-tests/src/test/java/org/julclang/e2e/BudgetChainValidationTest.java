@@ -33,6 +33,9 @@ import static org.junit.jupiter.api.Assertions.*;
 class BudgetChainValidationTest extends E2ETestBase {
 
     static final String ALWAYS_TRUE_VALIDATOR = """
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
             @SpendingValidator
             class AlwaysTrue {
                 @Entrypoint

@@ -6,6 +6,8 @@ import org.julclang.compiler.fixtures.IntMapOps;
 import org.julclang.core.PlutusData;
 import org.julclang.testkit.JulcEval;
 import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigInteger;
@@ -304,109 +306,71 @@ class JulcMapTest {
     // For-each + map.get(loop key) tests
     // =========================================================================
 
+    // =========================================================================
+    // Java's forms of a map loop: keys() and values(), under the enforcing javac gate
+    // =========================================================================
+
     @Nested
-    class ForEachMapGet {
+    class ForEachOverKeysAndValues {
 
         static final String SOURCE = """
                 import org.julclang.core.PlutusData;
                 import org.julclang.core.types.JulcMap;
                 import java.math.BigInteger;
 
-                class ForEachGetOps {
+                class KeysAndValuesOps {
                     @SuppressWarnings("unchecked")
-                    static long sumViaGet(PlutusData m) {
-                        JulcMap<PlutusData, BigInteger> map = (JulcMap)(Object) m;
-                        BigInteger total = 0;
-                        for (var entry : map) {
-                            PlutusData key = entry.key();
-                            total = total + map.get(key);
+                    static long sumValues(PlutusData m) {
+                        JulcMap<BigInteger, BigInteger> map = (JulcMap<BigInteger, BigInteger>)(Object) m;
+                        BigInteger total = BigInteger.ZERO;
+                        for (BigInteger value : map.values()) {
+                            total = total.add(value);
                         }
-                        return total;
+                        return total.longValue();
                     }
 
                     @SuppressWarnings("unchecked")
-                    static long sumViaDirect(PlutusData m) {
-                        JulcMap<PlutusData, BigInteger> map = (JulcMap)(Object) m;
-                        BigInteger total = 0;
-                        for (var entry : map) {
-                            total = total + entry.value();
+                    static long sumKeys(PlutusData m) {
+                        JulcMap<BigInteger, BigInteger> map = (JulcMap<BigInteger, BigInteger>)(Object) m;
+                        BigInteger total = BigInteger.ZERO;
+                        for (BigInteger key : map.keys()) {
+                            total = total.add(key);
                         }
-                        return total;
+                        return total.longValue();
                     }
 
                     @SuppressWarnings("unchecked")
-                    static boolean allKeysPresent(PlutusData m) {
-                        JulcMap<PlutusData, BigInteger> map = (JulcMap)(Object) m;
-                        boolean allFound = true;
-                        for (var entry : map) {
-                            boolean found = map.containsKey(entry.key());
-                            allFound = allFound && found;
+                    static long sumThroughKeys(PlutusData m) {
+                        JulcMap<BigInteger, BigInteger> map = (JulcMap<BigInteger, BigInteger>)(Object) m;
+                        BigInteger total = BigInteger.ZERO;
+                        for (BigInteger key : map.keys()) {
+                            total = total.add(map.get(key));
                         }
-                        return allFound;
+                        return total.longValue();
                     }
-
-                    @SuppressWarnings("unchecked")
-                    static long crossMapLookup(PlutusData mPrices, PlutusData mQuantities) {
-                        JulcMap<PlutusData, BigInteger> prices = (JulcMap)(Object) mPrices;
-                        JulcMap<PlutusData, BigInteger> quantities = (JulcMap)(Object) mQuantities;
-                        BigInteger total = 0;
-                        for (var entry : prices) {
-                            BigInteger price = entry.value();
-                            BigInteger qty = quantities.get(entry.key());
-                            total = total + price * qty;
-                        }
-                        return total;
-                    }
-
                 }
                 """;
 
-        interface ForEachGetProxy {
-            long sumViaGet(PlutusData m);
-            long sumViaDirect(PlutusData m);
-            boolean allKeysPresent(PlutusData m);
-            long crossMapLookup(PlutusData mPrices, PlutusData mQuantities);
+        interface KeysAndValuesProxy {
+            long sumValues(PlutusData m);
+            long sumKeys(PlutusData m);
+            long sumThroughKeys(PlutusData m);
         }
 
-        final ForEachGetProxy proxy = JulcEval
-                .forSource(SOURCE)
-                .create(ForEachGetProxy.class);
+        final KeysAndValuesProxy proxy = JulcEval.forSource(SOURCE).create(KeysAndValuesProxy.class);
 
         @Test
-        void sumViaGet_twoEntries() {
-            assertEquals(142, proxy.sumViaGet(intMap(1, 42, 2, 100)));
-        }
-
-        @Test
-        void sumViaGet_threeEntries() {
-            assertEquals(60, proxy.sumViaGet(intMap3(1, 10, 2, 20, 3, 30)));
+        void valuesAndKeysIterate() {
+            assertEquals(142, proxy.sumValues(intMap(1, 42, 2, 100)));
+            assertEquals(3, proxy.sumKeys(intMap(1, 42, 2, 100)));
+            assertEquals(142, proxy.sumThroughKeys(intMap(1, 42, 2, 100)));
         }
 
         @Test
-        void sumViaDirect_twoEntries() {
-            assertEquals(142, proxy.sumViaDirect(intMap(1, 42, 2, 100)));
-        }
-
-        @Test
-        void allKeysPresent() {
-            assertTrue(proxy.allKeysPresent(intMap(1, 42, 2, 100)));
-        }
-
-        @Test
-        void crossMapLookup() {
-            PlutusData prices = intMap(1, 10, 2, 20);
-            PlutusData quantities = intMap(1, 3, 2, 5);
-            assertEquals(130, proxy.crossMapLookup(prices, quantities));
-        }
-
-        @Test
-        void sumViaGet_emptyMap() {
-            assertEquals(0, proxy.sumViaGet(emptyMap()));
-        }
-
-        @Test
-        void sumViaGet_singleEntry() {
-            assertEquals(99, proxy.sumViaGet(singleIntMap(7, 99)));
+        void anEmptyMapIteratesNothing() {
+            assertEquals(0, proxy.sumValues(emptyMap()));
+            assertEquals(0, proxy.sumKeys(emptyMap()));
+            assertEquals(0, proxy.sumThroughKeys(emptyMap()));
         }
     }
 
@@ -414,410 +378,17 @@ class JulcMapTest {
     // While-loop using instance methods (head/tail/isEmpty)
     // =========================================================================
 
-    @Nested
-    class WhileLoopMapGet {
-
-        static final String SOURCE = """
-                import org.julclang.core.PlutusData;
-                import org.julclang.core.types.JulcMap;
-                import java.math.BigInteger;
-
-                class WhileLoopGetOps {
-                    @SuppressWarnings("unchecked")
-                    static long sumViaGet(PlutusData m) {
-                        JulcMap<PlutusData, BigInteger> map = (JulcMap)(Object) m;
-                        var cursor = map;
-                        BigInteger total = 0;
-                        while (!cursor.isEmpty()) {
-                            var entry = cursor.head();
-                            PlutusData key = entry.key();
-                            total = total + map.get(key);
-                            cursor = cursor.tail();
-                        }
-                        return total;
-                    }
-
-                    @SuppressWarnings("unchecked")
-                    static long sumViaDirect(PlutusData m) {
-                        JulcMap<PlutusData, BigInteger> map = (JulcMap)(Object) m;
-                        var cursor = map;
-                        BigInteger total = 0;
-                        while (!cursor.isEmpty()) {
-                            var entry = cursor.head();
-                            total = total + entry.value();
-                            cursor = cursor.tail();
-                        }
-                        return total;
-                    }
-
-                    @SuppressWarnings("unchecked")
-                    static boolean allKeysPresent(PlutusData m) {
-                        JulcMap<PlutusData, BigInteger> map = (JulcMap)(Object) m;
-                        var cursor = map;
-                        boolean allFound = true;
-                        while (!cursor.isEmpty()) {
-                            var entry = cursor.head();
-                            boolean found = map.containsKey(entry.key());
-                            allFound = allFound && found;
-                            cursor = cursor.tail();
-                        }
-                        return allFound;
-                    }
-
-                    @SuppressWarnings("unchecked")
-                    static long crossMapLookup(PlutusData mPrices, PlutusData mQuantities) {
-                        JulcMap<PlutusData, BigInteger> prices = (JulcMap)(Object) mPrices;
-                        JulcMap<PlutusData, BigInteger> quantities = (JulcMap)(Object) mQuantities;
-                        var cursor = prices;
-                        BigInteger total = 0;
-                        while (!cursor.isEmpty()) {
-                            var entry = cursor.head();
-                            BigInteger price = entry.value();
-                            BigInteger qty = quantities.get(entry.key());
-                            total = total + price * qty;
-                            cursor = cursor.tail();
-                        }
-                        return total;
-                    }
-                }
-                """;
-
-        interface WhileLoopGetProxy {
-            long sumViaGet(PlutusData m);
-            long sumViaDirect(PlutusData m);
-            boolean allKeysPresent(PlutusData m);
-            long crossMapLookup(PlutusData mPrices, PlutusData mQuantities);
-        }
-
-        final WhileLoopGetProxy proxy = JulcEval
-                .forSource(SOURCE)
-                .create(WhileLoopGetProxy.class);
-
-        @Test
-        void sumViaGet_twoEntries() {
-            assertEquals(142, proxy.sumViaGet(intMap(1, 42, 2, 100)));
-        }
-
-        @Test
-        void sumViaGet_threeEntries() {
-            assertEquals(60, proxy.sumViaGet(intMap3(1, 10, 2, 20, 3, 30)));
-        }
-
-        @Test
-        void sumViaDirect_twoEntries() {
-            assertEquals(142, proxy.sumViaDirect(intMap(1, 42, 2, 100)));
-        }
-
-        @Test
-        void allKeysPresent() {
-            assertTrue(proxy.allKeysPresent(intMap(1, 42, 2, 100)));
-        }
-
-        @Test
-        void crossMapLookup() {
-            PlutusData prices = intMap(1, 10, 2, 20);
-            PlutusData quantities = intMap(1, 3, 2, 5);
-            assertEquals(130, proxy.crossMapLookup(prices, quantities));
-        }
-
-        @Test
-        void sumViaGet_emptyMap() {
-            assertEquals(0, proxy.sumViaGet(emptyMap()));
-        }
-
-        @Test
-        void sumViaGet_singleEntry() {
-            assertEquals(99, proxy.sumViaGet(singleIntMap(7, 99)));
-        }
-    }
-
     // =========================================================================
     // While-loop multi-accumulator patterns
     // =========================================================================
-
-    @Nested
-    class WhileLoopMultiAcc {
-
-        static final String SOURCE = """
-                import org.julclang.core.PlutusData;
-                import org.julclang.core.types.JulcMap;
-                import org.julclang.stdlib.Builtins;
-                import java.math.BigInteger;
-
-                class WhileLoopMultiAccOps {
-                    @SuppressWarnings("unchecked")
-                    static boolean findKey(PlutusData m, PlutusData target) {
-                        JulcMap<PlutusData, BigInteger> map = (JulcMap)(Object) m;
-                        var cursor = map;
-                        boolean found = false;
-                        while (!cursor.isEmpty()) {
-                            var entry = cursor.head();
-                            PlutusData key = entry.key();
-                            if (Builtins.equalsData(key, target)) {
-                                found = true;
-                            }
-                            cursor = cursor.tail();
-                        }
-                        return found;
-                    }
-
-                    @SuppressWarnings("unchecked")
-                    static long countAndSum(PlutusData m) {
-                        JulcMap<PlutusData, BigInteger> map = (JulcMap)(Object) m;
-                        var cursor = map;
-                        BigInteger count = 0;
-                        BigInteger sum = 0;
-                        while (!cursor.isEmpty()) {
-                            var entry = cursor.head();
-                            count = count + 1;
-                            sum = sum + entry.value();
-                            cursor = cursor.tail();
-                        }
-                        return count * 1000 + sum;
-                    }
-
-                    @SuppressWarnings("unchecked")
-                    static long countEven(PlutusData m) {
-                        JulcMap<PlutusData, BigInteger> map = (JulcMap)(Object) m;
-                        var cursor = map;
-                        BigInteger count = 0;
-                        while (!cursor.isEmpty()) {
-                            var entry = cursor.head();
-                            BigInteger val = entry.value();
-                            if (val % 2 == 0) {
-                                count = count + 1;
-                            }
-                            cursor = cursor.tail();
-                        }
-                        return count;
-                    }
-
-                    @SuppressWarnings("unchecked")
-                    static long countAboveThreshold(PlutusData m, PlutusData threshold) {
-                        JulcMap<PlutusData, BigInteger> map = (JulcMap)(Object) m;
-                        BigInteger thresh = Builtins.unIData(threshold);
-                        var cursor = map;
-                        BigInteger count = 0;
-                        while (!cursor.isEmpty()) {
-                            var entry = cursor.head();
-                            BigInteger val = entry.value();
-                            if (val >= thresh) {
-                                count = count + 1;
-                            }
-                            cursor = cursor.tail();
-                        }
-                        return count;
-                    }
-                }
-                """;
-
-        interface MultiAccProxy {
-            boolean findKey(PlutusData m, PlutusData target);
-            long countAndSum(PlutusData m);
-            long countEven(PlutusData m);
-            long countAboveThreshold(PlutusData m, PlutusData threshold);
-        }
-
-        final MultiAccProxy proxy = JulcEval
-                .forSource(SOURCE)
-                .create(MultiAccProxy.class);
-
-        @Test
-        void booleanGuard_findKey() {
-            assertTrue(proxy.findKey(intMap(1, 42, 2, 100), PlutusData.integer(2)));
-        }
-
-        @Test
-        void booleanGuard_findKeyMissing() {
-            assertFalse(proxy.findKey(intMap(1, 42, 2, 100), PlutusData.integer(99)));
-        }
-
-        @Test
-        void countAndSum() {
-            // count=2, sum=142 → 2*1000 + 142 = 2142
-            assertEquals(2142, proxy.countAndSum(intMap(1, 42, 2, 100)));
-        }
-
-        @Test
-        void countEvenValues() {
-            // {1:3, 2:4, 3:5, 4:6} → even values at keys 2,4 → count 2
-            assertEquals(2, proxy.countEven(intMap4(1, 3, 2, 4, 3, 5, 4, 6)));
-        }
-
-        @Test
-        void countAboveThreshold() {
-            // {1:10, 2:100, 3:5} with threshold=50 → only key 2 → count 1
-            assertEquals(1, proxy.countAboveThreshold(intMap3(1, 10, 2, 100, 3, 5), PlutusData.integer(50)));
-        }
-    }
 
     // =========================================================================
     // Nested while-loop patterns
     // =========================================================================
 
-    @Nested
-    class WhileLoopNestedMap {
-
-        static final String SOURCE = """
-                import org.julclang.core.PlutusData;
-                import org.julclang.core.types.JulcMap;
-                import org.julclang.stdlib.Builtins;
-                import java.math.BigInteger;
-
-                class WhileLoopNestedOps {
-                    @SuppressWarnings("unchecked")
-                    static long cartesianSum(PlutusData m1, PlutusData m2) {
-                        JulcMap<PlutusData, BigInteger> map1 = (JulcMap)(Object) m1;
-                        JulcMap<PlutusData, BigInteger> map2 = (JulcMap)(Object) m2;
-                        var outer = map1;
-                        BigInteger total = 0;
-                        while (!outer.isEmpty()) {
-                            var e1 = outer.head();
-                            BigInteger v1 = e1.value();
-                            var inner = map2;
-                            while (!inner.isEmpty()) {
-                                var e2 = inner.head();
-                                BigInteger v2 = e2.value();
-                                total = total + v1 * v2;
-                                inner = inner.tail();
-                            }
-                            outer = outer.tail();
-                        }
-                        return total;
-                    }
-
-                    @SuppressWarnings("unchecked")
-                    static long sumMatchingKeys(PlutusData m, PlutusData keyList) {
-                        JulcMap<PlutusData, BigInteger> map = (JulcMap)(Object) m;
-                        var cursor = map;
-                        BigInteger total = 0;
-                        while (!cursor.isEmpty()) {
-                            var entry = cursor.head();
-                            PlutusData key = entry.key();
-                            var keys = Builtins.unListData(keyList);
-                            boolean matched = false;
-                            while (!Builtins.nullList(keys)) {
-                                PlutusData k = Builtins.headList(keys);
-                                if (Builtins.equalsData(k, key)) {
-                                    matched = true;
-                                }
-                                keys = Builtins.tailList(keys);
-                            }
-                            if (matched) {
-                                total = total + entry.value();
-                            }
-                            cursor = cursor.tail();
-                        }
-                        return total;
-                    }
-                }
-                """;
-
-        interface NestedProxy {
-            long cartesianSum(PlutusData m1, PlutusData m2);
-            long sumMatchingKeys(PlutusData m, PlutusData keyList);
-        }
-
-        final NestedProxy proxy = JulcEval
-                .forSource(SOURCE)
-                .create(NestedProxy.class);
-
-        @Test
-        void nestedMapIteration() {
-            // {1:2, 3:4} × {5:6, 7:8} → 2*6 + 2*8 + 4*6 + 4*8 = 12+16+24+32 = 84
-            assertEquals(84, proxy.cartesianSum(intMap(1, 2, 3, 4), intMap(5, 6, 7, 8)));
-        }
-
-        @Test
-        void mapIterWithInnerListWhile() {
-            // map={1:10, 2:20, 3:30}, keys=[1,3] → sum values where key in list: 10+30 = 40
-            PlutusData keyList = PlutusData.list(PlutusData.integer(1), PlutusData.integer(3));
-            assertEquals(40, proxy.sumMatchingKeys(intMap3(1, 10, 2, 20, 3, 30), keyList));
-        }
-    }
-
     // =========================================================================
     // Edge cases
     // =========================================================================
-
-    @Nested
-    class WhileLoopMapEdgeCases {
-
-        static final String SOURCE = """
-                import org.julclang.core.PlutusData;
-                import org.julclang.core.types.JulcMap;
-                import java.math.BigInteger;
-
-                class WhileLoopEdgeOps {
-                    @SuppressWarnings("unchecked")
-                    static long sumViaGet(PlutusData m) {
-                        JulcMap<PlutusData, BigInteger> map = (JulcMap)(Object) m;
-                        var cursor = map;
-                        BigInteger total = 0;
-                        while (!cursor.isEmpty()) {
-                            var entry = cursor.head();
-                            PlutusData key = entry.key();
-                            total = total + map.get(key);
-                            cursor = cursor.tail();
-                        }
-                        return total;
-                    }
-
-                    @SuppressWarnings("unchecked")
-                    static long tailSize(PlutusData m) {
-                        JulcMap<PlutusData, BigInteger> map = (JulcMap)(Object) m;
-                        var rest = map.tail();
-                        return rest.size();
-                    }
-
-                    @SuppressWarnings("unchecked")
-                    static long headTailConsistent(PlutusData m) {
-                        JulcMap<PlutusData, BigInteger> map = (JulcMap)(Object) m;
-                        BigInteger first = map.head().value();
-                        BigInteger second = map.tail().head().value();
-                        return first + second;
-                    }
-                }
-                """;
-
-        interface EdgeProxy {
-            long sumViaGet(PlutusData m);
-            long tailSize(PlutusData m);
-            long headTailConsistent(PlutusData m);
-        }
-
-        final EdgeProxy proxy = JulcEval
-                .forSource(SOURCE)
-                .create(EdgeProxy.class);
-
-        @Test
-        void singleEntryIteration() {
-            assertEquals(99, proxy.sumViaGet(singleIntMap(7, 99)));
-        }
-
-        @Test
-        void emptyMapSkipsLoop() {
-            assertEquals(0, proxy.sumViaGet(emptyMap()));
-        }
-
-        @Test
-        void largeMap() {
-            // 5-entry map: 10+20+30+40+50 = 150
-            assertEquals(150, proxy.sumViaGet(intMap5(1, 10, 2, 20, 3, 30, 4, 40, 5, 50)));
-        }
-
-        @Test
-        void tailPreservesMapType() {
-            // 2-entry map → tail → size == 1
-            assertEquals(1, proxy.tailSize(intMap(1, 42, 2, 100)));
-        }
-
-        @Test
-        void headThenTailConsistency() {
-            // {1:42, 2:100} → head().value() + tail().head().value() == 142
-            assertEquals(142, proxy.headTailConsistent(intMap(1, 42, 2, 100)));
-        }
-    }
 
     // --- Additional helpers ---
 

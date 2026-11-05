@@ -2,9 +2,10 @@ package org.julclang.cli.mcp.lint.rules;
 
 import org.julclang.cli.mcp.lint.LintFinding;
 import org.julclang.cli.mcp.lint.LintRule;
-import com.github.javaparser.ast.CompilationUnit;
-import com.github.javaparser.ast.body.MethodDeclaration;
-import com.github.javaparser.ast.expr.MethodCallExpr;
+import org.julclang.cli.mcp.lint.LintTrees;
+import org.julclang.compiler.frontend.javac.JavacSyntax;
+import com.sun.source.util.TreePath;
+import com.sun.source.tree.MethodInvocationTree;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -37,35 +38,32 @@ public final class MkConsPairListRule implements LintRule {
     }
 
     @Override
-    public List<LintFinding> check(CompilationUnit cu) {
+    public List<LintFinding> check(JavacSyntax syntax) {
         var findings = new ArrayList<LintFinding>();
-        cu.findAll(MethodDeclaration.class).forEach(method -> {
-            MethodCallExpr nilCall = null;
+        for (TreePath method : LintTrees.methods(syntax)) {
+            MethodInvocationTree nilCall = null;
             boolean usesPairOps = false;
-            for (var call : method.findAll(MethodCallExpr.class)) {
-                String name = call.getNameAsString();
-                var scope = call.getScope().orElse(null);
-                if (scope == null) continue;
-                if (!"Builtins".equals(scope.toString())) continue;
+            for (TreePath path : LintTrees.findAll(method, MethodInvocationTree.class)) {
+                var call = (MethodInvocationTree) path.getLeaf();
+                String name = LintTrees.methodName(call);
+                if (!"Builtins".equals(LintTrees.dottedName(LintTrees.receiver(call)))) continue;
                 if ("mkNilData".equals(name) && nilCall == null) {
                     nilCall = call;
                 } else if (PAIR_OPS.contains(name)) {
                     usesPairOps = true;
                 }
             }
-            if (nilCall == null || !usesPairOps) return;
-            int line = nilCall.getBegin().map(p -> p.line).orElse(0);
-            int col = nilCall.getBegin().map(p -> p.column).orElse(0);
+            if (nilCall == null || !usesPairOps) continue;
             findings.add(LintFinding.warning(
                     id(),
                     null,
                     "`Builtins.mkNilData()` seed in a method that also uses pair operations. " +
                             "Pair lists must use `Builtins.mkNilPairData()` — the Scalus VM rejects " +
                             "pair elements consed onto a non-pair nil.",
-                    line, col,
+                    syntax.line(nilCall), syntax.column(nilCall),
                     "Replace `Builtins.mkNilData()` with `Builtins.mkNilPairData()`."
             ));
-        });
+        }
         return findings;
     }
 }

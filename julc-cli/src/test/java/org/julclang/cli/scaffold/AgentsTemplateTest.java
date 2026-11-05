@@ -52,6 +52,15 @@ class AgentsTemplateTest {
         assertTrue(body.contains("@Entrypoint"));
     }
 
+    /** ADR-068 M5: the default frontend rejects byte[].equals (JULC0087) and == on references (JULC0086). */
+    @Test
+    void render_teachesTheEqualityTheDefaultFrontendAccepts() {
+        String body = AgentsTemplate.render("any");
+        assertTrue(body.contains("Builtins.equalsByteString(a, b)"), "must name the byte[] comparison");
+        assertTrue(body.contains("JULC0087") && body.contains("JULC0086"), "must name the codes the old forms get");
+        assertFalse(body.contains("`.equals()` for `BigInteger` and `byte[]`"), "must not teach byte[].equals");
+    }
+
     @Test
     void render_pointsToCanonicalReferences() {
         // After Phase B trim, AGENTS.md points users to the canonical hosted

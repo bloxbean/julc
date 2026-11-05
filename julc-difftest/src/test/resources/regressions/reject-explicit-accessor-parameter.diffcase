@@ -1,0 +1,20 @@
+format: 2
+name: #282 an explicit accessor called through a helper's parameter (N9)
+class: Probe
+method: m
+arg: 05
+expect: REJECT JULC0101
+note: ADR-067 N9. A subset rule: a method does not take a name read in place of its body.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    record P(BigInteger v) {
+        public BigInteger v() { return v.negate(); }
+    }
+    static BigInteger h(P p) { return p.v(); }
+
+    public static BigInteger m(BigInteger a) {
+        return h(new P(a));
+    }
+}

@@ -1,0 +1,30 @@
+format: 2
+name: nested loop in a loop with break (found by G0)
+class: Probe
+method: m
+arg: 22
+arg: 20
+arg: 80
+expect: REJECT JULC0064
+note: Found by G0PropertyTest (plan [1, 2, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 3, 0, 1, 0, 0, 0, 0, 58, 0, 28, 92, 192, 47], shrunk). Java returns -5. A loop with break may only contain
+note: declarations, assignments, if/else and break, so the nested while is rejected with JULC0064. Before #257
+note: the diagnostic had no code (ADR-062 T20).
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+
+public class Probe {
+    public static BigInteger m(BigInteger a, BigInteger b, JulcList<BigInteger> xs) {
+        BigInteger v0 = BigInteger.valueOf(-5).add(BigInteger.valueOf(-5)).add(BigInteger.valueOf(-5));
+        for (var x1 : xs) {
+            if (BigInteger.valueOf(-5).add(BigInteger.valueOf(-2)).compareTo(a) < 0) { break; }
+            long i2 = 0;
+            while (i2 < 0) {
+                v0 = BigInteger.valueOf(-5);
+                i2 = i2 + 1;
+            }
+            v0 = BigInteger.valueOf(-5);
+        }
+        return BigInteger.valueOf(-5);
+    }
+}

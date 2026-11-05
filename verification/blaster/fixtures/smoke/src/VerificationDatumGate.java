@@ -10,6 +10,6 @@ public class VerificationDatumGate {
 
     @Entrypoint
     public static boolean validate(Datum datum, Redeemer redeemer, ScriptContext ctx) {
-        return datum.secret() == 424242 && redeemer.secret() == 424242;
+        return datum.secret().equals(BigInteger.valueOf(424242)) && redeemer.secret().equals(BigInteger.valueOf(424242));
     }
 }

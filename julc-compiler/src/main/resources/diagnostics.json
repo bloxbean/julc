@@ -10,18 +10,19 @@
     "LIBRARY": "@OnchainLibrary and @Param errors",
     "STDLIB": "Stdlib method usage errors (wrong arity, missing args)",
     "PIR": "PIR generation errors (internal pipeline)",
-    "BACKEND": "Language-neutral backend descriptors and producer PIR verification"
+    "BACKEND": "Language-neutral backend descriptors and producer PIR verification",
+    "FRONTEND": "The javac frontend and its closed compilation environment (ADR-068)"
   },
   "diagnostics": [
     {
       "code": "JULC0001",
       "constant": "METHOD_BODY_MISSING",
-      "status": "planned",
+      "status": "emitted",
       "title": "Method must have a body",
       "category": "VALIDATOR",
       "severity": "error",
       "template": "Method must have a body: {0}",
-      "summary": "An abstract or interface method was found where the compiler expects a concrete method body. On-chain code cannot contain abstract methods.",
+      "summary": "A method with no body, such as an abstract or interface method, was found where the compiler lowers a method.",
       "fix": "Provide a body for every method in your validator class.",
       "example": {
         "bad": "@SpendingValidator\npublic class MyValidator {\n    @Entrypoint\n    public abstract boolean validate(Data redeemer, ScriptContext ctx);\n}",
@@ -31,7 +32,7 @@
     {
       "code": "JULC0002",
       "constant": "VARIABLE_UNINITIALIZED",
-      "status": "planned",
+      "status": "emitted",
       "title": "Variable must be initialized",
       "category": "SYNTAX",
       "severity": "error",
@@ -46,13 +47,13 @@
     {
       "code": "JULC0003",
       "constant": "RETURN_INSIDE_WHILE",
-      "status": "planned",
-      "title": "Cannot return inside while loop",
+      "status": "emitted",
+      "title": "return inside a while loop",
       "category": "CONTROL_FLOW",
       "severity": "error",
-      "template": "Cannot return inside while loop",
-      "summary": "`return` statements are not allowed inside `while` loops. UPLC `while` is desugared to a fixed-point `LetRec` that needs an explicit accumulator.",
-      "fix": "Use a boolean accumulator and return after the loop. `break` works inside `for-each` if you only need early termination.",
+      "template": "'return' is not supported inside while loop body",
+      "summary": "A `while` loop body cannot `return` from the enclosing method. A `while` loop is compiled to a recursive function whose result is the variables the loop updates, so it has no way to leave the method early. The diagnostic points at the first such `return`.",
+      "fix": "Exit the loop with break, or keep the result in a variable declared before the loop, and return after the loop.",
       "example": {
         "bad": "while (i.compareTo(n) < 0) {\n    if (matches(i)) return true;\n    i = i.add(BigInteger.ONE);\n}\nreturn false;",
         "good": "boolean found = false;\nvar i = BigInteger.ZERO;\nwhile (i.compareTo(n) < 0 && !found) {\n    if (matches(i)) found = true;\n    i = i.add(BigInteger.ONE);\n}\nreturn found;"
@@ -61,24 +62,24 @@
     {
       "code": "JULC0004",
       "constant": "BREAK_OUTSIDE_LOOP",
-      "status": "planned",
+      "status": "emitted",
       "title": "break statement outside of a loop",
       "category": "CONTROL_FLOW",
       "severity": "error",
-      "template": "break statement outside of a loop",
-      "summary": "`break` was used outside of a `for-each` or `while` loop body.",
-      "fix": "Place the `break` inside a loop, or refactor to use early `return` from a helper method."
+      "template": "break is only supported inside for-each or while loops on-chain",
+      "summary": "`break` was used outside of a `for-each` or `while` loop body, such as in a `switch` statement.",
+      "fix": "Use for-each or while with an accumulator and break to exit early"
     },
     {
       "code": "JULC0005",
       "constant": "SWITCH_NOT_EXHAUSTIVE",
-      "status": "planned",
+      "status": "retired",
       "title": "Switch is not exhaustive on sealed interface",
       "category": "CONTROL_FLOW",
       "severity": "error",
       "template": "Switch on sealed interface {0} is not exhaustive. Missing cases: {1}",
-      "summary": "A `switch` expression on a sealed interface is missing one or more permitted variants.",
-      "fix": "Add the missing case branches or include a `default ->` branch to handle all remaining variants.",
+      "summary": "Retired, never reused: javac rejects a switch that is not exhaustive itself, so a compilation reports JULC0085 with javac's key.",
+      "fix": "Add the missing case branches (an unguarded one per variant when the others are guarded) or include a `default ->` branch to handle all remaining variants.",
       "example": {
         "bad": "sealed interface Action permits A, B, C {}\n// ...\nreturn switch (action) {\n    case A a -> ...;\n    case B b -> ...;\n    // missing C\n};",
         "good": "return switch (action) {\n    case A a -> ...;\n    case B b -> ...;\n    case C c -> ...;\n};"
@@ -87,23 +88,23 @@
     {
       "code": "JULC0006",
       "constant": "METHOD_MISSING_RETURN",
-      "status": "planned",
+      "status": "emitted",
       "title": "Method does not return on all paths",
       "category": "CONTROL_FLOW",
       "severity": "error",
-      "template": "Method {0} may not return a value on all execution paths",
+      "template": "Method ''{0}'' may not return a value on all execution paths",
       "summary": "A non-void method has at least one execution path that does not return a value.",
-      "fix": "Ensure every if/else branch returns, or add a fallthrough return at the end of the method."
+      "fix": "Ensure all code paths end with a 'return' statement."
     },
     {
       "code": "JULC0007",
       "constant": "SWITCH_REQUIRES_SEALED_INTERFACE",
-      "status": "planned",
+      "status": "emitted",
       "title": "Switch expression requires a sealed interface type",
       "category": "TYPE",
       "severity": "error",
       "template": "switch expression requires a sealed interface type, got: {0}",
-      "summary": "`switch` was used on a non-sealed type. Records (including `Tuple2`/`Tuple3`) cannot be switched on.",
+      "summary": "`switch` was used on a type that is not a sealed interface, or on a sealed interface that declares type parameters. Records (including `Tuple2`/`Tuple3`) cannot be switched on. JuLC drops type arguments, so it cannot decide which variants of a parameterized sealed interface apply or whether a switch over one is exhaustive.",
       "fix": "Use field access (`pair.first()`, `pair.second()`) for records. Reserve `switch` for sealed interfaces with permitted record variants."
     },
     {
@@ -142,13 +143,13 @@
     {
       "code": "JULC0011",
       "constant": "UNDEFINED_VARIABLE",
-      "status": "planned",
+      "status": "emitted",
       "title": "Undefined variable",
       "category": "TYPE",
       "severity": "error",
       "template": "Undefined variable: {0}",
-      "summary": "A variable was referenced that is not in scope. Most commonly: typo, used before declared, or shadowed inside a switch case binding.",
-      "fix": "Check spelling and declaration order. If a switch case binds a field with the same name as your method parameter, rename one of them — the field shadows the parameter inside the case body (see JULC0021)."
+      "summary": "A name was read that the on-chain program has no binder for: a type or package read as a value, a class of a library the compilation cannot register, or a pattern variable outside the condition that binds it.",
+      "fix": "Check spelling, or add an import if the name is a type. A pattern variable is bound only where its instanceof is the whole condition of an if."
     },
     {
       "code": "JULC0012",
@@ -176,13 +177,13 @@
     {
       "code": "JULC0014",
       "constant": "ARRAY_UNSUPPORTED",
-      "status": "planned",
+      "status": "emitted",
       "title": "Arrays are not supported (except byte[])",
       "category": "SYNTAX",
       "severity": "error",
       "template": "arrays are not supported on-chain",
-      "summary": "Java arrays other than `byte[]` are not supported on-chain.",
-      "fix": "Use `JulcList<T>` or `List<T>` instead of `T[]`."
+      "summary": "Java arrays other than a `byte[]` literal of integer literals are not supported on-chain.",
+      "fix": "Use List<T> instead of arrays, or byte[] with literal initializers"
     },
     {
       "code": "JULC0015",
@@ -242,13 +243,13 @@
     {
       "code": "JULC0020",
       "constant": "FLOATING_POINT_UNSUPPORTED",
-      "status": "planned",
+      "status": "emitted",
       "title": "Floating-point types are not supported",
       "category": "TYPE",
       "severity": "error",
       "template": "floating point types (float/double) are not supported on-chain",
       "summary": "`float` and `double` have no UPLC equivalent.",
-      "fix": "Use `BigInteger` for integer math. For fractional values, scale up (e.g. parts-per-million) and do integer math, or use `Rational` from the ledger types when modelling protocol params."
+      "fix": "Use BigInteger for integer arithmetic or Rational for fractions"
     },
     {
       "code": "JULC0021",
@@ -290,12 +291,12 @@
     {
       "code": "JULC0024",
       "constant": "UNKNOWN_METHOD_ON_TYPE",
-      "status": "planned",
+      "status": "emitted",
       "title": "Unknown method on type",
       "category": "STDLIB",
       "severity": "error",
       "template": "Unknown method: {0}",
-      "summary": "A method was called that doesn't exist on the receiver type. Likely the AI invented a method that isn't in the stdlib.",
+      "summary": "A call names a method the on-chain program has no binder for, such as a generic template of a library class called from that class.",
       "fix": "Check the stdlib catalog at https://julc.dev/ai/catalog.json or the stdlib reference at https://julc.dev/stdlib/stdlib-guide/. Common: `JulcList<T>` has `head/tail/get/size/isEmpty/contains/prepend/reverse/concat/take/drop/map/filter/any/all/find`."
     },
     {
@@ -340,7 +341,7 @@
       "severity": "error",
       "template": "Failed to parse {0} source: {1}",
       "summary": "The Java source could not be parsed. Usually a syntax error in the source file.",
-      "fix": "Check the file with a Java IDE or `javac` — the JuLC compiler relies on JavaParser to produce a clean AST."
+      "fix": "Check the file with a Java IDE or `javac` — the JuLC compiler reads the source with javac."
     },
     {
       "code": "JULC0029",
@@ -461,7 +462,7 @@
       "severity": "error",
       "template": "Optimization level {0} is not supported. Supported levels: {1}",
       "summary": "Optimizer selection uses an exact, versioned identifier and never falls back to a different rollout level.",
-      "fix": "Select one of the listed optimization levels. Use baseline to preserve the pre-ADR-032 generated program."
+      "fix": "Select one of the listed optimization levels. Use none to turn the optimizer off."
     },
     {
       "code": "JULC0040",
@@ -515,7 +516,7 @@
       "category": "BACKEND",
       "severity": "error",
       "template": "{0} targets backend contract revision {1}; this backend supports revisions {2}",
-      "summary": "A neutral-backend descriptor or library provider declares a contract revision outside the range this compiler implements (ADR-059).",
+      "summary": "A neutral-backend descriptor or library provider declares a contract revision outside the range this compiler implements.",
       "fix": "Produce the descriptor for a supported revision reported by CompilerBackend.capabilities, or use a compiler release that implements the requested revision."
     },
     {
@@ -603,7 +604,7 @@
       "category": "SYNTAX",
       "severity": "error",
       "template": "Compound assignment operator {0} is not supported on-chain",
-      "summary": "Only +=, -=, *=, /= and %= on integers, and += on strings, are lowered. Bitwise, shift and boolean compound operators (&=, |=, ^=, <<=, >>=, >>>=) are rejected instead of being lowered with different semantics (ADR-060).",
+      "summary": "Only +=, -=, *=, /= and %= on integers, and += on strings, are lowered. Bitwise, shift and boolean compound operators (&=, |=, ^=, <<=, >>=, >>>=) are rejected instead of being lowered with different semantics.",
       "fix": "Write the update explicitly. For booleans evaluate the check first so it always runs, as Java's &= does: boolean c = check(x); ok = ok && c;",
       "example": {
         "bad": "for (var x : xs) {\n    ok &= check(x);\n}",
@@ -618,7 +619,7 @@
       "category": "SYNTAX",
       "severity": "error",
       "template": "Declare one variable per statement: {0}",
-      "summary": "A local declaration with several variables (BigInteger a = x, b = y;) is not lowered; only the first variable would be bound, so later references could resolve to an outer declaration of the same name (ADR-060).",
+      "summary": "A local declaration with several variables (BigInteger a = x, b = y;) is not lowered; only the first variable would be bound, so later references could resolve to an outer declaration of the same name.",
       "fix": "Split the declaration into one statement per variable.",
       "example": {
         "bad": "BigInteger a = BigInteger.ONE, b = BigInteger.TWO;",
@@ -633,7 +634,7 @@
       "category": "VALIDATOR",
       "severity": "error",
       "template": "Method {0} is declared more than once in {1}; on-chain methods are bound by name, so declarations sharing a name must compile to identical code",
-      "summary": "Every call to an overloaded name would run one of its declarations. Declarations that lower to identical code and types are accepted; any other overload, or a helper that reuses an entrypoint's name, is rejected (ADR-060).",
+      "summary": "Every call to an overloaded name would run one of its declarations. Declarations that lower to identical code and types are accepted; any other overload, or a helper that reuses an entrypoint's name, is rejected.",
       "fix": "Give each method a distinct name.",
       "example": {
         "bad": "static boolean check(BigInteger a) { ... }\nstatic boolean check(long a) { ... }",
@@ -648,7 +649,7 @@
       "category": "TYPE",
       "severity": "error",
       "template": "Cannot resolve {0}: the receiver's type does not declare it as a record field, accessor or supported method",
-      "summary": "x.name() and x.name resolve against the receiver's record, ledger or library type; record instance methods are not compiled. An unresolved member used to be bound to whatever variable or method happened to be named name, which is not Java's meaning (ADR-060).",
+      "summary": "x.name() and x.name resolve against the receiver's record, ledger or library type; record instance methods are not compiled. An unresolved member used to be bound to whatever variable or method happened to be named name, which is not Java's meaning.",
       "fix": "Give the receiver its record or ledger type instead of var or PlutusData, or call a static helper as helper(x) rather than x.helper().",
       "example": {
         "bad": "static BigInteger amount(PlutusData d) { ... }\nPlutusData d = ...;\nreturn d.amount();",
@@ -663,7 +664,7 @@
       "category": "SYNTAX",
       "severity": "error",
       "template": "Assignment to field ''{0}'' in a loop is not supported: {1}",
-      "summary": "Static fields and @Param fields are not shared state on-chain: a loop assignment rebinds the name only in the rest of the assigning method's current run, and every other run and every other method sees the initial value. The assignment is accepted only where that matches Java: the field is not final, the method is an entry method (a validator entrypoint or the compileMethod target) that no method calls, the loop is not in a lambda, and no other method reads the field (ADR-060).",
+      "summary": "Static fields and @Param fields are not shared state on-chain: a loop assignment rebinds the name only in the rest of the assigning method's current run, and every other run and every other method sees the initial value. The assignment is accepted only where that matches Java: the field is not final, the method is an entry method (a validator entrypoint or the compileMethod target) that no method calls, the loop is not in a lambda, and no other method reads the field.",
       "fix": "Copy the field into a local accumulator before the loop, update the local, and pass it to the methods that need it.",
       "example": {
         "bad": "static long count = 0;\nstatic long current() { return count; }\n...\nfor (var x : xs) { count += 1; }\nreturn current();",
@@ -689,7 +690,7 @@
       "category": "SYNTAX",
       "severity": "error",
       "template": "Reassigning {0} ''{1}'' is not supported in a loop that updates no variable declared before the loop",
-      "summary": "A for-each loop can reassign its loop variable or a local declared in its body only while it also updates a variable declared before the loop. Without one, the body is compiled as plain statements, which cannot reassign a variable (ADR-060).",
+      "summary": "A for-each loop can reassign its loop variable or a local declared in its body only while it also updates a variable declared before the loop. Without one, the body is compiled as plain statements, which cannot reassign a variable.",
       "fix": "Declare a new local for the new value instead of reassigning, for example var adjusted = amount.subtract(fee);",
       "example": {
         "bad": "for (var amount : amounts) {\n    amount = amount.subtract(fee);\n    if (amount.signum() < 0) Builtins.error();\n}",
@@ -704,12 +705,960 @@
       "category": "SYNTAX",
       "severity": "error",
       "template": "Pattern variable ''{0}'' has the same name as a field of {1}",
-      "summary": "An instanceof pattern variable is bound only when the pattern is the whole condition of an if statement outside a loop. In any other position (a loop body, an && condition, a negated guard, a ternary, a lambda) the name resolves to a field of the same name instead, which silently reads or updates the field (#204). A pattern variable may therefore not reuse the name of a field, including a @Param field, of an enclosing class.",
+      "summary": "An instanceof pattern variable is bound only when the pattern is the whole condition of an if statement outside a loop. In any other position (a loop body, an && condition, a negated guard, a ternary, a lambda) the name resolves to a field of the same name instead, which silently reads or updates the field. A pattern variable may therefore not reuse the name of a field, including a @Param field, of an enclosing class.",
       "fix": "Rename the pattern variable, for example `if (action instanceof Bid bid)`, so it does not reuse a field name.",
       "example": {
         "bad": "static Bid best = new Bid(BigInteger.ZERO);\n...\nif (action instanceof Bid best) { return best.amount(); }",
         "good": "static Bid best = new Bid(BigInteger.ZERO);\n...\nif (action instanceof Bid bid) { return bid.amount(); }"
       }
+    },
+    {
+      "code": "JULC0060",
+      "constant": "CONTINUE_UNSUPPORTED",
+      "status": "emitted",
+      "title": "continue is not supported",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "continue is not supported on-chain",
+      "summary": "`continue` is outside the on-chain subset. Loops are compiled to folds and recursive functions whose body runs to its end on every iteration; there is no lowering that skips the rest of the body. The diagnostic is reported when the compiler lowers the loop that contains the `continue`, so code JuLC does not compile, such as a nested off-chain helper class, is not affected.",
+      "fix": "Guard the rest of the loop body with an if instead: replace `if (skip) { continue; } rest;` with `if (!skip) { rest; }`.",
+      "example": {
+        "bad": "for (var x : xs) {\n    if (x.signum() < 0) { continue; }\n    total = total.add(x);\n}",
+        "good": "for (var x : xs) {\n    if (x.signum() >= 0) { total = total.add(x); }\n}"
+      }
+    },
+    {
+      "code": "JULC0061",
+      "constant": "REASSIGNMENT_OUTSIDE_LOOP",
+      "status": "emitted",
+      "title": "Reassignment outside a loop",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "Reassigning ''{0}'' is not supported outside a loop",
+      "summary": "On-chain variables are single-assignment. Only a loop can update a variable declared before it (the loop's accumulator); anywhere else, assigning to a local variable, parameter or field is rejected, including in an if/else branch and inside an expression.",
+      "fix": "Declare a new local for the new value, for example `long squared = x * n;`, or choose the value in one expression, for example `var limit = vip ? BigInteger.valueOf(100) : BigInteger.TEN;`.",
+      "example": {
+        "bad": "long x = n;\nx = x * n;\nreturn x;",
+        "good": "long x = n;\nlong squared = x * n;\nreturn squared;"
+      }
+    },
+    {
+      "code": "JULC0062",
+      "constant": "JULCMAP_OF_OFF_CHAIN_ONLY",
+      "status": "emitted",
+      "title": "JulcMap.of is off-chain only",
+      "category": "STDLIB",
+      "severity": "error",
+      "template": "JulcMap.of is off-chain only and has no on-chain implementation",
+      "summary": "`JulcMap.of(...)` builds a `JulcAssocMap` in Java, for tests and off-chain code. The compiler has no lowering for it. On-chain, a map is built from `JulcMap.empty()` with `insert`, which adds the entry at the front of the map.",
+      "fix": "Build the map from JulcMap.empty() with insert, for example `JulcMap<byte[], BigInteger> map = JulcMap.<byte[], BigInteger>empty().insert(key, value);`. insert adds at the front, so JulcMap.of(a, x, b, y) is `JulcMap.<K, V>empty().insert(b, y).insert(a, x)`.",
+      "example": {
+        "bad": "JulcMap<byte[], BigInteger> map = JulcMap.of(key, BigInteger.ONE);",
+        "good": "JulcMap<byte[], BigInteger> map = JulcMap.<byte[], BigInteger>empty().insert(key, BigInteger.ONE);"
+      }
+    },
+    {
+      "code": "JULC0063",
+      "constant": "BREAK_IN_LOOP_WITHOUT_ACCUMULATOR",
+      "status": "emitted",
+      "title": "break in a loop that updates no earlier variable",
+      "category": "CONTROL_FLOW",
+      "severity": "error",
+      "template": "break is not supported in a loop that updates no variable declared before the loop",
+      "summary": "A loop supports `break` only when it updates a variable declared before the loop. A loop that updates none compiles its body as plain statements, which cannot stop the loop. This holds also when the loop is nested inside another loop. A loop whose only update is in a position the compiler cannot carry, such as a switch statement or an expression, reports JULC0065 at the update instead.",
+      "fix": "Declare a variable before the loop and set it where the loop breaks: `boolean stopped = false;` before the loop and `if (found) { stopped = true; break; }` in it.",
+      "example": {
+        "bad": "for (var x : xs) {\n    if (x.equals(target)) { break; }\n    if (x.signum() < 0) { Builtins.error(); }\n}",
+        "good": "boolean stopped = false;\nfor (var x : xs) {\n    if (x.equals(target)) { stopped = true; break; }\n    if (x.signum() < 0) { Builtins.error(); }\n}"
+      }
+    },
+    {
+      "code": "JULC0064",
+      "constant": "BREAK_LOOP_STATEMENT_UNSUPPORTED",
+      "status": "emitted",
+      "title": "Unsupported statement in a loop with break",
+      "category": "CONTROL_FLOW",
+      "severity": "error",
+      "template": "{0} is not supported in a loop that contains break and updates one variable declared before the loop",
+      "summary": "A loop that contains `break` and updates exactly one variable declared before it may contain only variable declarations, assignments, if/else and break. A nested while or for-each loop in its body is rejected with this code; another unsupported statement keeps its own diagnostic. A loop that updates two or more such variables supports nested loops.",
+      "fix": "Move the nested loop into a helper method that returns the value it computes, and call the helper from the loop body.",
+      "example": {
+        "bad": "for (var x : xs) {\n    if (x.signum() < 0) { break; }\n    long i = 0;\n    while (i < 3) { v = v.add(x); i = i + 1; }\n}",
+        "good": "static BigInteger addTimes(BigInteger v, BigInteger x) {\n    BigInteger r = v;\n    long i = 0;\n    while (i < 3) { r = r.add(x); i = i + 1; }\n    return r;\n}\n...\nfor (var x : xs) {\n    if (x.signum() < 0) { break; }\n    v = addTimes(v, x);\n}"
+      }
+    },
+    {
+      "code": "JULC0065",
+      "constant": "LOOP_UPDATE_POSITION_UNSUPPORTED",
+      "status": "emitted",
+      "title": "Loop update in a position the loop cannot carry",
+      "category": "CONTROL_FLOW",
+      "severity": "error",
+      "template": "Updating ''{0}'' {1} is not supported in this loop",
+      "summary": "A loop carries an update of a variable declared before it only when the update is a statement of its own, directly in the loop body or in an if/else branch. An update in the loop condition or iterable, inside a switch statement, inside an expression or inside a lambda is not seen as one, so a loop with break whose only updates are there reports this code at the update. The code is emitted only for such a loop with break; the same update in a loop without break still has an uncoded diagnostic.",
+      "fix": "Write the update as a statement of its own, directly in the loop body or in an if/else branch: for example `if (k == 1) { c = c + 1; } else { c = c + 2; }` instead of a switch statement, `c = c + 1;` before the `if` instead of `if ((c = c + 1) > 5)`, and `while (x - 1 > 0) { x = x - 1; ... }` instead of `while ((x = x - 1) > 0)`.",
+      "example": {
+        "bad": "for (var x : xs) {\n    if (x.signum() < 0) { break; }\n    switch (x.intValue()) { case 1 -> c = c + 1; default -> c = c + 2; }\n}",
+        "good": "for (var x : xs) {\n    if (x.signum() < 0) { break; }\n    if (x.intValue() == 1) { c = c + 1; } else { c = c + 2; }\n}"
+      }
+    },
+    {
+      "code": "JULC0066",
+      "constant": "LABEL_UNSUPPORTED",
+      "status": "emitted",
+      "title": "Labels are not supported",
+      "category": "CONTROL_FLOW",
+      "severity": "error",
+      "template": "Labels are not supported on-chain: ''{0}''",
+      "summary": "Labelled statements are outside the on-chain subset, so no `break` or `continue` can name a label. A `break` that named a label used to be accepted and compiled as a plain `break` of the innermost loop, even when no statement carried the label; javac rejects that source, but tools that compile source text without javac did not. A labelled statement, a `break` that names a label and a `continue` that names a label all report this code, located at the labelled statement, the `break` or the `continue`, whether or not a matching label exists. The diagnostic is reported when the compiler lowers the code, so code JuLC does not compile, such as a nested off-chain helper class, is not affected; only a labelled `break` outside any loop, which subset validation already rejected, is reported there.",
+      "fix": "Remove the label. To leave an outer loop from an inner one, declare a variable before the loops, set it where the inner loop breaks and skip the rest of the outer loop while it is set: `boolean stop = false; for (var x : xs) { if (!stop) { for (var y : ys) { if (found) { stop = true; break; } } } }`. continue is not supported with or without a label (JULC0060).",
+      "example": {
+        "bad": "long count = 0;\nfor (var x : xs) {\n    for (var y : xs) {\n        if (y.equals(BigInteger.TWO)) { break outer; }\n        count = count + 1;\n    }\n}",
+        "good": "long count = 0;\nboolean stop = false;\nfor (var x : xs) {\n    if (!stop) {\n        for (var y : xs) {\n            if (y.equals(BigInteger.TWO)) { stop = true; break; }\n            count = count + 1;\n        }\n    }\n}"
+      }
+    },
+    {
+      "code": "JULC0070",
+      "constant": "INTEGER_LITERAL_INVALID",
+      "status": "emitted",
+      "title": "Integer literal javac rejects",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "Integer literal {0} is invalid: {1}",
+      "summary": "An int literal has 32 bits and a long literal 64 (JLS 21 §3.10.1). A decimal literal must fit the signed range; 2147483648 and 9223372036854775808L are allowed only directly after a unary minus, not inside parentheses. A hexadecimal, octal or binary literal must fit the width, and denotes the two's-complement value of its bits, so 0xFFFFFFFF is -1. An octal literal has only the digits 0 to 7. A byte[] initializer element must be in -128 to 127. javac rejects any other literal, and so does JuLC.",
+      "fix": "Add the L suffix for a long literal, use BigInteger for a larger value, write a negated most-negative literal without parentheses (-2147483648), and keep byte[] elements in -128 to 127.",
+      "example": {
+        "bad": "long big = 4294967296;\nbyte[] b = new byte[]{0xFF};",
+        "good": "long big = 4294967296L;\nbyte[] b = new byte[]{-1};"
+      }
+    },
+    {
+      "code": "JULC0071",
+      "constant": "SWITCH_LABEL_DOMINATED",
+      "status": "retired",
+      "title": "Switch label is dominated by an earlier label",
+      "category": "CONTROL_FLOW",
+      "severity": "error",
+      "template": "Switch label ''{0}'' is dominated by {1} and can never be selected",
+      "summary": "Retired, never reused: javac rejects a dominated switch label itself, so a compilation reports JULC0085 with javac's key.",
+      "fix": "Remove the dominated label, or move the more specific (or guarded) label before the general one and `default` last.",
+      "example": {
+        "bad": "return switch (s) {\n    case A a -> 1;\n    case A a when a.v().signum() > 0 -> 2;\n    case B b -> 0;\n};",
+        "good": "return switch (s) {\n    case A a when a.v().signum() > 0 -> 2;\n    case A a -> 1;\n    case B b -> 0;\n};"
+      }
+    },
+    {
+      "code": "JULC0072",
+      "constant": "SWITCH_GUARD_INVALID",
+      "status": "emitted",
+      "title": "Switch guard is not a usable boolean condition",
+      "category": "CONTROL_FLOW",
+      "severity": "error",
+      "template": "Invalid guard on ''{0}'': {1}",
+      "summary": "A guard (`when`) must have type boolean or Boolean, and must not be a constant expression with value false, such as `false`, a `static final boolean` that is false, or `1 == 2` (JLS 14.11.1). A constant `true` guard is allowed and makes the label unguarded.",
+      "fix": "Use a boolean condition that depends on the matched value or other inputs; delete an arm whose guard is always false.",
+      "example": {
+        "bad": "case A a when 3 -> ONE;",
+        "good": "case A a when a.v().compareTo(BigInteger.valueOf(3)) > 0 -> ONE;"
+      }
+    },
+    {
+      "code": "JULC0073",
+      "constant": "SWITCH_GUARD_VARIABLE_NOT_EFFECTIVELY_FINAL",
+      "status": "retired",
+      "title": "Switch guard reads a variable that is reassigned",
+      "category": "CONTROL_FLOW",
+      "severity": "error",
+      "template": "Guard on ''{0}'' reads ''{1}'', which is reassigned; a variable used in a guard must be final or effectively final",
+      "summary": "Retired, never reused: javac rejects a guard that reads a variable that is not effectively final itself, so a compilation reports JULC0085 with javac's key.",
+      "fix": "Copy the variable's final value into a new local after the loop, and use that local in the guard.",
+      "example": {
+        "bad": "BigInteger lim = BigInteger.ZERO;\nfor (var x : xs) { lim = lim.add(x); }\nreturn switch (s) { case A a when a.v().compareTo(lim) > 0 -> ONE; default -> ZERO; };",
+        "good": "BigInteger lim = BigInteger.ZERO;\nfor (var x : xs) { lim = lim.add(x); }\nBigInteger total = lim;\nreturn switch (s) { case A a when a.v().compareTo(total) > 0 -> ONE; default -> ZERO; };"
+      }
+    },
+    {
+      "code": "JULC0074",
+      "constant": "SWITCH_GUARD_PATTERN_VARIABLE_UNSUPPORTED",
+      "status": "emitted",
+      "title": "Switch guard introduces a pattern variable",
+      "category": "CONTROL_FLOW",
+      "severity": "error",
+      "template": "Guard on ''{0}'' declares pattern variable ''{1}'', which is not supported",
+      "summary": "Java lets a guard introduce pattern variables (`when p.t() instanceof C c`, JLS 6.3.3), but JuLC binds instanceof pattern variables only as the whole condition of an if statement. A guard may still use instanceof as a plain type test.",
+      "fix": "Test the type without a binding (`p.t() instanceof C`) and read the value in the arm.",
+      "example": {
+        "bad": "case P p when p.t() instanceof C c -> c.w();",
+        "good": "case P p when p.t() instanceof C -> ((C) p.t()).w();"
+      }
+    },
+    {
+      "code": "JULC0075",
+      "constant": "SWITCH_GROUP_UNSUPPORTED",
+      "status": "emitted",
+      "title": "Colon-form switch group is not supported",
+      "category": "CONTROL_FLOW",
+      "severity": "error",
+      "template": "Unsupported switch group ''{0}'': {1}",
+      "summary": "JuLC compiles a colon-form switch expression only when every statement group has exactly one label and yields on every path. Java lets a group fall through into the next one; JuLC does not implement fall-through, and used to return the group's last expression instead. Several labels on one group, or several patterns in one label, are rejected too.",
+      "fix": "End every group with `yield`, give each group its own label, or use the arrow form `case X x -> ...`.",
+      "example": {
+        "bad": "case A x: x.v().negate();\ndefault: yield BigInteger.TWO;",
+        "good": "case A x: yield x.v().negate();\ndefault: yield BigInteger.TWO;"
+      }
+    },
+    {
+      "code": "JULC0076",
+      "constant": "CASE_PATTERN_UNSUPPORTED",
+      "status": "emitted",
+      "title": "Case pattern is not supported",
+      "category": "CONTROL_FLOW",
+      "severity": "error",
+      "template": "Unsupported case pattern ''{0}'': {1}",
+      "summary": "A case pattern must name a permitted variant of the selector's sealed interface. A pattern for a type that is not a variant is not applicable; the total type pattern `case S s` on a selector of type S and a record pattern such as `case A(var v)` are valid Java but not supported.",
+      "fix": "Name a permitted variant in each case label, and use `default` for the remaining ones. For a record pattern, bind the record and read its fields: `case A a -> a.v()`.",
+      "example": {
+        "bad": "case S t -> 2;",
+        "good": "default -> 2;"
+      }
+    },
+    {
+      "code": "JULC0077",
+      "constant": "INSTANCEOF_RECORD_PATTERN_UNSUPPORTED",
+      "status": "emitted",
+      "title": "instanceof with a pattern JuLC does not lower",
+      "category": "CONTROL_FLOW",
+      "severity": "error",
+      "template": "Unsupported instanceof pattern: {0}",
+      "summary": "An instanceof whose pattern is not a type pattern, such as a record pattern, is not supported.",
+      "fix": "Use a type pattern (x instanceof R r) and read the components through r, or a switch."
+    },
+    {
+      "code": "JULC0078",
+      "constant": "EQUALS_ALWAYS_FALSE",
+      "status": "emitted",
+      "title": "equals between types that can never be equal",
+      "category": "TYPE",
+      "severity": "error",
+      "template": "{0} compares {1} with {2}, which Java keeps distinct: on-chain the two can compare equal",
+      "summary": "An equals call or collection operation whose JVM implementation compares with equals, between static types that are not related: neither is a subtype of the other by class, or a type argument is not related to the same argument of the other. Java's answer is false, and on-chain a comparison reads representations, so an integer and a long, a string and its bytes, or two records with the same fields can be equal.",
+      "fix": "Compare through one typed value (decode the datum to the record type first), or compare the components explicitly."
+    },
+    {
+      "code": "JULC0079",
+      "constant": "RECORD_MULTIPLE_SEALED_PARENTS",
+      "status": "emitted",
+      "title": "Record implements two sealed interfaces",
+      "category": "TYPE",
+      "severity": "error",
+      "template": "Record {0} implements sealed interfaces {1} and {2}; a record may have at most one sealed parent",
+      "summary": "A Data value has one constructor tag, so a record cannot be a variant of two sealed interfaces.",
+      "fix": "Wrap the record in a separate variant for the second interface."
+    },
+    {
+      "code": "JULC0080",
+      "constant": "RECORD_MEMBER_UNSUPPORTED",
+      "status": "emitted",
+      "title": "Record body member is not supported",
+      "category": "TYPE",
+      "severity": "error",
+      "template": "Record {0} declares {1}, which JuLC does not compile; a record body may contain only nested type declarations",
+      "summary": "JuLC compiles a record as its components only, so a declared accessor, equals, constructor, method, static field or initializer would be ignored.",
+      "fix": "Move the logic into a static helper method of the enclosing class."
+    },
+    {
+      "code": "JULC0081",
+      "constant": "LEDGER_TYPE_REDECLARED",
+      "status": "emitted",
+      "title": "Source redeclares or extends a JuLC API type or bundled library",
+      "category": "TYPE",
+      "severity": "error",
+      "template": "{0} declares {1}, which JuLC''s {2} owns",
+      "summary": "JuLC's on-chain API (julc-core, julc-ledger-api, the stdlib's on-chain classes, julc-verification's annotations) and its bundled stdlib libraries come only from JuLC. A source is a bundled library only if its text is the shipped one (by digest); any other source that declares a type with an API or bundled name, or in a package they define, is rejected before javac runs, so no source can replace or extend them. The simple-name rule for ledger hash types is still planned.",
+      "fix": "Rename the type, or move it to a package of your own.",
+      "example": {
+        "bad": "package org.julclang.ledger;\n\nrecord Value(java.math.BigInteger lovelace) {}",
+        "good": "package com.example;\n\nrecord Amount(java.math.BigInteger lovelace) {}"
+      }
+    },
+    {
+      "code": "JULC0082",
+      "constant": "SWITCH_DUPLICATE_DEFAULT",
+      "status": "retired",
+      "title": "Switch has more than one default label",
+      "category": "CONTROL_FLOW",
+      "severity": "error",
+      "template": "Switch has more than one default label (second at {0})",
+      "summary": "Retired, never reused: javac rejects a second default label itself, so a compilation reports JULC0085 with javac's key.",
+      "fix": "Keep one `default` label.",
+      "example": {
+        "bad": "case A a -> 1;\ndefault -> 2;\ndefault -> 3;",
+        "good": "case A a -> 1;\ndefault -> 2;"
+      }
+    },
+    {
+      "code": "JULC0083",
+      "constant": "PATTERN_VARIABLE_CONFLICT",
+      "status": "emitted",
+      "title": "Pattern variable redeclares a variable in scope",
+      "category": "CONTROL_FLOW",
+      "severity": "error",
+      "template": "Pattern variable ''{0}'' is already defined {1}",
+      "summary": "A pattern variable may not have the name of a local variable, parameter or pattern variable in scope, and a pattern may not declare one name twice (JLS 6.4, 14.30.1). JuLC used to let it shadow the outer variable. It may have the name of a field, as in Java.",
+      "fix": "Rename the pattern variable.",
+      "example": {
+        "bad": "static BigInteger m(BigInteger a, S s) {\n    return switch (s) { case A a -> a.v(); case B b -> ZERO; };\n}",
+        "good": "static BigInteger m(BigInteger a, S s) {\n    return switch (s) { case A x -> x.v(); case B b -> ZERO; };\n}"
+      }
+    },
+    {
+      "code": "JULC0084",
+      "constant": "FRONTEND_CONSTRUCT_NOT_PORTED",
+      "status": "retired",
+      "title": "Construct not yet ported to the javac frontend",
+      "category": "FRONTEND",
+      "severity": "error",
+      "template": "The javac frontend does not compile {0} yet",
+      "summary": "Retired, never reused: the javac frontend had not ported a construct. No compilation reports it: every construct of the subset is lowered or has a code of its own.",
+      "fix": "None: no compilation reports this code."
+    },
+    {
+      "code": "JULC0085",
+      "constant": "JAVAC_ERROR",
+      "status": "emitted",
+      "title": "javac rejects the source",
+      "category": "FRONTEND",
+      "severity": "error",
+      "template": "{0} ({1})",
+      "summary": "Source that is not valid Java is rejected with javac's own diagnostic: its message, its key (such as compiler.err.cant.resolve.location) and its position, with the column counted in characters from the line start. JuLC's closed environment adds a hint where a name is missing because JuLC does not provide it: a JDK type or package outside JuLC's platform, or an annotation from outside the on-chain API.",
+      "fix": "Fix the Java error javac reports; where the hint names a JDK type, use JuLC's on-chain equivalent.",
+      "example": {
+        "bad": "BigInteger total = a + b;",
+        "good": "BigInteger total = a.add(b);"
+      }
+    },
+    {
+      "code": "JULC0086",
+      "constant": "REFERENCE_EQUALITY_UNSUPPORTED",
+      "status": "emitted",
+      "title": "Reference equality is not supported",
+      "category": "TYPE",
+      "severity": "error",
+      "template": "{0} compares {1} by reference; use equals",
+      "summary": "== and != on BigInteger, byte[], String, boxed values or records is reference equality in Java (JLS 15.21.3), but value equality on-chain. Constant String operands built from literals and string + alone keep their meaning, and any other constant comparison stops too, in a guard unless the guard is constant as a whole.",
+      "fix": "Use a.equals(b), or Builtins.equalsByteString(a, b) for bytes (ByteStringLib.equals(a, b) is equivalent)."
+    },
+    {
+      "code": "JULC0087",
+      "constant": "ARRAY_EQUALS_UNSUPPORTED",
+      "status": "emitted",
+      "title": "Equality would compare an array by identity",
+      "category": "TYPE",
+      "severity": "error",
+      "template": "{0} compares {1}, whose equality on the JVM {2}",
+      "summary": "An equals call or collection operation whose JVM implementation compares elements or keys with equals, at a static type through which an array is compared by identity (directly, or through record components, sealed variants or type arguments), is true on-chain for equal bytes but false on the JVM. A type the check cannot read (a raw collection, Object, a type variable, an operand of no readable type) is rejected the same way, because it cannot be shown to compare by value.",
+      "fix": "Compare the bytes: Builtins.equalsByteString(a, b) for byte[] (ByteStringLib.equals(a, b) is equivalent, a few bytes larger), and Builtins.equalsByteString(a.value(), b.value()) on the component accessors of a @NewType byte wrapper. Where the type cannot be read, compare at the value's own declared type."
+    },
+    {
+      "code": "JULC0088",
+      "constant": "PARAM_CONSTANT_VARIABLE",
+      "status": "emitted",
+      "title": "@Param field is a Java constant variable",
+      "category": "LIBRARY",
+      "severity": "error",
+      "template": "@Param field {0} is a constant variable in Java, so javac would fold it; it is runtime input",
+      "summary": "A static final primitive or String @Param field with a constant initializer is a constant variable to javac, which folds it, so the JVM program would not be the script that receives the applied parameter.",
+      "fix": "Drop final, or initialize from a non-constant expression such as Boolean.valueOf(true)."
+    },
+    {
+      "code": "JULC0089",
+      "constant": "JAVAC_UNSUPPORTED",
+      "status": "emitted",
+      "title": "The host's javac is missing or not supported",
+      "category": "FRONTEND",
+      "severity": "error",
+      "template": "javac on Java {0} is not supported: {1}",
+      "summary": "JuLC reads Java with the host's javac (ToolProvider.getSystemJavaCompiler), against a platform built for javac feature release 25. A runtime without the jdk.compiler module, or a javac whose highest source version is not RELEASE_25, is rejected.",
+      "fix": "Run JuLC on a JDK 25 runtime that includes jdk.compiler."
+    },
+    {
+      "code": "JULC0090",
+      "constant": "STRING_CONCAT_NON_STRING",
+      "status": "emitted",
+      "title": "String concatenation with a non-String operand",
+      "category": "TYPE",
+      "severity": "error",
+      "template": "String concatenation {0} has a non-String operand of type {1}",
+      "summary": "\"a\" + 1 is valid Java, but JuLC lowers string + to appendString, which fails at run time on an integer. A switch guard that is a constant expression as a whole keeps its meaning.",
+      "fix": "Concatenate Strings only."
+    },
+    {
+      "code": "JULC0091",
+      "constant": "NATIVE_ARRAY_NOT_DATA_ENCODABLE",
+      "status": "emitted",
+      "title": "Native array in a Data-encoded position",
+      "category": "TYPE",
+      "severity": "error",
+      "template": "{0} needs a Data encoding of the native array {1}, which has none",
+      "summary": "A JulcArray is a native UPLC array, which has no Data encoding. A record or sealed-variant component, a type argument of Optional, Tuple2, Tuple3, JulcList, JulcMap or JulcArray, and a @Param or compileMethod input are Data-encoded, so an array there compiled but failed on-chain where the Java code succeeds. An array of Data-encodable elements, such as JulcArray<JulcList<BigInteger>>, is supported.",
+      "fix": "Store a JulcList in the record, collection or input, and build the array where it is used, for example `xs.toArray()` in a local.",
+      "example": {
+        "bad": "record R(JulcArray<BigInteger> arr) {}\nstatic BigInteger f(JulcList<BigInteger> xs) {\n    R r = new R(xs.toArray());\n    return BigInteger.valueOf(r.arr().length());\n}",
+        "good": "record R(JulcList<BigInteger> xs) {}\nstatic BigInteger f(JulcList<BigInteger> xs) {\n    R r = new R(xs);\n    JulcArray<BigInteger> arr = r.xs().toArray();\n    return BigInteger.valueOf(arr.length());\n}"
+      }
+    },
+    {
+      "code": "JULC0092",
+      "constant": "SEALED_PERMITS_REQUIRED",
+      "status": "emitted",
+      "title": "Sealed interface needs a permits clause",
+      "category": "TYPE",
+      "severity": "error",
+      "template": "Sealed interface ''{0}'' has no permits clause, and its permitted subclasses ({1}) are not exactly the records nested in it",
+      "summary": "A variant's Data tag is its position in the permits clause; without one, among the records nested in the interface, in member order. Java also permits other classes of the compilation unit implicitly, such as a top-level or sibling-nested record, and those have no tag under that rule. The javac frontend rejects the interface rather than choose an order.",
+      "fix": "Add a permits clause listing every variant, in tag order.",
+      "example": {
+        "bad": "sealed interface Shape {}\nrecord Circle(BigInteger r) implements Shape {}",
+        "good": "sealed interface Shape permits Circle {}\nrecord Circle(BigInteger r) implements Shape {}"
+      }
+    },
+    {
+      "code": "JULC0093",
+      "constant": "STRING_LITERAL_UNPAIRED_SURROGATE",
+      "status": "emitted",
+      "title": "String literal holds an unpaired surrogate",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "A string literal holds the unpaired surrogate U+{0}, which a UPLC string cannot hold",
+      "summary": "javac accepts a lone surrogate in a string literal, but a UPLC string is Unicode text: the script's FLAT encoding would carry a ? in its place, so the JVM program would not be the script.",
+      "fix": "Write a supplementary character as its high surrogate followed by its low surrogate, or remove it."
+    },
+    {
+      "code": "JULC0094",
+      "constant": "ENTRYPOINT_RETURN_TYPE",
+      "status": "emitted",
+      "title": "An entry point returns boolean",
+      "category": "VALIDATOR",
+      "severity": "error",
+      "template": "Entrypoint {0} of {1} returns {2}; an entry point returns boolean or java.lang.Boolean",
+      "summary": "An @Entrypoint method of a validator states its verdict as a boolean or Boolean. Any other return type is not a validator's result.",
+      "fix": "Declare the method to return boolean.",
+      "example": {
+        "bad": "@Entrypoint\npublic static BigInteger validate(PlutusData redeemer, ScriptContext ctx) { return BigInteger.ONE; }",
+        "good": "@Entrypoint\npublic static boolean validate(PlutusData redeemer, ScriptContext ctx) { return true; }"
+      }
+    },
+    {
+      "code": "JULC0095",
+      "constant": "INITIALIZER_NOT_LOWERED",
+      "status": "emitted",
+      "title": "An initializer that is not lowered holds only a constant",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "{0} is not lowered, so {1}",
+      "summary": "A static field of the compiled class is lowered. Any other field initializer (a @Param field, an instance field, a field of another type, a field of a library, whose static fields bind at script start) and any initializer block is not, so it holds only a literal, a new byte[]{...} of literals, BigInteger.ZERO, ONE, TWO or TEN, PlutusData.UNIT, or a constant variable. Boolean.valueOf(true) and Boolean.valueOf(false) are allowed for a @Param field that must not be a constant variable. An initializer block is empty.",
+      "fix": "Move the value to a static field of the compiled class, or to the entry point, or write it as a literal.",
+      "example": {
+        "bad": "class Limits { static BigInteger MAX = BigInteger.valueOf(5); }",
+        "good": "@SpendingValidator\nclass V { static final BigInteger MAX = BigInteger.valueOf(5); }"
+      }
+    },
+    {
+      "code": "JULC0102",
+      "constant": "CONSTANT_STRING_JOIN",
+      "status": "emitted",
+      "title": "A + of string constants is joined when the script runs",
+      "category": "SYNTAX",
+      "severity": "warning",
+      "template": "These string constants are joined when the script runs: Java joins them when it compiles, and JuLC keeps the + as written",
+      "summary": "Java joins string constants when it compiles. JuLC keeps a + as written, so the script joins them each time it runs. A constant is a string literal, a String variable that javac gives a constant value, or a + of constants, through parentheses. One warning covers a whole expression of constants. The warning rejects nothing.",
+      "fix": "Write one string literal.",
+      "example": {
+        "bad": "static String greeting() { return \"hello \" + \"world\"; }",
+        "good": "static String greeting() { return \"hello world\"; }"
+      }
+    },
+    {
+      "code": "JULC0101",
+      "constant": "METHOD_NAME_READ_BY_SPELLING",
+      "status": "emitted",
+      "title": "A record does not declare a method its Data would skip",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "{0} has a name JuLC reads in place of its body, so a program does not declare it",
+      "summary": "JuLC compiles a record as its components, so a declared toPlutusData or an explicit accessor is never what a script's Data is, and a generated accessor that implements ToPlutusData.toPlutusData is not lowered.",
+      "fix": "Give the method or component another name, and read the component through its generated accessor.",
+      "example": {
+        "bad": "record Amount(BigInteger v) { public BigInteger v() { return v.abs(); } }",
+        "good": "record Amount(BigInteger v) { static BigInteger size(Amount a) { return a.v().abs(); } }"
+      }
+    },
+    {
+      "code": "JULC0100",
+      "constant": "TYPE_NAME_READ_BY_SPELLING",
+      "status": "retired",
+      "title": "A name JuLC reads by its spelling binds to what JuLC reads",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "JuLC reads {0} as {1}, and here it is {2}, so a program does not write it",
+      "summary": "Retired, never reused: javac binds every name to its declaration, so no compilation reports it.",
+      "fix": "None: no compilation reports this code.",
+      "example": {
+        "bad": "@NewType record Boolean(BigInteger v) { }",
+        "good": "@NewType record Flag(BigInteger v) { }"
+      }
+    },
+    {
+      "code": "JULC0099",
+      "constant": "CONSTRUCTOR_BODY",
+      "status": "emitted",
+      "title": "A constructor holds no statement",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "The body of constructor {0} does not run on-chain, so a constructor holds no statement",
+      "summary": "A value is built from its components alone, so a constructor's body never runs on-chain. Any constructor a source declares, on a record or a class, holds no statement.",
+      "fix": "Move the statement to a method, and call the method where the value is made.",
+      "example": {
+        "bad": "record Amount(BigInteger v) { Amount { v = v.abs(); } }",
+        "good": "record Amount(BigInteger v) { static Amount of(BigInteger v) { return new Amount(v.abs()); } }"
+      }
+    },
+    {
+      "code": "JULC0098",
+      "constant": "BOOLEAN_CAST_OPERAND",
+      "status": "emitted",
+      "title": "A value reaches boolean through a cast only from a boolean",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "A cast to {0} takes a boolean or a Boolean, not {1}",
+      "summary": "A cast to boolean or Boolean, or a call JuLC lowers to its argument with that result, such as PlutusData.cast, takes an operand whose type, through parentheses and other casts, is boolean or Boolean.",
+      "fix": "Compare the value to get a boolean.",
+      "example": {
+        "bad": "boolean b = (boolean)(Object) amount;",
+        "good": "boolean b = amount.signum() > 0;"
+      }
+    },
+    {
+      "code": "JULC0096",
+      "constant": "ENTRYPOINT_NOT_UNIQUE",
+      "status": "emitted",
+      "title": "A program has one validator class, and a single-purpose validator one entry point",
+      "category": "VALIDATOR",
+      "severity": "error",
+      "template": "{0} declares more than one {1}",
+      "summary": "A compilation unit holds one validator class, and a single-purpose validator one @Entrypoint method. Only a @MultiValidator has several, one per purpose.",
+      "fix": "Keep one, or use @MultiValidator with a purpose on each @Entrypoint."
+    },
+    {
+      "code": "JULC0097",
+      "constant": "ENTRYPOINT_NOT_STATIC",
+      "status": "emitted",
+      "title": "An entry point is static",
+      "category": "VALIDATOR",
+      "severity": "error",
+      "template": "Entrypoint {0} of {1} is not static",
+      "summary": "An @Entrypoint method is static.",
+      "fix": "Declare the method static."
+    },
+    {
+      "code": "JULC0103",
+      "constant": "ENTRYPOINT_CONTEXT_PARAMETER",
+      "status": "emitted",
+      "title": "An entry point's last parameter is the script context",
+      "category": "VALIDATOR",
+      "severity": "error",
+      "template": "Entrypoint {0} of {1} takes {2} as its last parameter; the last parameter is the script context, ScriptContext or PlutusData",
+      "summary": "The wrapper passes the script context's Data as an entry point's last argument, undecoded. A last parameter of another type reads the context as that type, so the script does not do what the JVM test of the method does.",
+      "fix": "Declare the last parameter as ScriptContext, or as PlutusData to keep the context as Data. Read other values from the redeemer or the datum.",
+      "example": {
+        "bad": "@Entrypoint\nstatic boolean validate(BigInteger redeemer, BigInteger ctx) { return true; }",
+        "good": "@Entrypoint\nstatic boolean validate(BigInteger redeemer, ScriptContext ctx) { return true; }"
+      }
+    },
+    {
+      "code": "JULC0104",
+      "constant": "SYNCHRONIZED_UNSUPPORTED",
+      "status": "emitted",
+      "title": "synchronized is not supported",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "synchronized is not supported on-chain",
+      "summary": "A synchronized block has no on-chain meaning.",
+      "fix": "On-chain code is single-threaded; remove synchronized blocks"
+    },
+    {
+      "code": "JULC0105",
+      "constant": "METHOD_REFERENCE_UNSUPPORTED",
+      "status": "emitted",
+      "title": "Method references are not supported",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "Method references (::) are not supported on-chain",
+      "summary": "A method reference has no on-chain lowering.",
+      "fix": "Use a regular static method call instead"
+    },
+    {
+      "code": "JULC0106",
+      "constant": "FUNCTIONAL_INTERFACE_CALL_UNSUPPORTED",
+      "status": "emitted",
+      "title": "A call through a functional interface is not supported",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "Functional interface .{0}() is not supported on-chain",
+      "summary": "A function exists on-chain only as the argument of the list method that applies it, so a local of a functional interface type cannot be called.",
+      "fix": "Call the method directly instead of through a function reference"
+    },
+    {
+      "code": "JULC0107",
+      "constant": "THIS_OR_SUPER_UNSUPPORTED",
+      "status": "emitted",
+      "title": "'this' and 'super' are not supported",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "''{0}'' is not supported on-chain",
+      "summary": "On-chain code has no objects and no inheritance, so this and super name nothing.",
+      "fix": "On-chain validators are stateless; use static methods, and sealed interfaces with record variants instead of inheritance"
+    },
+    {
+      "code": "JULC0108",
+      "constant": "ARRAY_ACCESS_UNSUPPORTED",
+      "status": "emitted",
+      "title": "Array access is not supported",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "array access is not supported on-chain",
+      "summary": "An array element read or write has no on-chain lowering.",
+      "fix": "Use List<T> with list operations instead"
+    },
+    {
+      "code": "JULC0109",
+      "constant": "INHERITANCE_UNSUPPORTED",
+      "status": "emitted",
+      "title": "Class inheritance is not supported",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "class inheritance is not supported on-chain",
+      "summary": "A class that extends another class, or an interface that extends another, has no on-chain meaning.",
+      "fix": "Use sealed interfaces with record variants instead"
+    },
+    {
+      "code": "JULC0110",
+      "constant": "STATEMENT_UNSUPPORTED",
+      "status": "emitted",
+      "title": "Statement is not supported",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "Unsupported statement: {0}",
+      "summary": "A bare block, an empty statement or a switch statement among a method's statements has no lowering.",
+      "fix": "Only variable declarations, if/else, for-each, while, return, and expression statements are supported on-chain."
+    },
+    {
+      "code": "JULC0111",
+      "constant": "RETURN_INSIDE_FOR_EACH",
+      "status": "emitted",
+      "title": "return inside a for-each loop",
+      "category": "CONTROL_FLOW",
+      "severity": "error",
+      "template": "'return' is not supported inside for-each loop body",
+      "summary": "A for-each loop is compiled to a fold whose result is the variables the loop updates, so its body cannot return from the method.",
+      "fix": "Use 'break' to exit the loop early, then return after the loop. Or use the accumulator pattern: result = value; (continue iterating) then return result; after the loop."
+    },
+    {
+      "code": "JULC0112",
+      "constant": "YIELD_INSIDE_LOOP",
+      "status": "emitted",
+      "title": "yield inside a loop",
+      "category": "CONTROL_FLOW",
+      "severity": "error",
+      "template": "''yield'' is not supported inside {0} loop body",
+      "summary": "A loop body cannot yield a value of an enclosing switch expression.",
+      "fix": "Use 'break' to exit the loop early, then yield after the loop. Or use the accumulator pattern: result = value; (continue iterating) then yield result; after the loop."
+    },
+    {
+      "code": "JULC0113",
+      "constant": "LOOP_LOCAL_CONDITIONAL_UPDATE",
+      "status": "emitted",
+      "title": "A loop-body local is updated in a branch",
+      "category": "CONTROL_FLOW",
+      "severity": "error",
+      "template": "Conditional update to loop-body local ''{0}'' is not supported",
+      "summary": "An if/else branch in a loop carries only the loop's accumulators out of the branch, so an update of a local declared in the loop body would be lost.",
+      "fix": "An if/else branch carries only loop accumulators out of the branch. Use a conditional initializer (condition ? value : otherValue), or declare the variable before the loop so it is an accumulator (reset it each iteration if needed), or declare it inside the branch if its value is only needed there."
+    },
+    {
+      "code": "JULC0114",
+      "constant": "ASSIGNMENT_POSITION_UNSUPPORTED",
+      "status": "emitted",
+      "title": "Assignment at a position with no lowering",
+      "category": "CONTROL_FLOW",
+      "severity": "error",
+      "template": "Assignment to {0} is not supported at this position",
+      "summary": "Inside a loop, an assignment is lowered only as a statement directly in the loop body or in an if/else branch of it.",
+      "fix": "Inside a loop, assign an accumulator or a loop-body local as a statement directly in the loop body. In an if/else branch, assign an accumulator or a local declared within that branch; an assignment inside another expression or statement is not supported."
+    },
+    {
+      "code": "JULC0115",
+      "constant": "LOOP_BODY_STATEMENT_UNSUPPORTED",
+      "status": "emitted",
+      "title": "Statement is not supported in this loop body",
+      "category": "CONTROL_FLOW",
+      "severity": "error",
+      "template": "Unsupported {0} body: {1}",
+      "summary": "A loop that breaks, or that updates several variables declared before it, lowers only declarations, assignments, if/else and break in its body.",
+      "fix": "Inside loops with break or several accumulators, only variable declarations, assignments, if/else, and break are supported."
+    },
+    {
+      "code": "JULC0116",
+      "constant": "UNDECLARED_ASSIGNMENT",
+      "status": "emitted",
+      "title": "Assignment to a variable with no binder",
+      "category": "CONTROL_FLOW",
+      "severity": "error",
+      "template": "Assignment to undeclared variable ''{0}''",
+      "summary": "A loop assigns a name that is neither an accumulator of the loop nor a local of its body, such as a field.",
+      "fix": "Declare the variable before assigning it: before the loop for an accumulator, in the loop body for a local."
+    },
+    {
+      "code": "JULC0117",
+      "constant": "COMPOUND_ASSIGNMENT_TYPE_UNSUPPORTED",
+      "status": "emitted",
+      "title": "Compound assignment on a type it has no lowering for",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "Compound assignment {0} to ''{1}'' {2}",
+      "summary": "Compound assignment is lowered on integer variables, and += on String variables with a String operand.",
+      "fix": "Write the update explicitly, e.g. x = x.add(y), or convert the right-hand side to the variable's type first."
+    },
+    {
+      "code": "JULC0118",
+      "constant": "OPERATOR_UNSUPPORTED",
+      "status": "emitted",
+      "title": "Operator is not supported",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "Unsupported operator: {0}",
+      "summary": "A binary operator with no on-chain lowering, such as a shift or a bitwise operator.",
+      "fix": "Supported operators: +, -, *, /, %, ==, !=, <, <=, >, >=, &&, ||"
+    },
+    {
+      "code": "JULC0119",
+      "constant": "UNARY_OPERATOR_UNSUPPORTED",
+      "status": "emitted",
+      "title": "Unary operator is not supported",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "Unsupported unary operator: {0}",
+      "summary": "A unary operator with no on-chain lowering, such as ~, + or an increment outside a loop update.",
+      "fix": "Supported unary operators: ! (logical NOT) and - (negation)"
+    },
+    {
+      "code": "JULC0120",
+      "constant": "SWITCH_CASE_VARIABLE_REASSIGNED",
+      "status": "emitted",
+      "title": "A switch pattern variable is reassigned",
+      "category": "CONTROL_FLOW",
+      "severity": "error",
+      "template": "Reassignment of switch case-pattern variable ''{0}'' is not supported",
+      "summary": "An arm of a switch reads a pattern variable through projections of the matched record, so an assignment to it would not be seen.",
+      "fix": "Copy the pattern variable to a fresh local accumulator inside the arm, update that local, and yield its result instead."
+    },
+    {
+      "code": "JULC0121",
+      "constant": "SWITCH_ARM_UPDATE_UNSUPPORTED",
+      "status": "emitted",
+      "title": "A switch expression arm updates an enclosing variable",
+      "category": "CONTROL_FLOW",
+      "severity": "error",
+      "template": "Switch-expression arm cannot update enclosing variable ''{0}''",
+      "summary": "A switch expression exports only its yielded value, so an update of a variable declared outside the arm would be lost.",
+      "fix": "A switch expression exports only its yielded value. Declare an accumulator inside the arm, yield its result, and use the switch value outside the arm instead of mutating an enclosing variable."
+    },
+    {
+      "code": "JULC0122",
+      "constant": "GENERIC_LIBRARY_CALL_UNSUPPORTED",
+      "status": "emitted",
+      "title": "A generic library method is called from Java",
+      "category": "LIBRARY",
+      "severity": "error",
+      "template": "Generic library method {0} cannot be called from Java yet: generic @OnchainLibrary methods are specialized only by language-neutral library providers. Provide a concrete overload-free method for Java callers.",
+      "summary": "A generic @OnchainLibrary method is a template that only a language-neutral producer instantiates, so Java code cannot call it.",
+      "fix": "Provide a concrete overload-free method for Java callers."
+    },
+    {
+      "code": "JULC0123",
+      "constant": "STATIC_CALL_QUALIFIED_CLASS_NAME",
+      "status": "emitted",
+      "title": "A static call names its class by a qualified name",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "Static call {0} names its class by a qualified name; on-chain code calls a static method through its class''s simple name",
+      "summary": "JuLC resolves a static call through the simple name of its class, as an import or the enclosing class declares it. A call through a package-qualified class name, such as java.math.BigInteger.valueOf(1), is not resolved.",
+      "fix": "Import the class and call the method through its simple name, for example `import java.math.BigInteger;` and `BigInteger.valueOf(1)`."
+    },
+    {
+      "code": "JULC0124",
+      "constant": "PRIMITIVE_TYPE_UNSUPPORTED",
+      "status": "emitted",
+      "title": "A primitive type with no on-chain representation",
+      "category": "TYPE",
+      "severity": "error",
+      "template": "Unsupported primitive type: {0}. Supported types: boolean, int, long",
+      "summary": "byte, short, char, float and double have no on-chain representation, as a variable's, a component's or a cast's type. A char literal elsewhere is JULC0125.",
+      "fix": "Use int or long for a number, BigInteger for an unbounded integer, boolean for a flag, and String or byte[] for text and bytes."
+    },
+    {
+      "code": "JULC0125",
+      "constant": "EXPRESSION_UNSUPPORTED",
+      "status": "emitted",
+      "title": "An expression outside the subset",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "Unsupported expression: {0}",
+      "summary": "An expression form JuLC does not compile on-chain: a class literal, a text block, a function that is not a lambda written at the call, and the like.",
+      "fix": "Write the value with a supported form: a string literal for a text block, a lambda at the call for a function, and no class literal outside PlutusData.cast."
+    },
+    {
+      "code": "JULC0126",
+      "constant": "INSTANCEOF_OPERAND_UNRELATED",
+      "status": "emitted",
+      "title": "instanceof of a value whose type is not the variant's sealed interface",
+      "category": "TYPE",
+      "severity": "error",
+      "template": "{0} tests a value of type {1}, which is not {2} or a variant of it; on-chain the test reads a constructor tag, which another type can share",
+      "summary": "An instanceof pattern on a variant reads the value's constructor tag. That answers Java's question only when the value's static type is the variant's sealed interface or the variant itself: a value of another type, through a widening cast to Object for one, can carry the same tag.",
+      "fix": "Test a value of the sealed interface's type, or switch over it."
+    },
+    {
+      "code": "JULC0127",
+      "constant": "VARIANT_NOT_PLAIN_RECORD",
+      "status": "emitted",
+      "title": "A variant that is not a plain record",
+      "category": "TYPE",
+      "severity": "error",
+      "template": "{0} is a variant of {1} that is not a plain record; a variant is a record, not a class or a @NewType, so that it has one constructor tag and its fields",
+      "summary": "JuLC encodes a sealed interface's value as a constructor whose tag is the variant's place among the permitted records, and whose fields are the record's components. A final class or a @NewType has neither. Emitted at a new, an instanceof or a case of such a variant, and otherwise at the variant's declaration wherever its sealed interface is declared in a unit the compilation reads, whether or not the program reads the sum: such a sum has no layout.",
+      "fix": "Make the variant a record that is not a @NewType."
+    },
+    {
+      "code": "JULC0128",
+      "constant": "DATA_VIEW_UNSUPPORTED",
+      "status": "emitted",
+      "title": "A value whose on-chain form is not the one the operation reads",
+      "category": "TYPE",
+      "severity": "error",
+      "template": "{0}: {1}",
+      "summary": "The value's on-chain representation is not the one this operation takes, and no conversion keeps Java's value: Data where a builtin takes bytes, a native list where a component holds Data, a ledger type that holds a map, whose Data repeats a key the JVM's map holds once.",
+      "fix": "Convert explicitly: Builtins.unBData for bytes, Builtins.listData or mapData for a list or a map, or read the map through the stdlib's ValuesLib and MapLib."
+    },
+    {
+      "code": "JULC0129",
+      "constant": "NON_RECORD_CONSTRUCTION",
+      "status": "emitted",
+      "title": "A class instance is constructed",
+      "category": "TYPE",
+      "severity": "error",
+      "template": "Cannot construct non-record type: {0}",
+      "summary": "A new of a class that is not a record, a tuple, a sealed variant or a supported API type. On-chain a value is a record's components, and a class's constructor and fields have no on-chain form.",
+      "fix": "Only record types can be constructed on-chain. Declare the type as a record."
+    },
+    {
+      "code": "JULC0130",
+      "constant": "COMPOUND_ASSIGNMENT_NARROWS",
+      "status": "emitted",
+      "title": "A compound assignment narrows a long to int",
+      "category": "TYPE",
+      "severity": "error",
+      "template": "Compound assignment {0} to the int ''{1}'' takes a long: Java narrows the result to 32 bits and the on-chain integer does not, so a JVM test and the script could differ",
+      "summary": "An int variable updated with +=, -=, *=, /= or %= from a long operand, or a Long that javac inferred, as in var z : JulcList.of(y). Java casts the result back to int without saying so, and an on-chain integer has no width, so past 32 bits the JVM and the script would give different values.",
+      "fix": "Declare the variable as long, e.g. long total = 0; total += amount; (BigInteger for values that can pass 64 bits). If you do want Java's 32-bit result, write the cast: x = (int) (x + y);"
+    },
+    {
+      "code": "JULC0131",
+      "constant": "PLUTUS_DATA_CAST_TARGET_NOT_LITERAL",
+      "status": "emitted",
+      "title": "PlutusData.cast target is not a class literal",
+      "category": "TYPE",
+      "severity": "error",
+      "template": "PlutusData.cast() needs a class literal as its second argument",
+      "summary": "The target type of PlutusData.cast must be known at compile time, so it has to be written as a class literal.",
+      "fix": "Write the type directly: PlutusData.cast(d, MyRecord.class)."
+    },
+    {
+      "code": "JULC0132",
+      "constant": "SWITCH_BLOCK_MAY_NOT_YIELD",
+      "status": "emitted",
+      "title": "A switch case block may not yield",
+      "category": "CONTROL_FLOW",
+      "severity": "error",
+      "template": "This switch case block does not yield a value on every path",
+      "summary": "JuLC compiles a case block only when each of its paths ends in a yield. A block that can finish some other way has no value on-chain.",
+      "fix": "End every path in the block with a 'yield' statement."
+    },
+    {
+      "code": "JULC0133",
+      "constant": "NO_CLASS_IN_SOURCE",
+      "status": "emitted",
+      "title": "A source declares no class",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "No class found in source",
+      "summary": "A validator or a library is compiled from a class, and this source declares none.",
+      "fix": "Declare a class in the source, for example public class MyValidator { ... }."
+    },
+    {
+      "code": "JULC0134",
+      "constant": "ONCHAIN_LIBRARY_WITH_VALIDATOR",
+      "status": "emitted",
+      "title": "A class is both a library and a validator",
+      "category": "VALIDATOR",
+      "severity": "error",
+      "template": "Class {0} must not combine @OnchainLibrary with validator annotation(s): {1}",
+      "summary": "A class is either a library that other code calls or a validator that the ledger runs.",
+      "fix": "Keep one role on the class, and move the other into a class of its own."
+    },
+    {
+      "code": "JULC0135",
+      "constant": "MULTIPLE_VALIDATOR_ANNOTATIONS",
+      "status": "emitted",
+      "title": "A class has several validator annotations",
+      "category": "VALIDATOR",
+      "severity": "error",
+      "template": "Class {0} has multiple validator annotations: {1}",
+      "summary": "Each class compiles to one script with one purpose.",
+      "fix": "Keep one validator annotation on the class. For several purposes in one script, use @MultiValidator."
+    },
+    {
+      "code": "JULC0136",
+      "constant": "MULTI_VALIDATOR_PURPOSES_MIXED",
+      "status": "emitted",
+      "title": "@MultiValidator mixes DEFAULT and explicit purposes",
+      "category": "VALIDATOR",
+      "severity": "error",
+      "template": "@MultiValidator {0} mixes DEFAULT and explicit purposes",
+      "summary": "A @MultiValidator either dispatches by hand from one entry point, or lets JuLC dispatch to one entry point per purpose.",
+      "fix": "Use a single @Entrypoint for manual dispatch, or give every @Entrypoint an explicit purpose."
+    },
+    {
+      "code": "JULC0137",
+      "constant": "MULTI_VALIDATOR_DEFAULT_REPEATED",
+      "status": "emitted",
+      "title": "@MultiValidator has several DEFAULT entry points",
+      "category": "VALIDATOR",
+      "severity": "error",
+      "template": "@MultiValidator {0} has multiple @Entrypoint methods with DEFAULT purpose",
+      "summary": "Only one entry point can receive every purpose when dispatch is by hand.",
+      "fix": "Use explicit purposes such as Purpose.MINT for automatic dispatch, or a single @Entrypoint for manual dispatch."
+    },
+    {
+      "code": "JULC0138",
+      "constant": "MULTI_VALIDATOR_PURPOSE_REPEATED",
+      "status": "emitted",
+      "title": "@MultiValidator repeats a purpose",
+      "category": "VALIDATOR",
+      "severity": "error",
+      "template": "Duplicate purpose {0} in @MultiValidator {1}",
+      "summary": "Each purpose dispatches to exactly one entry point.",
+      "fix": "Give each @Entrypoint a different purpose, or merge the two methods."
     }
   ]
 }

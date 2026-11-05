@@ -1,0 +1,14 @@
+format: 3
+name: an escape shape in a comment, which javac reads and the reference's reader does not (1)
+class: Case
+method: m
+arg: 03
+expect: AGREE
+note: ADR-065 I2c, scheduled for acceptance by M0.
+note: ADR-068 D13: on frontend=JAVAC this agrees with the JVM (Adr068SavedCasesOnJavacTest).
+note: ADR-068 M6: on the only frontend, javac, AGREE; the JavaParser frontend answered REJECT none.
+---
+import java.math.BigInteger;
+public class Case { public static BigInteger m(BigInteger a) {
+    return a; // \u١٢٣٤
+} }

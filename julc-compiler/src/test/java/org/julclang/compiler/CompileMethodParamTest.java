@@ -48,8 +48,9 @@ class CompileMethodParamTest {
         var source = """
                 import org.julclang.stdlib.annotation.Param;
                 import org.julclang.core.PlutusData;
+                import java.math.BigInteger;
                 class ParamClass {
-                    @Param PlutusData threshold;
+                    @Param static PlutusData threshold;
                     static BigInteger getThreshold() {
                         return (BigInteger)(Object) threshold;
                     }
@@ -68,9 +69,10 @@ class CompileMethodParamTest {
         var source = """
                 import org.julclang.stdlib.annotation.Param;
                 import org.julclang.core.PlutusData;
+                import java.math.BigInteger;
                 class MultiParam {
                     @Param PlutusData owner;
-                    @Param PlutusData threshold;
+                    @Param static PlutusData threshold;
                     static BigInteger getThreshold() {
                         return (BigInteger)(Object) threshold;
                     }
@@ -86,8 +88,9 @@ class CompileMethodParamTest {
     @Test
     void nonParameterizedClassReturnsEmptyParams() {
         var source = """
+                import java.math.BigInteger;
                 class NoParam {
-                    static BigInteger doubleIt(BigInteger x) { return x * 2; }
+                    static BigInteger doubleIt(BigInteger x) { return x.multiply(BigInteger.TWO); }
                 }
                 """;
         var result = compile(source, "doubleIt");
@@ -102,8 +105,9 @@ class CompileMethodParamTest {
     void singleParamReturnedDirectly() {
         var source = """
                 import org.julclang.stdlib.annotation.Param;
+                import java.math.BigInteger;
                 class ParamReturn {
-                    @Param BigInteger threshold;
+                    @Param static BigInteger threshold;
                     static BigInteger getThreshold() {
                         return threshold;
                     }
@@ -120,10 +124,11 @@ class CompileMethodParamTest {
     void paramUsedInComputation() {
         var source = """
                 import org.julclang.stdlib.annotation.Param;
+                import java.math.BigInteger;
                 class ParamCompute {
-                    @Param BigInteger multiplier;
+                    @Param static BigInteger multiplier;
                     static BigInteger multiply(BigInteger x) {
-                        return multiplier * x;
+                        return multiplier.multiply(x);
                     }
                 }
                 """;
@@ -138,11 +143,12 @@ class CompileMethodParamTest {
     void multipleParamsCorrectOrder() {
         var source = """
                 import org.julclang.stdlib.annotation.Param;
+                import java.math.BigInteger;
                 class MultiParamOrder {
-                    @Param BigInteger a;
-                    @Param BigInteger b;
+                    @Param static BigInteger a;
+                    @Param static BigInteger b;
                     static BigInteger subtract() {
-                        return a - b;
+                        return a.subtract(b);
                     }
                 }
                 """;
@@ -157,10 +163,11 @@ class CompileMethodParamTest {
     void paramPlusMethodArgs() {
         var source = """
                 import org.julclang.stdlib.annotation.Param;
+                import java.math.BigInteger;
                 class ParamPlusArgs {
-                    @Param BigInteger base;
+                    @Param static BigInteger base;
                     static BigInteger addToBase(BigInteger x) {
-                        return base + x;
+                        return base.add(x);
                     }
                 }
                 """;
@@ -175,10 +182,11 @@ class CompileMethodParamTest {
     void paramWithBooleanResult() {
         var source = """
                 import org.julclang.stdlib.annotation.Param;
+                import java.math.BigInteger;
                 class ParamBool {
-                    @Param BigInteger threshold;
+                    @Param static BigInteger threshold;
                     static boolean isAboveThreshold(BigInteger x) {
-                        return x > threshold;
+                        return x.compareTo(threshold) > 0;
                     }
                 }
                 """;
@@ -194,10 +202,11 @@ class CompileMethodParamTest {
     void methodNotReferencingParamStillCompiles() {
         var source = """
                 import org.julclang.stdlib.annotation.Param;
+                import java.math.BigInteger;
                 class ParamUnused {
                     @Param BigInteger threshold;
                     static BigInteger doubleIt(BigInteger x) {
-                        return x * 2;
+                        return x.multiply(BigInteger.TWO);
                     }
                 }
                 """;
@@ -217,9 +226,10 @@ class CompileMethodParamTest {
         var source = """
                 import org.julclang.stdlib.annotation.Param;
                 import org.julclang.core.PlutusData;
+                import java.math.BigInteger;
                 class BadParam {
                     @Param PlutusData.BytesData owner;
-                    static BigInteger dummy() { return 1; }
+                    static BigInteger dummy() { return BigInteger.ONE; }
                 }
                 """;
         assertThrows(CompilerException.class, () -> compile(source, "dummy"));

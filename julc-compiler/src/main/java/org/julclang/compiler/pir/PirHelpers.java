@@ -4,13 +4,12 @@ import org.julclang.compiler.CompilerTypeDiagnostics;
 import org.julclang.core.Constant;
 import org.julclang.core.DefaultFun;
 
-import com.github.javaparser.ast.stmt.BlockStmt;
-import com.github.javaparser.ast.stmt.Statement;
 
 import java.math.BigInteger;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.function.BinaryOperator;
 import java.util.function.UnaryOperator;
 
 /**
@@ -81,7 +80,7 @@ public final class PirHelpers {
     public static String hygienicName(String base, Set<String> callerFreeVariables) {
         if (!isGeneratedName(base)) {
             throw new IllegalArgumentException("Generated binder names must begin with '"
-                    + GENERATED_PREFIX + "' (ADR-060): " + base);
+                    + GENERATED_PREFIX + "': " + base);
         }
         if (!callerFreeVariables.contains(base)) return base;
         int suffix = 1;
@@ -133,10 +132,165 @@ public final class PirHelpers {
                 new PirTerm.App(new PirTerm.App(recursiveListGetVar(goName), list), index));
     }
 
-    static PirTerm builtinApp2(DefaultFun fun, PirTerm a, PirTerm b) {
+    public static PirTerm builtinApp2(DefaultFun fun, PirTerm a, PirTerm b) {
         return new PirTerm.App(
                 new PirTerm.App(new PirTerm.Builtin(fun), a),
                 b);
+    }
+
+    /**
+     * {@code fun y x}, with {@code x} evaluated first (ADR-068 D6, #295): {@code x} is bound by one {@code let} when both
+     * operands are non-trivial; evaluating a variable or a constant has no effect, so its place does not matter.
+     */
+    public static PirTerm swappedInOrder(DefaultFun fun, PirTerm x, PirTerm y) {
+        if (isTrivialOperand(x) || isTrivialOperand(y)) return builtinApp2(fun, y, x);
+        var name = hygienicName("#lhs", freeVariables(y));
+        return new PirTerm.Let(name, x, builtinApp2(fun, y, new PirTerm.Var(name, new PirType.IntegerType())));
+    }
+
+    /**
+     * {@code operation(receiver, argument)} for a Java method that throws when {@code argument} is below {@code least}: the
+     * script fails there too (ADR-068 B3). A constant that passes needs no check, and the operation takes the terms as they
+     * are. Otherwise the receiver is evaluated, then the argument, then the check, as in Java, each bound once unless
+     * evaluating it has no effect.
+     *
+     * @param resultType the type of the operation's result, which the failing branch takes
+     */
+    public static PirTerm failingBelow(long least, PirTerm receiver, PirType receiverType, PirTerm argument, PirType resultType,
+                                       BinaryOperator<PirTerm> operation) {
+        if (isConstantAtLeast(argument, least)) return operation.apply(receiver, argument);
+        boolean bindArgument = !isTrivialOperand(argument);
+        boolean bindReceiver = !isTrivialOperand(receiver);
+        var avoid = freeVariables(receiver, argument);
+        PirTerm receiverRead = bindReceiver ? new PirTerm.Var(hygienicName("#receiver", avoid), receiverType) : receiver;
+        PirTerm argumentRead = bindArgument ? new PirTerm.Var(hygienicName("#argument", avoid), new PirType.IntegerType()) : argument;
+        PirTerm result = failIfBelow(least, argumentRead, resultType, operation.apply(receiverRead, argumentRead));
+        if (bindArgument) result = new PirTerm.Let(((PirTerm.Var) argumentRead).name(), argument, result);
+        if (bindReceiver) result = new PirTerm.Let(((PirTerm.Var) receiverRead).name(), receiver, result);
+        return result;
+    }
+
+    /** {@code body}, or a failure if {@code argument}, which has no effect to evaluate, is below {@code least}. */
+    public static PirTerm failIfBelow(long least, PirTerm argument, PirType type, PirTerm body) {
+        var below = builtinApp2(DefaultFun.LessThanInteger, argument, new PirTerm.Const(Constant.integer(least)));
+        return new PirTerm.IfThenElse(below, new PirTerm.Error(type), body);
+    }
+
+    /** Whether {@code term} is an integer constant of at least {@code least}, which no check can fail. */
+    public static boolean isConstantAtLeast(PirTerm term, long least) {
+        return term instanceof PirTerm.Const constant && constant.value() instanceof Constant.IntegerConst integer
+                && integer.value().compareTo(BigInteger.valueOf(least)) >= 0;
+    }
+
+    /**
+     * {@code body} of an operand it evaluates more than once, ahead of all else and on every path. A delayed read runs at
+     * each read, and each level of a chain of such methods would double the one below, so an operand that
+     * {@link #holdsMethodRead holds a read} is bound once, where {@code body} would have run it, which moves no failure. Any
+     * other operand goes in as it is: the handlers keep their shape for those (T13).
+     */
+    public static PirTerm readOnce(PirTerm operand, PirType type, UnaryOperator<PirTerm> body) {
+        return boundOnce("#operand", holdsMethodRead(operand), operand, type, freeVariables(operand), body);
+    }
+
+    /**
+     * {@code body} of a receiver and an argument it may each read more than once, as {@link #readOnce(PirTerm, PirType, UnaryOperator)}.
+     * The receiver runs first, so a receiver that has an effect is bound ahead of a bound argument.
+     */
+    public static PirTerm readOnce(PirTerm receiver, PirTerm argument, PirType type, BinaryOperator<PirTerm> body) {
+        boolean bindArgument = holdsMethodRead(argument);
+        boolean bindReceiver = holdsMethodRead(receiver) || bindArgument && !isTrivialOperand(receiver);
+        var avoid = freeVariables(receiver, argument);
+        return boundOnce("#receiver", bindReceiver, receiver, type, avoid, receiverRead ->
+                boundOnce("#argument", bindArgument, argument, type, avoid, argumentRead -> body.apply(receiverRead, argumentRead)));
+    }
+
+    private static PirTerm boundOnce(String base, boolean bind, PirTerm operand, PirType type, Set<String> avoid,
+                                     UnaryOperator<PirTerm> body) {
+        if (!bind) return body.apply(operand);
+        var read = new PirTerm.Var(hygienicName(base, avoid), type);
+        return new PirTerm.Let(read.name(), operand, body.apply(read));
+    }
+
+    private static boolean isTrivialOperand(PirTerm term) {
+        return term instanceof PirTerm.Var && !isMethodRead(term) || term instanceof PirTerm.Const;
+    }
+
+    /**
+     * Whether {@code term} reads a method's binder: a method with no parameters, called. A method is bound under a qualified
+     * name, in a namespace of their own, which no variable
+     * can have. Such a read is no variable: if its body may fail, {@link DelayedMethodPass} makes it a call, so evaluating
+     * it has an effect, and a term that reads it twice runs the body twice.
+     */
+    public static boolean isMethodRead(PirTerm term) {
+        return term instanceof PirTerm.Var variable && variable.name().indexOf('.') > 0;
+    }
+
+    /**
+     * Whether {@link #isMethodRead a read} is anywhere in {@code term}. The binder of a method with parameters is a function,
+     * and calling it is no read of a value, so such a call alone does not count.
+     */
+    private static boolean holdsMethodRead(PirTerm term) {
+        var holds = new boolean[] {isMethodRead(term) && !(((PirTerm.Var) term).type() instanceof PirType.FunType)};
+        mapChildren(term, child -> {
+            holds[0] |= holdsMethodRead(child);
+            return child;
+        });
+        return holds[0];
+    }
+
+    /**
+     * Generate type-aware equality comparison.
+     * Dispatches to the correct builtin based on operand type.
+     */
+    public static PirTerm equality(PirTerm left, PirTerm right, PirType leftType, boolean negate) {
+        DefaultFun eqFun;
+        if (leftType instanceof PirType.ByteStringType) {
+            eqFun = DefaultFun.EqualsByteString;
+        } else if (leftType instanceof PirType.StringType) {
+            eqFun = DefaultFun.EqualsString;
+        } else if (leftType instanceof PirType.BoolType) {
+            // Bool equality: IfThenElse(a, b, !b)
+            var eq = new PirTerm.IfThenElse(left, right,
+                    new PirTerm.IfThenElse(right,
+                            new PirTerm.Const(Constant.bool(false)),
+                            new PirTerm.Const(Constant.bool(true))));
+            if (negate) return new PirTerm.IfThenElse(eq,
+                    new PirTerm.Const(Constant.bool(false)),
+                    new PirTerm.Const(Constant.bool(true)));
+            return eq;
+        } else if (leftType instanceof PirType.DataType
+                || leftType instanceof PirType.RecordType
+                || leftType instanceof PirType.SumType) {
+            eqFun = DefaultFun.EqualsData;
+        } else {
+            eqFun = DefaultFun.EqualsInteger; // default: integer
+        }
+        var result = builtinApp2(eqFun, left, right);
+        if (negate) return new PirTerm.IfThenElse(result,
+                new PirTerm.Const(Constant.bool(false)),
+                new PirTerm.Const(Constant.bool(true)));
+        return result;
+    }
+
+    /**
+     * Generate PIR for extracting a field from a Constr-encoded Data value.
+     * UnConstrData(data) → SndPair → TailList^n → HeadList → decode
+     */
+    public static PirTerm fieldExtraction(PirTerm data, int fieldIndex, PirType fieldType) {
+        // SndPair(UnConstrData(data)) to get fields list
+        var fields = new PirTerm.App(
+                new PirTerm.Builtin(DefaultFun.SndPair),
+                new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnConstrData), data));
+
+        // TailList^fieldIndex then HeadList
+        PirTerm current = fields;
+        for (int i = 0; i < fieldIndex; i++) {
+            current = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), current);
+        }
+        PirTerm rawField = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), current);
+
+        // Decode based on field type
+        return wrapDecode(rawField, fieldType);
     }
 
     /**
@@ -177,9 +331,36 @@ public final class PirHelpers {
     }
 
     /**
+     * The type of a value whose type the lowering does not know, as opposed to a value known to be
+     * Data (review F710): a {@code switch} expression whose arms have different, not all Data-shaped,
+     * types. It equals {@code DataType} everywhere, so it changes no other decision; encoding it, or
+     * taking it as a diamond component, is {@code JULC0012}, decided by identity.
+     */
+    public static final PirType UNKNOWN = new PirType.DataType();
+
+    /** JULC0012 for a value of {@link #UNKNOWN} type that would be Data-encoded; located by {@link PirGenerator}. */
+    public static void requireKnownType(PirType type) {
+        if (type == UNKNOWN) throw CompilerTypeDiagnostics.unknownTypeEncoded(null);
+    }
+
+    /**
+     * JULC0091 (ADR-068 D6, #298): a value of {@code type} is about to be Data-encoded, and a native
+     * array has no Data encoding. The diagnostic has no position; the lowering attaches the
+     * expression whose value is encoded.
+     */
+    public static void requireDataEncodable(PirType type) {
+        var array = PirType.nativeArrayIn(type);
+        if (array != null) {
+            throw CompilerTypeDiagnostics.nativeArrayNotDataEncodable("The value encoded here", array, null);
+        }
+    }
+
+    /**
      * Wrap a value with the appropriate encode builtin for the target type (inverse of wrapDecode).
      */
     public static PirTerm wrapEncode(PirTerm value, PirType type) {
+        requireKnownType(type);
+        requireDataEncodable(type);
         if (PirType.containsNativeOpaque(type)) {
             throw CompilerTypeDiagnostics.nativeTypeMismatch(
                     "Data encoding", type, new PirType.DataType(), null);
@@ -225,6 +406,45 @@ public final class PirHelpers {
         var foldFn = new PirTerm.Lam("#acc__len", new PirType.IntegerType(),
                 new PirTerm.Lam("#_x__len", new PirType.DataType(), addOne));
         return generateFoldl(foldFn, new PirTerm.Const(Constant.integer(BigInteger.ZERO)), list);
+    }
+
+    /**
+     * {@code String.length()}: the UTF-16 code units of {@code string}, which a script holds as Unicode scalars. Counted from
+     * its UTF-8 bytes: a continuation byte ({@code 0x80..0xBF}) counts 0, a lead byte of a supplementary character
+     * ({@code 0xF0} and up) counts 2, and any other byte counts 1. A constant folds to Java's value. No term is in the scope
+     * of the binders here but {@code string}, in the first one's value, which that binder does not reach.
+     */
+    static PirTerm utf16Length(PirTerm string) {
+        if (string instanceof PirTerm.Const constant && constant.value() instanceof Constant.StringConst text) {
+            return new PirTerm.Const(Constant.integer(BigInteger.valueOf(text.value().length())));
+        }
+        var integer = new PirType.IntegerType();
+        var utf8 = new PirTerm.Var("#utf8", new PirType.ByteStringType());
+        var size = new PirTerm.Var("#utf8_size", integer);
+        var index = new PirTerm.Var("#utf8_index", integer);
+        var count = new PirTerm.Var("#utf8_count", integer);
+        var unit = new PirTerm.Var("#utf8_byte", integer);
+        var go = new PirTerm.Var("#utf8_go", new PirType.FunType(integer, new PirType.FunType(integer, integer)));
+        var units = new PirTerm.IfThenElse(below(unit, 0xC0),
+                new PirTerm.IfThenElse(below(unit, 0x80), integerConstant(1), integerConstant(0)),
+                new PirTerm.IfThenElse(below(unit, 0xF0), integerConstant(1), integerConstant(2)));
+        var step = new PirTerm.Let(unit.name(), builtinApp2(DefaultFun.IndexByteString, utf8, index),
+                new PirTerm.App(new PirTerm.App(go, builtinApp2(DefaultFun.AddInteger, index, integerConstant(1))),
+                        builtinApp2(DefaultFun.AddInteger, count, units)));
+        var body = new PirTerm.IfThenElse(builtinApp2(DefaultFun.EqualsInteger, index, size), count, step);
+        var function = new PirTerm.Lam(index.name(), integer, new PirTerm.Lam(count.name(), integer, body));
+        var loop = new PirTerm.LetRec(List.of(new PirTerm.Binding(go.name(), function)),
+                new PirTerm.App(new PirTerm.App(go, integerConstant(0)), integerConstant(0)));
+        return new PirTerm.Let(utf8.name(), new PirTerm.App(new PirTerm.Builtin(DefaultFun.EncodeUtf8), string),
+                new PirTerm.Let(size.name(), new PirTerm.App(new PirTerm.Builtin(DefaultFun.LengthOfByteString), utf8), loop));
+    }
+
+    private static PirTerm below(PirTerm term, int bound) {
+        return builtinApp2(DefaultFun.LessThanInteger, term, integerConstant(bound));
+    }
+
+    private static PirTerm integerConstant(long value) {
+        return new PirTerm.Const(Constant.integer(BigInteger.valueOf(value)));
     }
 
     /**
@@ -452,12 +672,6 @@ public final class PirHelpers {
         var fields = builtinApp2(DefaultFun.MkCons, value, mkNil);
         return builtinApp2(DefaultFun.ConstrData,
                 new PirTerm.Const(Constant.integer(BigInteger.ZERO)), fields);
-    }
-
-    /** Extract statements from a BlockStmt, or wrap a single statement in a list. */
-    public static List<Statement> blockStmts(Statement stmt) {
-        if (stmt instanceof BlockStmt bs) return bs.getStatements();
-        return List.of(stmt);
     }
 
     /** Convenience: empty pair list (MkNilPairData(unit)). */
