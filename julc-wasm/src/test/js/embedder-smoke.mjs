@@ -39,6 +39,12 @@ try {
   await assert.rejects(api.demo.sum({terms: [], scale: 1n << 63n}), error => error.status === 400);
   console.log('ok demo.sum');
 
+  // A cost model named by its profile needs the bundled parameters, which the image has to carry.
+  const profiled = await api.vm.evaluate({script: {script: '(program 1.1.0 (con integer 42))'}, target: {protocol: 11},
+    costModel: 'plutus-v3-pv11-costs-v1'});
+  assert.equal(profiled.status, 'success');
+  console.log('ok cost model profile');
+
   for (const fixture of JSON.parse(readFileSync(vmFile))) {
     const request = JulcRuntime.decode(fixture.request);
     assert.deepEqual(await api.vm.evaluate(request), JulcRuntime.decode(fixture.evaluate), fixture.name);

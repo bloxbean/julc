@@ -1,5 +1,6 @@
 package org.julclang.wasm;
 
+import java.util.Arrays;
 import org.julclang.tools.service.ServiceResult;
 import org.julclang.wasm.fixture.DemoLangWasm;
 import org.junit.jupiter.api.Test;
@@ -136,37 +137,51 @@ class EmbeddingTest {
         return groups;
     }
 
-    record Recursive(String value, java.util.List<Recursive> children) {}
+    record Recursive(String value, List<Recursive> children) {}
     record Shared(Inner first, Inner second) {}
     record Inner(String value) {}
     record Empty() {}
 
-    @org.junit.jupiter.api.Test
+    @Test
     void aRecursiveRecordIsRejectedWhenRegistered() {
-        var error = org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+        var error = assertThrows(IllegalArgumentException.class,
                 () -> new ApiRegistry().add("lang.tree", Recursive.class, r -> null));
-        org.junit.jupiter.api.Assertions.assertTrue(error.getMessage().contains("recursive record"), error.getMessage());
+        assertTrue(error.getMessage().contains("recursive record"), error.getMessage());
     }
 
-    @org.junit.jupiter.api.Test
+    @Test
     void aRecordUsedTwiceIsNotRecursive() {
         new ApiRegistry().add("lang.shared", Shared.class, r -> null);
     }
 
-    @org.junit.jupiter.api.Test
+    @Test
     void theRuntimesOwnOperationCannotBeRegistered() {
-        var error = org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+        var error = assertThrows(IllegalArgumentException.class,
                 () -> new ApiRegistry().add("uplc.defaultTransaction", Empty.class, r -> null));
-        org.junit.jupiter.api.Assertions.assertTrue(error.getMessage().contains("reserved"), error.getMessage());
+        assertTrue(error.getMessage().contains("reserved"), error.getMessage());
     }
 
-    @org.junit.jupiter.api.Test
+    @Test
     void groupsMustBeGivenAndDistinct() {
-        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+        assertThrows(IllegalArgumentException.class,
                 () -> new EngineInfo("lang", "lang", "1", null));
-        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
-                () -> new EngineInfo("lang", "lang", "1", java.util.Arrays.asList("a", null)));
-        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
-                () -> new EngineInfo("lang", "lang", "1", java.util.List.of("a", "a")));
+        assertThrows(IllegalArgumentException.class,
+                () -> new EngineInfo("lang", "lang", "1", Arrays.asList("a", null)));
+        assertThrows(IllegalArgumentException.class,
+                () -> new EngineInfo("lang", "lang", "1", List.of("a", "a")));
+    }
+
+    record ForeignCostModel(String profile, int parameters, boolean target) {}
+    record ForeignRequest(ForeignCostModel costModel) {}
+
+    /** The runtime's profile-name shorthand follows this mark, so a record of the same shape does not get it. */
+    @Test
+    void onlyJulcsCostModelIsMarked() {
+        var api = new ApiRegistry();
+        new VmApi().register(api);
+        api.add("lang.optimize", ForeignRequest.class, r -> null);
+        String schemas = api.schemas();
+        assertTrue(schemas.contains("\"$costModel\":true"), schemas);
+        assertTrue(!JsMarshalling.schema(ForeignRequest.class).toString().contains("$costModel"));
     }
 }

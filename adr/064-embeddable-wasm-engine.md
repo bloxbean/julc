@@ -1,7 +1,7 @@
 # ADR-064: Publish `julc-wasm` so other languages can build their own WebAssembly engine
 
-**Status:** Proposed. Implemented in the same PR; revised on `main` after ADR-068 and checked with a real Elci image (r4, r5).
-**Date:** 2026-10-23 (r1 to r3); revised 2026-11-05 (r4, r5)
+**Status:** Proposed. Implemented in the same PR; revised on `main` after ADR-068 and checked with a real Elci image (r4 to r6).
+**Date:** 2026-10-23 (r1 to r3); revised 2026-11-05 (r4 to r6)
 **Builds on:** ADR-054 (browser engine), ADR-057 (`julc-wasm` distribution), ADR-056 and ADR-059 (language-neutral
 backend). **Changes:** ADR-057's "the engine is JuLC's" assumption in the JavaScript runtime and worker.
 
@@ -169,7 +169,7 @@ The worker's manifest errors now name the field and the rule it breaks.
 
 ### D4. Keep the BLS substitutions in `julc-wasm`
 
-They stay in the published jar, and the README states I5. Splitting them out would need a third artifact that
+They stay in the published jar, limited to Web Image builds (I5, r5). Splitting them out would need a third artifact that
 every embedder must add anyway, since no Web Image of the VM builds without them.
 
 ### D5. A demo language is built and tested like an embedder's image (r2)
@@ -177,7 +177,7 @@ every embedder must add anyway, since no Web Image of the VM builds without them
 The `embedderFixture` source set holds a language with one operation (`demo.sum`) beside `VmApi`, its own
 reflection metadata, global, variant and version. It is not published. `wasmSmokeEmbedder`, part of `wasmSmoke`
 and so of CI's native-image builds, builds it as the README tells an embedder to: from the `julc-wasm` jar and its
-runtime class path, with the metadata of `julc-tools`, `julc-blueprint`, cardano-client-lib and the JSON schema
+runtime class path, with the metadata of `julc-compiler` (since r5), `julc-tools`, `julc-blueprint`, cardano-client-lib and the JSON schema
 validator excluded (`--exclude-config`), `-H:AbortOnTypeReachable` for JavaParser, the compiler, the decompiler and
 cardano-client-lib, the launcher hook and client files taken from the jar, and the launcher named `demo-lang-<hash>.js`.
 It then runs the image in Node.js: its own operation with exact integers, its 400 paths, and the VM parity fixtures
@@ -215,7 +215,7 @@ the exclusion and its size effect, the launcher naming rule and the TypeScript u
 - `julc-wasm`: `EngineInfo` (new), `JsApi`, `JulcWasm`, `JulcVmWasm`, `julc-runtime.js`, `julc-worker.js`, the jar
   contents, the `api` dependency on `julc-tools`, `sourcesJar` depending on `wasmVersion`, the README.
 - `julc-tools`: published, with `julc-ledger-api`, `julc-vm-java` and jackson-databind in `api` scope because its public signatures use them (r5); no source change.
-- `julc-wasm`: also `ApiRegistry`, `JsMarshalling`, `OnlyWebImage`, the BLS substitutions and `julc-wasm.js` (r5).
+- `julc-wasm`: also `ApiRegistry`, `JsMarshalling`, `OnlyWebImage`, the BLS substitutions, `julc-wasm.js`, its reachability metadata and its smoke tests (r5, r6).
 - No compiler stage, lowering, UPLC, ledger encoding or VM behaviour changes.
 
 ## Compatibility
@@ -239,7 +239,7 @@ the exclusion and its size effect, the launcher naming rule and the TypeScript u
 
 - **Published surface.** `julc-tools` models become something others compile against. Mitigation: JuLC is
   pre-1.0 and experimental; the ADR marks the surface experimental.
-- **The guard for I5 reads a class name.** If GraalVM renames its Web Image platform, the substitutions would stop applying and the Web Image build would reach native code. `wasmSmoke` would fail, because the images no longer run.
+- **The guard for I5 reads a class name.** If GraalVM renames its Web Image platform, the predicate is false and the substitutions stop applying. The images still build, and a BLS call and a BLS constant then fail with `500 NoClassDefFoundError`. JuLC's `wasmSmoke` catches this on the full image's BLS fixture, but an embedder's own smoke test would not unless it tries BLS.
 - **Web Image is preview technology.** Elci must pin the same GraalVM 25.3 line JuLC releases with.
 - **The worker pattern is wider (I4).** It still admits only a file name in the manifest's directory, and the
   manifest comes from the same origin as the worker. `worker.test.mjs` pins the rejected forms.
@@ -330,3 +330,4 @@ What this shows, and its limits: the image and the JVM agree on these examples, 
   `client.test.mjs`.
 - r4 (2026-11-05, on `main` after ADR-068): merged `main`. JavaParser is gone from JuLC, so its `-H:AbortOnTypeReachable` line only guards against its return, and the README no longer counts it in image sizes. The sizes in D5 were measured before ADR-068; the README has current ones, with the full image now 33.1 MB because javac runs in it. Added the check with a real Elci image (Verification strategy).
 - r5 (2026-11-05, on two reviews of `7daa4ee1`): POMs gain a name and a description, and `verifyMavenReleasePublicationScope` checks them. The cardano-client-lib rule uses `cardanoClientLibVersion`; r4's merge had kept the old literal. I5 is enforced (`OnlyWebImage`, `nativeImageBlsProbe`), which answers open question 1. `julc-tools`' public signatures get their modules in `api` scope. The client refuses an engine whose variant or API version differs from its manifest. The cost model shorthand needs JuLC's exact fields. `uplc.defaultTransaction` is reserved, a recursive record is rejected when registered, and engine groups must be distinct. The README's codec, metadata and exclusion notes are corrected; the demo image now excludes `julc-compiler`'s metadata.
+- r6 (2026-11-05, on the second reviews of `a395c1e5`): the shorthand follows a mark on `VmModels.CostModel`'s schema (I11), because field names alone also matched another language's record. The images carry `cost-model/*.params`, without which `costModel: '<profile-id>'` failed in every image. `slf4j-nop` leaves the published runtime scope; JuLC's images add it themselves. The smoke test's 200 ms client, which failed on CI's runner, becomes 5 s. The BLS probe checks the exit status and has a time limit, and the POM check rejects blank values.

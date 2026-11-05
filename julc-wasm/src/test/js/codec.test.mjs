@@ -128,7 +128,7 @@ test('operations stay in advertised groups and never extend a member every engin
 
 test('the costModel profile shorthand applies only where costModel is JuLC\'s cost model record', () => {
   const invoke = (method, body) => JSON.stringify({status: 200, body: JSON.parse(body), integers: []});
-  const costModel = {profile: 'string', target: {language: 'string', protocol: 'int'}, parameters: ['long']};
+  const costModel = {$costModel: true, profile: 'string', target: {language: 'string', protocol: 'int'}, parameters: ['long']};
   const api = JulcRuntime.install(invoke, {'vm.evaluate': {costModel}, 'lang.check': {costModel: 'string'},
     'lang.tune': {costModel: {name: 'string'}}}, 'lang', '1', ['vm', 'lang']);
   assert.deepEqual(api.vm.evaluate({costModel: 'plutus-v3'}), {costModel: {profile: 'plutus-v3'}});

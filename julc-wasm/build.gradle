@@ -19,6 +19,10 @@ sourceSets {
     }
 }
 
+configurations {
+    wasmImageRuntime
+}
+
 dependencies {
     // ApiRegistry operations return julc-tools' ServiceResult, and VmApi takes its models: embedders compile against
     // them (ADR-064).
@@ -26,8 +30,9 @@ dependencies {
     implementation project(':julc-stdlib')
     implementation project(':julc-vm-java')
     implementation 'com.fasterxml.jackson.core:jackson-databind:2.18.2'
-    // cardano-client-lib and the JSON schema validator log through SLF4J; stay silent in the browser console.
-    runtimeOnly 'org.slf4j:slf4j-nop:2.0.17'
+    // cardano-client-lib and the JSON schema validator log through SLF4J; JuLC's images stay silent in the browser
+    // console. It is not a dependency of the published jar: the host chooses its own logging provider.
+    wasmImageRuntime 'org.slf4j:slf4j-nop:2.0.17'
 
     // Provided by GraalVM at image build time; never on the image class path.
     compileOnly 'org.graalvm.sdk:webimage-preview:25.3.4.1'
@@ -129,7 +134,7 @@ tasks.register('vmToolsJar', Jar) {
     tasks.register("wasmImage${suffix}", Exec) {
         group = 'build'
         dependsOn 'jar', 'vmToolsJar'
-        def cp = sourceSets.main.runtimeClasspath
+        def cp = sourceSets.main.runtimeClasspath + configurations.wasmImageRuntime
         inputs.files(cp)
         inputs.file(tasks.named('jar').flatMap { it.archiveFile })
         inputs.property('graalvmHome', graalvmHome.orElse(''))
@@ -224,7 +229,7 @@ tasks.register('vmToolsJar', Jar) {
 // --- An image another language builds on julc-wasm (ADR-064) ---
 //
 // Built as the README tells an embedder to: from the julc-wasm jar and its runtime dependencies, with the metadata of
-// the jars below excluded (the README gives the same pattern), patched with the launcher hook and served with the
+// the jars below excluded (the README's pattern, with julc-compiler because this language has no compiler), patched with the launcher hook and served with the
 // JavaScript client, both taken from the julc-wasm jar.
 def EMBEDDER_EXCLUDED_METADATA_JARS =
         '.*[/\\\\](julc-compiler|julc-tools|julc-blueprint|cardano-client-[a-z0-9-]+|json-schema-validator)-[0-9][^/\\\\]*\\.jar'
@@ -238,7 +243,7 @@ def embedderBundleDir = layout.buildDirectory.dir('wasm-bundle-embedder')
 tasks.register('wasmImageEmbedder', Exec) {
     group = 'build'
     dependsOn 'jar', 'embedderFixtureJar'
-    def cp = sourceSets.main.runtimeClasspath
+    def cp = sourceSets.main.runtimeClasspath + configurations.wasmImageRuntime
     inputs.files(cp)
     inputs.file(tasks.named('jar').flatMap { it.archiveFile })
     inputs.file(tasks.named('embedderFixtureJar').flatMap { it.archiveFile })
@@ -434,9 +439,12 @@ tasks.register('nativeImageBlsProbe', Exec) {
     doLast {
         def process = new ProcessBuilder(new File(dir.get().asFile, 'bls-probe').absolutePath).redirectErrorStream(true).start()
         def text = process.inputStream.getText('UTF-8')
-        process.waitFor()
+        if (!process.waitFor(2, java.util.concurrent.TimeUnit.MINUTES)) {
+            process.destroyForcibly()
+            throw new GradleException("The BLS probe did not finish:\n${text}")
+        }
         def lines = text.readLines().findAll { it.startsWith('uncompress ') || it.startsWith('invalid constant ') }
-        if (lines != ['uncompress success', 'invalid constant rejected']) {
+        if (process.exitValue() != 0 || lines != ['uncompress success', 'invalid constant rejected']) {
             throw new GradleException("BLS changed in an ordinary native image with julc-wasm on its class path:\n${text}")
         }
         logger.lifecycle('Ordinary native image with julc-wasm: ' + lines.join('; '))

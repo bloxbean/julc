@@ -63,8 +63,8 @@ ext.configureReleaseSigning = { Project candidate ->
     }
 }
 
-// The playground and the WebAssembly engine run blueprint generation and script hashing on cardano-client-lib
-// 0.8.0-pre6, which also runs under GraalVM Web Image. The projects that build them force it so no transitive
+// The playground and the WebAssembly engine run blueprint generation and script hashing on cardano-client-lib,
+// which also runs under GraalVM Web Image. The projects that build them force cardanoClientLibVersion so no transitive
 // dependency moves it. A resolution rule, unlike a strict dependency constraint, is not published: a consumer of
 // julc-tools or julc-wasm that resolves another cardano-client-lib still resolves (ADR-064).
 ext.pinWebImageCardanoClientLib = { Project candidate ->
@@ -296,7 +296,7 @@ tasks.register('verifyMavenReleasePublicationScope') {
         // the version unusable for another try.
         def incomplete = allprojects.findAll { it.pluginManager.hasPlugin('maven-publish') }.collectMany { candidate ->
             candidate.publishing.publications.withType(MavenPublication).findAll {
-                !it.pom.name.isPresent() || !it.pom.description.isPresent()
+                it.pom.name.getOrElse('').isBlank() || it.pom.description.getOrElse('').isBlank()
             }.collect { "${candidate.path}:${it.name}" }
         }
         if (!incomplete.isEmpty()) {

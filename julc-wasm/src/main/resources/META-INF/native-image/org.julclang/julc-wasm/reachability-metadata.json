@@ -337,6 +337,9 @@
     },
     {
       "glob": "META-INF/services/org.slf4j.spi.SLF4JServiceProvider"
+    },
+    {
+      "glob": "cost-model/*.params"
     }
   ]
 }

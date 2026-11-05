@@ -106,9 +106,8 @@
         api[group] = {};
         created.add(group);
       }
-      // A profile name stands for JuLC's cost model record; another language's costModel field is passed as given.
-      const profileShorthand = !!schema?.costModel && typeof schema.costModel === 'object'
-        && Object.keys(schema.costModel).sort().join() === 'parameters,profile,target';
+      // A profile name stands for JuLC's cost model record, which JsMarshalling marks; another language's is passed as given.
+      const profileShorthand = schema?.costModel?.$costModel === true;
       api[group][name] = (request = {}) => {
         if (profileShorthand && typeof request.costModel === 'string') {
           request = { ...request, costModel: { profile: request.costModel } };

@@ -5,11 +5,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.julclang.tools.model.MockTransaction.DataInput;
+import org.julclang.tools.model.VmModels;
 
-import java.util.ArrayDeque;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.math.BigInteger;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -18,6 +19,9 @@ import java.util.Map;
 /** Lossless private JSON wire format. Only small Java ints become JSON numbers. */
 public final class JsMarshalling {
     static final ObjectMapper JSON = new ObjectMapper();
+
+    /** In the schema of JuLC's cost model record. It holds {@code true}, which no field's schema is. */
+    static final String COST_MODEL_MARK = "$costModel";
 
     private JsMarshalling() {}
 
@@ -48,6 +52,8 @@ public final class JsMarshalling {
                     result.put(component.getName(), schema(component.getGenericType(), records));
                 }
                 records.pop();
+                // The runtime's profile-name shorthand is for this record alone, not one that resembles it.
+                if (cls == VmModels.CostModel.class) result.put(COST_MODEL_MARK, true);
                 return result;
             }
         }

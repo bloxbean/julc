@@ -16,7 +16,7 @@ private cost-model configuration. Long integers cross the SDK boundary as `bigin
 
 The repository-wide `build` and this module's `test` task require Node.js 22+ for
 JavaScript codec/adapter tests. No Cardano node is needed. Image verification
-additionally needs GraalVM 25.3 Web Image and Binaryen:
+additionally needs GraalVM 25.3 Web Image and Binaryen, and `wasmSmoke`'s ordinary native image needs a C toolchain:
 
 ```sh
 ./gradlew :julc-wasm:test
@@ -132,6 +132,9 @@ missing result record lets the engine start, and that operation's calls then fai
    Measured with GraalVM 25.3.4.1.
 
    The build also writes a very large `<name>.js.wat`, about 850 MB for Elci. Nothing loads it, so delete it.
+
+   The published jar does not choose a logging provider. To keep a browser console quiet, add `org.slf4j:slf4j-nop` to the
+   image's class path, as JuLC's own images do.
 2. In `<name>.js`, after the line `const config = new GraalVM.Config();`, insert the contents of
    `META-INF/julc-wasm/launcher-hook.js` from the `julc-wasm` jar. It lets the worker say where the module is, and
    reports `main` failing before the engine is ready.
