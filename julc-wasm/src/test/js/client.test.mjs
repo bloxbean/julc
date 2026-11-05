@@ -48,3 +48,25 @@ test('a custom operation\'s string costModel reaches the engine unchanged', asyn
       {method: 'lang.check', body: {costModel: 'custom-model'}});
   } finally { client.dispose(); }
 });
+
+test('an engine whose variant or API version differs from its manifest is refused', async () => {
+  const wrongVariant = bundle({'lang.check': {}}, ['lang']);
+  wrongVariant.manifest.variant = 'vm';
+  await assert.rejects(createJulc({...wrongVariant, workerFactory}), /variant or API version does not match/);
+  const wrongApi = bundle({'lang.check': {}}, ['lang']);
+  wrongApi.manifest.api = 99;
+  await assert.rejects(createJulc({...wrongApi, workerFactory}), /./);
+  const noGroups = bundle({'lang.check': {}}, ['lang']);
+  delete noGroups.manifest.groups;
+  noGroups.manifest.variant = 'vm';
+  await assert.rejects(createJulc({...noGroups, workerFactory}), /variant or API version does not match/);
+});
+
+test('another language\'s record with a profile field is not taken for the cost model', async () => {
+  const client = await createJulc({...bundle({'lang.check': {costModel: {profile: 'string', weight: 'int'}}}, ['lang']), workerFactory});
+  try {
+    await assert.rejects(client.lang.check({costModel: 'custom-model'}), /Expected request object/);
+    assert.deepEqual(await client.lang.check({costModel: {profile: 'p', weight: 1}}),
+      {method: 'lang.check', body: {costModel: {profile: 'p', weight: 1}}});
+  } finally { client.dispose(); }
+});

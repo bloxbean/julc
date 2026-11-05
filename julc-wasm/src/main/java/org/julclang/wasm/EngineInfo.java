@@ -1,6 +1,7 @@
 package org.julclang.wasm;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Pattern;
 
@@ -35,8 +36,12 @@ public record EngineInfo(String global, String variant, String version, List<Str
             throw new IllegalArgumentException("Engine variant must match [a-z][a-z0-9-]*: " + variant);
         }
         if (version == null || version.isBlank()) throw new IllegalArgumentException("Engine version is required");
+        if (groups == null || groups.stream().anyMatch(Objects::isNull)) {
+            throw new IllegalArgumentException("Engine groups must be given and hold no null: " + groups);
+        }
         groups = List.copyOf(groups);
         if (groups.isEmpty()) throw new IllegalArgumentException("Engine groups must not be empty");
+        if (groups.stream().distinct().count() != groups.size()) throw new IllegalArgumentException("Engine groups must not repeat: " + groups);
         for (String group : groups) {
             if (!IDENTIFIER.matcher(group).matches() || RESERVED_GROUPS.contains(group)) {
                 throw new IllegalArgumentException(

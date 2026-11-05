@@ -10,15 +10,15 @@ import org.julclang.vm.java.builtins.BuiltinException;
  * in WebAssembly. Every BLS builtin goes through {@code Bls12381Builtins.bls(name, call)}; replacing it makes the
  * native code unreachable and turns each call into a regular builtin evaluation failure with a clear message.
  */
-@TargetClass(className = "org.julclang.vm.java.builtins.Bls12381Builtins")
+@TargetClass(className = "org.julclang.vm.java.builtins.Bls12381Builtins", onlyWith = OnlyWebImage.class)
 final class Target_org_julclang_vm_java_builtins_Bls12381Builtins {
 
     @Substitute
     private static CekValue bls(String name, Target_org_julclang_vm_java_builtins_Bls12381Builtins_BlsCall call) {
-        throw new BuiltinException(name + ": BLS12-381 builtins are not supported in the WebAssembly playground");
+        throw new BuiltinException(name + ": BLS12-381 builtins are not supported in WebAssembly");
     }
 }
 
-@TargetClass(className = "org.julclang.vm.java.builtins.Bls12381Builtins", innerClass = "BlsCall")
+@TargetClass(className = "org.julclang.vm.java.builtins.Bls12381Builtins", innerClass = "BlsCall", onlyWith = OnlyWebImage.class)
 final class Target_org_julclang_vm_java_builtins_Bls12381Builtins_BlsCall {
 }

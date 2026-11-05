@@ -2,7 +2,8 @@
 
 Transport-neutral services shared by the playground server and WebAssembly images.
 This module was renamed from `julc-playground-core` under
-[ADR-057](../adr/057-julc-wasm-distribution.md); it is not published as a JVM library.
+[ADR-057](../adr/057-julc-wasm-distribution.md). It is published so that another language's WebAssembly image can be
+built on it ([ADR-064](../adr/064-embeddable-wasm-engine.md)), and its API is experimental.
 
 `ToolsService` and `ExpressionEvaluator` expose compiler functionality.
 `EvaluationPreparation` resolves script language, protocol, budget and request-local

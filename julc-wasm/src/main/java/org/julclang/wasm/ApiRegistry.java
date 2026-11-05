@@ -26,6 +26,8 @@ public final class ApiRegistry {
             throw new IllegalArgumentException("Operation name must be group.operation with unreserved JavaScript "
                     + "identifiers: " + name);
         }
+        // The runtime and the client provide this one in JavaScript, and would silently replace an operation of that name.
+        if (name.equals("uplc.defaultTransaction")) throw new IllegalArgumentException("Operation name is reserved: " + name);
         if (methods.containsKey(name)) throw new IllegalArgumentException("Operation already registered: " + name);
         schemas.put(name, JsMarshalling.schema(type));
         methods.put(name, body -> {

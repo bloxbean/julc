@@ -1,10 +1,10 @@
 // The worker loads only a launcher named in engine.json next to it (ADR-064 I4), whatever language built the image.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync, writeFileSync} from 'node:fs';
+import {mkdtempSync, readFileSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {pathToFileURL} from 'node:url';
+import {fileURLToPath, pathToFileURL} from 'node:url';
 import {Worker} from 'node:worker_threads';
 
 const workerScript = new URL('../../main/js/julc-worker.js', import.meta.url);
@@ -66,4 +66,18 @@ test('the worker accepts any language\'s launcher name and loads it from the man
     assert.equal(reply.type, 'ready', reply.message);
     assert.equal(reply.version, launcher);
   }
+});
+
+test('the launcher hook sets the module path and reports a failed main', async () => {
+  const hook = readFileSync(fileURLToPath(new URL('../../main/resources/META-INF/julc-wasm/launcher-hook.js', import.meta.url)), 'utf8');
+  const run = async (exitCode) => {
+    const exits = [];
+    const config = {};
+    const scope = {GraalVM: {run: async () => ({exitCode})}, config, globalThis: {JULC_WASM_PATH: '/x/engine.wasm', onJulcExit: code => exits.push(code)}};
+    new Function('GraalVM', 'config', 'globalThis', hook)(scope.GraalVM, config, scope.globalThis);
+    await scope.GraalVM.run();
+    return {exits, path: config.wasm_path};
+  };
+  assert.deepEqual(await run(1), {exits: [1], path: '/x/engine.wasm'});
+  assert.deepEqual(await run(0), {exits: [], path: '/x/engine.wasm'});
 });

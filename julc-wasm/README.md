@@ -77,8 +77,14 @@ public final class ElciWasm {
   global are JavaScript identifiers that the client, the runtime and every JavaScript object do not already use
   (`version`, `features`, `dispose`, `rest`, `constructor`, `toString`, `JulcRuntime`, …); `ApiRegistry` and
   `EngineInfo` reject them.
-- Requests and results are records; the JavaScript codec is derived from them, and integers outside the 32-bit
-  range cross as `bigint`. An operation returns a `ServiceResult`; exceptions become status 400 or 500 envelopes.
+- Requests and results are records; the JavaScript codec is derived from them. Fields can be `String`, `boolean`,
+  `int`, `long`, `BigInteger`, a record, a `List` or array of these, or a `Map` with `String` keys. A recursive record
+  or a `byte[]` is rejected when the operation is registered; send bytes as a hex `String`.
+- The field's declared type decides the JavaScript type: a `long` and a `BigInteger` cross as `bigint`, whatever the
+  value's size, and passing a number for them is an error. A primitive field missing from a request is 0 or `false`,
+  so use a boxed type when absence matters.
+- An operation returns a `ServiceResult`; exceptions become status 400 or 500 envelopes.
+- `uplc.defaultTransaction` is reserved, because the client provides it in JavaScript.
 
 ### Reflection metadata
 
@@ -87,8 +93,9 @@ Register every request and result record, and every record their fields contain,
 `META-INF/native-image/<group>/<artifact>/reachability-metadata.json` (the fixture's
 [file](src/embedderFixture/resources/META-INF/native-image/org.julclang/julc-wasm-demo/reachability-metadata.json)
 shows the format). `julc-wasm` registers the records of the VM operations itself. Without the metadata the image
-still builds, but `ApiRegistry.add` fails when `main` runs (`UnsupportedFeatureError: Record components not
-available for record class …`), and the client fails with "The engine stopped before it was ready".
+still builds. A missing request record makes `ApiRegistry.add` fail when `main` runs (`UnsupportedFeatureError: Record
+components not available for record class …`), and the client fails with "The engine stopped before it was ready". A
+missing result record lets the engine start, and that operation's calls then fail with status 400.
 
 ### Build
 
@@ -111,14 +118,14 @@ available for record class …`), and the client fails with "The engine stopped 
    build fail if a package becomes reachable; add the packages your image must not contain. JavaParser left JuLC with
    ADR-068, so that line only guards against a dependency bringing it back.
 
-   A language with a compiler on JuLC's backend keeps javac in the image, through `julc-compiler`'s own metadata, and
-   needs nothing more: Elci's providers and its Java libraries work. A language with no compiler needs no
-   `julc-compiler` code at all.
+   A language with a compiler on JuLC's backend keeps javac in the image through `julc-compiler`'s own metadata, and
+   needs nothing more: Elci's providers and its Java libraries work. A language with no compiler should add
+   `julc-compiler` to the pattern, because that jar's metadata registers code it does not use.
 
    | Image | `.wasm` size |
    |---|---:|
    | JuLC's VM image | 14.2 MB |
-   | A demo language with no compiler | 16.9 MB |
+   | A demo language with no compiler, `julc-compiler` in the pattern | 15.8 MB |
    | Elci, with its compiler and javac | 30.2 MB |
    | JuLC's full image | 33.2 MB |
 
@@ -152,6 +159,6 @@ const result = await elci.elci.compile({sources: {'Main.elm': source}, module: '
 
 ### BLS12-381
 
-Keep `julc-wasm` off every other native-image class path. Its substitutions replace the BLS12-381 builtins, which
-use native code WebAssembly cannot run, with evaluation failures, and native-image applies them to any image the
-jar is part of.
+BLS12-381 builtins use native code that WebAssembly cannot run, so a Web Image built with this jar fails them with an
+evaluation error, and does not validate BLS constants in UPLC text. An ordinary native image with the jar on its class
+path is not affected (`nativeImageBlsProbe` checks this).

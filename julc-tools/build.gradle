@@ -9,8 +9,8 @@ dependencies {
     api project(':julc-core')
     api project(':julc-vm')
     implementation project(':julc-stdlib')
-    implementation project(':julc-ledger-api')
-    implementation project(':julc-vm-java')
+    api project(':julc-ledger-api')
+    api project(':julc-vm-java')
     implementation project(':julc-testkit')
     implementation project(':julc-blueprint')
 
@@ -18,7 +18,7 @@ dependencies {
     implementation project(':julc-decompiler')
     implementation project(':julc-cardano-client-lib')
     implementation "com.bloxbean.cardano:cardano-client-lib:${cardanoClientLibVersion}"
-    implementation 'com.fasterxml.jackson.core:jackson-databind:2.18.2'
+    api 'com.fasterxml.jackson.core:jackson-databind:2.18.2'
     implementation 'org.bouncycastle:bcprov-jdk18on:1.83'
 
     // Model records carry Jackson annotations; (de)serialization happens in the transports
@@ -52,3 +52,14 @@ tasks.register('adr068Tools', Test) {
     outputs.upToDateWhen { false }
 }
 tasks.named('adr068Tools').configure { maxHeapSize = '3g' }
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            pom {
+                name = 'JuLC Tools'
+                description = 'Transport-neutral compiler, VM and debugging services for JuLC hosts'
+            }
+        }
+    }
+}

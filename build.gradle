@@ -69,7 +69,7 @@ ext.configureReleaseSigning = { Project candidate ->
 // julc-tools or julc-wasm that resolves another cardano-client-lib still resolves (ADR-064).
 ext.pinWebImageCardanoClientLib = { Project candidate ->
     candidate.configurations.matching { it.canBeResolved }.configureEach {
-        resolutionStrategy.force 'com.bloxbean.cardano:cardano-client-lib:0.8.0-pre6'
+        resolutionStrategy.force "com.bloxbean.cardano:cardano-client-lib:${cardanoClientLibVersion}"
     }
 }
 
@@ -291,6 +291,16 @@ tasks.register('verifyMavenReleasePublicationScope') {
                     'Central deployment scope does not match declared publications. ' +
                             "Publishing but not deployed: ${missing.sort()}; " +
                             "deployed but publishes nothing: ${extra.sort()}")
+        }
+        // Central rejects a whole deployment if one POM has no name or description, after the BloxBean upload that makes
+        // the version unusable for another try.
+        def incomplete = allprojects.findAll { it.pluginManager.hasPlugin('maven-publish') }.collectMany { candidate ->
+            candidate.publishing.publications.withType(MavenPublication).findAll {
+                !it.pom.name.isPresent() || !it.pom.description.isPresent()
+            }.collect { "${candidate.path}:${it.name}" }
+        }
+        if (!incomplete.isEmpty()) {
+            throw new GradleException("Publications with no POM name or description: ${incomplete.sort()}")
         }
         logger.lifecycle("Central deployment scope: ${expected.size()} projects")
     }

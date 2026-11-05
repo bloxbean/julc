@@ -1,7 +1,7 @@
 # ADR-064: Publish `julc-wasm` so other languages can build their own WebAssembly engine
 
-**Status:** Proposed. Implemented in the same PR; revised on `main` after ADR-068 and checked with a real Elci image (r4).
-**Date:** 2026-10-23 (r1 to r3); revised 2026-11-05 (r4)
+**Status:** Proposed. Implemented in the same PR; revised on `main` after ADR-068 and checked with a real Elci image (r4, r5).
+**Date:** 2026-10-23 (r1 to r3); revised 2026-11-05 (r4, r5)
 **Builds on:** ADR-054 (browser engine), ADR-057 (`julc-wasm` distribution), ADR-056 and ADR-059 (language-neutral
 backend). **Changes:** ADR-057's "the engine is JuLC's" assumption in the JavaScript runtime and worker.
 
@@ -49,7 +49,7 @@ Non-goals:
 
 ## Current behavior (main at ebaf028c)
 
-- `build.gradle`: `nonPublishable` contains `julc-tools` and `julc-wasm`. The Central scope is 20 projects.
+- `build.gradle`: `nonPublishable` contains `julc-tools` and `julc-wasm`. The Central scope is 19 projects (20 when r1 was written, before JRL left).
 - `JsApi.install(ApiRegistry, String variant)` always installs `globalThis.julc` and reads the version from
   `julc-wasm-version.properties`, so another image would report JuLC's version.
 - `julc-runtime.js` maps the variant to groups itself: `full` gets
@@ -79,10 +79,9 @@ Non-goals:
   (D3).
 - **I4.** The worker still loads only a plain file name next to the manifest: lowercase words joined by hyphens,
   a 12-hex-digit hash, `.js`. No path, query or scheme (D2).
-- **I5.** `julc-wasm` is on Web Image class paths only. Its substitutions apply to every native image it is part
-  of, and they disable BLS12-381 (D4).
+- **I5.** `julc-wasm`'s substitutions apply only to Web Image builds (`OnlyWebImage`, r5). An ordinary native image with the jar on its class path keeps BLS builtins and BLS constant validation (`nativeImageBlsProbe`).
 - **I6.** The Central deployment scope equals the set of projects with a Maven publication
-  (`verifyMavenReleasePublicationScope`), now 22.
+  (`verifyMavenReleasePublicationScope`), now 21, and each publication's POM has a name and a description.
 - **I7.** An image for another language built from the published jars by the README's steps runs its own
   operations, gives the JVM's results for the VM operations, and contains no JavaParser, JuLC compiler, decompiler or
   cardano-client-lib code when the language does not use them (D5).
@@ -109,7 +108,7 @@ because embedders compile against `ServiceResult` and `VmApi`'s models. The Web 
 
 The strict constraint moves out of `julc-tools`' dependencies into an unpublished resolution rule
 (`pinWebImageCardanoClientLib` in the root build), applied by `julc-tools`, `julc-playground` and `julc-wasm`. JuLC's
-own builds still resolve 0.8.0-pre6; a consumer that resolves another cardano-client-lib no longer fails (I9).
+own builds resolve `cardanoClientLibVersion`; a consumer that resolves another cardano-client-lib no longer fails (I9).
 `julc-bom` now aligns `julc-tools` and `julc-wasm` too.
 
 ### D2. The image describes itself with `EngineInfo`
@@ -215,7 +214,8 @@ the exclusion and its size effect, the launcher naming rule and the TypeScript u
 - `build.gradle` (root): the `nonPublishable` list.
 - `julc-wasm`: `EngineInfo` (new), `JsApi`, `JulcWasm`, `JulcVmWasm`, `julc-runtime.js`, `julc-worker.js`, the jar
   contents, the `api` dependency on `julc-tools`, `sourcesJar` depending on `wasmVersion`, the README.
-- `julc-tools`: published; no source change.
+- `julc-tools`: published, with `julc-ledger-api`, `julc-vm-java` and jackson-databind in `api` scope because its public signatures use them (r5); no source change.
+- `julc-wasm`: also `ApiRegistry`, `JsMarshalling`, `OnlyWebImage`, the BLS substitutions and `julc-wasm.js` (r5).
 - No compiler stage, lowering, UPLC, ledger encoding or VM behaviour changes.
 
 ## Compatibility
@@ -239,8 +239,7 @@ the exclusion and its size effect, the launcher naming rule and the TypeScript u
 
 - **Published surface.** `julc-tools` models become something others compile against. Mitigation: JuLC is
   pre-1.0 and experimental; the ADR marks the surface experimental.
-- **Substitutions on the wrong class path (I5).** Putting `julc-wasm` on a native CLI's class path would silently
-  disable BLS there. Mitigation: README; open question 1 asks for a build-time guard.
+- **The guard for I5 reads a class name.** If GraalVM renames its Web Image platform, the substitutions would stop applying and the Web Image build would reach native code. `wasmSmoke` would fail, because the images no longer run.
 - **Web Image is preview technology.** Elci must pin the same GraalVM 25.3 line JuLC releases with.
 - **The worker pattern is wider (I4).** It still admits only a file name in the manifest's directory, and the
   manifest comes from the same origin as the worker. `worker.test.mjs` pins the rejected forms.
@@ -303,11 +302,11 @@ Not part of CI. A scratch clone of Elci at `a3ec190`, repinned to this branch's 
 
 Not checked: Linux, Windows, Firefox and Safari, BLS (unavailable by design), and Elci's own test suite against this pin.
 
+What this shows, and its limits: the image and the JVM agree on these examples, on the same compiler version. It is not a test of whether the scripts are correct, and `build` cases compare bytes without running them. The clone also repins Elci's `elci.toml` files and removes its 119 JavaParser reflection entries, which a real Elci change needs too. 5 GB is what the build used, not a measured minimum.
+
 ## Open questions
 
-1. **A build-time guard for I5.** Can the substitutions be limited to Web Image builds, for example with a
-   `@TargetClass(onlyWith = ...)` predicate that detects the Web Image platform? This needs a GraalVM 25.3
-   build to confirm the predicate. Lean: add it once confirmed, keep the README rule meanwhile.
+1. **A build-time guard for I5.** Answered in r5: `@TargetClass(onlyWith = OnlyWebImage.class)`. It reads the name of the platform class, which is crude; a supported `@Platforms` form would replace it if one fits all three targets.
 2. **Should JuLC's release attach the jar's JavaScript files separately?** Not needed while the jar carries them.
    Lean: no.
 3. **Should the published `julc-tools` jar stop carrying the full image's metadata (r2)?** Moving it to the builds
@@ -330,3 +329,4 @@ Not checked: Linux, Windows, Firefox and Safari, BLS (unavailable by design), an
   `uplc.defaultTransaction` missing from the Promise client → D2b, I11; tests in `codec.test.mjs` and the new
   `client.test.mjs`.
 - r4 (2026-11-05, on `main` after ADR-068): merged `main`. JavaParser is gone from JuLC, so its `-H:AbortOnTypeReachable` line only guards against its return, and the README no longer counts it in image sizes. The sizes in D5 were measured before ADR-068; the README has current ones, with the full image now 33.2 MB because javac runs in it. Added the check with a real Elci image (Verification strategy).
+- r5 (2026-11-05, on two reviews of `7daa4ee1`): POMs gain a name and a description, and `verifyMavenReleasePublicationScope` checks them. The cardano-client-lib rule uses `cardanoClientLibVersion`; r4's merge had kept the old literal. I5 is enforced (`OnlyWebImage`, `nativeImageBlsProbe`), which answers open question 1. `julc-tools`' public signatures get their modules in `api` scope. The client refuses an engine whose variant or API version differs from its manifest. The cost model shorthand needs JuLC's exact fields. `uplc.defaultTransaction` is reserved, a recursive record is rejected when registered, and engine groups must be distinct. The README's codec, metadata and exclusion notes are corrected; the demo image now excludes `julc-compiler`'s metadata.

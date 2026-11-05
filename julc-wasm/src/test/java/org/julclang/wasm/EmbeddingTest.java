@@ -92,7 +92,7 @@ class EmbeddingTest {
         assertThrows(IllegalArgumentException.class, () -> new EngineInfo("elci", "full", " ", groups));
         assertThrows(IllegalArgumentException.class, () -> new EngineInfo("elci", "full", "1", List.of()));
         assertThrows(IllegalArgumentException.class, () -> new EngineInfo("elci", "full", "1", List.of("a.b")));
-        assertThrows(NullPointerException.class, () -> new EngineInfo("elci", "full", "1", null));
+        assertThrows(IllegalArgumentException.class, () -> new EngineInfo("elci", "full", "1", null));
         // Names the client, the runtime or every JavaScript object already uses.
         for (String group : List.of("rest", "dispose", "version", "features", "__schemas", "__proto__", "constructor",
                 "toString", "hasOwnProperty")) {
@@ -134,5 +134,39 @@ class EmbeddingTest {
         JsMarshalling.JSON.readTree(api.schemas()).fieldNames()
                 .forEachRemaining(method -> groups.add(method.substring(0, method.indexOf('.'))));
         return groups;
+    }
+
+    record Recursive(String value, java.util.List<Recursive> children) {}
+    record Shared(Inner first, Inner second) {}
+    record Inner(String value) {}
+    record Empty() {}
+
+    @org.junit.jupiter.api.Test
+    void aRecursiveRecordIsRejectedWhenRegistered() {
+        var error = org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+                () -> new ApiRegistry().add("lang.tree", Recursive.class, r -> null));
+        org.junit.jupiter.api.Assertions.assertTrue(error.getMessage().contains("recursive record"), error.getMessage());
+    }
+
+    @org.junit.jupiter.api.Test
+    void aRecordUsedTwiceIsNotRecursive() {
+        new ApiRegistry().add("lang.shared", Shared.class, r -> null);
+    }
+
+    @org.junit.jupiter.api.Test
+    void theRuntimesOwnOperationCannotBeRegistered() {
+        var error = org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+                () -> new ApiRegistry().add("uplc.defaultTransaction", Empty.class, r -> null));
+        org.junit.jupiter.api.Assertions.assertTrue(error.getMessage().contains("reserved"), error.getMessage());
+    }
+
+    @org.junit.jupiter.api.Test
+    void groupsMustBeGivenAndDistinct() {
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+                () -> new EngineInfo("lang", "lang", "1", null));
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+                () -> new EngineInfo("lang", "lang", "1", java.util.Arrays.asList("a", null)));
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+                () -> new EngineInfo("lang", "lang", "1", java.util.List.of("a", "a")));
     }
 }

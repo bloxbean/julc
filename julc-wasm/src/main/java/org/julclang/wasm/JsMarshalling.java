@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.julclang.tools.model.MockTransaction.DataInput;
 
+import java.util.ArrayDeque;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.math.BigInteger;
@@ -21,6 +22,10 @@ public final class JsMarshalling {
     private JsMarshalling() {}
 
     public static Object schema(Type type) {
+        return schema(type, new ArrayDeque<>());
+    }
+
+    private static Object schema(Type type, ArrayDeque<Class<?>> records) {
         if (type == DataInput.class) return "data";
         if (type == long.class || type == Long.class) return "long";
         if (type == BigInteger.class) return "bigint";
@@ -28,18 +33,21 @@ public final class JsMarshalling {
         if (type == String.class) return "string";
         if (type == boolean.class || type == Boolean.class) return "boolean";
         if (type instanceof ParameterizedType p) {
-            if (p.getRawType() == List.class) return List.of(schema(p.getActualTypeArguments()[0]));
+            if (p.getRawType() == List.class) return List.of(schema(p.getActualTypeArguments()[0], records));
             if (p.getRawType() == Map.class && p.getActualTypeArguments()[0] == String.class) {
-                return Map.of("$map", schema(p.getActualTypeArguments()[1]));
+                return Map.of("$map", schema(p.getActualTypeArguments()[1], records));
             }
         }
         if (type instanceof Class<?> cls) {
-            if (cls.isArray()) return List.of(schema(cls.getComponentType()));
+            if (cls.isArray()) return List.of(schema(cls.getComponentType(), records));
             if (cls.isRecord()) {
+                if (records.contains(cls)) throw new IllegalArgumentException("No JavaScript codec for a recursive record: " + cls.getName());
+                records.push(cls);
                 var result = new LinkedHashMap<String, Object>();
                 for (var component : cls.getRecordComponents()) {
-                    result.put(component.getName(), schema(component.getGenericType()));
+                    result.put(component.getName(), schema(component.getGenericType(), records));
                 }
+                records.pop();
                 return result;
             }
         }

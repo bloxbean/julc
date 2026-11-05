@@ -40,6 +40,12 @@ export async function createJulc({baseUrl = new URL('.', import.meta.url), manif
   try { worker.postMessage({type: 'init', base: base.href, manifest, catalogue}); }
   catch (error) { dispose(error); }
   const info = await ready;
+  if ((manifest.variant !== undefined && manifest.variant !== info.features.variant)
+      || (manifest.api !== undefined && manifest.api !== info.features.api)) {
+    const error = new Error('JuLC engine variant or API version does not match its manifest');
+    dispose(error);
+    throw error;
+  }
   if (Array.isArray(manifest.groups)) {
     const declared = [...manifest.groups].sort();
     const actual = [...info.features.groups].sort();
