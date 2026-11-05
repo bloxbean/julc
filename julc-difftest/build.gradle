@@ -36,6 +36,8 @@ tasks.withType(Test).configureEach {
 }
 
 test {
+    // The largest test task of the build, with no slow class to trim: each worker JVM takes whole classes.
+    maxParallelForks = 3
     useJUnitPlatform {
         includeEngines 'junit-jupiter', 'jqwik'
         excludeTags 'nightly', 'rediscovery', 'adr068-g1-capture', 'adr068-lowering'
