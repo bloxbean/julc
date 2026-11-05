@@ -80,7 +80,7 @@ public final class PirHelpers {
     public static String hygienicName(String base, Set<String> callerFreeVariables) {
         if (!isGeneratedName(base)) {
             throw new IllegalArgumentException("Generated binder names must begin with '"
-                    + GENERATED_PREFIX + "' (ADR-060): " + base);
+                    + GENERATED_PREFIX + "': " + base);
         }
         if (!callerFreeVariables.contains(base)) return base;
         int suffix = 1;

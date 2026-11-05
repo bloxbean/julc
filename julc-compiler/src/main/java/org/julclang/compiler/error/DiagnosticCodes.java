@@ -115,7 +115,7 @@ public final class DiagnosticCodes {
             CompilerDiagnostic.Level.ERROR,
             "CONTROL_FLOW",
             "Unsupported case pattern ''{0}'': {1}",
-            "Name a permitted variant in each case label, and use `default` for the remaining ones.");
+            "Name a permitted variant in each case label, and use `default` for the remaining ones. For a record pattern, bind the record and read its fields: `case A a -> a.v()`.");
 
     public static final DiagnosticInfo CIRCULAR_TYPE_DEPENDENCY = new DiagnosticInfo(
             "JULC0030",
@@ -338,7 +338,7 @@ public final class DiagnosticCodes {
             "GENERIC_LIBRARY_CALL_UNSUPPORTED",
             CompilerDiagnostic.Level.ERROR,
             "LIBRARY",
-            "Generic library method {0} cannot be called from Java yet: generic @OnchainLibrary methods are specialized only by language-neutral library providers (ADR-059). Provide a concrete overload-free method for Java callers.",
+            "Generic library method {0} cannot be called from Java yet: generic @OnchainLibrary methods are specialized only by language-neutral library providers. Provide a concrete overload-free method for Java callers.",
             "Provide a concrete overload-free method for Java callers.");
 
     public static final DiagnosticInfo INHERITANCE_UNSUPPORTED = new DiagnosticInfo(
@@ -517,6 +517,38 @@ public final class DiagnosticCodes {
             "Declare one variable per statement: {0}",
             "Split the declaration into one statement per variable.");
 
+    public static final DiagnosticInfo MULTIPLE_VALIDATOR_ANNOTATIONS = new DiagnosticInfo(
+            "JULC0135",
+            "MULTIPLE_VALIDATOR_ANNOTATIONS",
+            CompilerDiagnostic.Level.ERROR,
+            "VALIDATOR",
+            "Class {0} has multiple validator annotations: {1}",
+            "Keep one validator annotation on the class. For several purposes in one script, use @MultiValidator.");
+
+    public static final DiagnosticInfo MULTI_VALIDATOR_DEFAULT_REPEATED = new DiagnosticInfo(
+            "JULC0137",
+            "MULTI_VALIDATOR_DEFAULT_REPEATED",
+            CompilerDiagnostic.Level.ERROR,
+            "VALIDATOR",
+            "@MultiValidator {0} has multiple @Entrypoint methods with DEFAULT purpose",
+            "Use explicit purposes such as Purpose.MINT for automatic dispatch, or a single @Entrypoint for manual dispatch.");
+
+    public static final DiagnosticInfo MULTI_VALIDATOR_PURPOSES_MIXED = new DiagnosticInfo(
+            "JULC0136",
+            "MULTI_VALIDATOR_PURPOSES_MIXED",
+            CompilerDiagnostic.Level.ERROR,
+            "VALIDATOR",
+            "@MultiValidator {0} mixes DEFAULT and explicit purposes",
+            "Use a single @Entrypoint for manual dispatch, or give every @Entrypoint an explicit purpose.");
+
+    public static final DiagnosticInfo MULTI_VALIDATOR_PURPOSE_REPEATED = new DiagnosticInfo(
+            "JULC0138",
+            "MULTI_VALIDATOR_PURPOSE_REPEATED",
+            CompilerDiagnostic.Level.ERROR,
+            "VALIDATOR",
+            "Duplicate purpose {0} in @MultiValidator {1}",
+            "Give each @Entrypoint a different purpose, or merge the two methods.");
+
     public static final DiagnosticInfo MUTUAL_RECURSION_TOO_LARGE = new DiagnosticInfo(
             "JULC0023",
             "MUTUAL_RECURSION_TOO_LARGE",
@@ -573,6 +605,14 @@ public final class DiagnosticCodes {
             "Cannot construct non-record type: {0}",
             "Only record types can be constructed on-chain. Declare the type as a record.");
 
+    public static final DiagnosticInfo NO_CLASS_IN_SOURCE = new DiagnosticInfo(
+            "JULC0133",
+            "NO_CLASS_IN_SOURCE",
+            CompilerDiagnostic.Level.ERROR,
+            "SYNTAX",
+            "No class found in source",
+            "Declare a class in the source, for example public class MyValidator { ... }.");
+
     public static final DiagnosticInfo NULL_UNSUPPORTED = new DiagnosticInfo(
             "JULC0017",
             "NULL_UNSUPPORTED",
@@ -580,6 +620,14 @@ public final class DiagnosticCodes {
             "SYNTAX",
             "null is not supported on-chain",
             "Use Optional<T> (Optional.of(x) / Optional.empty()) to represent absence of a value");
+
+    public static final DiagnosticInfo ONCHAIN_LIBRARY_WITH_VALIDATOR = new DiagnosticInfo(
+            "JULC0134",
+            "ONCHAIN_LIBRARY_WITH_VALIDATOR",
+            CompilerDiagnostic.Level.ERROR,
+            "VALIDATOR",
+            "Class {0} must not combine @OnchainLibrary with validator annotation(s): {1}",
+            "Keep one role on the class, and move the other into a class of its own.");
 
     public static final DiagnosticInfo OPERATOR_UNSUPPORTED = new DiagnosticInfo(
             "JULC0118",
@@ -652,6 +700,14 @@ public final class DiagnosticCodes {
             "BACKEND",
             "Unsupported PIR structure in {0}: {1}",
             "Restructure the term as described; for example bind recursive values as lambdas and give a DataMatch exactly one branch per constructor in tag order.");
+
+    public static final DiagnosticInfo PLUTUS_DATA_CAST_TARGET_NOT_LITERAL = new DiagnosticInfo(
+            "JULC0131",
+            "PLUTUS_DATA_CAST_TARGET_NOT_LITERAL",
+            CompilerDiagnostic.Level.ERROR,
+            "TYPE",
+            "PlutusData.cast() needs a class literal as its second argument",
+            "Write the type directly: PlutusData.cast(d, MyRecord.class).");
 
     public static final DiagnosticInfo PRIMITIVE_TYPE_UNSUPPORTED = new DiagnosticInfo(
             "JULC0124",
@@ -781,6 +837,14 @@ public final class DiagnosticCodes {
             "Switch-expression arm cannot update enclosing variable ''{0}''",
             "A switch expression exports only its yielded value. Declare an accumulator inside the arm, yield its result, and use the switch value outside the arm instead of mutating an enclosing variable.");
 
+    public static final DiagnosticInfo SWITCH_BLOCK_MAY_NOT_YIELD = new DiagnosticInfo(
+            "JULC0132",
+            "SWITCH_BLOCK_MAY_NOT_YIELD",
+            CompilerDiagnostic.Level.ERROR,
+            "CONTROL_FLOW",
+            "This switch case block does not yield a value on every path",
+            "End every path in the block with a 'yield' statement.");
+
     public static final DiagnosticInfo SWITCH_CASE_VARIABLE_REASSIGNED = new DiagnosticInfo(
             "JULC0120",
             "SWITCH_CASE_VARIABLE_REASSIGNED",
@@ -819,7 +883,7 @@ public final class DiagnosticCodes {
             CompilerDiagnostic.Level.ERROR,
             "CONTROL_FLOW",
             "Guard on ''{0}'' declares pattern variable ''{1}'', which is not supported",
-            "Use a nested record pattern instead, `case P(C c) -> c.w()`, or test the type without a binding (`p.t() instanceof C`) and read the value in the arm.");
+            "Test the type without a binding (`p.t() instanceof C`) and read the value in the arm.");
 
     public static final DiagnosticInfo SWITCH_REQUIRES_SEALED_INTERFACE = new DiagnosticInfo(
             "JULC0007",
@@ -939,7 +1003,7 @@ public final class DiagnosticCodes {
             CompilerDiagnostic.Level.ERROR,
             "CONFIG",
             "Optimization level {0} is not supported. Supported levels: {1}",
-            "Select one of the listed optimization levels. Use baseline to preserve the pre-ADR-032 generated program.");
+            "Select one of the listed optimization levels. Use none to turn the optimizer off.");
 
     public static final DiagnosticInfo VALIDATOR_ANNOTATION_MISSING = new DiagnosticInfo(
             "JULC0010",
@@ -1039,6 +1103,10 @@ public final class DiagnosticCodes {
             METHOD_REFERENCE_UNSUPPORTED,
             MISSING_OPTIMIZATION_COST_PROFILE,
             MULTIPLE_DECLARATORS_UNSUPPORTED,
+            MULTIPLE_VALIDATOR_ANNOTATIONS,
+            MULTI_VALIDATOR_DEFAULT_REPEATED,
+            MULTI_VALIDATOR_PURPOSES_MIXED,
+            MULTI_VALIDATOR_PURPOSE_REPEATED,
             MUTUAL_RECURSION_TOO_LARGE,
             NATIVE_ARRAY_NOT_DATA_ENCODABLE,
             NATIVE_TYPE_AT_DATA_BOUNDARY,
@@ -1046,7 +1114,9 @@ public final class DiagnosticCodes {
             NEWTYPE_UNSUPPORTED_FIELD_TYPE,
             NEWTYPE_WRONG_FIELD_COUNT,
             NON_RECORD_CONSTRUCTION,
+            NO_CLASS_IN_SOURCE,
             NULL_UNSUPPORTED,
+            ONCHAIN_LIBRARY_WITH_VALIDATOR,
             OPERATOR_UNSUPPORTED,
             OPTIMIZATION_COST_PROFILE_TARGET_MISMATCH,
             PARAM_CONSTANT_VARIABLE,
@@ -1056,6 +1126,7 @@ public final class DiagnosticCodes {
             PIR_INVALID_BINDING,
             PIR_TYPE_MISMATCH,
             PIR_UNSUPPORTED_STRUCTURE,
+            PLUTUS_DATA_CAST_TARGET_NOT_LITERAL,
             PRIMITIVE_TYPE_UNSUPPORTED,
             REASSIGNMENT_OUTSIDE_LOOP,
             RECORD_MEMBER_UNSUPPORTED,
@@ -1072,6 +1143,7 @@ public final class DiagnosticCodes {
             STRING_CONCAT_NON_STRING,
             STRING_LITERAL_UNPAIRED_SURROGATE,
             SWITCH_ARM_UPDATE_UNSUPPORTED,
+            SWITCH_BLOCK_MAY_NOT_YIELD,
             SWITCH_CASE_VARIABLE_REASSIGNED,
             SWITCH_FIELD_SHADOWS_PARAMETER,
             SWITCH_GROUP_UNSUPPORTED,

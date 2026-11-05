@@ -332,7 +332,7 @@ class LoopBlockAssignmentTest {
                     return acc;
                 }
                 """));
-        assertTrue(noAccumulator.getMessage().contains("Unsupported expression: AssignExpr"), noAccumulator.getMessage());
+        assertTrue(noAccumulator.getMessage().contains("Assignment to 'acc' is not supported at this position"), noAccumulator.getMessage());
         var undeclared = assertThrows(CompilerException.class, () -> compile("""
                 static BigInteger m(JulcList<BigInteger> xs) {
                     BigInteger acc = BigInteger.ZERO;

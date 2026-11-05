@@ -638,7 +638,7 @@ final class Adr068Ledger {
             return new Classification(true, "D11: javac 25's switch shape (ADR-067 M2b)");
         }
         String message = d.message() == null ? "" : d.message();
-        if ("JULC0076".equals(d.code()) && message.contains("not yet supported: record patterns")) {
+        if ("JULC0076".equals(d.code()) && message.contains("does not support record patterns")) {
             for (String permanent : List.of("reject-record-pattern-on-value.diffcase",
                     "reject-record-pattern-on-boolean-newtype.diffcase",
                     "reject-parameterized-sealed-component-pattern.diffcase")) {

@@ -357,7 +357,7 @@ class LoopStatementDiagnosticsTest {
                         return acc;
                     }
                 """), "m"));
-        assertTrue(error.getMessage().contains("Unsupported expression: AssignExpr"), error.getMessage());
+        assertTrue(error.getMessage().contains("Assignment to 'acc' is not supported at this position"), error.getMessage());
         assertTrue(error.diagnostics().stream().noneMatch(d -> "JULC0061".equals(d.code())), error.getMessage());
     }
 
@@ -773,7 +773,7 @@ class LoopStatementDiagnosticsTest {
                         return c;
                     }
                 """), "m"));
-        assertTrue(error.getMessage().contains("EmptyStmt"), error.getMessage());
+        assertTrue(error.getMessage().contains("an empty statement"), error.getMessage());
         assertTrue(error.diagnostics().stream().noneMatch(d -> "JULC0064".equals(d.code())), error.getMessage());
     }
 

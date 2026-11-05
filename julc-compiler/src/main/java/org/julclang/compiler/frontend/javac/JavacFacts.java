@@ -448,8 +448,7 @@ public final class JavacFacts {
                 yield bound;
             }
             case ERROR -> throw new IllegalStateException("an error type reached JuLC: " + type);
-            default -> throw rejection("Cannot resolve type: " + type + ". Supported types: BigInteger,"
-                    + " String, boolean, byte[], List<T>, Map<K,V>, records, sealed interfaces", where);
+            default -> throw rejection(DiagnosticCodes.TYPE_RESOLUTION_FAILED, where, type);
         };
     }
 
@@ -515,9 +514,18 @@ public final class JavacFacts {
 
     /** A coded rejection at {@code where}, with the catalogue's message and fix. */
     public CompilerException rejection(DiagnosticInfo info, Tree where, Object... arguments) {
+        return rejectionWithFix(info, null, where, arguments);
+    }
+
+    /** {@link #rejection(DiagnosticInfo, Tree, Object...)}, with a fix for this source in place of the catalogue's, unless it is null. */
+    public CompilerException rejectionWithFix(DiagnosticInfo info, String fix, Tree where, Object... arguments) {
+        if (where == null) {
+            return new CompilerException(List.of(new CompilerDiagnostic(info.level(), info.format(arguments), "<source>", 0, 0,
+                    fix != null ? fix : info.fix(), info.code())));
+        }
         var at = location(where);
         return new CompilerException(List.of(new CompilerDiagnostic(info.level(), info.format(arguments),
-                at.fileName(), at.line(), at.column(), info.fix(), info.code())));
+                at.fileName(), at.line(), at.column(), fix != null ? fix : info.fix(), info.code())));
     }
 
     private PirType array(ArrayType type, Tree where) {

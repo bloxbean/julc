@@ -114,7 +114,7 @@ final class Casts {
     /** {@code PlutusData.cast(d, T.class)} views {@code d} as {@code T}; a map variable holds a pair list, so it decodes. */
     PirTerm plutusDataCast(MethodInvocationTree tree, Frame frame) {
         if (!(tree.getArguments().get(1) instanceof MemberSelectTree literal && literal.getIdentifier().contentEquals("class"))) {
-            throw facts.rejection("PlutusData.cast() second argument must be a literal ClassName.class expression", tree);
+            throw facts.rejection(DiagnosticCodes.PLUTUS_DATA_CAST_TARGET_NOT_LITERAL, tree);
         }
         var argument = tree.getArguments().getFirst();
         var inner = lowering.expr(argument, frame);

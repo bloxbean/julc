@@ -349,7 +349,7 @@ class JavacCallsTest {
     void aCastToAClassThatIsNoLiteralIsRejected() {
         var members = "static PlutusData m(PlutusData d) { return PlutusData.cast(d, d.getClass()); }";
         var failure = rejected(members);
-        assertEquals("PlutusData.cast() second argument must be a literal ClassName.class expression", failure.message());
+        assertEquals("PlutusData.cast() needs a class literal as its second argument", failure.message());
         FrozenReference.assertSame("aCastToAClassThatIsNoLiteralIsRejected", failure.code() + " " + failure.message() + " @" + failure.line() + ":" + failure.column());
     }
 

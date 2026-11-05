@@ -1405,8 +1405,8 @@ guard[constant String concatenation ==][A?,D]	BASELINE	bytes 9efc01fdf8b4705a72c
 guard[constant String concatenation ==][A?,D]	PV11_SAFE	bytes 4fe2f0af9404235377aba8b5e2abe32b0f55852352b2a762b86eebe9e360a287
 guard[constant String concatenation ==][A?,D]	PV11_COSTED	bytes 4fe2f0af9404235377aba8b5e2abe32b0f55852352b2a762b86eebe9e360a287
 guard[reference cast][A?,B]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
-guard[reference cast][A?,A,B]	NONE	rejected JULC0072 Invalid guard on 'case A x0 when ((S) (Object) new A(n)) instanceof A': '(S) (Object) new A(n)' casts to a reference type, and JuLC erases the cast's run-time check (#288); a guard may cast only to a primitive type or to Boolean @15:29
-guard[reference cast][A?,D]	NONE	rejected JULC0072 Invalid guard on 'case A x0 when ((S) (Object) new A(n)) instanceof A': '(S) (Object) new A(n)' casts to a reference type, and JuLC erases the cast's run-time check (#288); a guard may cast only to a primitive type or to Boolean @15:29
+guard[reference cast][A?,A,B]	NONE	rejected JULC0072 Invalid guard on 'case A x0 when ((S) (Object) new A(n)) instanceof A': '(S) (Object) new A(n)' casts to a reference type, and JuLC erases the cast's run-time check; a guard may cast only to a primitive type or to Boolean @15:29
+guard[reference cast][A?,D]	NONE	rejected JULC0072 Invalid guard on 'case A x0 when ((S) (Object) new A(n)) instanceof A': '(S) (Object) new A(n)' casts to a reference type, and JuLC erases the cast's run-time check; a guard may cast only to a primitive type or to Boolean @15:29
 guard[sibling instanceof][A?,B]	NONE	rejected JULC0085 incompatible types: Probe.A cannot be converted to Probe.B (compiler.err.prob.found.req) @15:28
 guard[sibling instanceof][A?,A,B]	NONE	rejected JULC0085 incompatible types: Probe.A cannot be converted to Probe.B (compiler.err.prob.found.req) @15:28
 guard[sibling instanceof][A?,D]	NONE	rejected JULC0085 incompatible types: Probe.A cannot be converted to Probe.B (compiler.err.prob.found.req) @15:28
@@ -1471,11 +1471,11 @@ guard[constant narrowing beside a binding][A?,D]	BASELINE	bytes c04546de881d5fd0
 guard[constant narrowing beside a binding][A?,D]	PV11_SAFE	bytes dfedf5d1be9739aff099f3fc4c280ede28141b545fb1ab2dd5bfc18aa7abc629
 guard[constant narrowing beside a binding][A?,D]	PV11_COSTED	bytes dfedf5d1be9739aff099f3fc4c280ede28141b545fb1ab2dd5bfc18aa7abc629
 guard[int arithmetic][A?,B]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
-guard[int arithmetic][A?,A,B]	NONE	rejected JULC0072 Invalid guard on 'case A x0 when x0.v().signum() + 2147483647 < 0': 'x0.v().signum() + 2147483647' is int or long arithmetic, which JuLC evaluates without Java's overflow (ADR-062 T6); use BigInteger arithmetic, or compute the value in a local before the switch (where T6 applies as in any if) and compare that @15:28
-guard[int arithmetic][A?,D]	NONE	rejected JULC0072 Invalid guard on 'case A x0 when x0.v().signum() + 2147483647 < 0': 'x0.v().signum() + 2147483647' is int or long arithmetic, which JuLC evaluates without Java's overflow (ADR-062 T6); use BigInteger arithmetic, or compute the value in a local before the switch (where T6 applies as in any if) and compare that @15:28
+guard[int arithmetic][A?,A,B]	NONE	rejected JULC0072 Invalid guard on 'case A x0 when x0.v().signum() + 2147483647 < 0': 'x0.v().signum() + 2147483647' is int or long arithmetic, which JuLC evaluates without Java's overflow; use BigInteger arithmetic, or compute the value in a local before the switch and compare that @15:28
+guard[int arithmetic][A?,D]	NONE	rejected JULC0072 Invalid guard on 'case A x0 when x0.v().signum() + 2147483647 < 0': 'x0.v().signum() + 2147483647' is int or long arithmetic, which JuLC evaluates without Java's overflow; use BigInteger arithmetic, or compute the value in a local before the switch and compare that @15:28
 guard[String.equals of a boolean][A?,B]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
-guard[String.equals of a boolean][A?,A,B]	NONE	rejected JULC0072 Invalid guard on 'case A x0 when "a".equals(true)': '"a".equals(true)' compares a String with a value that is not established as a String, which fails on-chain where Java gives false (#292) @15:28
-guard[String.equals of a boolean][A?,D]	NONE	rejected JULC0072 Invalid guard on 'case A x0 when "a".equals(true)': '"a".equals(true)' compares a String with a value that is not established as a String, which fails on-chain where Java gives false (#292) @15:28
+guard[String.equals of a boolean][A?,A,B]	NONE	rejected JULC0072 Invalid guard on 'case A x0 when "a".equals(true)': '"a".equals(true)' compares a String with a value that is not established as a String, which fails on-chain where Java gives false @15:28
+guard[String.equals of a boolean][A?,D]	NONE	rejected JULC0072 Invalid guard on 'case A x0 when "a".equals(true)': '"a".equals(true)' compares a String with a value that is not established as a String, which fails on-chain where Java gives false @15:28
 guard[int minimum literal beside a binding][A?,B]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
 guard[int minimum literal beside a binding][A?,A,B]	NONE	bytes 3da23237247050e775dfe7db00e032384197ef52feea874217bfa0c19cb58719
 guard[int minimum literal beside a binding][A?,A,B]	BASELINE	bytes 54b714acaa5fad48973c6d066b211fef9a806f05ed745dcdb02da0ad6350f7e5
@@ -1498,8 +1498,8 @@ guard[out-of-range int literal][A?,B]	NONE	rejected JULC0085 integer number too 
 guard[out-of-range int literal][A?,A,B]	NONE	rejected JULC0085 integer number too large (compiler.err.int.number.too.large) @15:28
 guard[out-of-range int literal][A?,D]	NONE	rejected JULC0085 integer number too large (compiler.err.int.number.too.large) @15:28
 guard[intValue][A?,B]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
-guard[intValue][A?,A,B]	NONE	rejected JULC0072 Invalid guard on 'case A x0 when x0.v().intValue() < 0': 'x0.v().intValue()' narrows to 32 bits in Java, but JuLC lowers it to the identity (#294); compare the BigInteger value instead @15:28
-guard[intValue][A?,D]	NONE	rejected JULC0072 Invalid guard on 'case A x0 when x0.v().intValue() < 0': 'x0.v().intValue()' narrows to 32 bits in Java, but JuLC lowers it to the identity (#294); compare the BigInteger value instead @15:28
+guard[intValue][A?,A,B]	NONE	rejected JULC0072 Invalid guard on 'case A x0 when x0.v().intValue() < 0': 'x0.v().intValue()' narrows to 32 bits in Java, but JuLC lowers it to the identity; compare the BigInteger value instead @15:28
+guard[intValue][A?,D]	NONE	rejected JULC0072 Invalid guard on 'case A x0 when x0.v().intValue() < 0': 'x0.v().intValue()' narrows to 32 bits in Java, but JuLC lowers it to the identity; compare the BigInteger value instead @15:28
 guard[underscored minimum literals][A?,B]	NONE	rejected JULC0085 the switch expression does not cover all possible input values (compiler.err.not.exhaustive) @14:16
 guard[underscored minimum literals][A?,A,B]	NONE	bytes 705caa5e567cbaefdc5d6c3464c19c19d290392afbf117e33e7f64fc1723cbda
 guard[underscored minimum literals][A?,A,B]	BASELINE	bytes 4c13df71d225248988dbd7d80e88b3ede147d1186e28fbe7136cd7a3fbc6067d
@@ -1512,11 +1512,11 @@ guard[underscored minimum literals][A?,D]	PV11_COSTED	bytes 033c59bc99755912299e
 guard[underscored int overflow][A?,B]	NONE	rejected JULC0085 integer number too large (compiler.err.int.number.too.large) @15:28
 guard[underscored int overflow][A?,A,B]	NONE	rejected JULC0085 integer number too large (compiler.err.int.number.too.large) @15:28
 guard[underscored int overflow][A?,D]	NONE	rejected JULC0085 integer number too large (compiler.err.int.number.too.large) @15:28
-colon[falls through into default]	NONE	rejected JULC0075 Unsupported switch group 'case A x0': the group can complete normally, so Java would fall through into the next group; JuLC does not implement fall-through (#283). End the group with yield @15:13
-colon[falls through, guarded]	NONE	rejected JULC0075 Unsupported switch group 'case A x0 when n.signum() > 0': the group can complete normally, so Java would fall through into the next group; JuLC does not implement fall-through (#283). End the group with yield @15:13
+colon[falls through into default]	NONE	rejected JULC0075 Unsupported switch group 'case A x0': the group can complete normally, so Java would fall through into the next group; JuLC does not implement fall-through. End the group with yield @15:13
+colon[falls through, guarded]	NONE	rejected JULC0075 Unsupported switch group 'case A x0 when n.signum() > 0': the group can complete normally, so Java would fall through into the next group; JuLC does not implement fall-through. End the group with yield @15:13
 colon[falls through into a pattern]	NONE	rejected JULC0085 illegal fall-through to a pattern\n  (the previous case label is missing a break) (compiler.err.flows.through.to.pattern) @16:18
 colon[last group falls off]	NONE	rejected JULC0085 switch expression completes without providing a value\n  (switch expressions must either provide a value or throw for all possible input values) (compiler.err.switch.expression.completes.normally) @17:9
-colon[if without else falls through]	NONE	rejected JULC0075 Unsupported switch group 'case A x0': the group can complete normally, so Java would fall through into the next group; JuLC does not implement fall-through (#283). End the group with yield @15:13
+colon[if without else falls through]	NONE	rejected JULC0075 Unsupported switch group 'case A x0': the group can complete normally, so Java would fall through into the next group; JuLC does not implement fall-through. End the group with yield @15:13
 mixed[arrow then colon]	NONE	rejected JULC0085 different case kinds used in the switch (compiler.err.switch.mixing.case.types) @16:13
 mixed[colon then arrow]	NONE	rejected JULC0085 different case kinds used in the switch (compiler.err.switch.mixing.case.types) @16:13
 arrow[two patterns in one label]	NONE	rejected JULC0085 illegal fall-through from a pattern\n  (the current case label is missing a break) (compiler.err.flows.through.from.pattern) @15:24

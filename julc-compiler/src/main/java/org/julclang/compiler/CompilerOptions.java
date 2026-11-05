@@ -170,7 +170,7 @@ public class CompilerOptions {
      */
     public static void requireJavacFrontend(String frontend) {
         if (frontend == null || frontend.equalsIgnoreCase("javac")) return;
-        throw new CompilerException("The Java frontend option is gone: JuLC reads Java with javac alone since ADR-068 M6, and '"
+        throw new CompilerException("The Java frontend option is gone: JuLC reads Java with javac alone, and '"
                 + frontend + "' is no longer selectable. Remove the option from the build; the release notes list the rewrites"
                 + " for sources javac rejects.");
     }

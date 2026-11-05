@@ -111,10 +111,11 @@ final class JavacHints {
             String pkg = m.group(1);
             return isJdk(pkg)
                     ? "Package " + pkg + " is not available on-chain: JuLC compiles against a fixed subset of"
-                    + " java.base (ADR-068 D3)"
+                    + " java.base"
                     : "Package " + pkg + " is not visible to JuLC: only JuLC's on-chain API (julc-core,"
                     + " julc-ledger-api, the stdlib and julc-verification's annotations) and the sources of this"
-                    + " compilation are (ADR-068 I10)";
+                    + " compilation are. Check the import. An on-chain library in a jar must be available to JuLC too: in"
+                    + " Gradle and Maven, add it to the annotation processor path as well as the dependencies";
         }
         if (!key.startsWith("compiler.err.cant.resolve")) return null;
         Matcher symbol = SYMBOL.matcher(message);
@@ -129,14 +130,14 @@ final class JavacHints {
             }
             return "Annotation @" + name + " is not available to JuLC: a validator may use java.lang's annotations"
                     + " and those of JuLC's on-chain API (org.julclang.stdlib.annotation,"
-                    + " org.julclang.verification.annotation) (ADR-068 I10)";
+                    + " org.julclang.verification.annotation)";
         }
         String replacement = REPLACEMENTS.get(name);
         Matcher location = LOCATION_PACKAGE.matcher(message);
         String pkg = location.find() ? location.group(1) : null;
         if (pkg != null && isJdk(pkg)) {
             return pkg + "." + name + " is not available on-chain" + (replacement != null ? "; use " + replacement
-                    : ": JuLC compiles against a fixed subset of java.base (ADR-068 D3)");
+                    : ": JuLC compiles against a fixed subset of java.base");
         }
         if (kind.equals("class") && !context.jdkWildcardImports().isEmpty()) {
             // Only a name known to be a JDK type gets the categorical hint; any other name may as well be a missing
@@ -146,8 +147,8 @@ final class JavacHints {
             }
             return "If " + name + " is a JDK type (from "
                     + String.join(", ", context.jdkWildcardImports().stream().map(p -> "import " + p + ".*").toList())
-                    + "), it is not available on-chain: JuLC compiles against a fixed subset of java.base (ADR-068"
-                    + " D3); otherwise check the import or the source that declares it";
+                    + "), it is not available on-chain: JuLC compiles against a fixed subset of java.base;"
+                    + " otherwise check the import or the source that declares it";
         }
         return null;
     }

@@ -129,6 +129,11 @@ public final class JavacFrontend {
         this.bundled = bundled;
     }
 
+    /** The name diagnostics give a source with no file: its primary type's, as {@link JavacSourceFile#ofText} names it. */
+    public String sourceName(String text) {
+        return JavacUnits.infos(compiler(), platform, List.of(text)).getFirst().primary() + ".java";
+    }
+
     /** The first class or interface, at any depth, that {@code text} declares, or null. */
     String firstClassOrInterface(String text) {
         return JavacUnits.infos(compiler(), platform, List.of(text)).getFirst().firstClassOrInterface();

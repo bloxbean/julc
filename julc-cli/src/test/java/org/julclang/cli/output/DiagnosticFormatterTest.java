@@ -72,4 +72,28 @@ class DiagnosticFormatterTest {
         assertTrue(formatted.contains("2 error"));
         assertTrue(formatted.contains("1 warning"));
     }
+
+    @Test
+    void formatShowsTheSourceLineBeforeTheSuggestion() {
+        var diag = new CompilerDiagnostic(CompilerDiagnostic.Level.ERROR, "bad", "V.java", 3, 5, "do this", "JULC0001")
+                .withExcerpt("3 | line\n  |     ^");
+        String formatted = DiagnosticFormatter.format(diag);
+        assertTrue(formatted.contains("\n  3 | line\n    |     ^\n"), formatted);
+        assertTrue(formatted.indexOf("^") < formatted.indexOf("do this"), formatted);
+    }
+
+    @Test
+    void formatOmitsAPositionADiagnosticDoesNotHave() {
+        var diag = new CompilerDiagnostic(CompilerDiagnostic.Level.ERROR, "No class", "<source>", 0, 0, null, "JULC0133");
+        String formatted = DiagnosticFormatter.format(diag);
+        assertFalse(formatted.contains("<source>"), formatted);
+        assertFalse(formatted.contains(":0:0"), formatted);
+    }
+
+    @Test
+    void formatDoesNotPrefixAnAbsolutePath() {
+        var diag = new CompilerDiagnostic(CompilerDiagnostic.Level.ERROR, "bad", "/tmp/V.java", 2, 1);
+        assertTrue(DiagnosticFormatter.format(diag).contains("/tmp/V.java:2:1"));
+        assertFalse(DiagnosticFormatter.format(diag).contains("./"));
+    }
 }

@@ -43,7 +43,7 @@ public final class JavacLibraryExports {
     }
 
     private static final String POLYMORPHIC = "Polymorphic Java method: describe it with schemes(module) and "
-            + "instantiate it with LibraryRequest.Instantiate (ADR-059)";
+            + "instantiate it with LibraryRequest.Instantiate";
 
     private final JavacProgram program;
     private final CompilationContext context;

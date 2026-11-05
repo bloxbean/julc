@@ -51,7 +51,7 @@ class Adr068RejectionSitesTest {
         var coverage = Adr068RejectionSites.coverage(catalogue(), DIAGNOSTICS, rows);
         assertEquals(List.of(), coverage.uncatalogued());
         assertEquals(List.of(), coverage.contradicted());
-        var site = coverage.rows().keySet().stream().filter(s -> s.id().equals("U-cannot-resolve-type")).findFirst().orElseThrow();
+        var site = coverage.rows().keySet().stream().filter(s -> s.id().equals("JULC0012")).findFirst().orElseThrow();
         assertTrue(site.source(), site.reachability());
         assertEquals(WILDCARDS.size(), coverage.rows().get(site));
     }

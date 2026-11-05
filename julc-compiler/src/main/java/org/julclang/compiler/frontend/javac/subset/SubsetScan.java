@@ -223,7 +223,7 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
 
     /**
      * A {@code char} literal, in the reference's words: of a {@code char} variable, the type's ({@code JULC0124}, at the type);
-     * anywhere else, "Unsupported expression: CharLiteralExpr" ({@code JULC0125}).
+     * anywhere else, "Unsupported expression: a char literal" ({@code JULC0125}).
      */
     private CompilerException charLiteral(Tree tree) {
         if (facts.parent(tree) instanceof VariableTree variable && variable.getType() != null
@@ -231,7 +231,7 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
                 && facts.element(variable).asType().getKind() == TypeKind.CHAR) {
             return facts.unsupportedPrimitive("char", variable.getType());
         }
-        return facts.rejection(DiagnosticCodes.EXPRESSION_UNSUPPORTED, tree, "CharLiteralExpr");
+        return facts.rejection(DiagnosticCodes.EXPRESSION_UNSUPPORTED, tree, "a char literal");
     }
 
     private boolean allowed(Tree.Kind kind) {

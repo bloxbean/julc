@@ -70,10 +70,10 @@ public final class SwitchRules {
             requireOneLabel(entry);
             if (isDefault(entry)) defaultEntry = entry;
             if (!(entry.getLabels().getFirst() instanceof PatternCaseLabelTree label)) continue;
-            if (label.getPattern() instanceof DeconstructionPatternTree) {
-                throw facts.rejection(DiagnosticCodes.CASE_PATTERN_UNSUPPORTED, entry, facts.text(label),
-                        "not yet supported: record patterns are implemented by ADR-067 M2a; match the type pattern "
-                                + "and read the components with their accessors");
+            if (label.getPattern() instanceof DeconstructionPatternTree recordPattern) {
+                throw facts.rejectionWithFix(DiagnosticCodes.CASE_PATTERN_UNSUPPORTED,
+                        RecordPatternFix.ofCase(facts, recordPattern), label, facts.text(label),
+                        "JuLC does not support record patterns yet");
             }
             var pattern = (BindingPatternTree) label.getPattern();
             var guard = entry.getGuard();
@@ -114,7 +114,7 @@ public final class SwitchRules {
         if (!cannotCompleteNormally(entry.getStatements())) {
             throw facts.rejection(DiagnosticCodes.SWITCH_GROUP_UNSUPPORTED, entry, labelText(facts, entry),
                     "the group can complete normally, so Java would fall through into the next group; "
-                            + "JuLC does not implement fall-through (#283). End the group with yield");
+                            + "JuLC does not implement fall-through. End the group with yield");
         }
     }
 

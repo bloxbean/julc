@@ -160,7 +160,7 @@ class JavacM5aTest {
         // A char literal elsewhere: the reference's words for it, "Unsupported expression: CharLiteralExpr" (review F7).
         var literal = rejected("static long m(BigInteger a) { long c = 'x'; return c; }");
         assertEquals("JULC0125", literal.code());
-        assertEquals("Unsupported expression: CharLiteralExpr", literal.message());
+        assertEquals("Unsupported expression: a char literal", literal.message());
         assertEquals("JULC0124", rejected("static long m(long a) { long q = (char) a; return q; }").code());
         assertEquals("JULC0124", rejected("static long m(short a) { return 1; }").code());
     }
@@ -200,12 +200,12 @@ class JavacM5aTest {
 
     // --- The second review of M5a (F3, F6) ---
 
-    /** A text block is the reference's words: "Unsupported expression: TextBlockLiteralExpr". */
+    /** A text block is the reference's words: "Unsupported expression: a text block". */
     @Test
     void aTextBlockIsTheReferencesWords() {
         var diagnostic = rejected("static String m(BigInteger a) { return \"\"\"\n  hi\"\"\"; }");
         assertEquals("JULC0125", diagnostic.code(), diagnostic::message);
-        assertEquals("Unsupported expression: TextBlockLiteralExpr", diagnostic.message());
+        assertEquals("Unsupported expression: a text block", diagnostic.message());
     }
 
     /**

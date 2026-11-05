@@ -180,15 +180,11 @@ public final class Lowering {
      * rather than lowered to its right-hand side (ADR-062 T20): only a loop updates a variable declared before it.
      */
     private CompilerException reassignment(ExpressionTree target, ExpressionTree assignment, Frame frame) {
-        if (frame.bindsUpdates()) {
-            var name = target instanceof IdentifierTree identifier ? "'" + identifier.getName() + "'" : "this target";
-            return facts.rejection(DiagnosticCodes.ASSIGNMENT_POSITION_UNSUPPORTED, assignment, name);
-        }
-        if (facts.enclosing(assignment, Tree.Kind.ENHANCED_FOR_LOOP, Tree.Kind.WHILE_LOOP) == null) {
+        if (!frame.bindsUpdates() && facts.enclosing(assignment, Tree.Kind.ENHANCED_FOR_LOOP, Tree.Kind.WHILE_LOOP) == null) {
             return facts.rejection(DiagnosticCodes.REASSIGNMENT_OUTSIDE_LOOP, assignment, target.toString());
         }
-        return facts.rejection("Unsupported expression: AssignExpr",
-                "Variables are immutable on-chain. Use the accumulator pattern in for-each/while loops for mutable state.", assignment);
+        var name = target instanceof IdentifierTree identifier ? "'" + identifier.getName() + "'" : "this target";
+        return facts.rejection(DiagnosticCodes.ASSIGNMENT_POSITION_UNSUPPORTED, assignment, name);
     }
 
     /**
