@@ -1043,14 +1043,15 @@ public static boolean validate(ScriptContext ctx) {
 
 **Cause:** An array creation expression (e.g., `new int[10]`) was used.
 
-**Fix:** Use `List<T>` instead.
+**Fix:** Use a `byte[]` literal or a builtin for bytes, and `JulcList<T>` for a list of elements.
 
 ```java
 // WRONG
 var data = new byte[32];
 
 // CORRECT
-// Use ByteString for byte arrays, or List<T> for element lists
+var zeros = Builtins.replicateByte(32, 0);
+byte[] literal = new byte[]{0x01, -1};  // the integer literals of a byte, so 0xFF is -1
 ```
 
 > **PV11 Note:** From protocol version 11, `JulcArray<T>` provides O(1) random-access arrays via CIP-138 builtins. Use `list.toArray()` to convert a list.

@@ -1404,8 +1404,9 @@ import org.julclang.stdlib.lib.BitwiseLib;
 class BitwiseExample {
     @Entrypoint
     static boolean validate(PlutusData datum, PlutusData redeemer, ScriptContext ctx) {
-        byte[] a = new byte[]{(byte) 0xFF, (byte) 0x0F};
-        byte[] b = new byte[]{(byte) 0x0F, (byte) 0xF0};
+        // No (byte) casts on-chain: write a byte above 0x7F as its negative value
+        byte[] a = new byte[]{-1, 0x0F};    // [0xFF, 0x0F]
+        byte[] b = new byte[]{0x0F, -16};   // [0x0F, 0xF0]
 
         // Bitwise operations (padding=false truncates to shorter length)
         byte[] andResult = BitwiseLib.andByteString(false, a, b);   // [0x0F, 0x00]
@@ -1431,7 +1432,7 @@ import org.julclang.stdlib.lib.BitwiseLib;
 class BitManipExample {
     @Entrypoint
     static boolean validate(PlutusData datum, PlutusData redeemer, ScriptContext ctx) {
-        byte[] data = new byte[]{(byte) 0b10110100};
+        byte[] data = new byte[]{-76};   // [0b10110100]
 
         // Read individual bits
         boolean bit0 = BitwiseLib.readBit(data, 0);

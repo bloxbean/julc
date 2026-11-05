@@ -337,7 +337,7 @@ class HashExample {
         byte[] signerBytes = (byte[])(Object) signer.hash();
 
         // Use the raw bytes for comparison
-        byte[] expected = new byte[28];
+        byte[] expected = Builtins.replicateByte(28, 0);
         return Builtins.equalsByteString(signerBytes, expected);
     }
 }
@@ -367,10 +367,9 @@ class ListBuilder {
     @Entrypoint
     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
         // Build a list [3, 2, 1] by prepending in reverse order
-        PlutusData.ListData list = Builtins.mkNilData();
-        list = Builtins.mkCons(Builtins.iData(1), list);
-        list = Builtins.mkCons(Builtins.iData(2), list);
-        list = Builtins.mkCons(Builtins.iData(3), list);
+        PlutusData.ListData list1 = Builtins.mkCons(Builtins.iData(1), Builtins.mkNilData());
+        PlutusData.ListData list2 = Builtins.mkCons(Builtins.iData(2), list1);
+        PlutusData.ListData list = Builtins.mkCons(Builtins.iData(3), list2);
 
         // list is now [3, 2, 1]
         BigInteger first = Builtins.unIData(Builtins.headList(list));
@@ -408,10 +407,9 @@ class ListTraversal {
 
     @Entrypoint
     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-        PlutusData.ListData nums = Builtins.mkNilData();
-        nums = Builtins.mkCons(Builtins.iData(10), nums);
-        nums = Builtins.mkCons(Builtins.iData(20), nums);
-        nums = Builtins.mkCons(Builtins.iData(30), nums);
+        PlutusData.ListData nums1 = Builtins.mkCons(Builtins.iData(10), Builtins.mkNilData());
+        PlutusData.ListData nums2 = Builtins.mkCons(Builtins.iData(20), nums1);
+        PlutusData.ListData nums = Builtins.mkCons(Builtins.iData(30), nums2);
 
         BigInteger sum = sumList(nums);
         return sum.equals(BigInteger.valueOf(60));
@@ -647,7 +645,7 @@ class AssetLookup {
     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
         TxInfo txInfo = ctx.txInfo();
         PlutusData mintValue = (PlutusData)(Object) txInfo.mint();
-        byte[] myPolicy = new byte[28];  // your policy ID
+        byte[] myPolicy = Builtins.replicateByte(28, 0);  // your policy ID
         byte[] myToken = "MyToken".getBytes();
 
         BigInteger minted = findAssetAmount(mintValue,
@@ -663,7 +661,7 @@ class AssetLookup {
 // Build a Value containing 5 ADA + 1 MyToken
 static PlutusData buildValue(byte[] policyId, byte[] tokenName) {
     var emptyPairList = Builtins.mkNilPairData();
-    var emptyBs = Builtins.bData(new byte[0]);
+    var emptyBs = Builtins.bData(Builtins.emptyByteString());
 
     // Inner map for ADA: { "" -> 5000000 }
     var adaTokenPair = Builtins.mkPairData(emptyBs, Builtins.iData(5_000_000));
@@ -984,7 +982,7 @@ class FailFast {
         }
 
         // More expensive check: only reached if fee check passes
-        if (!ContextsLib.signedBy(txInfo, new byte[28])) {
+        if (!ContextsLib.signedBy(txInfo, Builtins.replicateByte(28, 0))) {
             Builtins.error();
         }
 
@@ -1038,6 +1036,7 @@ import java.math.BigInteger;
 import org.julclang.core.PlutusData;
 import org.julclang.ledger.ScriptContext;
 import org.julclang.ledger.TxInfo;
+import org.julclang.stdlib.Builtins;
 import org.julclang.stdlib.annotation.Entrypoint;
 import org.julclang.stdlib.annotation.SpendingValidator;
 import org.julclang.stdlib.lib.ContextsLib;
@@ -1054,7 +1053,7 @@ class ShortCircuit {
         }
 
         // 2. Data equality (~50K CPU) -- moderate
-        byte[] expectedSigner = new byte[28];
+        byte[] expectedSigner = Builtins.replicateByte(28, 0);
         if (!ContextsLib.signedBy(txInfo, expectedSigner)) {
             return false;
         }
@@ -1108,7 +1107,7 @@ class CrossLibraryBug {
         // BAD: policyId is typed as byte[] (ByteStringType)
         // Calling ValuesLib.containsBytes() with a ByteStringType arg
         // may skip the necessary bData() wrapping
-        byte[] policyId = new byte[28];
+        byte[] policyId = Builtins.replicateByte(28, 0);
         // ListsLib.containsBytes(list, policyId) -- potential type mismatch!
 
         // GOOD: use PlutusData typed variable
@@ -1141,8 +1140,8 @@ class SafeCrossLibrary {
         TxInfo txInfo = ctx.txInfo();
 
         // Use PlutusData instead of byte[] for cross-library calls
-        PlutusData policyId = Builtins.bData(new byte[28]);
-        PlutusData tokenName = Builtins.bData(new byte[0]);
+        PlutusData policyId = Builtins.bData(Builtins.replicateByte(28, 0));
+        PlutusData tokenName = Builtins.bData(Builtins.emptyByteString());
 
         // ValuesLib.assetOf expects Data at the boundary -- PlutusData passes through safely
         BigInteger amount = ValuesLib._assetOf(
@@ -1229,7 +1228,7 @@ class WrapperPattern {
 
     @Entrypoint
     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-        PlutusData policy = Builtins.bData(new byte[28]);
+        PlutusData policy = Builtins.bData(Builtins.replicateByte(28, 0));
         PlutusData token = Builtins.bData("Token".getBytes());
         BigInteger minted = getAssetAmount(ctx.txInfo().mint(), policy, token);
         return minted.equals(BigInteger.ONE);
@@ -1429,10 +1428,9 @@ class RecursiveList {
 
     @Entrypoint
     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-        PlutusData.ListData nums = Builtins.mkNilData();
-        nums = Builtins.mkCons(Builtins.iData(10), nums);
-        nums = Builtins.mkCons(Builtins.iData(50), nums);
-        nums = Builtins.mkCons(Builtins.iData(3), nums);
+        PlutusData.ListData nums1 = Builtins.mkCons(Builtins.iData(10), Builtins.mkNilData());
+        PlutusData.ListData nums2 = Builtins.mkCons(Builtins.iData(50), nums1);
+        PlutusData.ListData nums = Builtins.mkCons(Builtins.iData(3), nums2);
 
         long count = countElements(nums);
         boolean hasLarge = anyGreaterThan(nums, BigInteger.valueOf(25));
@@ -1583,9 +1581,8 @@ class TailRecursive {
     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
         BigInteger fact5 = factAcc(BigInteger.valueOf(5), BigInteger.ONE);
 
-        PlutusData.ListData nums = Builtins.mkNilData();
-        nums = Builtins.mkCons(Builtins.iData(10), nums);
-        nums = Builtins.mkCons(Builtins.iData(20), nums);
+        PlutusData.ListData nums1 = Builtins.mkCons(Builtins.iData(10), Builtins.mkNilData());
+        PlutusData.ListData nums = Builtins.mkCons(Builtins.iData(20), nums1);
         BigInteger sum = sumAcc(nums, BigInteger.ZERO);
 
         return fact5.equals(BigInteger.valueOf(120)) && sum.equals(BigInteger.valueOf(30));
