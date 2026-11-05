@@ -254,7 +254,7 @@ Users pay these at run time, so they come before other optimization work.
 
 | ID | Found in | Problem | Plan |
 |---|---|---|---|
-| A playground test's empty response | M5d's gates | `CompileControllerJavacGateTest.javacErrorIsReported` failed once at `6420db53` in `test --rerun`, after 19 ms and with an empty response body, and passed in the same head's full build and in 6 of 6 reruns of `:julc-playground:test`. The cause is not found. The compile path always answers with JSON, so the empty body may come from the server or client under load, not from the compiler; nothing in r18 is on that path | The assertion now reports the status. If it comes back, read the status first |
+| A playground test's empty response | M5d's gates | `CompileControllerJavacGateTest.javacErrorIsReported` failed once at `6420db53` in `test --rerun`, after 19 ms and with an empty response body, and passed in the same head's full build and in 6 of 6 reruns of `:julc-playground:test`. The cause, found at `0591bdfc`: the test's server took a port another program held on 127.0.0.1. Jetty listens on the wildcard address with `SO_REUSEADDR`, so the kernel lets it share such a port, and the test client's `localhost` reaches the other program. Two full builds there failed this way, each with a 404 and an empty body after 11 ms: `CompileControllerJavacTest.javacErrorIsReported` on port 50817 and `CompileControllerTest.blueprintEnabledPublishesExplicitMultiPurposeInterfaces` on port 50935, both held by IntelliJ. A local run can hit it; the compiler and the playground are not involved | Rerun, or close the program. Binding the tests' servers to 127.0.0.1 would end it, and is not done here |
 
 ## Codex read owed
 
