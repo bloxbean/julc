@@ -190,9 +190,12 @@ enclosing binder.
 - **I5. Fail closed.** Where JuLC has not bound a variable that javac resolved, the program is rejected with D6's
   code. No read is ever lowered against a binder that is not in scope, and the end of a branch that javac proves
   cannot complete is an `Error` term, never a value (D4). Constrains D4, D6.
-- **I6. Linear lowering.** Every statement and expression is lowered once, and a continuation reached from k paths
-  is either rebuilt per path when trivial or one shared join, so the term grows linearly with nesting. Constrains
-  D2, D3, D4.
+- **I6. Linear lowering for what this ADR adds.** Every condition and statement on the new paths is lowered once; a
+  condition's continuation reached from k paths is rebuilt per path when trivial or one shared join; and D4's splice
+  places `rest` in one place. So the new constructs add no duplication: a program's size grows as the same program
+  with the guard written as today's nested `if` does. Today's routing inside a statement list is unchanged, including
+  `ifWithExit`, which places one `after` object in each branch that falls through, so serialisation copies it (R3).
+  Constrains D2, D3, D4.
 - **I7. Fresh, distinct generated names.** Every join is a generated binder with a per-instance number
   (`#cond-join-N`) chosen while the term is built (ADR-060); no two joins in scope share a name. Constrains D2.
 
@@ -335,11 +338,24 @@ introduced when true, through `Conditions.branch`:
   holds a loop shares it through ADR-050's join with the updated accumulators as arguments, and a loop body's breaking
   `if` uses `LoopBody`'s join. So a falling branch that ends in several places (`if (k) { if (m) return 1; } ...`)
   reaches `rest` exactly as a plain block does today, with the accumulators as each path leaves them;
-- the other outcome lowers its branch with an **unreachable continuation**: an `Error` term of the block's result type
-  (the method's or arm's value type, or `LoopBody`'s carried type through a `Shape` whose end is `Error`). javac has
-  proved that control cannot reach the end of that branch, so the term is dead at run time; it is the branch's own
-  `return`, `yield` or `break` (or a loop that never ends, `while (true) {}`) that leaves. Should a JuLC defect make it
-  reachable, the script fails, which is the fail-closed direction (I5).
+- the other outcome lowers its branch with an **unreachable continuation**: an `Error` term. javac has proved that
+  control cannot reach the end of that branch, so the term is dead at run time; it is the branch's own `return`,
+  `yield` or `break` (or a loop that never ends, `while (true) {}`) that leaves. Should a JuLC defect make it
+  reachable, the script fails, which is the fail-closed direction (I5). The term's type matters, because
+  `TermTypes.infer` types an `IfThenElse` by its then-branch and `ifWithLoop` types its join by `after`; so it is the
+  type of the falling branch's value, from: a value method, `frame.exit().returnType()`; a `void` method, `UnitType`;
+  a lambda block, the result type `Lambdas` derives; a switch-arm block, the arm result type `Switches` computes;
+  `LoopBody`, `carried.type()` (`Carried.TUPLE` for several accumulators).
+- in `LoopBody` the unreachable end is an explicit property of `Shape`, not a `next` function: the branch keeps the
+  outer shape's break mode (`breaks()`, `next`) and carried values, so its routing inside (`foldIf` or `breakingIf`,
+  nested loops, `endsAtBreak`, messages) is what it would be today; only the places that continue to the end of the
+  body (`end`, and `breakingIf`'s fall-through application of `next`) yield `Error`. A `break` in it still returns the
+  carried values.
+
+Moving `rest` under the branch's binders is safe, as it is under today's `ifWithExit`, which already places `after`
+inside the branch's `let` chain: a local in `rest` with the name of one in the branch is a different element and
+gets its own binder; Java forbids the branch's locals to shadow outer locals, parameters or pattern variables; a
+branch local that shadows a field is renamed by `Scope`, and a read of the field in `rest` resolves to the field.
 
 The splice is a choice of statement list, not a tree rewrite: `Statements` and `LoopBody` already concatenate lists
 (`LoopBody.spliced`). No continuation is built in a new way, so no `if` that introduces nothing changes its routing,
@@ -395,29 +411,36 @@ references or ADR numbers. Guards are not affected: their reads are `JULC0074` b
 
 ### D8. Assignments to pattern variables on the new paths
 
-Java allows assigning to a non-final pattern variable. In a loop body JuLC would lower such an assignment as a `let`
-in one branch, and a later read outside that branch would see the old value: a miscompile (review r1, F1). Which
-binders are "on the new path" is a lowering fact (it depends on guards and on whether a loop has accumulators), so
-D8 is three tree rules that do not depend on routing, each reporting a new code, `JULC0140`
-(`PATTERN_VARIABLE_REASSIGNED`), with the fix "copy it into a local, `Sq r = q;`, and update `r`":
+Java allows assigning to a non-final pattern variable. In an accumulator loop body JuLC would lower such an
+assignment as a `let` in one branch, and `LoopBody.foldIf` rebinds only the loop's carried accumulators after the
+`if`, so a later read would see the old value: a miscompile (review r1, F1). D8 rejects the assignments that could be
+lost, with a new code `JULC0140` (`PATTERN_VARIABLE_REASSIGNED`) and the fix "copy it into a local, `Sq r = q;`, and
+update `r`":
 
-1. **Loop bodies.** `LoopRules.crossing` treats every `instanceof` binding variable declared inside the loop body as a
-   body local, by element. Its existing rule against an update that crosses an `if` join then rejects exactly the
-   hazard; a straight-line update inside the variable's scope stays correct, since later reads see the `let`.
-2. **Nested-loop accumulators.** `Loops.accumulators` rejects a pattern variable as an accumulator when `Conditions`
-   bound it (a set `Conditions` fills before it lowers its continuations).
+1. **Accumulator loop bodies** (lowering time, where the hazard is). `LoopBody`, lowering an assignment or compound
+   assignment whose target is an `instanceof` binding variable that is not a carried accumulator of that loop,
+   rejects it. Such a variable is declared inside the loop body, and today it has no binder there (`JULC0116`), so no
+   program that compiles changes. Straight-line updates are rejected too: a conservative rule, with a fix.
+2. **Nested-loop accumulators.** `Loops.accumulators` rejects, as an accumulator, a pattern variable that `Conditions`
+   bound (a set `Conditions` fills before it lowers its continuations). A pattern variable that `Ifs.patternIf` bound
+   keeps today's handling, so the a01-form program whose inner loop updates `q` under an `if` (correct today through
+   ADR-050's join, which carries `q`) is unchanged.
 3. **Switch arms.** `ArmUpdates` rejects an assignment to any `instanceof` binding variable other than the whole
-   condition of an `if`, by element, instead of reporting `JULC0121`.
+   condition of an `if`, by element, instead of reporting `JULC0121` (these shapes are not in its `declared` set today).
+4. **Elsewhere.** `Lowering.reassignment` reports `JULC0140` instead of `JULC0061` when the target is an `instanceof`
+   binding variable; the program was rejected before and is rejected now.
 
-Programs in a01's whole-condition form that compile today stay outside every rule (I4; M0 pins what they do), and Q5
-asks whether to cover them in a follow-up. M0 also probes each rule's shapes on `main` to confirm that everything they
-reject is rejected today.
+A rule that only `LoopRules.crossing` could apply (a tree rule) was considered in r3 and rejected: the tree cannot
+tell an accumulator loop (`LoopBody`, where updates across a join are lost) from an accumulator-free one (`Ifs`, where
+ADR-050's join carries them), so it either misses the hazard or rejects programs that compile today (review r3, F13,
+S18, C20). M0 pins the a01-form shapes with assignments (outside loops, in a loop in the then-branch, in a loop under
+an inner `if`), and Q5 asks whether to reject them in a follow-up.
 
 ## Affected stages and modules
 
 | Module | Stage | Change |
 |---|---|---|
-| `julc-compiler` | javac frontend lowering (`frontend/javac/lower`) | new `Conditions`; `Ifs`, `Statements` and `LoopBody` (D4's splice), `Loops` (D8 rule 2), `Operators`, `Lambdas`, `TypeTests`, `Names`, `Terms` (introduction tags) |
+| `julc-compiler` | javac frontend lowering (`frontend/javac/lower`) | new `Conditions`; `Ifs`, `Statements` and `LoopBody` (D4's splice), `Loops` (D8 rule 2), `Lowering` (D8 rule 4), `Operators`, `Lambdas`, `TypeTests`, `Names`, `Terms` (introduction tags) |
 | `julc-compiler` | javac facts and subset rules | `JavacFacts` (index of uses); `LoopRules.crossing` and `ArmUpdates` (D8) |
 | `julc-compiler` | diagnostics (`resources/diagnostics.json`, generated `DiagnosticCodes`) | D7 |
 | `julc-compiler` | test-time checks (`julc.verifyBinderNamespace`) | I1's property check (verification 5) |
@@ -482,16 +505,25 @@ derived from JuLC's own output. A newly supported shape must **agree**; a reject
    - D4: `return` (method, lambda block), `yield` (switch arm), `break` (each of the three loop shapes, and `foldIf`),
      with an accumulator updated in the falling-through branch and by a loop in it (the `ifWithLoop` route), a falling
      branch that ends in several places, a non-falling branch whose inner `if` returns on both sides, a branch ending
-     in `while (true) {}`, the whole-condition form with a use after it
+     in `while (true) {}` (run only with inputs that take the falling outcome, since the JVM would not terminate on the
+     other; that outcome's shape is pinned on the PIR: the branch ends in `Error`), the whole-condition form with a use after it
      (`if (s instanceof Sq q) { } else { return 0; } return q.s();`), nested `if`s, `else if` chains, and two
      early-exit guards in a row;
    - `while (s instanceof Sq q && q.s() > t)` with one and with several accumulators;
-   - D8: an assignment to a bound pattern variable in each position is `JULC0140`; a01's form keeps today's result.
+   - D8: an assignment to a bound pattern variable in each position is `JULC0140`, including a nested-`if` update of
+     a D4-introduced variable in a `break` loop and of a then-branch variable in an accumulator loop; a01's form keeps
+     today's result (M0 pins it, including the inner-loop update under an `if`);
+   - D4 scoping: a local in `rest` with the name of one in the falling branch, and a branch local that shadows a field
+     read in `rest`;
+   - the type of a D4 `if` equals the falling branch's type in each context (value and `void` method, lambda block,
+     switch arm, loop body with one and several accumulators), and the non-falling branch keeps a fold loop's routing
+     (a nested loop in it is not rejected as if the loop broke);
 2. **No change for what compiles** (I4): M0's pins stay green at every milestone; the frozen reference and
    `library-discovery-pre-cleanup.txt` re-recorded and diffed: zero moved rows.
 3. **Linearity** (I6): conditions nesting 6, 12 and 24 levels of `&&`/`||`/`!`/boolean `?:` over pattern tests,
    with non-trivial shared continuations, and 12 early-exit guards in a row, compile, agree with the JVM, and their
-   script size grows linearly with depth.
+   script size grows linearly with depth. A program with early-exit guards between partially exiting `if`s
+   (`if (a) { if (b) return 1; }`) is no larger than the same program written with today's nested `if`.
 4. **Fail closed** (I5, D6): c01, a `while` condition's variable used in its body, and a guard's variable are
    rejected with `JULC0139` or `JULC0074`, with the message and fix asserted; a test asserts that no
    `BINDING_VARIABLE` read ever reaches `JULC0011`; unit tests assert that D4's non-falling branch ends in `Error` and
@@ -515,7 +547,8 @@ derived from JuLC's own output. A newly supported shape must **agree**; a reject
    - *accepted shapes:* the generator tracks JLS 6.3.1's sets and emits only uses Java accepts and the gates support;
      every program must **agree** with the JVM at every level. `JULC0139` is a failure here, not an allowed code.
    - *javac-filtered:* the generator also emits uses outside its own model (after a `while`, in `else` branches of
-     constant conditions, after branches that end in a `while (true)`); programs javac rejects are skipped, through a
+     constant conditions). It never emits a loop that does not terminate, so G1's termination by construction (ADR-063
+     H5) holds; `while (true)` is covered by the hand-written rows; programs javac rejects are skipped, through a
      skip outcome `CampaignVerifier` gains for this mode; the property is that no program **diverges**: each agrees or
      is rejected with a coded diagnostic. This reaches the
      javac-versus-JuLC boundary that the first mode cannot.
@@ -555,6 +588,10 @@ derived from JuLC's own output. A newly supported shape must **agree**; a reject
   (`JULC0055`). Guarded by an `instanceof` it is correct, and D1 makes the guarded idiom available everywhere. The
   unguarded case is an existing divergence, to be tracked as its own issue; it is not changed here, because a checked
   cast changes the bytes and failures of programs that compile today.
+- **R3. Tail copies in `ifWithExit`.** An `if` whose branches partly exit places the following statements in each
+  branch that falls through: one PIR object, serialised once per position. A chain of such `if`s grows exponentially
+  in emitted size. It is today's behaviour for every program, unchanged here; ADR-050's join could share it, as an
+  optimisation with its own byte changes.
 - **R2.** `JULC0059` (a pattern variable named like a field) exists for parity with the deleted JavaParser frontend,
   whose scopes were keyed by name. With `Scope` keyed by element it may be liftable (Q2).
 
@@ -612,3 +649,14 @@ derived from JuLC's own output. A newly supported shape must **agree**; a reject
   - I1's check runs on explicitly tagged introductions with their expected tag and operand; rebindings must lie in the
     introduction's then-branch; negative PIR tests (F10, C17).
   - `CampaignVerifier`'s skip outcome for the javac-filtered mode named (C9 note); 15.20.2 quoted verbatim (S15).
+- r4 (2026-11-06, responds to the round-3 review of `cbfc1b36`: semantics APPROVED (S16–S18), code APPROVED
+  (C19–C22), Codex F13–F15):
+  - D8 rule 1 moved to lowering time in `LoopBody`, where the lost update happens; the tree rule recorded as rejected;
+    rule 2 limited to `Conditions`-bound variables; rule 4 (`Lowering.reassignment`) added; M0 pins a01-form
+    assignments (F13, S18, C20).
+  - `LoopBody`'s unreachable end is a `Shape` property that keeps the break mode and carried values (F14, C21).
+  - The `Error` term's type named for each context, with a type test (C19).
+  - I6 narrowed to what the ADR adds; today's `ifWithExit` tail copies recorded as R3; a size test against today's
+    nested-`if` form (F15).
+  - `while (true)` rows run on the falling outcome only; the generator emits no non-terminating loops (S17, C22).
+  - The splice's scoping argument stated, with rows (S16).
