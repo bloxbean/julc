@@ -118,6 +118,10 @@ final class Loops {
     List<Element> accumulators(StatementTree loop, Frame frame) {
         var found = accumulators.of(loop, frame);
         for (var element : found) {
+            // ADR-069 D8 rule 2: a pattern variable Conditions bound is not a nested loop's accumulator.
+            if (lowering.conditions().bound(element)) {
+                throw facts.patternVariableReassigned(firstUpdate(loop, element), element);
+            }
             if (element.getKind() == ElementKind.FIELD) {
                 fieldUpdates.require((VariableElement) element, firstUpdate(loop, element));
             }

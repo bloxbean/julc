@@ -4,9 +4,12 @@ import org.julclang.compiler.codegen.StrictRecordEntrypoint;
 import org.julclang.compiler.pir.PirTerm;
 
 import javax.lang.model.element.Element;
+import java.math.BigInteger;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * I13's construction-time provenance: which source element each {@code Var} reads and each binder binds, recorded as the
@@ -20,6 +23,31 @@ public final class Provenance {
 
     private final IdentityHashMap<PirTerm, Element> reads = new IdentityHashMap<>();
     private final IdentityHashMap<Object, Map<String, Element>> binders = new IdentityHashMap<>();
+    private final IdentityHashMap<PirTerm.Let, Introduction> introductions = new IdentityHashMap<>();
+    private final Set<Element> introduced = new HashSet<>();
+
+    /**
+     * Where an {@code instanceof} pattern variable is introduced (ADR-069 I1): the {@code let} that binds it to
+     * {@code operand}, which must head the then-branch of the test of {@code operand}'s tag against {@code tag}.
+     */
+    public record Introduction(Element variable, PirTerm operand, BigInteger tag) {
+    }
+
+    /** {@code binding} introduces an {@code instanceof} pattern variable, as {@code introduction} says. */
+    public void introduction(PirTerm.Let binding, Introduction introduction) {
+        introductions.put(binding, introduction);
+        introduced.add(introduction.variable());
+    }
+
+    /** What {@code binding} introduces, or null when it is no pattern variable's introduction. */
+    public Introduction introductionOf(PirTerm.Let binding) {
+        return introductions.get(binding);
+    }
+
+    /** Whether some {@code let} introduces {@code variable}: every other binder of it is a rebinding. */
+    public boolean isIntroduced(Element variable) {
+        return introduced.contains(variable);
+    }
 
     /** {@code read} reads {@code element}. */
     public void read(PirTerm.Var read, Element element) {
@@ -51,6 +79,9 @@ public final class Provenance {
     public void rebuilt(PirTerm original, PirTerm copy) {
         var names = binders.get(original);
         if (names != null) binders.put(copy, names);
+        if (original instanceof PirTerm.Let let && copy instanceof PirTerm.Let rebuilt && introductions.containsKey(let)) {
+            introductions.put(rebuilt, introductions.get(let));
+        }
         if (original instanceof PirTerm.DataMatch match && copy instanceof PirTerm.DataMatch rebuilt) {
             for (int i = 0; i < match.branches().size(); i++) {
                 var branch = binders.get(match.branches().get(i));

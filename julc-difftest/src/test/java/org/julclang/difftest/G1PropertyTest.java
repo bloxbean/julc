@@ -127,7 +127,7 @@ class G1PropertyTest {
         };
     }
 
-    /** A named profile ({@code DEFAULT}, {@code REDISCOVER_209}, {@code _280}, {@code _146}, {@code _162}, {@code _291}, {@code _291_LOOPS}) or a profile's text. */
+    /** A named profile ({@code DEFAULT}, {@code REDISCOVER_209}, {@code _280}, {@code _146}, {@code _162}, {@code _291}, {@code _291_LOOPS}), {@code PATTERN_FLOW_204} or a profile's text. */
     static G1.Profile profile(String name) {
         return switch (name) {
             case "DEFAULT" -> G1.Profile.DEFAULT;
@@ -137,6 +137,7 @@ class G1PropertyTest {
             case "REDISCOVER_162" -> G1.Profile.REDISCOVER_162;
             case "REDISCOVER_291" -> G1.Profile.REDISCOVER_291;
             case "REDISCOVER_291_LOOPS" -> G1.Profile.REDISCOVER_291_LOOPS;
+            case "PATTERN_FLOW_204" -> G1.Profile.PATTERN_FLOW_204;
             default -> G1.Profile.parse(name);
         };
     }

@@ -1,10 +1,13 @@
 package org.julclang.compiler.frontend.javac;
 
 import com.sun.source.tree.AssignmentTree;
+import com.sun.source.tree.BindingPatternTree;
 import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.CompilationUnitTree;
 import com.sun.source.tree.CompoundAssignmentTree;
 import com.sun.source.tree.ExpressionTree;
+import com.sun.source.tree.IdentifierTree;
+import com.sun.source.tree.InstanceOfTree;
 import com.sun.source.tree.LambdaExpressionTree;
 import com.sun.source.tree.LineMap;
 import com.sun.source.tree.MethodTree;
@@ -49,6 +52,7 @@ import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -80,6 +84,11 @@ public final class JavacFacts {
     /** What the reference compiles as libraries, of what javac read ({@code JavacFrontend.Attribution#offered}). */
     private final Set<CompilationUnitTree> offered = Collections.newSetFromMap(new IdentityHashMap<>());
 
+    /** Each {@code instanceof} pattern variable of the units javac read, to the test that declares it (ADR-069). */
+    private final Map<Element, InstanceOfTree> instanceofVariables = new HashMap<>();
+    /** Each use of an {@code instanceof} pattern variable: a name javac resolved to it, an assignment's target included. */
+    private final Map<Element, List<IdentifierTree>> patternUses = new HashMap<>();
+
     /** What a specialization binds each type variable of its method to (ADR-059, D8); empty everywhere else. */
     private final Map<Element, PirType> typeVariables;
 
@@ -99,6 +108,8 @@ public final class JavacFacts {
         this.paths.putAll(facts.paths);
         this.libraries.addAll(facts.libraries);
         this.offered.addAll(facts.offered);
+        this.instanceofVariables.putAll(facts.instanceofVariables);
+        this.patternUses.putAll(facts.patternUses);
         this.typeVariables = Map.copyOf(typeVariables);
     }
 
@@ -128,7 +139,8 @@ public final class JavacFacts {
 
     /**
      * Records every tree's path, once per unit. javac shares a few subtrees between a record's field and its generated
-     * members; such a tree keeps its first path, and any of them gives the same element, type and position.
+     * members; such a tree keeps its first path, and any of them gives the same element, type and position. It also
+     * records each {@code instanceof} pattern variable and every name javac resolved to one (ADR-069 D2, "Uses").
      */
     private void index(CompilationUnitTree unit) {
         new TreeScanner<Void, TreePath>() {
@@ -136,10 +148,68 @@ public final class JavacFacts {
             public Void scan(Tree tree, TreePath parent) {
                 if (tree == null) return null;
                 var path = new TreePath(parent, tree);
-                paths.putIfAbsent(tree, path);
+                if (paths.putIfAbsent(tree, path) == null) patterns(tree, path);
                 return tree.accept(this, path);
             }
         }.scan(unit, null);
+    }
+
+    private void patterns(Tree tree, TreePath path) {
+        if (tree instanceof BindingPatternTree pattern && path.getParentPath().getLeaf() instanceof InstanceOfTree test) {
+            var variable = trees.getElement(new TreePath(path, pattern.getVariable()));
+            if (variable != null) instanceofVariables.put(variable, test);
+        } else if (tree instanceof IdentifierTree name) {
+            var element = trees.getElement(path);
+            if (element != null && element.getKind() == ElementKind.BINDING_VARIABLE) {
+                patternUses.computeIfAbsent(element, unused -> new ArrayList<>()).add(name);
+            }
+        }
+    }
+
+    /** The {@code instanceof} that declares {@code variable}, or null if it is no {@code instanceof} pattern variable. */
+    public InstanceOfTree declaringTest(Element variable) {
+        return instanceofVariables.get(variable);
+    }
+
+    /** Whether javac resolved any name to the pattern variable {@code variable} (ADR-069 D2, "Uses"). */
+    public boolean isUsed(Element variable) {
+        return patternUses.containsKey(variable);
+    }
+
+    /** Whether javac resolved a name to {@code variable} outside {@code statement} (ADR-069 D4). */
+    public boolean isUsedOutside(Element variable, Tree statement) {
+        for (var use : patternUses.getOrDefault(variable, List.of())) {
+            if (!within(use, statement)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * {@code JULC0140}: an assignment to {@code variable}, an {@code instanceof} pattern variable (ADR-069 D8), with the fix
+     * in the developer's own words: a new local that holds the value they want, chosen where it is declared.
+     */
+    public CompilerException patternVariableReassigned(Tree assignment, Element variable) {
+        var test = declaringTest(variable);
+        String name = variable.getSimpleName().toString();
+        String fix = test == null ? null : "Declare a new local with the value you need instead of assigning to " + name + ": "
+                + text(((BindingPatternTree) test.getPattern()).getVariable().getType()) + " " + name + "2 = ...;";
+        return rejectionWithFix(DiagnosticCodes.PATTERN_VARIABLE_REASSIGNED, fix, assignment, name);
+    }
+
+    /** The first use of {@code variable} javac resolved outside {@code statement}, or null. */
+    public IdentifierTree firstUseOutside(Element variable, Tree statement) {
+        for (var use : patternUses.getOrDefault(variable, List.of())) {
+            if (!within(use, statement)) return use;
+        }
+        return null;
+    }
+
+    /** Whether {@code tree} is {@code ancestor} or lies inside it. */
+    public boolean within(Tree tree, Tree ancestor) {
+        for (Tree at = tree; at != null; at = parent(at)) {
+            if (at == ancestor) return true;
+        }
+        return false;
     }
 
     /** Facts over a task with no compilation units: its stubs have no trees. */

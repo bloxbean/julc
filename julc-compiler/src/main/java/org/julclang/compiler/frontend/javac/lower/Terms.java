@@ -14,6 +14,7 @@ import org.julclang.core.source.SourceLocation;
 
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ExecutableElement;
+import java.math.BigInteger;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.function.Supplier;
@@ -71,6 +72,16 @@ public final class Terms {
     PirTerm.Let let(Binder binder, PirTerm value, PirTerm body) {
         var binding = new PirTerm.Let(binder.name(), value, body);
         provenance.binder(binding, binder.name(), binder.element());
+        return binding;
+    }
+
+    /**
+     * {@code let binder = operand in body}, which introduces an {@code instanceof} pattern variable under the test of
+     * {@code operand}'s tag against {@code tag} (ADR-069 I1): recorded, so the check can find where each one is bound.
+     */
+    PirTerm.Let introduced(Binder binder, PirTerm operand, BigInteger tag, PirTerm body) {
+        var binding = let(binder, operand, body);
+        provenance.introduction(binding, new Provenance.Introduction(binder.element(), operand, tag));
         return binding;
     }
 
@@ -240,6 +251,29 @@ public final class Terms {
     /** Tells debug metadata, if collected, that the declaration of {@code element} has no binder it can show. */
     void undeclared(Element element, String reason) {
         if (debug != null) debug.markUnsupported(element, reason);
+    }
+
+    /**
+     * A fresh node equal to {@code term}, a trivial term that two paths of a condition reach (ADR-069 D2, joins): a
+     * constant, {@code Error}, a variable, or an application of a generated join to unit. One node is never placed twice,
+     * so the copy carries the original's read and position under its own identity.
+     */
+    PirTerm copied(PirTerm term) {
+        PirTerm copy = switch (term) {
+            case PirTerm.Const constant -> new PirTerm.Const(constant.value());
+            case PirTerm.Error error -> new PirTerm.Error(error.type());
+            case PirTerm.Var read -> {
+                var fresh = new PirTerm.Var(read.name(), read.type());
+                var element = provenance.readOf(read);
+                if (element != null) provenance.read(fresh, element);
+                yield fresh;
+            }
+            case PirTerm.App(PirTerm.Var join, PirTerm.Const unit) -> new PirTerm.App(new PirTerm.Var(join.name(), join.type()), new PirTerm.Const(unit.value()));
+            default -> throw new IllegalArgumentException("not a trivial term: " + term);
+        };
+        var at = positions.get(term);
+        if (at != null) positions.put(copy, at);
+        return copy;
     }
 
     /** Records where {@code term} came from, when this compilation has a source map. */

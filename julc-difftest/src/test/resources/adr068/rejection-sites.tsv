@@ -124,6 +124,8 @@ JULC0135	code	JULC0135	MULTIPLE_VALIDATOR_ANNOTATIONS	source
 JULC0136	code	JULC0136	MULTI_VALIDATOR_PURPOSES_MIXED	source
 JULC0137	code	JULC0137	MULTI_VALIDATOR_DEFAULT_REPEATED	source
 JULC0138	code	JULC0138	MULTI_VALIDATOR_PURPOSE_REPEATED	source
+JULC0139	code	JULC0139	PATTERN_VARIABLE_SCOPE_UNSUPPORTED	source
+JULC0140	code	JULC0140	PATTERN_VARIABLE_REASSIGNED	source
 U-synchronized	uncoded	^synchronized is not supported on-chain	SubsetValidator:184	source
 U-break-outside-loop	uncoded	break is only supported inside for-each or while loops	SubsetValidator:210	source
 U-method-reference	uncoded	Method references \(::\) are not supported	SubsetValidator:242	source

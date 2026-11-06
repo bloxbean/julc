@@ -3,6 +3,36 @@ title: "Release Notes"
 description: "JuLC release notes and migration guidance"
 ---
 
+## Upcoming preview: `instanceof` pattern variables wherever Java has them in scope (#204)
+
+JuLC used to bind an `instanceof` pattern variable only when `x instanceof T v` was the whole
+condition of an `if` outside a loop body with accumulators. Everywhere else a use of the
+variable was `Undefined variable` ([#204](https://github.com/bloxbean/julc/issues/204), ADR-069).
+It now follows Java's scope rules (JLS 6.3.1, 6.3.2.2):
+
+```java
+if (x instanceof Bid b && b.amount().signum() > 0) { ... }        // &&, ||, !, parentheses
+long n = x instanceof Bid b ? b.amount().longValue() : 0;          // ?: and any value position
+outputs.any(o -> o.datum() instanceof OutputDatumInline d && ...); // lambdas
+for (var x : actions) { if (x instanceof Bid b) { total = total + ...; } } // loops with accumulators
+if (!(x instanceof Bid b)) { return false; }                       // the early-exit guard:
+return b.amount().signum() > 0;                                    // b is in scope after it
+```
+
+A bare type test, `x instanceof Bid`, now works wherever an expression may stand.
+
+- **Unchanged bytes:** programs that compiled before compile to the same bytes. The new
+  lowering runs only where a variable is used in a position that was rejected before.
+- **Bound once, under its test:** a variable is bound only where its test passed, and its
+  operand is evaluated once, in Java's order.
+- **Still rejected, now with a rewrite:** a variable carried out of a `while` condition
+  into the loop body or past the loop is `JULC0139`, which replaces `Undefined variable`
+  for pattern variables. Reassigning a pattern variable is `JULC0140`, except in the form
+  that compiled before: the variable of an `if` whose whole condition is its test, outside a
+  loop with accumulators, updated by a loop in that `if`. Switch-guard bindings stay
+  `JULC0074`. `JULC0077` no longer covers a test of a variant: it is left for record patterns
+  and for a test of a type that is no variant, such as the sealed interface itself.
+
 ## Upcoming preview: build native BLS point and scalar lists one element at a time (#240)
 
 `Builtins` gains six producers for the native lists that `bls12_381_G1_multiScalarMul`

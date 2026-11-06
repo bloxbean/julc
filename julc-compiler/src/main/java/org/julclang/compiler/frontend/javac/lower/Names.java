@@ -42,7 +42,7 @@ final class Names {
             return read;
         }
         // javac bound the name to a field no binder stands for: one without an initializer, or another class's. Or to a
-        // pattern variable outside the then branch of the if whose whole condition binds it, the one place it lowers.
+        // pattern variable where ADR-069 binds none (JULC0139).
         boolean unbound = element.getKind() == ElementKind.FIELD || element.getKind() == ElementKind.BINDING_VARIABLE;
         if (tree.getName().contentEquals("this") || tree.getName().contentEquals("super")) {
             throw facts.rejection(DiagnosticCodes.THIS_OR_SUPER_UNSUPPORTED, tree, tree.getName());
@@ -52,6 +52,7 @@ final class Names {
         if (!unbound && element.getKind() == ElementKind.LOCAL_VARIABLE && inOwnInitializer(tree, element)) {
             return new PirTerm.Error(facts.pirType(element.asType(), tree));
         }
+        if (facts.declaringTest(element) != null) throw Conditions.unbound(facts, tree, element);
         throw facts.rejection(DiagnosticCodes.UNDEFINED_VARIABLE, tree, tree.getName());
     }
 

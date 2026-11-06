@@ -48,6 +48,7 @@ public final class Lowering {
     private final Literals literals;
     private final Names names;
     private final TypeTests typeTests;
+    private final Conditions conditions;
     private final Statements statements;
     private final Operators operators;
     private final Lambdas lambdas;
@@ -74,6 +75,7 @@ public final class Lowering {
         var typeMethods = TypeMethodRegistry.defaultRegistry();
         this.targets = new CallTargets(facts, typing, typeMethods);
         this.typeTests = new TypeTests(facts, terms, typing, this);
+        this.conditions = new Conditions(facts, terms, this, typeTests, typing);
         this.fieldUpdates = new FieldUpdates(facts);
         this.statements = new Statements(facts, terms, typing, this, targets, typeTests, context, fieldUpdates);
         this.operators = new Operators(facts, typing, targets, this);
@@ -86,6 +88,11 @@ public final class Lowering {
 
     public Terms terms() {
         return terms;
+    }
+
+    /** Conditions with their continuations (ADR-069). */
+    Conditions conditions() {
+        return conditions;
     }
 
     /** A call of a library method's binder: the binder, and the class name the call is written with. */
@@ -180,6 +187,10 @@ public final class Lowering {
      * rather than lowered to its right-hand side (ADR-062 T20): only a loop updates a variable declared before it.
      */
     private CompilerException reassignment(ExpressionTree target, ExpressionTree assignment, Frame frame) {
+        // ADR-069 D8 rule 4: a pattern variable is never reassigned, wherever the assignment is.
+        if (target instanceof IdentifierTree name && facts.declaringTest(facts.elementOrNull(name)) != null) {
+            return facts.patternVariableReassigned(assignment, facts.element(name));
+        }
         if (!frame.bindsUpdates() && facts.enclosing(assignment, Tree.Kind.ENHANCED_FOR_LOOP, Tree.Kind.WHILE_LOOP) == null) {
             return facts.rejection(DiagnosticCodes.REASSIGNMENT_OUTSIDE_LOOP, assignment, target.toString());
         }

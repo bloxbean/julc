@@ -79,9 +79,9 @@ final class Lambdas {
             return function(call, parenthesized.getExpression(), receiver, encodesResult, frame);
         }
         if (argument instanceof ConditionalExpressionTree conditional) {
-            var condition = lowering.expr(conditional.getCondition(), frame);
-            return new PirTerm.IfThenElse(condition, function(call, conditional.getTrueExpression(), receiver, encodesResult, frame),
-                    function(call, conditional.getFalseExpression(), receiver, encodesResult, frame));
+            return lowering.conditions().choice(conditional.getCondition(), frame).choose(
+                    inner -> function(call, conditional.getTrueExpression(), receiver, encodesResult, inner),
+                    inner -> function(call, conditional.getFalseExpression(), receiver, encodesResult, inner));
         }
         if (!(argument instanceof LambdaExpressionTree lambda)) {
             throw facts.rejection(DiagnosticCodes.EXPRESSION_UNSUPPORTED, argument,

@@ -669,6 +669,22 @@ public final class DiagnosticCodes {
             "Pattern variable ''{0}'' is already defined {1}",
             "Rename the pattern variable.");
 
+    public static final DiagnosticInfo PATTERN_VARIABLE_REASSIGNED = new DiagnosticInfo(
+            "JULC0140",
+            "PATTERN_VARIABLE_REASSIGNED",
+            CompilerDiagnostic.Level.ERROR,
+            "CONTROL_FLOW",
+            "Reassigning pattern variable ''{0}'' is not supported",
+            "Declare a new local with the value you need, instead of assigning to the pattern variable.");
+
+    public static final DiagnosticInfo PATTERN_VARIABLE_SCOPE_UNSUPPORTED = new DiagnosticInfo(
+            "JULC0139",
+            "PATTERN_VARIABLE_SCOPE_UNSUPPORTED",
+            CompilerDiagnostic.Level.ERROR,
+            "CONTROL_FLOW",
+            "''{0}'' is in scope here in Java, but JuLC does not bind a pattern variable {1}",
+            "Test the value again where you use it, with instanceof or a switch over its sealed interface.");
+
     public static final DiagnosticInfo PATTERN_VARIABLE_SHADOWS_FIELD = new DiagnosticInfo(
             "JULC0059",
             "PATTERN_VARIABLE_SHADOWS_FIELD",
@@ -955,7 +971,7 @@ public final class DiagnosticCodes {
             CompilerDiagnostic.Level.ERROR,
             "TYPE",
             "Undefined variable: {0}",
-            "Check spelling, or add an import if the name is a type. A pattern variable is bound only where its instanceof is the whole condition of an if.");
+            "Check spelling, or add an import if the name is a type.");
 
     public static final DiagnosticInfo UNKNOWN_METHOD_ON_TYPE = new DiagnosticInfo(
             "JULC0024",
@@ -1122,6 +1138,8 @@ public final class DiagnosticCodes {
             PARAM_CONSTANT_VARIABLE,
             PARAM_RAW_PLUTUS_DATA,
             PATTERN_VARIABLE_CONFLICT,
+            PATTERN_VARIABLE_REASSIGNED,
+            PATTERN_VARIABLE_SCOPE_UNSUPPORTED,
             PATTERN_VARIABLE_SHADOWS_FIELD,
             PIR_INVALID_BINDING,
             PIR_TYPE_MISMATCH,

@@ -18,6 +18,7 @@ import org.julclang.compiler.codegen.ValidatorAssembly;
 import org.julclang.compiler.debug.DebugMetadataCollector;
 import org.julclang.compiler.error.CompilerDiagnostic;
 import org.julclang.compiler.frontend.javac.lower.BindingCheck;
+import org.julclang.compiler.frontend.javac.lower.PatternBindingCheck;
 import org.julclang.compiler.frontend.javac.subset.RecordDeclarations;
 import org.julclang.compiler.frontend.javac.lower.Lowering;
 import org.julclang.compiler.frontend.javac.lower.Scope;
@@ -163,6 +164,7 @@ public final class JavacCompilation {
                 var term = lowering.method(method, parts.scope, entry && context.isSourceMapEnabled());
                 if (Boolean.getBoolean(JulcCompiler.VERIFY_BINDER_NAMESPACE)) {
                     BindingCheck.check(parts.bindAround(term), lowering.terms().provenance());
+                    PatternBindingCheck.check(term, lowering.terms().provenance());
                 }
                 attempts.add(new MethodAttempt(parts.binder(method), parts.methodType(method), term, null));
             } catch (CompilerException e) {
@@ -294,7 +296,10 @@ public final class JavacCompilation {
                         terms.declared(elements.get(param.name()), binding, param.type());
                     },
                     term -> {
-                        if (Boolean.getBoolean(JulcCompiler.VERIFY_BINDER_NAMESPACE)) BindingCheck.check(term, terms.provenance());
+                        if (Boolean.getBoolean(JulcCompiler.VERIFY_BINDER_NAMESPACE)) {
+                            BindingCheck.check(term, terms.provenance());
+                            PatternBindingCheck.check(term, terms.provenance());
+                        }
                     },
                     (field, binding) -> terms.assembled(binding, field.name(), elements.get(field.name())),
                     (name, binding) -> terms.assembled(binding, name, methodElements.getOrDefault(name, libraries.binders().get(name))),

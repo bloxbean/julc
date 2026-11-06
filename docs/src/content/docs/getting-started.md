@@ -827,11 +827,26 @@ if (datum instanceof OutputDatum.OutputDatumInline inline) {
 }
 ```
 
-The pattern variable (`inline` above) is bound when the `instanceof` test is the whole
-condition of an `if` statement outside a loop. In other positions (a loop body, an `&&`
-condition, a negated guard, a ternary or a lambda) it is not bound yet ([#204](https://github.com/bloxbean/julc/issues/204)) and
-compilation fails, usually with `Undefined variable`; use a `switch` on the sealed type there.
-A pattern variable may not reuse the name of a field or `@Param` (`JULC0059`).
+The pattern variable (`inline` above) can be used wherever Java puts it in scope
+([#204](https://github.com/bloxbean/julc/issues/204)):
+
+```java
+if (action instanceof Bid bid && bid.amount().signum() > 0) { ... }
+long n = action instanceof Bid bid ? bid.amount().longValue() : 0;
+if (!(action instanceof Bid bid)) {
+    return false;              // the guard: bid is in scope for the rest of the block
+}
+return bid.amount().signum() > 0;
+```
+
+That includes `&&`, `||`, `!`, `?:`, lambdas, loop bodies, and the rest of a block after an
+`if` whose other branch leaves with `return`, `yield` or `break`. A plain type test
+`x instanceof Bid` works anywhere too. Two forms stay unsupported: a variable carried out of
+a `while` loop's condition into its body or past the loop (`JULC0139`, with a rewrite), and
+one declared in a `switch` guard (`JULC0074`). A pattern variable may
+not be reassigned (`JULC0140`; the one exception is the form that compiled before #204, a
+loop updating the variable of an `if` whose whole condition is its test) and may not reuse the
+name of a field or `@Param` (`JULC0059`).
 
 ### 8.4 For-Each Loops
 

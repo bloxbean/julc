@@ -73,7 +73,7 @@ class JavacSubsetCodesTest {
             "JULC0110|class F { static long m(long a) { ; return a; } }",
             "JULC0002|class F { static long m(long a) { long b; return a; } }",
             "JULC0006|class F { static long m(long a) { { return a; } } }",
-            "JULC0011|class F { sealed interface S permits A { } record A(long v) implements S { } static long m(S s) { if (!(s instanceof A q)) { return 0; } return q.v(); } }",
+            "JULC0139|class F { sealed interface S permits A { } record A(long v) implements S { } static long m(S s) { while (!(s instanceof A q)) { s = new A(1); } return q.v(); } }",
             "JULC0111|class F { static long m(JulcList<BigInteger> xs) { for (var x : xs) { return 1; } return 0; } }",
             "JULC0113|class F { static long m(JulcList<BigInteger> xs) { long t = 0; for (var x : xs) { long b = 0; if (x.signum() > 0) { b = 1; } t = t + b; } return t; } }",
             "JULC0118|class F { static long m(long a) { return a << 2; } }",

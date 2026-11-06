@@ -18,6 +18,7 @@ import java.time.Duration;
 import java.util.HashSet;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -790,18 +791,15 @@ class JavacSwitchesTest {
     }
 
     /** {@code JULC0053} in a colon group, where javac's two declarators stand in no block. */
-    /** Outside a guard {@code instanceof} needs a pattern, on both frontends, whatever the operand's type. */
+    /** ADR-069 D1: outside a guard too, a bare {@code instanceof} of a variant is a tag test. */
     @ParameterizedTest
     @ValueSource(strings = {
             "static boolean m(JulcList<S> xs) { return xs.any(v -> v instanceof A); }",
             "static long m(JulcList<S> xs) { return xs.filter(v -> v instanceof B).size(); }",
             "static boolean m(JulcList<S> xs) { return xs.any(v -> { var w = v; return w instanceof A; }); }",
     })
-    void anInstanceofWithNoPatternHasNoVariant(String members) {
-        var e = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(),
-                new CompilerOptions()).compileMethod(source(members), "m"));
-        assertTrue(e.getMessage().contains("Unsupported instanceof pattern"), e::getMessage);
-    
+    void anInstanceofWithNoPatternIsATagTest(String members) {
+        assertDoesNotThrow(() -> new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()).compileMethod(source(members), "m"));
     }
 
     @Test

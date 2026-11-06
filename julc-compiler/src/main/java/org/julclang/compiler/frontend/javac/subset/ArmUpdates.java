@@ -106,6 +106,10 @@ final class ArmUpdates {
             // #162: cached case-field projections still refer to the original record.
             return facts.rejection(DiagnosticCodes.SWITCH_CASE_VARIABLE_REASSIGNED, assignment, name);
         }
+        // ADR-069 D8 rule 3: a pattern variable other than an if's whole condition's is never an arm's local.
+        if (facts.declaringTest(facts.element(target)) != null) {
+            return facts.patternVariableReassigned(assignment, facts.element(target));
+        }
         return facts.rejection(DiagnosticCodes.SWITCH_ARM_UPDATE_UNSUPPORTED, assignment, name);
     }
 }

@@ -165,8 +165,9 @@ Reassigning a case-pattern variable itself (`case Only p -> ... p = ...`) is now
 rejected ([#162](https://github.com/bloxbean/julc/issues/162)): cached field reads
 could otherwise use the original record. Copy it to a fresh arm-local accumulator
 and update that copy instead. This is conservative even if you yield the record
-without reading its fields. It does not prohibit otherwise-supported reassignment
-of an `instanceof` binding; those bindings use a different lowering path.
+without reading its fields. Reassigning an `instanceof` pattern variable is rejected
+too (`JULC0140`), except in the long-supported form where it is the whole condition of an
+`if` outside a loop with accumulators, and a loop in that `if` updates it.
 
 ### Loops inside an if outside a loop body
 
