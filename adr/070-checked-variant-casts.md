@@ -1,6 +1,7 @@
 # ADR-070: Checked casts to a sealed-interface variant
 
-**Status:** Proposed
+**Status:** Accepted (2026-11-06): approved in design review by Codex at `dde2a487` and by the semantics and code
+reviewers at `b6af2c48` (their P2/P3 points addressed in r3 and r4). The implementation follows in the same PR.
 **Date:** 2026-11-06
 **Risk class:** correctness-sensitive, **medium**. Today a downcast to the wrong variant reads another variant's fields
 and carries on, where Java throws: a validator can accept a datum its own Java tests reject. The fix changes the bytes
@@ -147,9 +148,11 @@ readOnce(x) as #operand;  if FstPair(UnConstrData(#operand)) == tag(V) then #ope
   - `TypeTests.tagTest(PirTerm scrutinee, Constructor c)`: the comparison.
   - `instanceof` keeps its own operand rule (P or V, `JULC0126` otherwise), its diagnostics and its terms; only the
     construction is shared, so its frozen rows (e.g. `a instanceof S.A b` with `a` typed `S.A`) do not move.
-  - `Casts` adds (2): `isOf(operand, V)` first (a same-type cast, no check), then `isOf(operand, P)`. `isOf` gains a
-    `TypeVariable` case that reads the upper bound, recursively (a bound may be an intersection or a variable).
-    `Casts` gains `TypeTests` as a collaborator.
+  - `Casts` adds (2) through a cast-only predicate, `isOfThroughBounds`: the operand statically V first (a same-type
+    cast, no check), then the operand in P's family. It reads a type variable or captured wildcard through its upper
+    bound, recursively (a bound may be an intersection or a variable). `instanceof` keeps its own `isOf`, which reads
+    no bound, so its diagnostics stay: `((JulcList<? extends S>) xs).head() instanceof S.A` is still `JULC0126`,
+    pinned. `Casts` gains `TypeTests` as a collaborator.
 - `readOnce` (#146) binds the operand unless it is a variable or a literal, so it runs once.
 - `Error` carries no trace (I4). It is typed as the then-branch is (`typing.ofTerm` of the operand term), so the two
   branches agree for any typed pass and no type variable's PIR type is ever asked for; and it is located at the cast
@@ -291,6 +294,24 @@ All of the above green on the merge head; a Codex review with no open P0 or P1.
 - **Q6. `any`/`all` short-circuit.** Lean: a separate issue to make them stop at the first true (and false), which also
   fixes the trace divergence; not a blocker for D1, whose new failure is fail-closed.
 
+## Implementation results
+
+### M0: pins and cost baseline (2026-11-06)
+
+- `Adr070CheckedCastsHarnessTest` (julc-difftest, 11 tests, all four levels against the JVM):
+  - a downcast to `A` in seven positions (local, argument, return, traced operand, loop, lambda, and a cast to `C`, which
+    has `A`'s layout), over every variant. Today it agrees on its own variant and on the nullary `D` (the unchecked read
+    fails too), and is a MISMATCH on a variant with fields;
+  - four casts that need no check (upcast, same type, a downcast guarded by `instanceof`, the pattern form) agree on every
+    variant.
+- `Adr070CompatibilityPinsTest` (julc-compiler): nine D2 casts frozen (bytes, diagnostics, positions, PIR at every level):
+  an upcast, two same-type casts, a component typed V, `(V)(Object) x`, `(S)(Object) a`, `PlutusData`'s `IntData` and
+  `MapData`, and `PlutusData.cast`. Two rejections that stay are frozen too: a bounded type parameter (`JULC0012`) and an
+  `instanceof` of a captured wildcard (`JULC0126`). 110 new rows; none changed.
+- Cost baseline: the FLAT size, at every level, of the `julc-examples-javac` validators (commit `1263de1`) that
+  downcast `ScriptInfo`, compiled with this repository's compiler from the clone. 13 compile on their own; three need
+  sibling sources and are left out. The numbers are in the M1 table.
+
 ## Revision history
 
 - r1 (2026-11-06): initial proposal.
@@ -317,3 +338,7 @@ All of the above green on the merge head; a Codex review with no open P0 or P1.
     `ClassCastException` as a failure (F5, C9).
   - D2 and Q1: unbounded type variables and open super-interfaces stay views; a `ChooseData` check of `PlutusData`'s
     variants recorded as a follow-up; `PlutusData`'s wording (S9, S11, S12).
+- r4 (2026-11-06, responds to Codex's round 3 of `dde2a487`: APPROVED, F3–F5 resolved, F6 P2): the bound-aware
+  predicate is the cast's alone; `instanceof` keeps `isOf`, and a captured-wildcard `instanceof` stays `JULC0126`,
+  pinned (F6).
+- Accepted (2026-11-06).
