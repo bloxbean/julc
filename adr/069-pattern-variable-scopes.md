@@ -149,8 +149,8 @@ Where the code stands (`main` at `2b705c38`):
   re-derive this (D4).
 - **15.7.1, 15.23, 15.24, 15.25** Left operand first; `&&`, `||` evaluate the right operand only when needed; `?:`
   evaluates the condition, then exactly one arm (paraphrase). I2 rests on these.
-- **15.20.2** `instanceof` with a pattern: "a side effect of a true result is that all the pattern variables declared
-  in the pattern will be initialized"; the operand is evaluated once, before the test (paraphrase, with 14.30.2).
+- **15.20.2** `instanceof` with a pattern: "A side effect of a true result is that all the pattern variables declared
+  in Pattern, if any, will be initialized."; the operand is evaluated once, before the test (paraphrase, with 14.30.2).
 
 One consequence carries the design, and it is local. **A continuation that two paths of a sub-condition reach
 receives no variable introduced by that sub-condition**: `a && b` introduces nothing when false, `a || b` nothing when
@@ -188,8 +188,8 @@ enclosing binder.
   program is rejected today, so for every program that compiles today the PIR, the UPLC, the diagnostics and their
   order are unchanged. Constrains D1, D2, D8.
 - **I5. Fail closed.** Where JuLC has not bound a variable that javac resolved, the program is rejected with D6's
-  code. No read is ever lowered against a binder that is not in scope, and no branch that D4 judges not to fall
-  through is ever given a continuation silently (D4's sentinel). Constrains D4, D6.
+  code. No read is ever lowered against a binder that is not in scope, and the end of a branch that javac proves
+  cannot complete is an `Error` term, never a value (D4). Constrains D4, D6.
 - **I6. Linear lowering.** Every statement and expression is lowered once, and a continuation reached from k paths
   is either rebuilt per path when trivial or one shared join, so the term grows linearly with nesting. Constrains
   D2, D3, D4.
@@ -250,16 +250,25 @@ accumulators as they stand at that point; the condition updates nothing, so no u
 **When it is used.** One predicate, shared by every hook:
 
 1. the condition is in a switch guard (`frame.inGuard()`): no; the guard's lowering is unchanged;
-2. the condition is the whole condition of an `if` lowered by `Ifs` and is `x instanceof T v`: no; `Ifs.patternIf`
-   lowers it exactly as today (same term, same build order);
+2. the condition is the whole condition of an `if` lowered by `Ifs`, is `x instanceof T v`, and `v` has no use outside
+   the `if` statement (else it is a D4 `if`): no; `Ifs.patternIf` lowers it exactly as today (same term, same build
+   order);
 3. the condition's JLS 6.3.1 structure (through `&&`, `||`, `!`, parentheses and `?:`) declares a pattern variable
-   that javac resolves at least one read of (an `IdentifierTree` whose element is that `BINDING_VARIABLE`, anywhere in
-   the method): **yes**;
+   that javac resolves at least one use of: **yes**;
 4. otherwise: no; the condition keeps its current lowering.
 
-Case 3 is the only new path, and every program it applies to is rejected today: the read has no binder (`JULC0011`) or
-is a guard read (`JULC0074`, excluded by case 1). So I4 holds by construction, and a condition whose variable is never
-read (`return s instanceof Sq q && flag;`) keeps today's bare tag test.
+**Uses.** A use of a pattern variable is an `IdentifierTree` that javac resolves to its `BINDING_VARIABLE` element,
+anywhere in the method: lambda bodies and switch arms included; anonymous and local classes are outside the subset.
+An assignment target counts as a use, so D8 reports it. The index of uses lives in `JavacFacts`, built by the scan it
+already makes of each unit (`JavacFacts.index`), keyed by element; "outside the `if` statement" is an ancestor walk
+over `facts.parent`. Both are order-free, so the predicate is deterministic. The `Operators` hook asks the predicate at
+each nested operator, which is quadratic in the depth of one condition; at the depths the tests use (24) that is
+negligible.
+
+Case 3 and D4 are the only new paths, and every program they apply to is rejected today: a read of the variable has
+no binder (`JULC0011`), an assignment to it has none either (`JULC0116`, `JULC0061`), and a guard's use is `JULC0074`
+(excluded by case 1). So I4 holds by construction, and a condition whose variable is never used
+(`return s instanceof Sq q && flag;`) keeps today's bare tag test.
 
 **Where it is called:**
 
@@ -306,35 +315,50 @@ expression JuLC lowers. Rows a02, a04 (its condition), a06, a07, a07b, a08, b02,
 
 ### D4. Variables introduced by an `if` statement (JLS 6.3.2.2)
 
-**Trigger, read from javac.** An `if` statement introduces a variable into the rest of its block exactly when its
-condition declares a pattern variable that javac resolves a read of *outside the `if` statement* (in a following
-statement of the same block, or deeper in one). javac has then proved JLS 6.3.2.2 and 14.22 for it: exactly one of
-the `if`'s two outcomes falls through to the rest of the block, the one whose continuation binds that variable. JuLC
-does not use `Exits` to decide this (I3).
+**Trigger, read from javac.** An `if` statement that is a statement of a block introduces a variable into the rest of
+that block exactly when its condition declares a pattern variable that javac resolves a *use* of (D2, "Uses")
+*outside the `if` statement*: in a following statement of the same block, or deeper in one. javac has then proved
+JLS 6.3.2.2 and 14.22 for it: one outcome of the `if` (the one whose `Conditions` frame binds the variable) can
+complete normally, and the branch of the other outcome cannot. All variables an `if` introduces come from the same
+outcome, since a condition introduces only when true or only when false at its top. JuLC does not use `Exits` to
+decide this (I3). This classification comes first: a whole-condition `if (x instanceof T v)` with a use after it is a
+D4 `if`, not D2 case 2.
 
-**Lowering.** The `if` is lowered by `Conditions.branch` with:
+**Lowering: the rest of the block moves into the branch that falls through.** The statement list
+`if (e) S else T; rest` (with `T` empty when there is no `else`) is lowered as if it were
+`if (e) S else { T; rest }` when the variable is introduced when false, or `if (e) { S; rest } else T` when it is
+introduced when true, through `Conditions.branch`:
 
-- the falling-through continuation: its branch (or nothing, for a missing `else`) followed by the rest of the block,
-  lowered **once, in the frame where that branch ends**, so it sees the variable and any accumulator the branch
-  rebinds. The continuation is threaded through the branch's statement lowering as a frame-taking function, not a
-  term built in advance;
-- the other continuation: its branch, followed by a **sentinel** instead of the rest of the block. Lowering that
-  branch must end every path in `return`, `yield` or `break`; if any path reaches the sentinel, compilation stops
-  with an internal error naming the statement (never `unit`, never a silent value). Since javac has proved the branch
-  cannot complete normally, the sentinel firing is a JuLC defect, and it fails closed (I5).
+- the falling-through outcome lowers its branch's statements followed by `rest` as **one statement list**, in that
+  outcome's frame (so it sees the variable), with the enclosing continuation. Everything inside that list keeps
+  today's routing: an inner `if` that returns on some paths places `rest` with `Ifs.ifWithExit`, an inner `if` that
+  holds a loop shares it through ADR-050's join with the updated accumulators as arguments, and a loop body's breaking
+  `if` uses `LoopBody`'s join. So a falling branch that ends in several places (`if (k) { if (m) return 1; } ...`)
+  reaches `rest` exactly as a plain block does today, with the accumulators as each path leaves them;
+- the other outcome lowers its branch with an **unreachable continuation**: an `Error` term of the block's result type
+  (the method's or arm's value type, or `LoopBody`'s carried type through a `Shape` whose end is `Error`). javac has
+  proved that control cannot reach the end of that branch, so the term is dead at run time; it is the branch's own
+  `return`, `yield` or `break` (or a loop that never ends, `while (true) {}`) that leaves. Should a JuLC defect make it
+  reachable, the script fails, which is the fail-closed direction (I5).
 
-Which outcome falls through is the one whose continuation frame binds the read variable
-(`frame.scope().lookup(element) != null`). If the variable is bound in neither, the read later fails with D6's code.
+The splice is a choice of statement list, not a tree rewrite: `Statements` and `LoopBody` already concatenate lists
+(`LoopBody.spliced`). No continuation is built in a new way, so no `if` that introduces nothing changes its routing,
+its build order or its terms. `rest` is lowered once, in one place, as a block's tail always is.
 
-**Where.** One path reaches the rest of the block, so no join is needed, and D4 replaces the existing routing for
-these `if`s only: `Ifs.ifWithExit` and `Ifs.ifWithLoop` (ADR-050 join) in method, arm and lambda block bodies; and
-`LoopBody.breakingIf`'s three break shapes (no `else` and the then-branch breaks; the `else` breaks; the then-branch
-breaks and the `else` falls through), including those that today go through `LoopBody.joined`. An `if` that
-introduces nothing keeps today's routing, including ADR-050's joins.
+**Where.** In every block `Statements` lowers (method, switch-arm and lambda block bodies, accumulator-free loop
+bodies) and in every `LoopBody` path (`foldIf`, the three break shapes of `breakingIf`, and `joined`): when the `if`
+at index `i` is a D4 `if`, the list from `i` on is lowered as above instead of through `ifWithExit`, `ifWithLoop`,
+`foldIf` or `breakingIf`.
 
-This covers `return` in method and lambda block bodies, `yield` in switch-arm blocks, and `break` in accumulator loop
-bodies. `throw` and `continue` are not in the subset, and an expression statement (an `error()` call) can complete
-normally, so javac never brings a variable into scope after one.
+This covers `return` in method and lambda block bodies, `yield` in switch-arm blocks, `break` in accumulator loop
+bodies, and a branch that ends in `while (true) {}`. `throw` and `continue` are not in the subset, and an expression
+statement (an `error()` call) can complete normally, so javac never brings a variable into scope after one.
+
+*Alternative rejected (r2):* a frame-taking continuation threaded through `Statements`, `Ifs`, `Loops` and
+`LoopBody`, with a sentinel that fails the compile when a non-falling branch reaches it. Continuations are built
+eagerly today, before anything knows whether a branch places them, so a throwing sentinel rejects valid programs
+(`if (!(s instanceof Sq q)) { if (k) return 1; else return 2; } return q.s();`), and a branch that ends in
+`while (true) {}` would get an internal error instead of being compiled (review r2, F9, F12, S11–S13, C14, C15).
 
 ### D5. What stays rejected
 
@@ -369,24 +393,32 @@ references or ADR numbers. Guards are not affected: their reads are `JULC0074` b
   early-exit guard with `return`, `yield` or `break`, what stays rejected and the rewrite); the release notes describe
   the change.
 
-### D8. A pattern variable that `Conditions` binds cannot be assigned
+### D8. Assignments to pattern variables on the new paths
 
-Java allows assigning to a non-final pattern variable. In a loop body JuLC would lower such an assignment as a
-`let` in one branch, and a later read outside that branch would see the old value: a miscompile (review r1, F1). D8
-rejects an assignment, or compound assignment, to a `BINDING_VARIABLE` that the new path binds, with a new code
-`JULC0140` (`PATTERN_VARIABLE_REASSIGNED`) and the fix "copy it into a local, `Sq r = q;`, and update `r`". The check
-runs where the scan sees assignments, by element. `ArmUpdates` learns the same set by element, so in a switch arm the
-code is `JULC0140`, not `JULC0121`.
+Java allows assigning to a non-final pattern variable. In a loop body JuLC would lower such an assignment as a `let`
+in one branch, and a later read outside that branch would see the old value: a miscompile (review r1, F1). Which
+binders are "on the new path" is a lowering fact (it depends on guards and on whether a loop has accumulators), so
+D8 is three tree rules that do not depend on routing, each reporting a new code, `JULC0140`
+(`PATTERN_VARIABLE_REASSIGNED`), with the fix "copy it into a local, `Sq r = q;`, and update `r`":
 
-Assignments in a01's whole-condition form keep today's handling (I4); the harness pins what that does today, and Q5
-asks whether to reject them too in a follow-up.
+1. **Loop bodies.** `LoopRules.crossing` treats every `instanceof` binding variable declared inside the loop body as a
+   body local, by element. Its existing rule against an update that crosses an `if` join then rejects exactly the
+   hazard; a straight-line update inside the variable's scope stays correct, since later reads see the `let`.
+2. **Nested-loop accumulators.** `Loops.accumulators` rejects a pattern variable as an accumulator when `Conditions`
+   bound it (a set `Conditions` fills before it lowers its continuations).
+3. **Switch arms.** `ArmUpdates` rejects an assignment to any `instanceof` binding variable other than the whole
+   condition of an `if`, by element, instead of reporting `JULC0121`.
+
+Programs in a01's whole-condition form that compile today stay outside every rule (I4; M0 pins what they do), and Q5
+asks whether to cover them in a follow-up. M0 also probes each rule's shapes on `main` to confirm that everything they
+reject is rejected today.
 
 ## Affected stages and modules
 
 | Module | Stage | Change |
 |---|---|---|
-| `julc-compiler` | javac frontend lowering (`frontend/javac/lower`) | new `Conditions`; `Ifs`, `LoopBody`, `Operators`, `Lambdas`, `TypeTests`, `Names`, `Statements` (frame-taking continuation for D4) call it or are adjusted |
-| `julc-compiler` | subset scan (`frontend/javac/subset`) | D8's assignment check; `ArmUpdates` |
+| `julc-compiler` | javac frontend lowering (`frontend/javac/lower`) | new `Conditions`; `Ifs`, `Statements` and `LoopBody` (D4's splice), `Loops` (D8 rule 2), `Operators`, `Lambdas`, `TypeTests`, `Names`, `Terms` (introduction tags) |
+| `julc-compiler` | javac facts and subset rules | `JavacFacts` (index of uses); `LoopRules.crossing` and `ArmUpdates` (D8) |
 | `julc-compiler` | diagnostics (`resources/diagnostics.json`, generated `DiagnosticCodes`) | D7 |
 | `julc-compiler` | test-time checks (`julc.verifyBinderNamespace`) | I1's property check (verification 5) |
 | `julc-difftest` | harness, generator G1, Jazzer target | new harness tests, G1 gates and a steer, a fuzz target, diffcases, rejection sites |
@@ -426,7 +458,7 @@ one starts. The PR stays one PR.
 - **M2. D3.** `&&`, `||`, `!`, parentheses, `?:` with joins; the value form from `Operators`, with its checks. Rows
   a02, a06, a07, a07b, a08, b02, b08, `while`-condition reads. G1 gate `PATTERN_CONDITIONS` (VERSION bump). Exit: I1–I7
   tests green; a Jazzer run (verification 7).
-- **M3. D4, D7 docs.** Statement introduction with the sentinel in method, arm, lambda block and loop bodies. Rows
+- **M3. D4, D7 docs.** Statement introduction by splice in method, arm, lambda block and loop bodies. Rows
   a03, a04 and the D4 matrix. G1 gate `PATTERN_EXIT` (VERSION bump); the three gates on in the default profile. Exit:
   every row flipped except c01 (`JULC0139`); docs build; a final Jazzer run; Codex review.
 
@@ -447,9 +479,12 @@ derived from JuLC's own output. A newly supported shape must **agree**; a reject
    - the join cases: `s instanceof Sq q && (q.s() > 1 || q.s() < -1)` used in the then-branch,
      `!(!(s instanceof Sq q) || q.s() == 0) && q.s() > 1`, a boolean `?:` as a condition with each arm a pattern
      test, and the same inside lambdas with captures;
-   - D4: `return` (method, lambda block), `yield` (switch arm), `break` (each of the three loop shapes), with an
-     accumulator updated in the falling-through branch and by a loop in it (the `ifWithLoop` route), nested `if`s,
-     `else if` chains, and two early-exit guards in a row;
+   - D4: `return` (method, lambda block), `yield` (switch arm), `break` (each of the three loop shapes, and `foldIf`),
+     with an accumulator updated in the falling-through branch and by a loop in it (the `ifWithLoop` route), a falling
+     branch that ends in several places, a non-falling branch whose inner `if` returns on both sides, a branch ending
+     in `while (true) {}`, the whole-condition form with a use after it
+     (`if (s instanceof Sq q) { } else { return 0; } return q.s();`), nested `if`s, `else if` chains, and two
+     early-exit guards in a row;
    - `while (s instanceof Sq q && q.s() > t)` with one and with several accumulators;
    - D8: an assignment to a bound pattern variable in each position is `JULC0140`; a01's form keeps today's result.
 2. **No change for what compiles** (I4): M0's pins stay green at every milestone; the frozen reference and
@@ -459,24 +494,30 @@ derived from JuLC's own output. A newly supported shape must **agree**; a reject
    script size grows linearly with depth.
 4. **Fail closed** (I5, D6): c01, a `while` condition's variable used in its body, and a guard's variable are
    rejected with `JULC0139` or `JULC0074`, with the message and fix asserted; a test asserts that no
-   `BINDING_VARIABLE` read ever reaches `JULC0011`; a unit test drives D4's sentinel with a branch that falls through
-   and asserts the internal error.
-5. **I1 as a property on every compile** (`julc-compiler`): a check beside `BindingCheck`, under the same
-   `julc.verifyBinderNamespace` switch that every test compile sets, walks the lowered PIR (with its `Provenance`):
-   every `Let` whose binder is an `instanceof` `BINDING_VARIABLE` (case binders excluded) must head the then-branch
-   of an `IfThenElse` whose condition is `EqualsInteger(FstPair(UnConstrData(r)), k)`, where `r` is the `Var` (or, for
-   a trivial operand, the same term) that the `Let` binds. With `BindingCheck`'s resolution this proves I1 on every
-   compile the suite performs, G1 and Jazzer included. Unit tests also cover join creation (trivial versus not),
-   fresh copies, join names (sibling and nested joins, I7), and the frames passed to continuations (incoming frame
-   plus JLS 6.3.1's sets).
+   `BINDING_VARIABLE` read ever reaches `JULC0011`; unit tests assert that D4's non-falling branch ends in `Error` and
+   that a falling branch with several endings (nested `return`s, a loop updating an accumulator) places `rest` through
+   today's routing.
+5. **I1 as a property on every compile** (`julc-compiler`): `Conditions` and `patternIf` tag each binder they
+   introduce (the `Let`, through `Terms`, with the pattern's element, its expected constructor tag from the
+   registry, and the operand term), since `Provenance` alone cannot tell an `instanceof` binder from a case binder or
+   from a rebinding (`Loops.rebindPreLoopVariables`' `let q = q`, accumulator updates). A check beside `BindingCheck`,
+   under the same `julc.verifyBinderNamespace` switch that every test compile sets, verifies on the lowered PIR, seeing
+   through position wrappers: every tagged introduction heads the then-branch of an `IfThenElse` whose condition is
+   `EqualsInteger(FstPair(UnConstrData(r)), k)` with `k` the expected tag and `r` the tagged operand; and every other
+   `Let` of that element lies inside that then-branch. Guard tests are `DataMatch` and never tagged (case 1). With
+   `BindingCheck`'s resolution this proves I1 on every compile the suite performs, G1 and Jazzer included. Unit tests
+   feed it PIR with a wrong tag, a wrong operand and a binder outside its branch (each must fail) and the
+   identity-rebinding shape (must pass), and cover join creation (trivial versus not), fresh copies, join names
+   (sibling and nested, I7), and the frames passed to continuations (incoming frame plus JLS 6.3.1's sets).
 6. **Generator** (ADR-066 G1): three gates, one per milestone (`PATTERN_LOOPS`, `PATTERN_CONDITIONS`, `PATTERN_EXIT`),
    each with a VERSION bump, marker features in `GATED`, `G1GatesTest` updated, and a `Steer.ISSUE_204` that
    concentrates generation on them. Two modes:
    - *accepted shapes:* the generator tracks JLS 6.3.1's sets and emits only uses Java accepts and the gates support;
      every program must **agree** with the JVM at every level. `JULC0139` is a failure here, not an allowed code.
    - *javac-filtered:* the generator also emits uses outside its own model (after a `while`, in `else` branches of
-     constant conditions, after branches that end in a `while (true)`); programs javac rejects are skipped; the
-     property is that no program **diverges**: each agrees or is rejected with a coded diagnostic. This reaches the
+     constant conditions, after branches that end in a `while (true)`); programs javac rejects are skipped, through a
+     skip outcome `CampaignVerifier` gains for this mode; the property is that no program **diverges**: each agrees or
+     is rejected with a coded diagnostic. This reaches the
      javac-versus-JuLC boundary that the first mode cannot.
 7. **Jazzer** (ADR-063 D13): a fuzz target, `Adr069PatternFlowFuzzTest.generatedProgramsAgree`, decodes the fuzzer's
    bytes into a G1 plan under the gates and `Steer.ISSUE_204` and asserts 6's properties. Its saved inputs
@@ -499,11 +540,12 @@ derived from JuLC's own output. A newly supported shape must **agree**; a reject
   verification 5, and from outside by 1, 6 and 7.
 - **Operand order or double evaluation** (I2). Mitigated by `readOnce` at the leaf (as #146) and by traced operands.
 - **Byte drift for existing programs** (I4). Mitigated by the read-based gate and M0's pins.
-- **D4 judged wrong.** D4 reads javac's proof; the other branch ends in a sentinel, so a JuLC defect stops the
-  compile rather than building a fall-through to nothing.
+- **D4 judged wrong.** D4 reads javac's proof, and the non-falling branch ends in `Error`, so a JuLC defect fails
+  the script rather than returning a value.
 - **Join cost.** A shared continuation costs a lambda and an application (an estimate: tens of bytes, a few thousand
   CPU units). It applies only to case-3 conditions with a non-trivial shared continuation, all rejected today.
-- **Assignment to a pattern variable.** D8 rejects it on the new paths; a01's form is pinned as it is today.
+- **Assignment to a pattern variable.** D8's three tree rules reject the hazardous shapes; a01's form is pinned as it
+  is today.
 
 ## Related findings (out of scope)
 
@@ -558,3 +600,15 @@ derived from JuLC's own output. A newly supported shape must **agree**; a reject
   - S4 named cases (lambda block, switch-arm `yield`, `while` condition, outer variable in a nested loop) added to the
     harness list; S9's frame wording and D4's `return`/`yield`/`break` note applied.
   - R1 measured and recorded.
+- r3 (2026-11-06, responds to the round-2 review of `2033576a`: Codex F9–F12, semantics S10–S15, code C13–C18):
+  - D4 rewritten as a splice: the rest of the block is lowered with the falling-through branch as one statement list
+    under today's routing, and the other branch ends in an unreachable `Error` (F9, F12, S11, S12, S13, C14, C15). The
+    r2 frame-taking continuation and sentinel are recorded as a rejected alternative. `foldIf` covered.
+  - D4 classification precedes D2 case 2; case 2 only when the variable has no use outside the `if` (F11, S10, C13).
+  - "Use" defined (assignment targets included), its index in `JavacFacts`, the walk's coverage and cost stated
+    (S14, C18).
+  - D8 as three routing-independent tree rules: `LoopRules.crossing` by element, `Loops.accumulators`, `ArmUpdates`
+    (C16).
+  - I1's check runs on explicitly tagged introductions with their expected tag and operand; rebindings must lie in the
+    introduction's then-branch; negative PIR tests (F10, C17).
+  - `CampaignVerifier`'s skip outcome for the javac-filtered mode named (C9 note); 15.20.2 quoted verbatim (S15).
