@@ -211,9 +211,9 @@ class RecordPatternDiagnosticTest {
         assertTrue(fix.contains("matches `A " + longName + "`"), fix);
     }
 
-    /** A plain type test has no pattern node, and keeps its position. */
+    /** A plain type test has no pattern node: it is a tag test (ADR-069 D1), not a rejection. */
     @Test
-    void aPlainTypeTestKeepsItsLocation() {
+    void aPlainTypeTestIsATagTest() {
         var source = """
                 import java.math.BigInteger;
                 public class Probe {
@@ -225,9 +225,6 @@ class RecordPatternDiagnosticTest {
                     }
                 }
                 """;
-        var diagnostic = rejected(source, "JULC0077");
-        assertEquals("Probe.java", diagnostic.fileName());
-        assertEquals(7, diagnostic.line());
-        assertTrue(diagnostic.excerpt().contains("return s instanceof A;"), diagnostic.toString());
+        assertDoesNotThrow(() -> new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()).compileMethod(source, "m"));
     }
 }

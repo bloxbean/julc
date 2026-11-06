@@ -14,6 +14,7 @@ import org.julclang.core.source.SourceLocation;
 
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ExecutableElement;
+import java.math.BigInteger;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.function.Supplier;
@@ -71,6 +72,16 @@ public final class Terms {
     PirTerm.Let let(Binder binder, PirTerm value, PirTerm body) {
         var binding = new PirTerm.Let(binder.name(), value, body);
         provenance.binder(binding, binder.name(), binder.element());
+        return binding;
+    }
+
+    /**
+     * {@code let binder = operand in body}, which introduces an {@code instanceof} pattern variable under the test of
+     * {@code operand}'s tag against {@code tag} (ADR-069 I1): recorded, so the check can find where each one is bound.
+     */
+    PirTerm.Let introduced(Binder binder, PirTerm operand, BigInteger tag, PirTerm body) {
+        var binding = let(binder, operand, body);
+        provenance.introduction(binding, new Provenance.Introduction(binder.element(), operand, tag));
         return binding;
     }
 

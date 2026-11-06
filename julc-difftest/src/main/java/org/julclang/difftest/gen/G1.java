@@ -25,7 +25,7 @@ import static org.julclang.difftest.gen.G1Ast.BOOL;
 import static org.julclang.difftest.gen.G1Ast.UNREADABLE;
 
 /**
- * The second program grammar (ADR-066 D2, G1 r9): user records and sealed interfaces with record variants,
+ * The second program grammar (ADR-066 D2, G1 r10): user records and sealed interfaces with record variants,
  * {@code static final} fields, helpers, method-level {@code if} and {@code instanceof} patterns, G0's loops
  * with accumulators of any generated type, record and sealed arguments and results, traces and failures, and
  * {@code switch} expressions with type patterns, {@code default}, {@code yield} blocks, loops in arms and nesting
@@ -60,7 +60,7 @@ public final class G1 {
      * The decoding's version, saved with every case (ADR-066 G1-I5). Change it whenever a plan, an input sequence or
      * a profile would decode to something different.
      */
-    public static final String VERSION = "G1 r9";
+    public static final String VERSION = "G1 r10";
 
     /**
      * The switches of a generation profile (ADR-066 D6), each gating a construct whose defect is open; once the fix is
@@ -104,7 +104,17 @@ public final class G1 {
          * rest of the block) and read later makes JuLC reject the program. Loop-body locals in the block are scoped
          * and stay ungated. Fixed by ADR-067 M1 round 3 (the block is scoped), so on in the default profile since G1 r8.
          */
-        DEFAULT_BLOCK_SCOPE;
+        DEFAULT_BLOCK_SCOPE,
+        /**
+         * ADR-069 M1 (#204), since G1 r10: a bare type test {@code x instanceof V} wherever a condition is generated,
+         * and in the body of a loop with accumulators {@code if (x instanceof V v) { … }}, its whole condition the
+         * test (sometimes in extra parentheses), with reads of {@code v}'s components, an {@code else}, an
+         * {@code else if} chain of pattern tests, a nested pattern test or a {@code break}; {@code x} a variable or
+         * component of a sealed or variant type, or a call returning one. The variable is never assigned and never
+         * read under {@code &&}, {@code ||}, {@code !} or {@code ?:} (M2) or after an early exit (M3). Off in the
+         * default profile until ADR-069 M3.
+         */
+        PATTERN_LOOPS;
 
         /** The switches G1 defines but does not implement yet: they wait for ADR-067 (M3, part 2). */
         public static final Set<Gate> INERT =
@@ -136,7 +146,13 @@ public final class G1 {
          * half of the method-call arguments a switch, and a default block there of a loop followed by a declaration or
          * by a {@code while} loop, whose counter is declared after the first loop.
          */
-        ISSUE_291_LOOPS(Gate.DEFAULT_BLOCK_SCOPE);
+        ISSUE_291_LOOPS(Gate.DEFAULT_BLOCK_SCOPE),
+        /**
+         * ADR-069 M1's shapes (#204): a family always, more loops, half of the loop bodies with {@code break}, two in
+         * three loop-body statements a pattern {@code if}, a quarter of the conditions a bare type test, and a variant
+         * compared with its own type only (no JULC0078 by design).
+         */
+        ISSUE_204(Gate.PATTERN_LOOPS);
 
         final Gate gate;
 
@@ -178,6 +194,11 @@ public final class G1 {
         public static final Profile REDISCOVER_291 = DEFAULT.with(Gate.DEFAULT_BLOCK_SCOPE).steered(Steer.ISSUE_291);
         /** The historical profile that rediscovers #291's rejection of loops in a default arm block (ADR-066 D10.1). */
         public static final Profile REDISCOVER_291_LOOPS = DEFAULT.with(Gate.DEFAULT_BLOCK_SCOPE).steered(Steer.ISSUE_291_LOOPS);
+        /**
+         * ADR-069 M1's campaign (#204): the default profile with {@link Gate#PATTERN_LOOPS} and steered to its shapes;
+         * every program must agree with the JVM ({@code Adr069PatternFlowPropertyTest}, {@code Adr069PatternFlowFuzzTest}).
+         */
+        public static final Profile PATTERN_FLOW_204 = DEFAULT.with(Gate.PATTERN_LOOPS).steered(Steer.ISSUE_204);
 
         public Profile {
             var gates = EnumSet.noneOf(Gate.class);
@@ -308,7 +329,13 @@ public final class G1 {
         LOOP, BREAK,
         /** Gated constructs (ADR-066 D6): a program under the default profile never contains one. */
         SHADOW_IN_LOOP_BRANCH, ZERO_ARG_HELPER, LOOP_BREAK_SHAPE, TRACE_IN_COMPARISON, ASSIGN_PATTERN_BINDING,
-        DEFAULT_BLOCK_SHADOW, DEFAULT_BLOCK_AFTER_LOOP;
+        DEFAULT_BLOCK_SHADOW, DEFAULT_BLOCK_AFTER_LOOP,
+        /** A bare type test {@code x instanceof V} (PATTERN_LOOPS, ADR-069 D1). */
+        BARE_TYPE_TEST,
+        /** {@code if (x instanceof V v)} in the body of a loop with accumulators (PATTERN_LOOPS, ADR-069 M1). */
+        LOOP_PATTERN_IF,
+        /** An {@code else if} chain of pattern tests in a loop body (PATTERN_LOOPS). */
+        LOOP_PATTERN_ELSE_IF;
 
         /**
          * The features with a quota: D8's list without the features of the gated constructs (guards, record patterns,
@@ -320,7 +347,7 @@ public final class G1 {
         public static final Set<Feature> GATED =
                 Collections.unmodifiableSet(EnumSet.of(SHADOW_IN_LOOP_BRANCH, ZERO_ARG_HELPER, LOOP_BREAK_SHAPE,
                         TRACE_IN_COMPARISON, ASSIGN_PATTERN_BINDING, DEFAULT_BLOCK_SHADOW,
-                        DEFAULT_BLOCK_AFTER_LOOP));
+                        DEFAULT_BLOCK_AFTER_LOOP, BARE_TYPE_TEST, LOOP_PATTERN_IF, LOOP_PATTERN_ELSE_IF));
     }
 
     /** A decoded program: its source, its tag table, its features, its profile and its entry parameters. */
@@ -545,8 +572,9 @@ public final class G1 {
                 features.add(Feature.RECORD);
             }
         }
-        // Steered to #291, a family of two or three variants to switch on with a default arm.
-        if ((profile.steers(Steer.ISSUE_291) || profile.steers(Steer.ISSUE_291_LOOPS)) && families == 0) {
+        // Steered to #291, a family of two or three variants to switch on with a default arm; steered to #204, to test.
+        if ((profile.steers(Steer.ISSUE_291) || profile.steers(Steer.ISSUE_291_LOOPS) || profile.steers(Steer.ISSUE_204))
+                && families == 0) {
             declareFamily(families++, 2 + choices.below(2));
         }
         if (families == 2) features.add(Feature.TWO_FAMILIES);
@@ -788,6 +816,8 @@ public final class G1 {
             if (shadowing && kind != 1 && choices.oneIn(2)) kind = 1;
             // Steered to #291, more switch-valued locals: the read after the switch needs one before it.
             if (defaultShadowing && kind != 8 && choices.oneIn(2)) kind = 8;
+            // Steered to #204, more loops: M1's pattern tests live in loop bodies.
+            if (profile.steers(Steer.ISSUE_204) && kind > 3 && choices.oneIn(2)) kind = 1;
             switch (kind) {
                 case 0 -> scope = declaration(scope, body, true, null);
                 case 1, 2, 3 -> {
@@ -985,7 +1015,9 @@ public final class G1 {
     private void body(Scope scope, List<Stmt> into, List<String> updated, boolean counted) {
         // A body with break contains no loop (reject-nested-loop-in-break-loop). Loop bodies with break and
         // conditional updates are gated (LOOP_BREAK_SHAPES, #254, #255).
-        boolean breakAware = choices.oneIn(3) && !profile.steers(Steer.ISSUE_209);
+        // Steered to #204, half of the bodies, so that pattern ifs meet break often.
+        boolean breakAware = (profile.steers(Steer.ISSUE_204) ? choices.oneIn(2) : choices.oneIn(3))
+                && !profile.steers(Steer.ISSUE_209);
         boolean conditionalUpdates = !breakAware || profile.has(Gate.LOOP_BREAK_SHAPES);
         // A switch arm in a body with break contains no loop either (reject-nested-loop-in-break-loop).
         if (breakAware) breakAwareBodies++;
@@ -1007,7 +1039,23 @@ public final class G1 {
             if (kind == 3 && !breakAware) kind = 0;
             if (kind == 2 && !conditionalUpdates) kind = 1;
             if (kind == 5 && (breakAware || scope.loopDepth() >= MAX_LOOP_DEPTH)) kind = 0;
+            // Under PATTERN_LOOPS a third of the plain updates are pattern ifs; steered to #204, two in three statements
+            // other than a break or a loop.
+            if (profile.has(Gate.PATTERN_LOOPS) && conditionalUpdates
+                    && (profile.steers(Steer.ISSUE_204) ? kind != 3 && kind != 5 && !choices.oneIn(3)
+                    : kind <= 1 && choices.oneIn(3))) {
+                kind = 7;
+            }
             switch (kind) {
+                case 7 -> {
+                    hasIfUpdate = true;
+                    patternBreak = false;
+                    scope = patternUpdate(scope, into, assigned, breakAware);
+                    if (patternBreak) {
+                        hasBreak = true;
+                        features.add(Feature.BREAK);
+                    }
+                }
                 case 0, 1 -> assignment(scope, into, assigned, null);
                 case 2 -> {
                     hasIfUpdate = true;
@@ -1069,6 +1117,165 @@ public final class G1 {
         }
         into.add(new G1Ast.If(test, then, otherwise));
         if (shadowed != null) fieldRead(scope, into, assigned, shadowed);
+    }
+
+    // ---------------------------------------------------------------- pattern tests (PATTERN_LOOPS, ADR-069 M1)
+
+    /** How deep pattern ifs nest in a then-branch, and how many tests an {@code else if} chain has at most. */
+    private static final int MAX_PATTERN_NESTING = 2;
+    /** Whether the last {@link #patternUpdate} emitted a {@code break}. */
+    private boolean patternBreak;
+
+    /**
+     * What a type test may test: a variable or a component read of a sealed type (any variant) or of a variant type
+     * (that variant only), or a call of a helper returning one; {@code type} is the sealed or the variant type.
+     */
+    private record Tested(Var var, List<String> components, Helper helper, Type type) {
+    }
+
+    private List<Tested> tested(Ctx ctx) {
+        var tested = new ArrayList<Tested>();
+        for (Var var : readable(ctx)) {
+            if (testable(var.type())) tested.add(new Tested(var, List.of(), null, var.type()));
+            if (var.type().kind != Kind.RECORD) continue;
+            for (Component component : var.type().components) {
+                if (testable(component.type())) tested.add(new Tested(var, List.of(component.name()), null, component.type()));
+            }
+        }
+        for (Helper helper : ctx.helpers()) {
+            if (testable(helper.result()) && !(ctx.traceFree() && helper.traces())) {
+                tested.add(new Tested(null, List.of(), helper, helper.result()));
+            }
+        }
+        return tested;
+    }
+
+    /**
+     * One of the candidates; steered to #204, a call a third of the time there is one, so that a helper's traces show
+     * the order the test is evaluated in.
+     */
+    private Tested pick(List<Tested> candidates) {
+        var calls = candidates.stream().filter(t -> t.helper() != null).toList();
+        if (profile.steers(Steer.ISSUE_204) && !calls.isEmpty() && choices.oneIn(3)) return calls.get(choices.below(calls.size()));
+        return candidates.get(choices.below(candidates.size()));
+    }
+
+    private static boolean testable(Type type) {
+        return type.kind == Kind.SEALED || type.family != null;
+    }
+
+    /** The tested expression; a call's arguments are generated as a test's, with no switch in them. */
+    private Expr testedExpression(Tested tested, Ctx ctx, int depth) {
+        if (tested.helper() == null) {
+            if (tested.var().field()) fieldReads++;
+            if (tested.components().isEmpty()) return new G1Ast.Read(tested.var());
+            features.add(Feature.COMPONENT_ACCESS);
+            return new G1Ast.Access(tested.var(), tested.components());
+        }
+        Helper helper = tested.helper();
+        features.add(Feature.HELPER_CALL);
+        if (helper.traces()) traceSites++;
+        var arguments = new ArrayList<Expr>();
+        tests++;
+        try {
+            for (Var parameter : helper.parameters()) arguments.add(expression(parameter.type(), ctx, Math.max(0, depth - 1)));
+        } finally {
+            tests--;
+        }
+        return new G1Ast.Call(helper.name(), helper.result(), arguments);
+    }
+
+    /** A variant to test against: any of a sealed type's, a variant type's own. */
+    private Type testedVariant(Type type) {
+        return type.kind == Kind.SEALED ? type.variants.get(choices.below(type.variants.size())) : type;
+    }
+
+    /** {@code x instanceof V}, a bare type test (ADR-069 D1), or null when nothing in scope can be tested. */
+    private Expr typeTest(Ctx ctx, int depth) {
+        var candidates = tested(ctx);
+        if (candidates.isEmpty()) return null;
+        Tested tested = pick(candidates);
+        Expr subject = testedExpression(tested, ctx, depth);
+        features.add(Feature.BARE_TYPE_TEST);
+        return new G1Ast.TypeTest(subject, testedVariant(tested.type()));
+    }
+
+    /**
+     * {@code if (x instanceof V v) { … }} in a loop body (ADR-069 M1), after a local of a family's type when nothing
+     * in scope can be tested, or an {@link #ifUpdate} when no family is declared; the scope after it is returned.
+     */
+    private Scope patternUpdate(Scope scope, List<Stmt> into, List<String> assigned, boolean breakAware) {
+        if (tested(ctx(scope)).isEmpty()) {
+            var families = types.stream().filter(t -> t.kind == Kind.SEALED).toList();
+            if (families.isEmpty()) {
+                ifUpdate(scope, into, assigned);
+                return scope;
+            }
+            Type family = families.get(choices.below(families.size()));
+            String name = freshName(false);
+            into.add(new G1Ast.Declare(family, name, expression(family, ctx(declaring(scope, name)), EXPRESSION_DEPTH)));
+            if (isField(name)) features.add(Feature.FIELD_SHADOWED);
+            scope = scope.with(new Var(name, family, false, false, true, false));
+        }
+        into.add(patternIf(scope, assigned, breakAware, 0, null, null, 1));
+        return scope;
+    }
+
+    /**
+     * One pattern {@code if}, whose subject is, in an {@code else if}, two times in three the previous test's
+     * ({@code subject}, of type {@code type}). Its then-branch may read a component of the variable into a local and
+     * may nest another pattern {@code if}; it assigns an accumulator, preferring reads of the variable. Then no
+     * {@code else}, an {@code else} that assigns, or an {@code else if}. In a body with {@code break}, the first test
+     * of an outermost chain may end its then-branch or make its {@code else} a {@code break}, not both. The variable
+     * is never assigned: it is not assignable in the branch's scope.
+     */
+    private G1Ast.PatternIf patternIf(Scope scope, List<String> assigned, boolean breakAware, int nesting, Expr subject,
+                                      Type type, int chain) {
+        if (subject == null || choices.oneIn(3)) {
+            var candidates = tested(ctx(scope));
+            Tested tested = pick(candidates);
+            subject = testedExpression(tested, ctx(scope), EXPRESSION_DEPTH);
+            type = tested.type();
+        }
+        Type variant = testedVariant(type);
+        String binding = freshName(true);
+        features.add(Feature.LOOP_PATTERN_IF);
+        Var bound = new Var(binding, variant, false, false, true, false);
+        Scope branch = scope.with(bound);
+        var then = new ArrayList<Stmt>();
+        if (!variant.components.isEmpty() && choices.oneIn(2)) {
+            Component component = variant.components.get(choices.below(variant.components.size()));
+            String name = freshName(true);
+            features.add(Feature.COMPONENT_ACCESS);
+            then.add(new G1Ast.Declare(component.type(), name, new G1Ast.Access(bound, List.of(component.name()))));
+            branch = branch.with(new Var(name, component.type(), false, false, true, false));
+        }
+        if (nesting + 1 < MAX_PATTERN_NESTING && choices.oneIn(4)) {
+            then.add(patternIf(branch, assigned, false, nesting + 1, null, null, 1));
+        }
+        assignment(branch, then, assigned, choices.oneIn(3) ? null : binding);
+        // Only the first test of an outermost chain breaks, in one branch at most, so that the if completes normally.
+        boolean breaks = breakAware && nesting == 0 && chain == 1;
+        boolean thenBreaks = breaks && choices.oneIn(profile.steers(Steer.ISSUE_204) ? 2 : 3);
+        if (thenBreaks) {
+            then.add(new G1Ast.Break());
+            patternBreak = true;
+        }
+        List<Stmt> otherwise = null;
+        int otherwiseKind = choices.below(4);
+        if (otherwiseKind == 2) {
+            otherwise = new ArrayList<>();
+            if (breaks && !thenBreaks && choices.oneIn(3)) {
+                otherwise.add(new G1Ast.Break());
+                patternBreak = true;
+            } else {
+                assignment(scope, otherwise, assigned, null);
+            }
+        } else if (otherwiseKind == 3 && chain < MAX_PATTERN_NESTING + 1) {
+            features.add(Feature.LOOP_PATTERN_ELSE_IF);
+            otherwise = List.of(patternIf(scope, assigned, breakAware, nesting, subject, type, chain + 1));
+        }
+        return new G1Ast.PatternIf(subject, variant, binding, choices.oneIn(4), then, otherwise);
     }
 
     /**
@@ -1245,6 +1452,11 @@ public final class G1 {
 
     private Expr condition(Ctx ctx, int depth) {
         if (ctx.constant()) return new G1Ast.BoolConst(choices.oneIn(2));
+        // Under PATTERN_LOOPS a tenth of the conditions are a bare type test; steered to #204, a quarter.
+        if (profile.has(Gate.PATTERN_LOOPS) && choices.oneIn(profile.steers(Steer.ISSUE_204) ? 4 : 10)) {
+            Expr test = typeTest(ctx, depth);
+            if (test != null) return test;
+        }
         if (depth == 0 || choices.below(3) == 0) return atom(BOOL, ctx);
         return switch (choices.below(13)) {
             case 0, 1 -> comparison(ctx, depth);
@@ -1281,6 +1493,17 @@ public final class G1 {
         if (!familial.isEmpty() && !choices.oneIn(4)) receivers = familial;
         Var receiver = receivers.get(choices.below(receivers.size()));
         Type type = receiver.type().family != null && !choices.oneIn(4) ? receiver.type().family : receiver.type();
+        // Steered to #204, whose campaign requires agreement, no argument that JuLC rejects by design (ADR-068 D6): a
+        // variant is compared with its own type only, since against its family the argument may be another variant
+        // (JULC0078); and the argument is a variable, a component read or a constructor, since equals's Object
+        // parameter gives a conditional or a switch over two variants no target type (JULC0012).
+        if (profile.steers(Steer.ISSUE_204)) {
+            type = receiver.type();
+            features.add(Feature.RECORD_EQUALS);
+            if (type.kind == Kind.SEALED) features.add(Feature.FAMILY_EQUALS);
+            Expr read = read(receiver);
+            return new G1Ast.Equals(read, choices.oneIn(2) ? atom(type, ctx) : construct(type, ctx, Math.max(1, depth - 1)));
+        }
         features.add(Feature.RECORD_EQUALS);
         if (type.kind == Kind.SEALED) features.add(Feature.FAMILY_EQUALS);
         Expr read = read(receiver);

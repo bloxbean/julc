@@ -41,6 +41,9 @@ class Adr069PatternScopesHarnessTest {
                         record D() implements S { }
                         record C(BigInteger v) implements S { }
                     }
+                    static JulcList<S> ys(S s) {
+                        return JulcList.of(new S.C(BigInteger.valueOf(3)), s, new S.B(BigInteger.ONE, BigInteger.TWO), s, new S.A(BigInteger.valueOf(4)));
+                    }
                     static JulcList<S> xs() {
                         return JulcList.of(new S.A(BigInteger.TWO), new S.D(), new S.B(BigInteger.TEN, BigInteger.ONE), new S.C(BigInteger.valueOf(5)),
                                 new S.A(BigInteger.valueOf(7)));
@@ -144,49 +147,81 @@ class Adr069PatternScopesHarnessTest {
                 + "case S.B b -> b.w().longValue(); case S.C c -> 100; case S.D d -> 1; }; } return t; }");
     }
 
-    // --- M0: the shapes the ADR adds, as rejected today (each flips in M1-M3) ---
+    // --- M1: a single pattern test, wherever its if stands, and a bare type test (D1, D2) ---
+
+    /** Loop bodies with an accumulator (LoopBody: foldIf, breakingIf, joined), over a list that holds each variant. */
+    @ParameterizedTest(name = "{0}")
+    @CsvSource(delimiterString = " ~ ", textBlock = """
+            b01 for                 ~ public static long m(S s) { long t = 0; for (S x : ys(s)) { if (x instanceof S.A a) { t = t + a.v().longValue(); } } return t; }
+            b03 for else-if         ~ public static long m(S s) { long t = 0; for (S x : ys(s)) { if (x instanceof S.B b) { t = t + b.w().longValue(); } else if (x instanceof S.A a) { t = t + a.v().longValue(); } } return t; }
+            b04 while               ~ public static long m(S s) { long t = 0; long i = 0; while (i < 5) { S x = ys(s).get(i); if (x instanceof S.A a) { t = t + a.v().longValue(); } i = i + 1; } return t; }
+            b05 nested for          ~ public static long m(S s) { long t = 0; for (S y : ys(s)) { for (S x : ys(y)) { if (x instanceof S.A a) { t = t + a.v().longValue(); } } } return t; }
+            b06 for break           ~ public static long m(S s) { long t = 0; for (S x : ys(s)) { if (x instanceof S.A a) { t = t + a.v().longValue(); break; } t = t + 1; } return t; }
+            b06b break else         ~ public static long m(S s) { long t = 0; for (S x : ys(s)) { if (x instanceof S.A a) { t = t + a.v().longValue(); } else { break; } t = t + 1; } return t; }
+            b06c fold in break loop ~ public static long m(S s) { long t = 0; for (S x : ys(s)) { if (x instanceof S.A a) { t = t + a.v().longValue(); } if (t > 6) { break; } } return t; }
+            b09 two accumulators    ~ public static long m(S s) { long t = 0; long u = 0; for (S x : ys(s)) { if (x instanceof S.A a) { t = t + a.v().longValue(); u = u + 1; } } return t * 10 + u; }
+            b10 two, with break     ~ public static long m(S s) { long t = 0; long u = 0; for (S x : ys(s)) { if (x instanceof S.C c) { t = t + c.v().longValue(); u = u + 1; } if (u > 1) { break; } } return t * 10 + u; }
+            b11 traced operand      ~ public static long m(S s) { long t = 0; for (S x : ys(s)) { if (echo("e", x) instanceof S.A a) { t = t + said("v", a.v()).longValue(); } } return t; }
+            b12 parenthesized       ~ public static long m(S s) { long t = 0; for (S x : ys(s)) { if ((x instanceof S.C c)) { t = t + c.v().longValue(); } } return t; }
+            b13 outer in inner loop ~ public static long m(S s) { long t = 0; for (S y : ys(s)) { if (y instanceof S.A a) { for (S x : ys(s)) { t = t + a.v().longValue(); } } } return t; }
+            n01 bare test in a loop ~ public static long m(S s) { long t = 0; for (S x : ys(s)) { if (x instanceof S.A) { t = t + 1; } } return t; }
+            n05 bare else-if, loop  ~ public static long m(S s) { long t = 0; for (S x : ys(s)) { if (x instanceof S.B) { t = t + 10; } else if (x instanceof S.A) { t = t + 1; } } return t; }
+            n06 bare negated, loop  ~ public static long m(S s) { long t = 0; for (S x : ys(s)) { if (!(x instanceof S.A)) { t = t + 1; } } return t; }
+            """)
+    void aPatternTestInALoopBodyAgrees(String shape, String members) {
+        for (var s : everyS()) assertAgree(members, s);
+    }
+
+    /** Outside loop bodies: a second pair of parentheses, a conditional lambda, and bare tests in every position. */
+    @ParameterizedTest(name = "{0}")
+    @CsvSource(delimiterString = " ~ ", textBlock = """
+            p01 parenthesized       ~ public static long m(S s) { if ((s instanceof S.A a)) { return a.v().longValue(); } return 0; }
+            p02 traced, parens      ~ public static long m(S s) { if (((echo("e", s) instanceof S.C c))) { return said("v", c.v()).longValue(); } return 0; }
+            p03 conditional lambda  ~ public static long m(S s) { return xs().any(s instanceof S.A a ? x -> a.v().signum() > 0 : x -> false) ? 1 : 0; }
+            p04 lambda, own test    ~ public static long m(S s) { return ys(s).any(x -> { if ((x instanceof S.C c)) { return c.v().signum() > 3; } return false; }) ? 1 : 0; }
+            n02 bare test           ~ public static long m(S s) { if (s instanceof S.A) { return 1; } return 0; }
+            n03 bare test negated   ~ public static long m(S s) { return !(s instanceof S.A) ? 1 : 0; }
+            n04 bare test value     ~ public static long m(S s) { boolean c = s instanceof S.A; return c ? 1 : 0; }
+            n07 bare test, lambda   ~ public static long m(S s) { return ys(s).any(x -> x instanceof S.D) ? 1 : 0; }
+            n09 bare test, traced   ~ public static long m(S s) { return echo("e", s) instanceof S.B ? 1 : 0; }
+            """)
+    void aPatternOrTypeTestAgrees(String shape, String members) {
+        for (var s : everyS()) assertAgree(members, s);
+    }
+
+    // --- The shapes a later milestone adds: each is JULC0139 until then ---
 
     @ParameterizedTest(name = "{0}")
     @CsvSource(delimiterString = " ~ ", textBlock = """
-            a02 &&                  ~ JULC0011 ~ public static long m(S s) { if (s instanceof S.A a && a.v().signum() > 0) { return 1; } return 0; }
-            a03 early return        ~ JULC0011 ~ public static long m(S s) { if (!(s instanceof S.A a)) { return 0; } return a.v().longValue(); }
-            a04 negated or          ~ JULC0011 ~ public static long m(S s) { if (!(s instanceof S.A a) || a.v().signum() == 0) { return 0; } return a.v().longValue(); }
-            a06 ternary value       ~ JULC0011 ~ public static long m(S s) { long v = s instanceof S.A a ? a.v().longValue() : 5; return v; }
-            a07 ternary condition   ~ JULC0011 ~ public static long m(S s) { return s instanceof S.A a && a.v().signum() > 0 ? 1 : 0; }
-            a07b boolean local      ~ JULC0011 ~ public static long m(S s) { boolean c = s instanceof S.A a && a.v().signum() > 0; return c ? 1 : 0; }
-            a08 lambda              ~ JULC0011 ~ public static long m(S s) { return xs().any(x -> x instanceof S.A a && a.v().signum() > 5) ? 1 : 0; }
-            a09 lambda block guard  ~ JULC0011 ~ public static long m(S s) { return xs().any(x -> { if (!(x instanceof S.A a)) { return false; } return a.v().signum() > 0; }) ? 1 : 0; }
-            a10 use after if-else   ~ JULC0011 ~ public static long m(S s) { if (s instanceof S.A a) { } else { return 0; } return a.v().longValue(); }
-            a11 while condition     ~ JULC0011 ~ public static long m(S s) { long t = 0; while (s instanceof S.A a && a.v().longValue() > t) { t = t + 1; } return t; }
-            b01 for                 ~ JULC0011 ~ public static long m(S s) { long t = 0; for (S x : xs()) { if (x instanceof S.A a) { t = t + a.v().longValue(); } } return t; }
-            b02 for &&              ~ JULC0011 ~ public static long m(S s) { long t = 0; for (S x : xs()) { if (x instanceof S.A a && a.v().signum() > 0) { t = t + a.v().longValue(); } } return t; }
-            b03 for else-if         ~ JULC0011 ~ public static long m(S s) { long t = 0; for (S x : xs()) { if (x instanceof S.B b) { t = t + b.w().longValue(); } else if (x instanceof S.A a) { t = t + a.v().longValue(); } } return t; }
-            b04 while               ~ JULC0011 ~ public static long m(S s) { long t = 0; long i = 0; while (i < 4) { S x = xs().get(i); if (x instanceof S.A a) { t = t + a.v().longValue(); } i = i + 1; } return t; }
-            b05 nested for          ~ JULC0011 ~ public static long m(S s) { long t = 0; for (S y : xs()) { for (S x : xs()) { if (x instanceof S.A a) { t = t + a.v().longValue(); } } } return t; }
-            b06 for break           ~ JULC0011 ~ public static long m(S s) { long t = 0; for (S x : xs()) { if (x instanceof S.B b) { t = t + b.w().longValue(); break; } t = t + 1; } return t; }
-            b07 break guard         ~ JULC0011 ~ public static long m(S s) { long t = 0; for (S x : xs()) { if (!(x instanceof S.A a)) { break; } t = t + a.v().longValue(); } return t; }
-            b08 for ternary         ~ JULC0011 ~ public static long m(S s) { long t = 0; for (S x : xs()) { t = t + (x instanceof S.A a ? a.v().longValue() : 1); } return t; }
-            c01 after while         ~ JULC0011 ~ public static long m(S s) { S x = s; while (!(x instanceof S.A a)) { x = new S.A(BigInteger.ONE); } return a.v().longValue(); }
-            n01 bare test in a loop ~ JULC0077 ~ public static long m(S s) { long t = 0; for (S x : xs()) { if (x instanceof S.A) { t = t + 1; } } return t; }
-            n02 bare test           ~ JULC0077 ~ public static long m(S s) { if (s instanceof S.A) { return 1; } return 0; }
-            n03 bare test negated   ~ JULC0077 ~ public static long m(S s) { return !(s instanceof S.A) ? 1 : 0; }
-            n04 bare test value     ~ JULC0077 ~ public static long m(S s) { boolean c = s instanceof S.A; return c ? 1 : 0; }
-            n05 bare else-if, loop  ~ JULC0077 ~ public static long m(S s) { long t = 0; for (S x : xs()) { if (x instanceof S.B) { t = t + 10; } else if (x instanceof S.A) { t = t + 1; } } return t; }
-            n06 bare negated, loop  ~ JULC0077 ~ public static long m(S s) { long t = 0; for (S x : xs()) { if (!(x instanceof S.A)) { t = t + 1; } } return t; }
-            n07 bare test, lambda   ~ JULC0077 ~ public static long m(S s) { return xs().any(x -> x instanceof S.C) ? 1 : 0; }
+            a02 &&                  ~ JULC0139 ~ public static long m(S s) { if (s instanceof S.A a && a.v().signum() > 0) { return 1; } return 0; }
+            a03 early return        ~ JULC0139 ~ public static long m(S s) { if (!(s instanceof S.A a)) { return 0; } return a.v().longValue(); }
+            a04 negated or          ~ JULC0139 ~ public static long m(S s) { if (!(s instanceof S.A a) || a.v().signum() == 0) { return 0; } return a.v().longValue(); }
+            a06 ternary value       ~ JULC0139 ~ public static long m(S s) { long v = s instanceof S.A a ? a.v().longValue() : 5; return v; }
+            a07 ternary condition   ~ JULC0139 ~ public static long m(S s) { return s instanceof S.A a && a.v().signum() > 0 ? 1 : 0; }
+            a07b boolean local      ~ JULC0139 ~ public static long m(S s) { boolean c = s instanceof S.A a && a.v().signum() > 0; return c ? 1 : 0; }
+            a08 lambda              ~ JULC0139 ~ public static long m(S s) { return xs().any(x -> x instanceof S.A a && a.v().signum() > 5) ? 1 : 0; }
+            a09 lambda block guard  ~ JULC0139 ~ public static long m(S s) { return xs().any(x -> { if (!(x instanceof S.A a)) { return false; } return a.v().signum() > 0; }) ? 1 : 0; }
+            a10 use after if-else   ~ JULC0139 ~ public static long m(S s) { if (s instanceof S.A a) { } else { return 0; } return a.v().longValue(); }
+            a11 while condition     ~ JULC0139 ~ public static long m(S s) { long t = 0; while (s instanceof S.A a && a.v().longValue() > t) { t = t + 1; } return t; }
+            b02 for &&              ~ JULC0139 ~ public static long m(S s) { long t = 0; for (S x : xs()) { if (x instanceof S.A a && a.v().signum() > 0) { t = t + a.v().longValue(); } } return t; }
+            b07 break guard         ~ JULC0139 ~ public static long m(S s) { long t = 0; for (S x : xs()) { if (!(x instanceof S.A a)) { break; } t = t + a.v().longValue(); } return t; }
+            b08 for ternary         ~ JULC0139 ~ public static long m(S s) { long t = 0; for (S x : xs()) { t = t + (x instanceof S.A a ? a.v().longValue() : 1); } return t; }
+            c01 after while         ~ JULC0139 ~ public static long m(S s) { S x = s; while (!(x instanceof S.A a)) { x = new S.A(BigInteger.ONE); } return a.v().longValue(); }
             """)
-    void whatTheAdrAddsIsRejectedToday(String shape, String code, String members) {
+    void whatALaterMilestoneAddsIsRejected(String shape, String code, String members) {
         assertRejected(members, code);
     }
 
-    /** Assignments to a pattern variable (D8). Each compiles or is rejected today as pinned here. */
+    /** Assignments to a pattern variable (D8): each is JULC0140, whichever rule meets it first. */
     @ParameterizedTest(name = "{0}")
     @CsvSource(delimiterString = " ~ ", textBlock = """
-            outside a loop          ~ JULC0061 ~ public static long m(S s) { if (s instanceof S.A a) { a = new S.A(BigInteger.ONE); return a.v().longValue(); } return 0; }
-            in an accumulator loop  ~ JULC0116 ~ public static long m(S s) { long t = 0; for (S x : xs()) { if (x instanceof S.A a) { if (t > 0) { a = new S.A(BigInteger.ONE); } t = t + 1; } } return t; }
-            under an if, accumulator loop ~ JULC0114 ~ public static long m(S s) { long r = 0; for (S y : xs()) { if (y instanceof S.A a) { if (r > 0) { for (S x : xs()) { a = new S.A(a.v().add(BigInteger.ONE)); } } r = r + a.v().longValue(); } } return r; }
+            outside a loop          ~ JULC0140 ~ public static long m(S s) { if (s instanceof S.A a) { a = new S.A(BigInteger.ONE); return a.v().longValue(); } return 0; }
+            in an accumulator loop  ~ JULC0140 ~ public static long m(S s) { long t = 0; for (S x : xs()) { if (x instanceof S.A a) { if (t > 0) { a = new S.A(BigInteger.ONE); } t = t + 1; } } return t; }
+            under an if, accumulator loop ~ JULC0140 ~ public static long m(S s) { long r = 0; for (S y : xs()) { if (y instanceof S.A a) { if (r > 0) { for (S x : xs()) { a = new S.A(a.v().add(BigInteger.ONE)); } } r = r + a.v().longValue(); } } return r; }
+            in a switch arm         ~ JULC0140 ~ public static long m(S s) { return switch (s) { case S.B b -> { if (s instanceof S.B q && b.w().signum() > 0) { q = new S.B(BigInteger.ONE, BigInteger.ONE); } yield 1L; } default -> 0L; }; }
+            nested-loop accumulator ~ JULC0140 ~ public static long m(S s) { long r = 0; for (S y : xs()) { if (y instanceof S.A a) { for (S x : xs()) { a = new S.A(a.v().add(BigInteger.ONE)); } r = r + a.v().longValue(); } } return r; }
             """)
-    void anAssignmentToAPatternVariableToday(String shape, String code, String members) {
+    void anAssignmentToAPatternVariable(String shape, String code, String members) {
         assertRejected(members, code);
     }
 

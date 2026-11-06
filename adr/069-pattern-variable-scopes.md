@@ -639,6 +639,53 @@ derived from JuLC's own output. A newly supported shape must **agree**; a reject
   layout (M0-7). Totals: `Adr069PatternScopesHarnessTest` 34 tests, `Adr069CompatibilityPinsTest` 33 tests and 319 frozen
   rows, all green on the pre-M1 code.
 
+### M1: bare type tests, `Conditions`, loop bodies, D6, D8, I1's check (2026-11-06)
+
+- **Code** (`julc-compiler`):
+  - `Conditions` (new), with `Choice`, the shared gate (case 3), the `instanceof`, bare-test and plain leaves, and
+    `JULC0139` (`unbound`);
+  - `Ifs`, `LoopBody` (`foldIf`, `breakingIf`, `joined`) and `Lambdas.function` choose through it, with each call site's
+    build order unchanged for conditions that bind nothing;
+  - `TypeTests` reads a bare type test (D1; `guardVariantOf` folded into `variantOf`);
+  - `JavacFacts` indexes each `instanceof` pattern variable and its uses, and builds `JULC0140`'s diagnostic;
+  - D8's four rules sit in `LoopBody.expression`, `Loops.accumulators`, `ArmUpdates` and `Lowering.reassignment`;
+  - I1's check is `PatternBindingCheck`, beside `BindingCheck`, over the introductions `Terms.introduced` records in
+    `Provenance`, and it covers every binder kind;
+  - `diagnostics.json` gains `JULC0139` and `JULC0140`, with the old hints reworded.
+- **Tests:**
+  - `Adr069PatternScopesHarnessTest` flips b01, b03–b06 and n01–n07 to agreement, and adds more loop routes (break in
+    then or else, a fold in a break loop, two accumulators, a traced operand, parentheses, an outer variable read in an
+    inner loop) and p01–p04 (parentheses, a conditional lambda), each over every variant. Every row M2 and M3 will bind
+    is `JULC0139`; the five D8 rows are `JULC0140`.
+  - `Adr069PatternScopesTest` covers I1's check with hand-built PIR: wrong tag, wrong operand, else branch, above its
+    test, and a rebinding inside and outside the introduction. It also asserts `JULC0139`'s and `JULC0140`'s words and
+    fixes.
+  - The compiler tests that asserted the old limits flip: `JavacStatementsTest`, `JavacSwitchesTest`,
+    `RecordPatternDiagnosticTest` and `JavacSubsetCodesTest`. `rejection-sites.tsv` gains rows for the two new codes.
+- **Frozen reference:** exactly 3 rows moved, all of them rejections before M1. Two `Adr069CompatibilityPinsTest` rows
+  went `JULC0061`→`JULC0140` and `JULC0114`→`JULC0140`; one `JavacSubsetCodesTest` row went `JULC0011`→`JULC0139`. No
+  compiled program moved: I4 holds.
+- **Generator** (G1 r10, `julc-difftest`):
+  - gate `PATTERN_LOOPS` (off by default), steer `ISSUE_204` and profile `PATTERN_FLOW_204`. With the gate off, plan
+    decoding is unchanged: hashes of 20,000 plans under every existing profile are identical;
+  - `Adr069PatternFlowPropertyTest`: 400 tries; any verdict other than AGREE fails;
+  - Jazzer target `Adr069PatternFlowFuzzTest.generatedProgramsAgree`: 8 seeds, which replay in `test`. A 10-minute run
+    made 11,068 executions with no crash;
+  - under the steer only, G1's `equals` production compares a value with its own type, which avoids two existing
+    ADR-068 D6 policy rejections (`JULC0078`, `JULC0012`) the steer made frequent, instead of allowing them.
+- **Reviews:**
+  - M1 code reviewer: APPROVED. P3s applied: I1's check covers every binder kind (C1); guard frames are not tagged
+    (C2); the check compares the bound value with the test's own operand (C3); `JULC0140`'s fix is in the developer's
+    names (C4); the bare test of the sealed interface itself is pinned as `JULC0077` (C7).
+  - Semantics reviewer: APPROVED. Its P2, M1-S1, is applied: `JULC0139`'s fix re-declared the variable where javac
+    still has it in scope, which does not compile. It now drops the variable from the first test, or says to store an
+    operand that is no variable. P3s applied: S2, as C4; S3, only `instanceof` variables get `JULC0139`.
+  - Noted for M2: `breakingIf`'s in-place `rest` and `Ifs`' `after` stay in the enclosing frame until a condition can
+    introduce a variable when false (S5).
+- **Known gaps carried to M2:** the generator often tests a subject already typed as the variant (always true), so
+  M2's steer weights subjects towards the sealed type. `JULC0139`'s catalogue text describes the finished feature;
+  M1–M3 ship in this one PR.
+
 ## Revision history
 
 - r1 (2026-11-06): initial proposal.

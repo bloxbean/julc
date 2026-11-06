@@ -97,6 +97,11 @@ final class G1Printer {
                 statements(i.body(), indent + 1);
                 line(indent, "}");
             }
+            case G1Ast.PatternIf p -> {
+                line(indent, "if (" + patternTest(p, indent) + ") {");
+                patternBranches(p, indent);
+            }
+            case G1Ast.Break b -> line(indent, "break;");
             case G1Ast.Return r -> line(indent, "return " + expression(r.value(), indent) + ";");
             case G1Ast.While w -> {
                 line(indent, "long " + w.counter() + " = 0;");
@@ -111,6 +116,26 @@ final class G1Printer {
                 line(indent, "}");
             }
         }
+    }
+
+    private static String patternTest(G1Ast.PatternIf p, int indent) {
+        String test = expression(p.subject(), indent) + " instanceof " + p.variant().name + " " + p.binding();
+        return p.parenthesized() ? "(" + test + ")" : test;
+    }
+
+    /** The branches of a {@link G1Ast.PatternIf} whose first line is printed, and its {@code else if} chain. */
+    private void patternBranches(G1Ast.PatternIf p, int indent) {
+        statements(p.then(), indent + 1);
+        if (p.otherwise() != null && p.otherwise().size() == 1 && p.otherwise().getFirst() instanceof G1Ast.PatternIf next) {
+            line(indent, "} else if (" + patternTest(next, indent) + ") {");
+            patternBranches(next, indent);
+            return;
+        }
+        if (p.otherwise() != null) {
+            line(indent, "} else {");
+            statements(p.otherwise(), indent + 1);
+        }
+        line(indent, "}");
     }
 
     static String expression(Expr expression) {
@@ -136,6 +161,7 @@ final class G1Printer {
             case G1Ast.Trace t -> "t(\"" + t.label() + "\", " + expression(t.value(), indent) + ")";
             case G1Ast.Fail f -> "fail(" + expression(f.value(), indent) + ")";
             case G1Ast.Switch w -> switchExpression(w, indent);
+            case G1Ast.TypeTest t -> expression(t.subject(), indent) + " instanceof " + t.variant().name;
         };
     }
 

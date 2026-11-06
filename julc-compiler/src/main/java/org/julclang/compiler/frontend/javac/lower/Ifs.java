@@ -29,9 +29,9 @@ import java.util.function.Function;
  * What follows is built once, in the frame around the {@code if}, and reused by reference. So its free variables are all
  * visible in that frame, and a binder of a branch takes another name by {@link Scope} rather than capture one.
  * <p>
- * A pattern binds only when it is the whole condition, as in the reference, which reads it from the {@code if}: javac's
- * condition is {@code PARENTHESIZED}, and {@link #condition} takes off that one level. Under another pair of parentheses,
- * or inside {@code &&} or {@code !}, the test lowers and its variable is {@code Undefined variable}.
+ * A pattern that is the whole condition binds as in the reference, which reads it from the {@code if}: javac's condition
+ * is {@code PARENTHESIZED}, and {@link #condition} takes off that one level. Any other condition whose pattern variable is
+ * used is {@link Conditions}' (ADR-069), which binds it in the then-branch alone.
  */
 final class Ifs {
 
@@ -86,9 +86,8 @@ final class Ifs {
             result = patternIf((InstanceOfTree) condition, pattern, elseTerm, frame,
                     inner -> statements.branch(tree.getThenStatement(), inner, after));
         } else {
-            var test = lowering.expr(condition, frame);
-            var thenTerm = statements.branch(tree.getThenStatement(), frame, after);
-            result = new PirTerm.IfThenElse(test, thenTerm, elseWithExit(tree, frame, after));
+            result = lowering.conditions().choice(condition, frame).choose(
+                    inner -> statements.branch(tree.getThenStatement(), inner, after), inner -> elseWithExit(tree, inner, after));
         }
         return result;
     }
@@ -143,9 +142,8 @@ final class Ifs {
             return patternIf((InstanceOfTree) condition, pattern, elseTerm, frame,
                     inner -> statements.single(tree.getThenStatement(), inner));
         }
-        var test = lowering.expr(condition, frame);
-        var thenTerm = statements.single(tree.getThenStatement(), frame);
-        return new PirTerm.IfThenElse(test, thenTerm, elseForEffect(tree, frame));
+        return lowering.conditions().choice(condition, frame).choose(
+                inner -> statements.single(tree.getThenStatement(), inner), inner -> elseForEffect(tree, inner));
     }
 
     private PirTerm elseForEffect(IfTree tree, Frame frame) {
@@ -163,7 +161,9 @@ final class Ifs {
             var variable = pattern.getVariable();
             var element = facts.element(variable);
             var scope = frame.scope().bind(element, facts.pirType(element.asType(), variable.getType()));
-            var thenTerm = terms.let(scope.lookup(element), scrutinee, then.apply(frame.in(scope)));
+            // In a guard the test is a dispatch (ADR-067 D1), which I1's check does not read: its binder is a plain let.
+            var thenTerm = frame.inGuard() ? terms.let(scope.lookup(element), scrutinee, then.apply(frame.in(scope)))
+                    : terms.introduced(scope.lookup(element), scrutinee, typeTests.tag(test), then.apply(frame.in(scope)));
             return new PirTerm.IfThenElse(condition, thenTerm, elseTerm);
         });
     }

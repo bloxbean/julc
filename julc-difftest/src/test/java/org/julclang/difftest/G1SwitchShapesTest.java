@@ -32,7 +32,7 @@ class G1SwitchShapesTest {
     @Test
     void theSourceShowsExactlyTheMarkedSwitchFeatures() {
         for (var profile : List.of(G1.Profile.DEFAULT, G1.Profile.REDISCOVER_162, G1.Profile.REDISCOVER_291,
-                G1.Profile.REDISCOVER_291_LOOPS)) {
+                G1.Profile.REDISCOVER_291_LOOPS, G1.Profile.PATTERN_FLOW_204)) {
             var random = new Random(20261044);
             var seen = EnumSet.noneOf(G1.Feature.class);
             int permuted = 0, switches = 0;

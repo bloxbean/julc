@@ -74,7 +74,7 @@ final class G1Ast {
     // ---------------------------------------------------------------- expressions
 
     sealed interface Expr permits IntConst, BoolConst, Read, Arith, Scale, Cond, Compare, Logic, Not, Equals, New,
-            Access, Call, Trace, Fail, Switch {
+            Access, Call, Trace, Fail, Switch, TypeTest {
     }
 
     /** {@code BigInteger.valueOf(value)}. */
@@ -135,6 +135,10 @@ final class G1Ast {
     record Switch(Expr subject, Type family, Type result, List<Arm> arms) implements Expr {
     }
 
+    /** {@code subject instanceof variant}: a bare type test, which binds nothing (ADR-069 D1). */
+    record TypeTest(Expr subject, Type variant) implements Expr {
+    }
+
     /**
      * One arm: {@code case variant binding ->} or, when {@code variant} is null, {@code default ->}. An arm without
      * statements is {@code -> value;}; one with statements is a block that ends in {@code yield value;}.
@@ -144,7 +148,7 @@ final class G1Ast {
 
     // ---------------------------------------------------------------- statements
 
-    sealed interface Stmt permits Declare, Assign, If, BreakIf, IfInstance, Return, While, ForEach {
+    sealed interface Stmt permits Declare, Assign, If, BreakIf, IfInstance, PatternIf, Break, Return, While, ForEach {
     }
 
     record Declare(Type type, String name, Expr init) implements Stmt {
@@ -163,6 +167,19 @@ final class G1Ast {
 
     /** {@code if (subject instanceof variant binding) { body }}. */
     record IfInstance(Var subject, Type variant, String binding, List<Stmt> body) implements Stmt {
+    }
+
+    /**
+     * {@code if (subject instanceof variant binding) { then } else { otherwise }} in a loop body (ADR-069 M1), the
+     * whole condition in an extra pair of parentheses when {@code parenthesized}; no {@code else} when
+     * {@code otherwise} is null, and {@code else if} when it is one {@code PatternIf}.
+     */
+    record PatternIf(Expr subject, Type variant, String binding, boolean parenthesized, List<Stmt> then,
+                     List<Stmt> otherwise) implements Stmt {
+    }
+
+    /** {@code break;}, the last statement of a branch of a {@link PatternIf}. */
+    record Break() implements Stmt {
     }
 
     record Return(Expr value) implements Stmt {

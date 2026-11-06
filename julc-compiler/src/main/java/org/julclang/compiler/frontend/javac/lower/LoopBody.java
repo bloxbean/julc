@@ -139,6 +139,10 @@ final class LoopBody {
             return new PirTerm.Let("#_", effect, sequence(list, index + 1, frame, shape));
         }
         var element = facts.element(target);
+        // ADR-069 D8 rule 1: an update of a pattern variable that is no accumulator would be lost where an if rejoins.
+        if (facts.declaringTest(element) != null && !shape.carried().holds(element)) {
+            throw facts.patternVariableReassigned(expression, element);
+        }
         var binder = frame.scope().lookup(element);
         var value = assigned(expression, target, binder, frame);
         // A value that goes straight to a break: with one accumulator that value is what the loop leaves.
@@ -161,22 +165,21 @@ final class LoopBody {
     }
 
     private PirTerm foldIf(IfTree tree, List<? extends StatementTree> list, int index, Frame frame, Shape shape) {
-        var condition = lowering.expr(Ifs.condition(tree), frame);
-        var result = branches(condition, tree, frame, shape);
+        var condition = lowering.conditions().choice(Ifs.condition(tree), frame);
+        var result = branches(condition, tree, shape);
         if (index + 1 >= list.size()) return result;
         return shape.carried().rebound(result, sequence(list, index + 1, frame, shape));
     }
 
     /** The {@code if} as a value: each branch's, and with no {@code else} the accumulators as they stand. */
-    private PirTerm branches(PirTerm condition, IfTree tree, Frame frame, Shape shape) {
-        var thenTerm = branch(tree.getThenStatement(), frame, shape);
-        var elseTerm = tree.getElseStatement() != null ? branch(tree.getElseStatement(), frame, shape) : shape.carried().value();
-        return new PirTerm.IfThenElse(condition, thenTerm, elseTerm);
+    private PirTerm branches(Conditions.Choice condition, IfTree tree, Shape shape) {
+        return condition.choose(inner -> branch(tree.getThenStatement(), inner, shape),
+                inner -> tree.getElseStatement() != null ? branch(tree.getElseStatement(), inner, shape) : shape.carried().value());
     }
 
     /** See the class's comment. The reference ends an {@code if} with no {@code break} by one accumulator's value or by each branch going on. */
     private PirTerm breakingIf(IfTree tree, List<? extends StatementTree> list, int index, Frame frame, Shape shape) {
-        var condition = lowering.expr(Ifs.condition(tree), frame);
+        var condition = lowering.conditions().choice(Ifs.condition(tree), frame);
         var thenStatement = tree.getThenStatement();
         var elseStatement = tree.getElseStatement();
         boolean breaks = LoopRules.firstExit(thenStatement, BreakTree.class) != null
@@ -185,28 +188,26 @@ final class LoopBody {
         var carried = shape.carried();
 
         if (!breaks && (hasRest || carried.isSingle())) {
-            var result = branches(condition, tree, frame, shape.fold());
+            var result = branches(condition, tree, shape.fold());
             return hasRest ? carried.rebound(result, sequence(list, index + 1, frame, shape)) : shape.next().apply(result);
         }
         if (!hasRest || elseStatement == null && !Exits.canCompleteNormally(thenStatement)) {
             // At most one path reaches what follows, so it stands in place.
-            var thenTerm = branch(thenStatement, frame, shape);
-            var elseTerm = elseStatement != null ? branch(elseStatement, frame, shape) : sequence(list, index + 1, frame, shape);
-            return new PirTerm.IfThenElse(condition, thenTerm, elseTerm);
+            return condition.choose(inner -> branch(thenStatement, inner, shape),
+                    inner -> elseStatement != null ? branch(elseStatement, inner, shape) : sequence(list, index + 1, frame, shape));
         }
         return joined(condition, tree, sequence(list, index + 1, frame, shape), frame, shape);
     }
 
     /** {@code let join = \value -> rest in if ...}: each path that does not break calls it. */
-    private PirTerm joined(PirTerm condition, IfTree tree, PirTerm rest, Frame frame, Shape shape) {
+    private PirTerm joined(Conditions.Choice condition, IfTree tree, PirTerm rest, Frame frame, Shape shape) {
         var carried = shape.carried();
         var type = carried.type();
         var join = terms.generated("#join" + ++joins, new PirType.FunType(type, type));
         var toJoin = new Shape(carried, value -> new PirTerm.App(join, value));
-        var thenTerm = branch(tree.getThenStatement(), frame, toJoin);
-        var elseTerm = tree.getElseStatement() != null ? branch(tree.getElseStatement(), frame, toJoin)
-                : toJoin.end(carried.value());
-        return terms.generatedLet(join.name(), joinFunction(carried, rest), new PirTerm.IfThenElse(condition, thenTerm, elseTerm));
+        var choice = condition.choose(inner -> branch(tree.getThenStatement(), inner, toJoin),
+                inner -> tree.getElseStatement() != null ? branch(tree.getElseStatement(), inner, toJoin) : toJoin.end(carried.value()));
+        return terms.generatedLet(join.name(), joinFunction(carried, rest), choice);
     }
 
     private PirTerm joinFunction(Carried carried, PirTerm rest) {

@@ -32,11 +32,12 @@ import java.util.function.Supplier;
  * identity, so a record of another sum with the variant's simple name is not it, and two variants of one simple name have
  * two tags. A tag means something only within one sealed interface, so the operand's static type must be the variant or
  * that interface. Anything else is rejected: the comparison would run on a value of some other type, where
- * Java tests the value's class.
+ * Java tests the value's class. A bare type test ({@code e instanceof V}) is the same comparison (ADR-069 D1).
  * <p>
  * <b>Evaluation order.</b> The operand is evaluated once, then the test. In {@code if (e instanceof V v)}, {@code Ifs} binds
  * {@code e} once, unless it is a variable or a literal ({@code PirHelpers.readOnce}, #146): the test and {@code v} read that
- * one binding, so a trace in {@code e} shows once, as in Java. In a guard the dispatch reads the operand it is given.
+ * one binding, so a trace in {@code e} shows once, as in Java; {@code Conditions} does the same wherever else a pattern
+ * variable is used (ADR-069). In a guard the dispatch reads the operand it is given.
  */
 final class TypeTests {
 
@@ -77,7 +78,7 @@ final class TypeTests {
      * {@code SwitchRules} has shown the operand is V or that interface, and rejected a pattern the arm could see.
      */
     private PirTerm totalDispatch(InstanceOfTree tree, Supplier<PirTerm> operand) {
-        var variant = guardVariantOf(tree);
+        var variant = variantOf(tree);
         var scrutinee = operand.get();
         var tested = constructor(tree, variant);
         var parent = facts.sealedParents(variant).getFirst();
@@ -108,17 +109,21 @@ final class TypeTests {
                 value, new PirTerm.Error(new PirType.DataType())));
     }
 
+    /** The tag {@code tree} tests for: the constructor of its variant in its sealed interface. */
+    BigInteger tag(InstanceOfTree tree) {
+        return BigInteger.valueOf(constructor(tree, variantOf(tree)).tag());
+    }
+
+    /** The variant a type pattern names, or a bare type test's type (ADR-069 D1). A record pattern is unsupported. */
     private TypeElement variantOf(InstanceOfTree tree) {
         if (tree.getPattern() instanceof BindingPatternTree pattern
                 && facts.types().asElement(facts.type(pattern.getVariable())) instanceof TypeElement variant) {
             return variant;
         }
+        if (tree.getPattern() == null && facts.types().asElement(facts.type(tree.getType())) instanceof TypeElement variant) {
+            return variant;
+        }
         throw unsupported(tree);
-    }
-
-    /** A guard may test a type as well as a pattern. */
-    private TypeElement guardVariantOf(InstanceOfTree tree) {
-        return tree.getPattern() == null ? (TypeElement) facts.types().asElement(facts.type(tree.getType())) : variantOf(tree);
     }
 
     /**

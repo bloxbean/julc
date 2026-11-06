@@ -4,7 +4,9 @@ import org.julclang.difftest.gen.G1;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -77,7 +79,9 @@ class G1GatesTest {
                 G1.Profile.REDISCOVER_162, G1.Feature.ASSIGN_PATTERN_BINDING,
                 G1.Profile.REDISCOVER_291, G1.Feature.DEFAULT_BLOCK_SHADOW,
                 G1.Profile.REDISCOVER_291_LOOPS, G1.Feature.DEFAULT_BLOCK_AFTER_LOOP,
-                G1.Profile.DEFAULT.with(G1.Gate.LOOP_BREAK_SHAPES), G1.Feature.LOOP_BREAK_SHAPE);
+                G1.Profile.DEFAULT.with(G1.Gate.LOOP_BREAK_SHAPES), G1.Feature.LOOP_BREAK_SHAPE,
+                G1.Profile.PATTERN_FLOW_204, G1.Feature.LOOP_PATTERN_IF,
+                G1.Profile.DEFAULT.with(G1.Gate.PATTERN_LOOPS), G1.Feature.BARE_TYPE_TEST);
         cases.forEach((profile, marker) -> {
             var random = new Random(20261031);
             int marked = 0, seen = 0;
@@ -89,6 +93,37 @@ class G1GatesTest {
             assertTrue(marked > 0, profile + " never generated " + marker);
             assertTrue(seen > 0, profile + ": the source never shows " + marker);
         });
+    }
+
+    /**
+     * ADR-069 M1's gate (G1 r10): with {@link G1.Gate#PATTERN_LOOPS} alone each of its constructs is generated, and
+     * the #204 steer generates more of them; the markers agree with the source's reading on every program.
+     */
+    @Test
+    void thePatternGateGeneratesEachConstruct() {
+        var markers = EnumSet.of(G1.Feature.BARE_TYPE_TEST, G1.Feature.LOOP_PATTERN_IF, G1.Feature.LOOP_PATTERN_ELSE_IF);
+        var gate = G1.Profile.DEFAULT.with(G1.Gate.PATTERN_LOOPS);
+        var counts = new HashMap<G1.Profile, Map<G1.Feature, Integer>>();
+        for (var profile : List.of(gate, G1.Profile.PATTERN_FLOW_204)) {
+            var random = new Random(20261106);
+            var count = new EnumMap<G1.Feature, Integer>(G1.Feature.class);
+            for (int i = 0; i < 4000; i++) {
+                var plan = plan(random);
+                var program = G1.decode(plan, profile);
+                var marked = EnumSet.copyOf(markers);
+                marked.retainAll(program.features());
+                var read = GatedShapes.in(program.source());
+                read.retainAll(markers);
+                assertEquals(marked, read, profile + " plan " + plan + "\n" + program.source());
+                for (var marker : marked) count.merge(marker, 1, Integer::sum);
+            }
+            assertEquals(markers, count.keySet(), profile + " generates each construct: " + count);
+            counts.put(profile, count);
+        }
+        for (var marker : markers) {
+            assertTrue(counts.get(G1.Profile.PATTERN_FLOW_204).get(marker) > counts.get(gate).get(marker),
+                    "the #204 steer generates more " + marker + ": " + counts);
+        }
     }
 
     private static final Pattern RECORD = Pattern.compile("(?m)^    record (R\\d)\\((.*)\\) \\{}$");
@@ -136,7 +171,8 @@ class G1GatesTest {
             assertTrue(Math.abs(closed[k] - plain[k]) < 0.02, "the open gates move the share of " + names[k] + " from "
                     + closed[k] + " to " + plain[k]);
         }
-        for (G1.Gate gate : List.of(G1.Gate.ZERO_ARG_HELPERS, G1.Gate.TRACE_IN_COMPARISON, G1.Gate.ASSIGN_PATTERN_BINDING)) {
+        for (G1.Gate gate : List.of(G1.Gate.ZERO_ARG_HELPERS, G1.Gate.TRACE_IN_COMPARISON, G1.Gate.ASSIGN_PATTERN_BINDING,
+                G1.Gate.PATTERN_LOOPS)) {
             double[] gated = shares(G1.Profile.DEFAULT.with(gate));
             for (int k = 0; k < names.length; k++) {
                 // A zero-parameter helper is the ZERO_ARG_HELPERS construct itself.
@@ -175,21 +211,26 @@ class G1GatesTest {
 
     @Test
     void profilesRoundTripAsText() {
-        assertEquals("G1 r9 -GUARDS -RECORD_PATTERNS -CROSS_TYPE_EQUALS -SHARED_VARIANT -ASSIGN_PATTERN_BINDING "
-                + "-ZERO_ARG_HELPERS +SHADOW_IN_LOOP_BRANCH +LOOP_BREAK_SHAPES -TRACE_IN_COMPARISON +DEFAULT_BLOCK_SCOPE",
-                G1.Profile.DEFAULT.text());
+        assertEquals("G1 r10 -GUARDS -RECORD_PATTERNS -CROSS_TYPE_EQUALS -SHARED_VARIANT -ASSIGN_PATTERN_BINDING "
+                + "-ZERO_ARG_HELPERS +SHADOW_IN_LOOP_BRANCH +LOOP_BREAK_SHAPES -TRACE_IN_COMPARISON +DEFAULT_BLOCK_SCOPE "
+                + "-PATTERN_LOOPS", G1.Profile.DEFAULT.text());
+        assertTrue(G1.Profile.PATTERN_FLOW_204.text().endsWith("+DEFAULT_BLOCK_SCOPE +PATTERN_LOOPS steer=204"),
+                G1.Profile.PATTERN_FLOW_204.text());
         for (var profile : List.of(G1.Profile.DEFAULT, G1.Profile.REDISCOVER_209, G1.Profile.REDISCOVER_280, G1.Profile.REDISCOVER_162,
-                G1.Profile.REDISCOVER_291, G1.Profile.REDISCOVER_291_LOOPS,
+                G1.Profile.REDISCOVER_291, G1.Profile.REDISCOVER_291_LOOPS, G1.Profile.PATTERN_FLOW_204,
                 G1.Profile.REDISCOVER_146, ALL_GATES_OFF, new G1.Profile(EnumSet.allOf(G1.Gate.class)))) {
             assertEquals(profile, G1.Profile.parse(profile.text()));
         }
         String text = G1.Profile.DEFAULT.text();
         assertTrue(G1.Profile.REDISCOVER_209.text().endsWith("+SHADOW_IN_LOOP_BRANCH +LOOP_BREAK_SHAPES -TRACE_IN_COMPARISON "
-                        + "+DEFAULT_BLOCK_SCOPE steer=209"),
+                        + "+DEFAULT_BLOCK_SCOPE -PATTERN_LOOPS steer=209"),
                 G1.Profile.REDISCOVER_209.text());
         // A steer needs its gate: ZERO_ARG_HELPERS is off in the default profile.
         assertThrows(HarnessException.class, () -> G1.Profile.DEFAULT.steered(G1.Steer.ISSUE_280));
-        for (String bad : List.of("G0 r2 -GUARDS", text.replace("G1 r9", "G1 r8"), text + " steer=999", text + " steer=280", text.replace("-GUARDS ", ""), text + " -GUARDS",
+        assertThrows(HarnessException.class, () -> G1.Profile.DEFAULT.steered(G1.Steer.ISSUE_204));
+        // A G1 r9 profile names no PATTERN_LOOPS: saved r9 records stay history, not replayable under r10.
+        for (String bad : List.of("G0 r2 -GUARDS", text.replace("G1 r10", "G1 r9"), text.replace(" -PATTERN_LOOPS", ""),
+                text + " steer=999", text + " steer=280", text + " steer=204", text.replace("-GUARDS ", ""), text + " -GUARDS",
                 text.replace("-GUARDS", "-WHATEVER"), text.replace("-GUARDS", "GUARDS"), "G1 r1")) {
             assertThrows(HarnessException.class, () -> G1.Profile.parse(bad), bad);
         }
@@ -209,6 +250,10 @@ class G1GatesTest {
         private static final Pattern BLOCK_ARM = Pattern.compile("^( *)case \\w+ (\\w+) -> \\{$");
         private static final Pattern DEFAULT_BLOCK = Pattern.compile("^( *)default -> \\{$");
         private static final Pattern DECLARATION = Pattern.compile("^\\w+ (\\w+) = ");
+        /** {@code instanceof V} not followed by a binding: a bare type test (ADR-069 D1). */
+        private static final Pattern BARE_TEST = Pattern.compile("instanceof \\w++(?! \\w+\\))");
+        /** {@code instanceof V v)}: a pattern test whose variable ends the condition. */
+        private static final Pattern PATTERN_TEST = Pattern.compile("instanceof \\w+ \\w+\\)");
 
         static Set<G1.Feature> in(String source) {
             var found = EnumSet.noneOf(G1.Feature.class);
@@ -223,10 +268,18 @@ class G1GatesTest {
             if (source.contains("default -> {") && G1Source.read(source).features().contains(G1.Feature.DEFAULT_BLOCK_AFTER_LOOP)) {
                 found.add(G1.Feature.DEFAULT_BLOCK_AFTER_LOOP);
             }
+            if (BARE_TEST.matcher(source).find()) found.add(G1.Feature.BARE_TYPE_TEST);
             for (int i = 0; i < lines.length; i++) {
                 Matcher loop = LOOP.matcher(lines[i]);
                 if (!loop.matches()) continue;
                 String body = loop.group(1) + "    ";
+                // A pattern test anywhere in a loop body (ADR-069 M1); the entry method's own pattern ifs are outside loops.
+                for (int j = i + 1; j < lines.length && lines[j].startsWith(body); j++) {
+                    String statement = lines[j].trim();
+                    if (!PATTERN_TEST.matcher(statement).find()) continue;
+                    if (statement.startsWith("if (")) found.add(G1.Feature.LOOP_PATTERN_IF);
+                    if (statement.startsWith("} else if (")) found.add(G1.Feature.LOOP_PATTERN_ELSE_IF);
+                }
                 boolean breaks = false, conditionalUpdate = false;
                 for (int j = i + 1; j < lines.length && lines[j].startsWith(body); j++) {
                     if (lines[j].length() > body.length() && lines[j].charAt(body.length()) == ' ') continue;

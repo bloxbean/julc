@@ -148,8 +148,8 @@
       "category": "TYPE",
       "severity": "error",
       "template": "Undefined variable: {0}",
-      "summary": "A name was read that the on-chain program has no binder for: a type or package read as a value, a class of a library the compilation cannot register, or a pattern variable outside the condition that binds it.",
-      "fix": "Check spelling, or add an import if the name is a type. A pattern variable is bound only where its instanceof is the whole condition of an if."
+      "summary": "A name was read that the on-chain program has no binder for: a type or package read as a value, or a class of a library the compilation cannot register. An instanceof pattern variable that JuLC does not bind is JULC0139 instead.",
+      "fix": "Check spelling, or add an import if the name is a type."
     },
     {
       "code": "JULC0012",
@@ -705,7 +705,7 @@
       "category": "SYNTAX",
       "severity": "error",
       "template": "Pattern variable ''{0}'' has the same name as a field of {1}",
-      "summary": "An instanceof pattern variable is bound only when the pattern is the whole condition of an if statement outside a loop. In any other position (a loop body, an && condition, a negated guard, a ternary, a lambda) the name resolves to a field of the same name instead, which silently reads or updates the field. A pattern variable may therefore not reuse the name of a field, including a @Param field, of an enclosing class.",
+      "summary": "A pattern variable may not reuse the name of a field, including a @Param field, of an enclosing class. The rule dates from JuLC's first frontend, which resolved names by spelling, so such a name could read or update the field instead of the variable.",
       "fix": "Rename the pattern variable, for example `if (action instanceof Bid bid)`, so it does not reuse a field name.",
       "example": {
         "bad": "static Bid best = new Bid(BigInteger.ZERO);\n...\nif (action instanceof Bid best) { return best.amount(); }",
@@ -885,7 +885,7 @@
       "category": "CONTROL_FLOW",
       "severity": "error",
       "template": "Guard on ''{0}'' declares pattern variable ''{1}'', which is not supported",
-      "summary": "Java lets a guard introduce pattern variables (`when p.t() instanceof C c`, JLS 6.3.3), but JuLC binds instanceof pattern variables only as the whole condition of an if statement. A guard may still use instanceof as a plain type test.",
+      "summary": "Java lets a guard introduce pattern variables (`when p.t() instanceof C c`, JLS 6.3.3), but JuLC does not bind them in a switch guard, in the guard or in the arm. A guard may still use instanceof as a plain type test.",
       "fix": "Test the type without a binding (`p.t() instanceof C`) and read the value in the arm.",
       "example": {
         "bad": "case P p when p.t() instanceof C c -> c.w();",
@@ -926,11 +926,11 @@
       "code": "JULC0077",
       "constant": "INSTANCEOF_RECORD_PATTERN_UNSUPPORTED",
       "status": "emitted",
-      "title": "instanceof with a pattern JuLC does not lower",
+      "title": "instanceof with a record pattern",
       "category": "CONTROL_FLOW",
       "severity": "error",
       "template": "Unsupported instanceof pattern: {0}",
-      "summary": "An instanceof whose pattern is not a type pattern, such as a record pattern, is not supported.",
+      "summary": "An instanceof with a record pattern, such as `x instanceof R(var a, var b)`, is not supported. A type test (`x instanceof R`) and a type pattern (`x instanceof R r`) are.",
       "fix": "Use a type pattern (x instanceof R r) and read the components through r, or a switch."
     },
     {
@@ -1659,6 +1659,36 @@
       "template": "Duplicate purpose {0} in @MultiValidator {1}",
       "summary": "Each purpose dispatches to exactly one entry point.",
       "fix": "Give each @Entrypoint a different purpose, or merge the two methods."
+    },
+    {
+      "code": "JULC0139",
+      "constant": "PATTERN_VARIABLE_SCOPE_UNSUPPORTED",
+      "status": "emitted",
+      "title": "A pattern variable is used where JuLC does not bind it",
+      "category": "CONTROL_FLOW",
+      "severity": "error",
+      "template": "''{0}'' is in scope here in Java, but JuLC does not bind a pattern variable {1}",
+      "summary": "JuLC binds an instanceof pattern variable wherever Java's flow rules make it available within one statement, in &&, ||, !, ?: and the if statement around it, and after an if whose other branch leaves the block. It does not carry one out of a while loop, into the body of a while loop whose condition declares it, or across a switch guard.",
+      "fix": "Test the value again where you use it, with instanceof or a switch over its sealed interface.",
+      "example": {
+        "bad": "while (!(s instanceof Circle c)) { s = next(s); }\nreturn c.radius();",
+        "good": "while (!(s instanceof Circle)) { s = next(s); }\nif (s instanceof Circle c) { return c.radius(); }"
+      }
+    },
+    {
+      "code": "JULC0140",
+      "constant": "PATTERN_VARIABLE_REASSIGNED",
+      "status": "emitted",
+      "title": "A pattern variable is reassigned",
+      "category": "CONTROL_FLOW",
+      "severity": "error",
+      "template": "Reassigning pattern variable ''{0}'' is not supported",
+      "summary": "Java lets a pattern variable that is not final be reassigned, but JuLC does not support updating an instanceof pattern variable: in a loop the update could be lost on the path that rejoins the rest of the body.",
+      "fix": "Declare a new local with the value you need, instead of assigning to the pattern variable.",
+      "example": {
+        "bad": "if (x instanceof Bid b) { if (late) { b = penalised(b); } total = total + b.amount(); }",
+        "good": "if (x instanceof Bid b) { Bid bid = late ? penalised(b) : b; total = total + bid.amount(); }"
+      }
     }
   ]
 }

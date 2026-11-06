@@ -10,6 +10,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -284,16 +285,23 @@ class JavacStatementsTest {
         assertEquals(message, failure.diagnostics().getFirst().message());
     }
 
+    /** A test of the sealed interface itself names no variant, so it has no tag to compare, with a variable or without. */
+    @Test
+    void aTypeTestThatIsNoVariantPattern() {
+        rejectedWith("static boolean m(S s) { if (s instanceof S t) { return true; } return false; }",
+                "Unsupported instanceof pattern: s instanceof S t");
+        rejectedWith("static boolean m(S s) { return s instanceof S; }", "Unsupported instanceof pattern: s instanceof S");
+    }
+
+    /** ADR-069 D1: a bare type test of a variant is a tag test wherever an expression may stand. */
     @ParameterizedTest
     @ValueSource(strings = {
             "static boolean m(S s) { return s instanceof S.A; }",
             "static boolean m(S s) { if (s instanceof S.A) { return true; } return false; }",
-            "static boolean m(S s) { if (s instanceof S t) { return true; } return false; }",
+            "static boolean m(S s) { return !(s instanceof S.B) && s instanceof S.D; }",
     })
-    void aTypeTestThatIsNoVariantPattern(String members) {
-        var start = members.indexOf("s instanceof");
-        var text = members.substring(start, start + (members.contains("S t") ? "s instanceof S t" : "s instanceof S.A").length());
-        rejectedWith(members, "Unsupported instanceof pattern: " + text);
+    void aBareTypeTestCompiles(String members) {
+        assertDoesNotThrow(() -> new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()).compileMethod(source(SUM + members), "m", List.of()));
     }
 
     @Test
@@ -303,17 +311,24 @@ class JavacStatementsTest {
         assertTrue(javac(SUM + "static boolean m(S s) { return s instanceof S.A(var v); }").getMessage().contains("Unsupported instanceof pattern: "));
     }
 
+    /** ADR-069 D2: the whole condition under a second pair of parentheses is a condition {@code Conditions} lowers. */
+    @Test
+    void aParenthesizedPatternBinds() {
+        assertDoesNotThrow(() -> new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()).compileMethod(source(SUM
+                + "static BigInteger m(S s) { if ((s instanceof S.A a)) { return a.v(); } return BigInteger.ZERO; }"), "m", List.of()));
+    }
+
+    /** Shapes a later milestone of ADR-069 binds: until then each is JULC0139, never a read of something else. */
     @ParameterizedTest
     @ValueSource(strings = {
-            "static BigInteger m(S s) { if ((s instanceof S.A a)) { return a.v(); } return BigInteger.ZERO; }",
             "static BigInteger m(S s) { if (s instanceof S.A a && a.v().signum() > 0) { return a.v(); } return BigInteger.ZERO; }",
             "static BigInteger m(S s) { if (!(s instanceof S.A a)) { return BigInteger.ZERO; } return a.v(); }",
             "static BigInteger m(S s) { return s instanceof S.A a ? a.v() : BigInteger.ZERO; }",
             "static boolean m(S s) { return (s instanceof S.A a ? a : s) instanceof S t; }",
             "static BigInteger m(S s) { if (s instanceof S.A a) { } else { return BigInteger.ZERO; } return a.v(); }",
     })
-    void aPatternVariableBindsOnlyWhereItIsTheWholeCondition(String members) {
-        rejectedWith(members, "Undefined variable: a");
+    void aPatternVariableJulcDoesNotBindYet(String members) {
+        assertEquals("JULC0139", javac(SUM + members).diagnostics().getFirst().code());
     }
 
     private static CompilerException javac(String members) {
