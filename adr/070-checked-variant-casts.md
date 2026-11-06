@@ -41,20 +41,26 @@ fields happen to decode (#288's impact).
 - `Casts.cast`: a primitive target goes to `primitive`; any other target returns the lowered operand, decoding a pair
   list when the target is a map. `requireNativeView` (ADR-047) checks native boundaries first.
 - `PlutusData.cast(x, T.class)` is the same view, documented as unchecked (ADR-068 D6).
+- `PlutusData` is itself a sealed interface whose variants are records (`MapData`, `BytesData`, ...), and the stdlib
+  downcasts to them: `(PlutusData.MapData) Builtins.sndPair(...)` and `(PlutusData.BytesData) token` in `ValuesLib`.
+  These are views of Data's own representation, not of a `Constr`-encoded sum; the registry holds `PlutusData` as no
+  `SumType`.
 - `(T)(Object) x` casts in the stdlib are representation views that throw on the JVM (ADR-062 T9).
 - A member read on a cast, `((A) s).v()`, is `JULC0055`: the receiver's type is read as the reference frontend read it,
   not from the cast.
 - Switch guards reject every reference cast (`JULC0072`, ADR-067 F61, citing #288).
 - `TypeTests.instanceOf` already lowers the tag test this decision needs: `FstPair(UnConstrData(x)) == k`, with the
-  variant's tag from the registry, ledger sums included.
+  variant's tag from the registry, ledger sums included. `TypeTests.isOf` already reads an operand's type through
+  intersection bounds (`c ? new A(..) : new B(..)` is `Record & S`). Both are tied to an `InstanceOfTree` today.
 
 ## Goals and non-goals
 
 **Goals**
 
 - G1. A downcast to a variant behaves as Java's: the value when it is that variant; a failure otherwise.
-- G2. Casts that need no check keep their bytes: upcasts, casts to the same type, primitive casts, map views,
-  `PlutusData.cast`, and casts from a type with no representation (`(T)(Object) x`).
+- G2. Casts that need no check, or that JuLC cannot check, keep their bytes: upcasts, casts to the same type, primitive
+  casts, map views, `PlutusData`'s own variants, `PlutusData.cast`, and casts from a type with no representation
+  (`(T)(Object) x`).
 - G3. The operand runs once, in Java's order.
 
 **Non-goals**
@@ -63,6 +69,10 @@ fields happen to decode (#288's impact).
 - Lifting `JULC0055` for a member read on a cast. See Q2.
 - Lifting the guard rule against reference casts (`JULC0072`). See Q3.
 - Removing a check that an earlier `instanceof` already made (`if (s instanceof A) { A a = (A) s; }`). See Q4.
+- Casts to a type JuLC represents with no tag of its own: a sealed sub-interface of a sealed interface, an open
+  interface, or a variant that `TypeTests` rejects (`JULC0126`, `JULC0127`, two sealed parents). They stay views, as
+  today; no program that compiles stops compiling (D3, Q5).
+- `JulcList.any`/`all` evaluating the predicate on every element (a known divergence): see Risks.
 
 ## Pinned normative references
 
@@ -74,8 +84,13 @@ fields happen to decode (#288's impact).
   case a `ClassCastException` is thrown."
 - **15.6**: "A cast expression (§15.16) throws a `ClassCastException` if a cast is found to be impermissible at run
   time."
-- **5.5** (casting contexts): a narrowing reference conversion from a sealed interface to a permitted record is checked
-  at run time; a widening one is not (paraphrase).
+- **5.1.6.1** (allowed narrowing reference conversions): a narrowing exists from S to T unless they are provably
+  disjoint; a type variable is read through its upper bound and an intersection through each of its components
+  (paraphrase).
+- **5.1.6.3** (run-time checks): a narrowing reference conversion is checked at run time, and a value that is not
+  null and not of a class assignable to T's erasure throws `ClassCastException` (paraphrase). JuLC has no `null`.
+- **15.16** (cast expressions): the cast operator applies a casting conversion to its operand (paraphrase); the run-time
+  rule is 15.5's, quoted above.
 - **15.7.1**: the operand is evaluated before the cast is applied (paraphrase).
 
 ## Threat model and trust assumptions
@@ -87,12 +102,14 @@ fields happen to decode (#288's impact).
 
 ## Invariants
 
-- **I1. A downcast checks the tag.** `(V) x`, where V is a record variant of sealed interface P and x's static type is
-  P, yields x only if x's constructor tag is V's; otherwise the script fails. Constrains D1.
+- **I1. A downcast checks the tag.** A cast in D1's case yields its operand only if the operand's constructor tag is
+  the target variant's; otherwise the script fails. A cast and an `instanceof` of the same variant agree on every value.
+  Constrains D1.
 - **I2. One evaluation.** x is evaluated once, before the test, and the value it yields is the value tested.
   Constrains D1.
-- **I3. Nothing else moves.** Every cast outside D1's case lowers to the same term as before; the frozen reference rows
-  of programs without a D1 cast do not move. Constrains D2.
+- **I3. Nothing else moves.** Every cast outside D1's case lowers to the same term as before. No frozen-reference row
+  is expected to move: the only compiled-or-pinned compiler tests with a variant downcast are rejections whose first
+  error must stay (`Adr069CompatibilityPinsTest.theBuildOrder`), and the stdlib's casts are D2's. Constrains D2.
 - **I4. A failure as the JVM's.** A failed check is a script failure that adds no trace of its own, so the trace log
   equals the JVM's up to the failure. Constrains D1.
 
@@ -100,17 +117,32 @@ fields happen to decode (#288's impact).
 
 ### D1. A downcast to a variant is a tag check
 
-When the target type T is a record variant V of a sealed interface P (`TypeTests`' notion: one sealed parent, a plain
-record), and the operand's static type is P, the cast lowers to:
+**The case.** A cast `(T) x` is checked when:
+
+1. the erasure of T is a record V that is a constructor of a sum the registry holds as a `SumType` (a `Constr`-encoded
+   sealed interface P: the program's own, a library's, or a ledger sum such as `ScriptInfo`). `PlutusData`'s variants
+   are not: the registry holds no `SumType` for `PlutusData` (D2); and
+2. x's static type is a member of P's family but not statically V: P itself, an intersection with a bound in P's family
+   (`TypeTests.isOf`, e.g. `Record & S` from a `?:` of two variants), or a type variable whose bound is one of those (a
+   generic method's `<T extends S>`, read through the bound as JLS 5.1.6.1 reads it). A specialised copy (ADR-059) sees
+   the type its producer bound.
+
+An operand that is statically V is a same-type cast (D2). An operand of another variant of P cannot reach a cast:
+javac rejects `(B) a` on records.
+
+**The term:**
 
 ```
-readOnce(x) as #operand;  if FstPair(UnConstrData(#operand)) == tag(V) then #operand else Error     // illustrative
+readOnce(x) as #operand;  if FstPair(UnConstrData(#operand)) == tag(V) then #operand else Error    // illustrative
 ```
 
-- The tag test is `TypeTests`' (the same registry tag, ledger sums included), so a cast and an `instanceof` agree on
-  every value.
+- The tag test is `TypeTests`', refactored so both use one: `TypeTests.variant(TypeElement V, TypeMirror operand)`
+  returns V's constructor when (1) and (2) hold, and nothing otherwise (never a rejection, so every other cast falls
+  through to D2), and `TypeTests.tagTest(PirTerm scrutinee, Constructor c)` builds the comparison. `instanceof` and its
+  `tag()` use the same two. `Casts` gains `TypeTests` as a collaborator.
 - `readOnce` (#146) binds the operand unless it is a variable or a literal, so it runs once.
-- `Error` carries no trace (I4).
+- `Error` carries no trace (I4); it is typed as the target's PIR type and located at the cast (`terms.at`), so a source
+  map and the debugger point at the cast that failed.
 - Every level, including BASELINE: the maintainer's policy since #146 (ADR-032 amendment) is that JuLC is a preview,
   so a correctness fix changes the default rather than sitting behind an opt-in. That policy is confirmed for this issue.
 
@@ -118,16 +150,23 @@ readOnce(x) as #operand;  if FstPair(UnConstrData(#operand)) == tag(V) then #ope
 
 Unchanged, so their bytes stay (I3):
 
-- an upcast (variant to its interface, anything to `Object`), and a cast to the operand's own type;
+- an upcast (variant to its interface, anything to `Object`), and a cast to the operand's own type (including a
+  pattern variable already typed V);
 - a primitive cast and a map view;
-- a cast whose operand's static type is not P: `(V)(Object) x` (an ADR-062 T9 view) and casts from `PlutusData`
-  (`PlutusData.cast` and the plain cast alike, an ADR-068 D6 view);
-- a cast whose target is no record variant (a sealed interface, a plain record, a ledger type that is no sum variant).
+- `PlutusData`'s own variants: `(PlutusData.MapData) d`, `(PlutusData.BytesData) b`. They view Data's representation;
+  a `Constr` tag test would reject every map and bytestring. They stay an unchecked view, a JVM divergence ADR-068 D6
+  already records;
+- a cast from a type with no representation of the family: `(V)(Object) x` (an ADR-062 T9 view) and
+  `PlutusData.cast(x, V.class)` (an ADR-068 D6 view). A plain `(V) d` from a `PlutusData` value does not compile;
+- a cast whose target has no tag of its own: a sealed interface (including a sealed sub-interface, which JuLC does not
+  represent as a sum of its own), an open interface, a plain record, and a variant `TypeTests` would reject (D3).
 
 ### D3. Diagnostics
 
-No new code. A cast whose check cannot be expressed (no tag in the registry) is impossible for D1's case: `TypeTests`
-already rejects such a variant (`JULC0126`, `JULC0127`, two sealed parents), and the same rejection applies.
+No new code and no new rejection. A cast whose check JuLC cannot express (D2's last bullet, a library-jar sum with no
+registry entry) stays a view, as today: no program that compiles stops compiling. Each such case is listed in D2 and
+Q5. The declaration-level rejections that exist already (`JULC0079` for two sealed parents, `JULC0127` for a variant
+that is no plain record) are unchanged.
 
 ### D4. Documentation
 
@@ -148,7 +187,7 @@ and the AI starter pack (a downcast fails on the wrong variant; `instanceof`/`sw
 
 | Module | Stage | Change |
 |---|---|---|
-| `julc-compiler` | javac lowering (`Casts`) | D1's check, reusing `TypeTests`' tag test and `PirHelpers.readOnce` |
+| `julc-compiler` | javac lowering (`Casts`, `TypeTests`, `Lowering` wiring) | D1's check; `TypeTests.variant` and `tagTest` shared with `instanceof`; `PirHelpers.readOnce` |
 | `julc-difftest` | harness, generator | rows per decision, R1's pin flips, a G1 gate for downcasts |
 | `docs` | release notes, troubleshooting, starter pack | D4 |
 
@@ -156,15 +195,21 @@ and the AI starter pack (a downcast fails on the wrong variant; `instanceof`/`sw
 
 - **Source:** unchanged; no program that compiles stops compiling.
 - **Bytes and cost:** programs with a D1 downcast grow by the check (one `readOnce` binding when the operand is not a
-  variable, a tag test and a branch). M0 measures it on the ten example validators. All other programs keep their bytes
-  (I3).
+  variable, a tag test and a branch). M0 and M1 measure it. All other programs keep their bytes (I3), the stdlib's
+  included (`ValuesLib`'s `PlutusData` casts are D2's).
+- **Downstream pins that move:** blueprint hashes and sizes of validators that downcast, in `julc-examples-javac` (14
+  on-chain validators cast `ScriptInfo`), `julc-examples`, and Elci's pinned hashes; budget assertions over those
+  validators. The release notes name the change; the repinning is the downstream repositories' own step.
 - **Behaviour:** a downcast to the wrong variant now fails, where it returned another variant's fields. That is the
   JVM's behaviour.
 
 ## Implementation milestones
 
-- **M0. Pins and cost baseline.** Harness rows of D1 and D2 casts as they behave today, R1's pin, #288's reproducer, and
-  the size and cost of the ten `ScriptInfo` validators. Exit: green; frozen reference unchanged.
+- **M0. Pins and cost baseline.** Harness rows of D1 and D2 casts as they behave today (a downcast agrees on its own
+  variant and on a nullary one, where the unchecked read fails too, and is a MISMATCH on a variant with fields), R1's
+  pin, #288's reproducer, D2 compatibility pins (frozen terms) for each D2 bullet, and the FLAT size of the 14
+  `julc-examples-javac` validators that cast `ScriptInfo`, compiled from a clone at a recorded commit with this
+  repository's compiler at every level. Exit: green; frozen reference unchanged.
 - **M1. D1, D4.** The check, tests, docs; the generator gate. Exit: R1 and #288 agree with the JVM; frozen rows moved
   only for programs with a D1 cast, each reviewed; cost recorded; Jazzer run.
 
@@ -172,17 +217,29 @@ Each milestone: targeted tests, a full build on the exact head, review by Claude
 
 ## Verification and test strategy
 
-The JVM is the oracle (ADR-063 harness, all four levels), comparing value, failure and traces.
+The JVM is the oracle (ADR-063 harness, all four levels), comparing value, failure and traces. A newly checked cast
+must agree with the JVM on every variant.
 
-1. Every D1 cast over every variant, so the check passes and fails: a local, a field read after it, a call argument,
-   a return, in a loop body, in a lambda, nested (`(A) (S) x`), on a traced operand (I2), on a ledger `ScriptInfo` of each
-   purpose, and #288's reproducer.
-2. D2's casts unchanged: frozen reference rows of programs without a D1 cast do not move (I3); unit tests that the
-   lowered term of an upcast, a same-type cast, `(V)(Object) x` and `PlutusData.cast` is the operand's.
-3. I4: on a failing cast the UPLC trace log equals the JVM's.
-4. G1 gate `DOWNCASTS`: `V v = (V) s` over sealed subjects (both outcomes), in every statement position; property test
-   requiring agreement; a Jazzer run.
-5. Cost: the ten example validators' size and CPU before and after, in the evidence.
+1. **D1 positions**, each over every variant (a passing and a failing check): a local, an argument, a return, a loop
+   body, a lambda body, a `?:` arm, a switch-arm value, an ADR-069 D4 continuation, a traced operand (I2), `(A)(S) x`
+   (two checks), a ternary operand (`Record & S`), a `var` of one, a `<T extends S>` parameter, a `(T) s` with
+   `T extends A`, a ledger `ScriptInfo` of each purpose, a multi-purpose validator's default handler casting the wrong
+   `ScriptInfo`, and #288's reproducer.
+2. **The failure is observable and placed** (I4): a cast whose result is never read, and one passed to a helper that
+   ignores its argument, still fail on the wrong variant at every level (no pass may drop the check); a failing cast
+   between two traced calls leaves only the first trace; a cast in an operand that `&&`, `||`, a `?:` arm or an
+   unselected switch arm skips does not run; a cast in an `instanceof` operand whose pattern variable is then read.
+3. **D2 unchanged** (I3): compatibility pins (frozen bytes and PIR) for an upcast, a same-type cast (and a pattern
+   variable typed V), `(V)(Object) x`, `PlutusData.cast`, `PlutusData`'s variants as `ValuesLib` uses them, a generic
+   accessor's result, a record component as operand, and a cast to a sealed or open interface. Views that diverge from
+   the JVM today are pinned by term, not by JVM agreement. `library-discovery-pre-cleanup.txt` and the frozen reference
+   do not move. `theBuildOrder`'s rejections keep their first error.
+4. **Guards** keep rejecting reference casts (`JULC0072`), pinned.
+5. **Generator** (ADR-066 G1): a gate `DOWNCASTS` (`V v = (V) s` over sealed subjects of either outcome, followed by
+   reads of `v`; never `((V) s).f()` or a cast in a guard), a steer toward the wrong variant, a property test requiring
+   agreement, and a Jazzer run.
+6. **Cost:** the 14 example validators' FLAT size at every level before and after; the check's CPU and memory from
+   the harness's measurements of the D1 rows before and after.
 
 ## Production and audit gates
 
@@ -192,7 +249,17 @@ All of the above green on the merge head; a Codex review with no open P0 or P1.
 
 - **Cost.** A small constant per downcast; measured in M0/M1 and reported.
 - **A variant with no tag.** Not reachable: D3.
-- **Over-reach.** D1 applies only where the operand's static type is the sealed interface, so views keep their bytes.
+- **Over-reach.** D1 applies only to a registry `SumType`'s variants from an operand of that family, so `PlutusData`
+  views and representation casts keep their bytes; M1 expects no frozen row to move.
+- **`any`/`all` do not stop early.** `PirHofBuilders.any` and `all` evaluate the predicate on every element, where
+  `JulcList.any` on the JVM stops at the first true. A checked cast in a predicate can therefore fail on an element the
+  JVM never reaches: `xs.any(x -> ((A) x)...)` over `[A(5), B(1, 2)]` is true on the JVM and, after D1, a failure on-chain
+  (before D1 it read `B` as `A` and returned true). The new divergence fails closed, where the old one read the wrong
+  fields; the root cause is the known no-short-circuit divergence, tracked separately (Q6). A harness row pins it.
+- **Tags that came through views.** A value obtained through an unchecked view (`PlutusData.cast(d, B.class)`,
+  `(B)(Object) x`) carries whatever tag its Data has. After an upcast, a later checked `(B) s` tests that tag. Data built
+  with a standalone record's tag 0 for a variant whose sum tag is not 0 used to pass and now fails; typed boundaries
+  already reject standalone variants, so only views lead there.
 
 ## Open questions
 
@@ -202,7 +269,23 @@ All of the above green on the merge head; a Codex review with no open P0 or P1.
   unchecked.
 - **Q4. A check after an `instanceof`.** Lean: keep it; an optimisation pass can drop a tag test already made, measured
   first.
+- **Q5. Casts JuLC cannot check** (a sealed sub-interface, an open interface, a variant `TypeTests` rejects, a library
+  sum the registry lacks). Lean: stay views, as listed; each would need a tag range or a registry entry first.
+- **Q6. `any`/`all` short-circuit.** Lean: a separate issue to make them stop at the first true (and false), which also
+  fixes the trace divergence; not a blocker for D1, whose new failure is fail-closed.
 
 ## Revision history
 
 - r1 (2026-11-06): initial proposal.
+- r2 (2026-11-06, responds to the review of `76c54a97` by Codex (F1, F2), a semantics reviewer (S1–S8) and a code
+  reviewer (C1–C9)):
+  - D1's case redefined: a target whose erasure is a variant of a registry `SumType` (so `PlutusData`'s variants are D2's,
+    C1 P1), from an operand of that family including intersections and bounded type variables (F1 P1, S1 P1, C2).
+  - D1 names the `TypeTests` refactor (`variant`, `tagTest`) and the located, typed `Error` (C3, C4).
+  - D2 and D3: `PlutusData` variants, sealed sub-interfaces, open interfaces and rejected variants stay views; no new
+    rejection; Q5 (S3, S4, S5, C7).
+  - Risks: `any`/`all` widen to a fail-closed divergence (S2, Q6); tags through views (S8).
+  - Compatibility: downstream pins listed; measurement method (C5). I3 expects no frozen row to move (C6).
+  - Verification: unused casts, traces around a failing cast, skipped operands, D2 compatibility pins, guards, ternary
+    and type-variable rows, multi-purpose default handler (F2, S6, C8, C9).
+  - References: 5.1.6.1, 5.1.6.3 and 15.16 added (S7).
