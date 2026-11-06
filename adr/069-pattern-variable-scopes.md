@@ -1,7 +1,8 @@
 # ADR-069: Pattern-variable scopes: `instanceof` beyond the plain `if`
 
 **Status:** Accepted (2026-11-06): approved in design review by Codex at `fea7e0e9` and by the semantics and code
-reviewers at `cbfc1b36` (their remaining P2/P3 points addressed in r4). The implementation follows in the same PR.
+reviewers at `cbfc1b36` (their remaining P2/P3 points addressed in r4). Implemented in the same PR (M0–M3); the
+implementation was approved by Codex at `ea9c4bef` after three rounds (Implementation results).
 **Date:** 2026-11-06
 **Risk class:** correctness-sensitive, **medium**. The new lowering runs only for programs that read a pattern
 variable JuLC cannot bind today, all of which are rejected now (I4); every other program keeps its terms. The risk is
@@ -836,6 +837,14 @@ of the class:
 - The audit found every other path sound: `foldIf` (last and non-last), `breakingIf`'s in-place and joined paths,
   nested loops, block splicing, locals, expression statements, and `ifForEffect`, `ifWithExit` and `ifWithLoop` with an
   `Error` continuation.
+
+Round 3 (of `ea9c4bef`): F19 RESOLVED; **APPROVED**, no new findings. CI is green on `ea9c4bef` (build, verify, docs).
+
+The local toolchain moved off javac 25.0.2. Gradle runs on Liberica 25.0.4: GraalVM 25.3.4 as the Gradle JDK breaks
+every test that runs the Truffle VM, because its built-in Truffle clashes with the project's. That move showed that
+`JvmExecutorTest`'s guard ("javac before 25.0.5 emits the unverifiable class") was a guessed version bound. The guard now
+compiles and loads the shape with the javac that runs, and the tests run only if it is rejected. They are green on
+25.0.2, on 25.0.4, and on CI's 25.0.5, where they are skipped.
 
 ## Revision history
 

@@ -279,8 +279,22 @@ class JvmExecutorTest {
                 """;
 
     /** By version and not by a probe: a probe would also skip these tests if the harness stopped seeing a rejected class. */
+    /**
+     * These tests need javac to emit a class the JVM rejects, which javac 21 to 25.0.2 does for this shape and later
+     * releases do not (25.0.4 already emits a valid class). A version bound guessed one release too late, so the javac
+     * that runs is asked: the shape is compiled and loaded once, and the tests run only if it is rejected.
+     */
     private static void assumeUnverifiableClasses() {
-        assumeTrue(Runtime.version().compareTo(Runtime.Version.parse("25.0.5")) < 0, "javac 25.0.5 and later emit a valid class");
+        String probe = probeUnverifiable();
+        assumeTrue(probe.contains("VerifyError"), () -> "this javac emits a valid class for the shape: " + probe);
+    }
+
+    private static String probeUnverifiable() {
+        try {
+            return "ran: " + new JvmExecutor(5_000).run(localUnverifiable());
+        } catch (RuntimeException e) {
+            return e.getClass().getSimpleName() + ": " + e.getMessage();
+        }
     }
 
     private static DiffCase localUnverifiable() {
