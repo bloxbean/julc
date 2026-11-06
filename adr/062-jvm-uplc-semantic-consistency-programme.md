@@ -134,7 +134,9 @@ Adopt a six-step programme. Every step has its own ADR, its own acceptance gate,
   it addresses and can detect a deliberate regression of the fix.
 - **P6. Visible compatibility.** A change that alters script bytes, hashes or costs, or rejects programs that
   compiled before, is announced in release notes with migration guidance, and goes through an opt-in release
-  before it becomes the default.
+  before it becomes the default. A semantic fix that restores Java's behaviour may skip the opt-in release only through a
+  recorded exception: ADR-068 D4/D6 for `compareTo(...) OP 0`, and ADR-032's #146 policy amendment (proposed) for
+  the other `compareTo` forms, `abs`, `signum`, `max`, `min` and `Math`'s delegates.
 
 ### Tracking
 
@@ -235,3 +237,5 @@ Adopt a six-step programme. Every step has its own ADR, its own acceptance gate,
   `== -1` and the T12 pin of a guard's traced `signum` receiver (ADR-067 F36) expect `AGREE`. The T13 registry rule
   stays, with no saved reproducer: G0 generates only the `OP 0` form, so its `DEEP_COMPARISON` marker no longer
   predicts an exhausted budget, and retiring the rule goes with G0 r3, which removes the nesting bound.
+  The rollout at every level, without an opt-in release, is an exception to P6, recorded in ADR-032's #146
+  policy amendment (proposed, awaiting the maintainer).

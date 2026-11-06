@@ -34,9 +34,9 @@ import java.util.function.Supplier;
  * that interface. Anything else is rejected: the comparison would run on a value of some other type, where
  * Java tests the value's class.
  * <p>
- * <b>Evaluation order.</b> The operand is evaluated once, then the test. As in the reference, {@code if (e instanceof V v)}
- * reads {@code e} a second time for {@code v}, so where the test holds {@code e} runs twice, and a trace in it shows twice,
- * unless it holds a read of a method, which {@code Ifs} binds once. In a guard the operand is evaluated once, by the dispatch.
+ * <b>Evaluation order.</b> The operand is evaluated once, then the test. In {@code if (e instanceof V v)}, {@code Ifs} binds
+ * {@code e} once, unless it is a variable or a literal ({@code PirHelpers.readOnce}, #146): the test and {@code v} read that
+ * one binding, so a trace in {@code e} shows once, as in Java. In a guard the dispatch reads the operand it is given.
  */
 final class TypeTests {
 
