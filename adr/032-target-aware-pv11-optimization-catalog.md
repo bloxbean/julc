@@ -95,7 +95,7 @@ also compared numerically against the pre-change file and its SHA-256 reproduced
 unchanged. External DevKit tests remain explicitly opt-in and were not run;
 runtime evaluation configuration and the lowering algorithm were not changed.
 
-### Policy amendment — issue #146 (2026-11-06, proposed: awaiting maintainer confirmation)
+### Policy amendment — issue #146 (2026-11-06, accepted)
 
 **Problem.** `abs`, `signum`, `max`, `min` and `compareTo`, `Math`'s delegates and the operand of an
 `if (x instanceof T t)` pattern read an operand more than once, and an operand that was more than a variable or a
@@ -103,7 +103,7 @@ literal ran at each read. That is an observable divergence from Java: a traced o
 (ADR-062 T12/T13). Nested calls also double the script at each level, and the fuzzer's programs ran the compiler
 out of memory. ADR-068 D4/D6 fixed the `a.compareTo(b) OP 0` form at every level and left these forms open.
 
-**Decision (proposed).** These forms bind an operand that is not a variable, a literal or constant integer
+**Decision.** These forms bind an operand that is not a variable, a literal or constant integer
 arithmetic once, receiver first (`PirHelpers.readOnce`), at **every** optimization level, `BASELINE` included,
 and as the default with no opt-in release first. This is an exception to two rules:
 - This ADR's "`BASELINE` remains byte-compatible for historical-script reproduction".
@@ -132,9 +132,10 @@ programs that pass such an operand. To reproduce such an artifact, pin the compi
 together with the same target and optimization level.
 Programs whose operands are only variables, literals and constant arithmetic keep their bytes.
 
-**Open question for the maintainer.** Confirm the all-level, no-opt-in rollout above, or choose one of the
-alternatives. Until it is confirmed, this amendment stays proposed. The release notes announce the change and its
-cost trade-off ("`abs`, `signum`, `max`, `min` and `compareTo` evaluate each operand once (#146)").
+**Maintainer decision (2026-11-06).** Confirmed: the fix is the default at every level, `BASELINE` included,
+with no opt-in release ("No one is using JULC and it is still preview, should not we do it default"). The release
+notes announce the change and its cost trade-off ("`abs`, `signum`, `max`, `min` and `compareTo` evaluate each
+operand once (#146)").
 
 PV11 makes fourteen Batch 6 builtins available to Plutus V3 and enables
 `Case` over selected builtin constant types. JuLC already exposes and evaluates
