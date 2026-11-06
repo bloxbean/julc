@@ -72,3 +72,10 @@ Investigate drift first: compiler/configuration changes can alter bytes, while a
 cost-model change can alter budgets without altering bytes. Do not refresh pins merely
 to make tests pass. Record the reason, affected artifacts and independent node evidence
 for review; see [ADR-052](../adr/052-pre17-profile-freeze-and-release-regressions.md).
+
+The `G1_CONS`/`G2_CONS` kinds (#240, ADR-047 amendment) are the G1/G2 MSM check with the
+point list built by a recursive helper (`Builtins.g1PointsCons`/`g2PointsCons` over
+`g1PointsEmpty()`/`g2PointsEmpty()`) and the scalars by `Builtins.scalarsCons` over
+`scalarsEmpty()`; their structural check also requires `MkCons` after FLAT decoding.
+Their rows were computed offline when they were added; the node gate has not yet been run
+for them, so they await the same node evidence as the other rows.

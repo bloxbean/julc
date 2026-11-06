@@ -44,6 +44,8 @@ import java.util.Set;
  *       differs from Java only out of range (D4's cap, the follow-ups' "Closed by M5"). Where the operand's value is shown to
  *       be in range, {@link NarrowingElisionPass} removes the wrap on the assembled term, when every method body is known.</li>
  *   <li>A cast to {@code byte}, {@code short} or {@code char} has no representation, as its type: {@code JULC0124}.</li>
+ *   <li>A view is never a decoder or a change of group (ADR-047 Amendment 1): where the cast's type or a value it views
+ *       holds a native type, the two must be the same type, else {@code JULC0041}.</li>
  * </ul>
  * The operand is evaluated once, before what the cast does to it. A guard's casts are {@link Lowering}'s, under ADR-067.
  */
@@ -67,6 +69,7 @@ final class Casts {
         var target = facts.type(tree);
         if (target.getKind().isPrimitive()) return primitive(tree, target, operand, frame);
         var inner = lowering.expr(operand, frame);
+        requireNativeView("Cast to " + tree.getType(), tree, operand);
         return toMap(tree) && !isMap(operand, inner) ? new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnMapData), inner) : inner;
     }
 
@@ -118,7 +121,50 @@ final class Casts {
         }
         var argument = tree.getArguments().getFirst();
         var inner = lowering.expr(argument, frame);
+        requireNativeView("PlutusData.cast to " + literal.getExpression(), tree, argument);
         return toMap(tree) && !isMap(argument, inner) ? new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnMapData), inner) : inner;
+    }
+
+    /**
+     * ADR-047 Amendment 1: a cast lowers to the value it views, so it cannot turn a value into a native type, a native value
+     * into another type, or one group into another. Each value {@code operand} may be, through parentheses, choices and
+     * other casts, is checked against {@code cast}'s type at the native boundary. A cast to a type with no representation,
+     * such as {@code Object}, says nothing: the cast around it, or the boundary its value reaches, checks.
+     */
+    private void requireNativeView(String what, ExpressionTree cast, ExpressionTree operand) {
+        PirType target;
+        try {
+            target = typing.of(cast);
+        } catch (CompilerException e) {
+            return;
+        }
+        var values = new ArrayList<ExpressionTree>();
+        viewedValues(operand, values);
+        for (var value : values) {
+            PirType actual;
+            try {
+                actual = typing.of(value);
+            } catch (CompilerException e) {
+                continue; // a value with no type of its own here, such as null, is checked where it is used
+            }
+            typing.requireNativeBoundary(what, actual, target, cast);
+        }
+    }
+
+    /** What {@code tree} may evaluate to through parentheses, a choice of terms and casts of either form. */
+    private void viewedValues(ExpressionTree tree, List<ExpressionTree> values) {
+        switch (tree) {
+            case ParenthesizedTree parenthesized -> viewedValues(parenthesized.getExpression(), values);
+            case ConditionalExpressionTree conditional -> {
+                viewedValues(conditional.getTrueExpression(), values);
+                viewedValues(conditional.getFalseExpression(), values);
+            }
+            case SwitchExpressionTree selected -> SwitchResults.of(selected).forEach(result -> viewedValues(result, values));
+            case TypeCastTree cast when !(cast.getType() instanceof PrimitiveTypeTree) -> viewedValues(cast.getExpression(), values);
+            case MethodInvocationTree call when targets.classify(call) == CallTarget.Intrinsic.CAST ->
+                    viewedValues(call.getArguments().getFirst(), values);
+            default -> values.add(tree);
+        }
     }
 
     /** Whether {@code cast}, a cast of either form, views its value as a map. A type with no representation is not one. */

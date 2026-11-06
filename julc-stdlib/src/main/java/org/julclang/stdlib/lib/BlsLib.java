@@ -21,8 +21,8 @@ import java.math.BigInteger;
  * <p>
  * ADR-047: points are {@link JulcG1}/{@link JulcG2}, Miller results {@link JulcMlResult},
  * and the multi-scalar-multiplication lists {@link JulcScalars}/{@link JulcG1Points}/
- * {@link JulcG2Points}, built with {@code Builtins.scalars}, {@code Builtins.g1Points} or
- * the {@code ...FromList}/{@code ...FromCompressed} converters. A byte string is only a
+ * {@link JulcG2Points}, built with {@code Builtins.scalars}, {@code Builtins.g1Points}, the
+ * converters or the {@code ...Empty}/{@code ...Cons} forms (#240). A byte string is only a
  * compressed encoding: {@code g1Uncompress} turns it into a point and {@code g1Compress}
  * back.
  * <p>
