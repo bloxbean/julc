@@ -85,6 +85,7 @@ class Adr070CheckedCastsHarnessTest {
             in a ternary arm        ~ public static long m(S s) { long v = s instanceof S.D ? 0 : value((S.A) s); return v; }
             through the interface   ~ public static long m(S s) { S.A a = (S.A) (S) s; return a.v().longValue(); }
             a component typed S     ~ public static long m(S s) { Box box = new Box(s); S.A a = (S.A) box.value(); return a.v().longValue(); }
+            a captured wildcard     ~ public static long m(S s) { S.A a = (S.A) ((JulcList<? extends S>) JulcList.of(s)).head(); return a.v().longValue(); }
             a list head typed S     ~ public static long m(S s) { S.A a = (S.A) JulcList.of(s).head(); return a.v().longValue(); }
             a pattern operand       ~ public static long m(S s) { if ((S.A) s instanceof S.A a) { return a.v().longValue(); } return -1; }
             an early-exit rest      ~ public static long m(S s) { if (!(s instanceof S.B b)) { S.A a = (S.A) s; return a.v().longValue(); } return b.w().longValue(); }

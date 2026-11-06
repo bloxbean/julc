@@ -336,8 +336,9 @@ All of the above green on the merge head; a Codex review with no open P0 or P1.
     - `constructorOf` gives user and ledger variants and a sub-interface's own variant;
     - it gives nothing for `PlutusData`'s variants, a `@NewType`, or a sum permitting a sealed interface;
     - `isOfThroughBounds` reads `T extends S`, `U extends T` and `X extends S.A`, but not unbounded `W` or `Object`.
-  - Generic entry methods and wildcard-typed locals are rejected before lowering (`JULC0012`), so the type-variable path
-    has unit tests and no end-to-end row.
+  - Generic entry methods and wildcard-typed locals are rejected before lowering (`JULC0012`), but a captured wildcard is
+    reachable through a cast expression, `(S.A) ((JulcList<? extends S>) xs).head()`. That is a harness row (final
+    review F7); the bounded type-variable path otherwise has unit tests.
 - **Frozen reference: no row moved** (I3), over all 5,608 compiler tests.
 - **Cost:**
   - Measured on `S.A a = (S.A) s; return a.v()` with an `A`: at PV11_SAFE, CPU 606,574 → 1,065,390 (+458,816), memory
@@ -371,6 +372,15 @@ All of the above green on the merge head; a Codex review with no open P0 or P1.
     (`JULC0109`).
 - **Docs:** release notes ("a cast to a sealed-interface variant is checked", with the cost), a troubleshooting
   question, AI starter pack 6.21, and the `Casts` class comment.
+
+### Final review (Codex, of `d652d466`)
+
+**APPROVED**, with no P0 or P1. Codex independently confirmed that no frozen row changed and 110 were added. Both P2s
+are applied:
+
+- **F7.** A captured wildcard is reachable through a cast expression. It is now a harness row, and the results text is
+  corrected.
+- **F8.** The release notes and starter pack no longer suggest `instanceof` for operands it rejects.
 
 ## Revision history
 

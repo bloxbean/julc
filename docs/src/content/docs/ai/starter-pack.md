@@ -359,7 +359,7 @@ Run tests on JDK 25.0.3 or later. On an older JDK, avoid declaring two pattern v
 
 ### 6.21 A cast to a variant is checked
 
-`(Withdraw) redeemer` and `(ScriptInfo.MintingScript) ctx.scriptInfo()` test the variant and fail the script on any other, as Java throws `ClassCastException` ([#288](https://github.com/bloxbean/julc/issues/288)). To branch, use `instanceof` or a `switch` instead of casting. A cast from a type JuLC cannot relate to the sealed interface stays an unchecked view: `(V)(Object) x`, `PlutusData.cast`, `PlutusData`'s own variants, an unbounded type variable or an open super-interface. Inside a `JulcList.any`/`all` predicate, test with `instanceof` rather than cast: JuLC runs the predicate on every element.
+`(Withdraw) redeemer` and `(ScriptInfo.MintingScript) ctx.scriptInfo()` test the variant and fail the script on any other, as Java throws `ClassCastException` ([#288](https://github.com/bloxbean/julc/issues/288)). To branch, use `instanceof` or a `switch` instead of casting. A cast from a type JuLC cannot relate to the sealed interface stays an unchecked view: `(V)(Object) x`, `PlutusData.cast`, `PlutusData`'s own variants, an unbounded type variable or an open super-interface. `instanceof` rejects such operands too, so obtain a value typed as the sealed interface first. Inside a `JulcList.any`/`all` predicate, test with `instanceof` rather than cast: JuLC runs the predicate on every element.
 
 ## 7. Common errors — root cause and fix
 

@@ -21,8 +21,9 @@ Withdraw w = (Withdraw) redeemer;                                              /
   bytes: upcasts and same-type casts.
 - A cast from a type JuLC cannot relate to the sealed interface stays an unchecked view, as
   before: `(V)(Object) x`, `PlutusData.cast(x, V.class)`, casts to `PlutusData`'s own variants,
-  and an operand of an unbounded type variable or an open super-interface. Branch with
-  `instanceof` there.
+  and an operand of an unbounded type variable or an open super-interface. `instanceof` does not
+  accept those operands either: obtain a value typed as the sealed interface first (a typed
+  datum, redeemer or record component), then cast or branch on it.
 - Cost: 14 to 19 bytes of script per checked cast (measured on 13 example validators, which grow
   by 0.3% to 3%), and a tag test at run time. Blueprint hashes of validators that downcast change.
 - `JulcList.any` and `all` run their predicate on every element, so a cast that would fail on an
