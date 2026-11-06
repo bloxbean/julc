@@ -25,7 +25,7 @@ import static org.julclang.difftest.gen.G1Ast.BOOL;
 import static org.julclang.difftest.gen.G1Ast.UNREADABLE;
 
 /**
- * The second program grammar (ADR-066 D2, G1 r11): user records and sealed interfaces with record variants,
+ * The second program grammar (ADR-066 D2, G1 r12): user records and sealed interfaces with record variants,
  * {@code static final} fields, helpers, method-level {@code if} and {@code instanceof} patterns, G0's loops
  * with accumulators of any generated type, record and sealed arguments and results, traces and failures, and
  * {@code switch} expressions with type patterns, {@code default}, {@code yield} blocks, loops in arms and nesting
@@ -60,7 +60,7 @@ public final class G1 {
      * The decoding's version, saved with every case (ADR-066 G1-I5). Change it whenever a plan, an input sequence or
      * a profile would decode to something different.
      */
-    public static final String VERSION = "G1 r11";
+    public static final String VERSION = "G1 r12";
 
     /**
      * The switches of a generation profile (ADR-066 D6), each gating a construct whose defect is open; once the fix is
@@ -112,7 +112,7 @@ public final class G1 {
          * {@code else if} chain of pattern tests, a nested pattern test or a {@code break}; {@code x} a variable or
          * component of a sealed or variant type, or a call returning one. The variable is never assigned and never
          * read under {@code &&}, {@code ||}, {@code !} or {@code ?:} (M2) or after an early exit (M3). Off in the
-         * default profile until ADR-069 M3.
+         * default profile until ADR-069 M3; on there since G1 r12.
          */
         PATTERN_LOOPS,
         /**
@@ -121,9 +121,25 @@ public final class G1 {
          * reads of each pattern variable exactly where JLS 6.3.1 puts it in scope: in the condition, in the branches of
          * an {@code if} (method level and loop bodies), in the arms of a value {@code ?:}, and in a {@code while}
          * condition (read there only). Wherever a condition is generated (boolean locals, returns, arguments, tests),
-         * and never a variable read after its statement (M3). Off in the default profile until ADR-069 M3.
+         * and never a variable read after its statement (M3). On in the default profile since G1 r12 (ADR-069 M3).
          */
-        PATTERN_CONDITIONS;
+        PATTERN_CONDITIONS,
+        /**
+         * ADR-069 M3 (#204), since G1 r12: guards that introduce a pattern variable into the rest of their block (JLS
+         * 6.3.2.2), {@code if (!(x instanceof V v)) { exit }}, with {@code &&}/{@code ||} and the mirrored
+         * {@code if (x instanceof V v && c) { … } else { exit }}, whose exiting branch ends every path in {@code return}
+         * (method bodies, lambda blocks), {@code yield} (switch-arm blocks) or {@code break} (loop bodies), sometimes
+         * through an inner {@code if}, followed by reads of the variable; two in a row under the steer. On in the
+         * default profile since G1 r12.
+         */
+        PATTERN_EXIT,
+        /**
+         * ADR-069 verification 6's javac-filtered mode: reads of pattern variables outside G1's model of JLS 6.3 (after
+         * their statement, after a loop, in the {@code else} of {@code !(x instanceof V v) || true}); javac decides
+         * which compile, and those must agree or be rejected with a code ({@code Adr069JavacFilteredPropertyTest}).
+         * Never in the default profile: many of its programs are not Java.
+         */
+        PATTERN_SCOPE_PROBES;
 
         /** The switches G1 defines but does not implement yet: they wait for ADR-067 (M3, part 2). */
         public static final Set<Gate> INERT =
@@ -187,10 +203,11 @@ public final class G1 {
          * The campaigns' profile: every gate off whose defect is open, and on for each defect fixed below (ADR-066 D6,
          * "After a fix"): {@link Gate#DEFAULT_BLOCK_SCOPE} since #291's fix (G1 r8), and
          * {@link Gate#SHADOW_IN_LOOP_BRANCH} and {@link Gate#LOOP_BREAK_SHAPES} since the loop-break continuation fix
-         * (#209, #254, #255; G1 r9).
+         * (#209, #254, #255; G1 r9); and ADR-069's {@link Gate#PATTERN_LOOPS}, {@link Gate#PATTERN_CONDITIONS} and
+         * {@link Gate#PATTERN_EXIT} since its M3 (G1 r12).
          */
-        public static final Profile DEFAULT =
-                new Profile(EnumSet.of(Gate.SHADOW_IN_LOOP_BRANCH, Gate.LOOP_BREAK_SHAPES, Gate.DEFAULT_BLOCK_SCOPE));
+        public static final Profile DEFAULT = new Profile(EnumSet.of(Gate.SHADOW_IN_LOOP_BRANCH, Gate.LOOP_BREAK_SHAPES,
+                Gate.DEFAULT_BLOCK_SCOPE, Gate.PATTERN_LOOPS, Gate.PATTERN_CONDITIONS, Gate.PATTERN_EXIT));
         /** The historical profile that rediscovers #209 (ADR-066 D10.1). */
         public static final Profile REDISCOVER_209 = DEFAULT.with(Gate.SHADOW_IN_LOOP_BRANCH).steered(Steer.ISSUE_209);
         /** The historical profile that rediscovers #280 (ADR-066 D10.1). */
@@ -207,12 +224,16 @@ public final class G1 {
         /** The historical profile that rediscovers #291's rejection of loops in a default arm block (ADR-066 D10.1). */
         public static final Profile REDISCOVER_291_LOOPS = DEFAULT.with(Gate.DEFAULT_BLOCK_SCOPE).steered(Steer.ISSUE_291_LOOPS);
         /**
-         * ADR-069's campaign (#204): the default profile with {@link Gate#PATTERN_LOOPS} (M1) and
-         * {@link Gate#PATTERN_CONDITIONS} (M2), steered to their shapes; every program must agree with the JVM
+         * ADR-069's campaign (#204): the default profile, whose {@link Gate#PATTERN_LOOPS} (M1),
+         * {@link Gate#PATTERN_CONDITIONS} (M2) and {@link Gate#PATTERN_EXIT} (M3) are on, steered to their shapes; every program must agree with the JVM
          * ({@code Adr069PatternFlowPropertyTest}, {@code Adr069PatternFlowFuzzTest}).
          */
-        public static final Profile PATTERN_FLOW_204 =
-                DEFAULT.with(Gate.PATTERN_LOOPS).with(Gate.PATTERN_CONDITIONS).steered(Steer.ISSUE_204);
+        public static final Profile PATTERN_FLOW_204 = DEFAULT.steered(Steer.ISSUE_204);
+        /**
+         * ADR-069 verification 6's javac-filtered campaign: {@link #PATTERN_FLOW_204} with
+         * {@link Gate#PATTERN_SCOPE_PROBES} ({@code Adr069JavacFilteredPropertyTest}).
+         */
+        public static final Profile JAVAC_FILTERED_204 = PATTERN_FLOW_204.with(Gate.PATTERN_SCOPE_PROBES);
 
         public Profile {
             var gates = EnumSet.noneOf(Gate.class);
@@ -355,7 +376,19 @@ public final class G1 {
         /** A pattern test in a {@code while} condition (PATTERN_CONDITIONS). */
         PATTERN_IN_WHILE_CONDITION,
         /** A pattern test in a lambda body (PATTERN_CONDITIONS). */
-        PATTERN_IN_LAMBDA;
+        PATTERN_IN_LAMBDA,
+        /** A guard whose pattern variable is read after it (PATTERN_EXIT, ADR-069 D4). */
+        EXIT_GUARD,
+        /** A guard in a loop body, whose exiting branch breaks (PATTERN_EXIT). */
+        EXIT_BREAK,
+        /** A guard in a switch-arm block, whose exiting branch yields (PATTERN_EXIT). */
+        EXIT_YIELD,
+        /** A guard in a lambda block, whose exiting branch returns (PATTERN_EXIT). */
+        EXIT_LAMBDA,
+        /** A read of a pattern variable declared earlier, wherever it is (PATTERN_SCOPE_PROBES). */
+        PROBE_STALE_READ,
+        /** {@code if (!(x instanceof V v) || true) { return …; } else { … v … }} (PATTERN_SCOPE_PROBES). */
+        PROBE_CONSTANT_ELSE;
 
         /**
          * The features with a quota: D8's list without the features of the gated constructs (guards, record patterns,
@@ -368,7 +401,8 @@ public final class G1 {
                 Collections.unmodifiableSet(EnumSet.of(SHADOW_IN_LOOP_BRANCH, ZERO_ARG_HELPER, LOOP_BREAK_SHAPE,
                         TRACE_IN_COMPARISON, ASSIGN_PATTERN_BINDING, DEFAULT_BLOCK_SHADOW,
                         DEFAULT_BLOCK_AFTER_LOOP, BARE_TYPE_TEST, LOOP_PATTERN_IF, LOOP_PATTERN_ELSE_IF, PATTERN_CONDITION,
-                        PATTERN_IN_WHILE_CONDITION, PATTERN_IN_LAMBDA));
+                        PATTERN_IN_WHILE_CONDITION, PATTERN_IN_LAMBDA, EXIT_GUARD, EXIT_BREAK, EXIT_YIELD, EXIT_LAMBDA,
+                        PROBE_STALE_READ, PROBE_CONSTANT_ELSE));
     }
 
     /** A decoded program: its source, its tag table, its features, its profile and its entry parameters. */
@@ -772,6 +806,7 @@ public final class G1 {
             }
             // Names declared in this helper's body (switch bindings, arm locals) avoid its parameters; xs is not in scope.
             methodNames.clear();
+            patternVariables.clear();
             parameters.forEach(parameter -> methodNames.add(parameter.name()));
             inHelper = true;
             // Boolean helpers are called from conditions (BOOLEAN_HELPER_CALL).
@@ -795,6 +830,7 @@ public final class G1 {
 
     private G1Ast.Method method() {
         methodNames.clear();
+        patternVariables.clear();
         methodNames.addAll(List.of("a", "b", "xs"));
         defaultShadowed = null;
         Type result = !types.isEmpty() && !choices.oneIn(3) ? declaredType() : anyType();
@@ -839,6 +875,15 @@ public final class G1 {
             if (defaultShadowing && kind != 8 && choices.oneIn(2)) kind = 8;
             // Steered to #204, more loops: M1's pattern tests live in loop bodies.
             if (profile.steers(Steer.ISSUE_204) && kind > 3 && choices.oneIn(2)) kind = 1;
+            // PATTERN_SCOPE_PROBES: a read wherever, or a constant-condition else (javac-filtered).
+            if (probes() && choices.oneIn(4)) staleRead(scope, body);
+            if (probes() && choices.oneIn(4)) {
+                scope = constantElse(scope, body, result);
+                continue;
+            }
+            // Under PATTERN_EXIT an eighth of the statements follow guards whose variables the rest reads; steered,
+            // half. A guard adds to the statement, so that the distribution of the others stays (G1GatesTest).
+            if (exits(2, 8)) scope = methodGuards(scope, body, result);
             switch (kind) {
                 case 0 -> scope = declaration(scope, body, true, null);
                 case 1, 2, 3 -> {
@@ -852,6 +897,8 @@ public final class G1 {
                 default -> scope = declaration(scope, body, false, null);
             }
         }
+        // PATTERN_SCOPE_PROBES: before the method's last statement, when the most pattern variables exist.
+        if (probes() && !choices.oneIn(3)) staleRead(scope, body);
         if (choices.oneIn(3)) {
             features.add(Feature.METHOD_LEVEL_IF);
             if (conditions(2, 4)) {
@@ -1093,7 +1140,24 @@ public final class G1 {
                     : kind == 2 && choices.oneIn(3))) {
                 kind = 8;
             }
+            // Under PATTERN_EXIT a fifth of the statements of a body with break are guards that break; steered, half.
+            if (profile.has(Gate.PATTERN_EXIT) && conditionalUpdates && breakAware
+                    && choices.oneIn(profile.steers(Steer.ISSUE_204) ? 2 : 5)) {
+                kind = 9;
+            }
+            if (probes() && choices.oneIn(4)) staleRead(scope, into);
             switch (kind) {
+                case 9 -> {
+                    var introduced = exitGuard(ctx(scope), into, new Exit(Exit.BREAK, BIG), assigned);
+                    for (Var var : introduced) scope = scope.with(var);
+                    if (!introduced.isEmpty()) {
+                        hasBreak = true;
+                        hasIfUpdate = true;
+                        features.add(Feature.BREAK);
+                        // An update that prefers the variable, as the rest of the body would.
+                        assignment(scope, into, assigned, introduced.getFirst().name());
+                    }
+                }
                 case 8 -> {
                     hasIfUpdate = true;
                     flowUpdate(scope, into, assigned);
@@ -1301,6 +1365,7 @@ public final class G1 {
         String binding = freshName(true);
         features.add(Feature.LOOP_PATTERN_IF);
         Var bound = new Var(binding, variant, false, false, true, false);
+        patternVariables.add(bound);
         Scope branch = scope.with(bound);
         var then = new ArrayList<Stmt>();
         if (!variant.components.isEmpty() && choices.oneIn(2)) {
@@ -1338,6 +1403,200 @@ public final class G1 {
             otherwise = List.of(patternIf(scope, assigned, breakAware, nesting, subject, type, chain + 1));
         }
         return new G1Ast.PatternIf(subject, variant, binding, choices.oneIn(4), then, otherwise);
+    }
+
+    // ---------------------------------------------------------------- exit guards (PATTERN_EXIT, ADR-069 M3)
+
+    /**
+     * How a guard's exiting branch leaves (JLS 14.22: every path ends in it): {@code return} of {@code type} (a method,
+     * or a lambda block's {@code boolean}), {@code yield} of the arm's type, or {@code break} from a loop body.
+     */
+    private record Exit(String kind, Type type) {
+        static final String RETURN = "return", YIELD = "yield", BREAK = "break";
+    }
+
+    /** Whether the probes of JLS 6.3 outside G1's own model are generated (PATTERN_SCOPE_PROBES, ADR-069 verification 6). */
+    private boolean probes() {
+        return profile.has(Gate.PATTERN_SCOPE_PROBES);
+    }
+
+    /** Every pattern variable the method being generated declares, for PATTERN_SCOPE_PROBES' reads outside its scope. */
+    private final List<Var> patternVariables = new ArrayList<>();
+
+    /** Whether PATTERN_EXIT is on and a production chosen one time in {@code steered} or {@code plain}. */
+    private boolean exits(int steered, int plain) {
+        return profile.has(Gate.PATTERN_EXIT) && flows == 0
+                && choices.oneIn(profile.steers(Steer.ISSUE_204) ? steered : plain);
+    }
+
+    /**
+     * A guard (JLS 6.3.2.2): {@code if (!(x instanceof V v)) { exit }}, {@code if (!(x instanceof V v && c)) { exit }},
+     * {@code if (!(x instanceof V v) || c) { exit }}, each sometimes with an {@code else} that falls through, or the
+     * mirror {@code if (x instanceof V v && c) { falls } else { exit }}; it introduces {@code v} (and what {@code c}
+     * adds) into the rest of the block. Returns those variables, after the statement and a first read of one of them
+     * are added; an empty list when nothing can be tested. {@code assigned} collects a loop body's updates.
+     */
+    private List<Var> exitGuard(Ctx ctx, List<Stmt> into, Exit exit, List<String> assigned) {
+        flows++;
+        tests++;
+        Flow leaf;
+        Expr condition;
+        List<Var> introduced;
+        boolean mirrored;
+        try {
+            leaf = patternLeaf(ctx, List.of());
+            if (leaf == null) return List.of();
+            Ctx seeing = with(ctx, leaf.whenTrue()).conditionally();
+            mirrored = false;
+            switch (choices.below(4)) {
+                case 0 -> {
+                    condition = new G1Ast.Not(leaf.expr());
+                    introduced = leaf.whenTrue();
+                }
+                case 1 -> {
+                    Flow more = flow(seeing, leaf.whenTrue(), 1);
+                    condition = new G1Ast.Not(new G1Ast.Logic(leaf.expr(), "&&", more.expr()));
+                    introduced = concat(leaf.whenTrue(), more.whenTrue());
+                }
+                case 2 -> {
+                    Flow more = flow(seeing, leaf.whenTrue(), 1);
+                    condition = new G1Ast.Logic(new G1Ast.Not(leaf.expr()), "||", more.expr());
+                    introduced = concat(leaf.whenTrue(), more.whenFalse());
+                }
+                default -> {
+                    Flow more = flow(seeing, leaf.whenTrue(), 1);
+                    condition = new G1Ast.Logic(leaf.expr(), "&&", more.expr());
+                    introduced = concat(leaf.whenTrue(), more.whenTrue());
+                    mirrored = true;
+                }
+            }
+        } finally {
+            flows--;
+            tests--;
+        }
+        features.add(Feature.EXIT_GUARD);
+        switch (exit.kind()) {
+            case Exit.BREAK -> features.add(Feature.EXIT_BREAK);
+            case Exit.YIELD -> features.add(Feature.EXIT_YIELD);
+            default -> {
+                if (lambdas > 0) features.add(Feature.EXIT_LAMBDA);
+            }
+        }
+        var exiting = exitBranch(ctx, exit, assigned, 0);
+        List<Stmt> falling = mirrored || choices.oneIn(3) ? fallingBranch(with(ctx, introduced), exit, assigned) : null;
+        into.add(mirrored ? new G1Ast.If(condition, falling, exiting) : new G1Ast.If(condition, exiting, falling));
+        // A first read of a variable it introduces, in the rest of the block.
+        Var used = introduced.get(choices.below(introduced.size()));
+        if (exit.kind().equals(Exit.RETURN) && lambdas > 0) return introduced;
+        Expr read = new G1Ast.Read(used);
+        Type type = used.type();
+        if (!used.type().components.isEmpty() && choices.oneIn(2)) {
+            Component component = used.type().components.get(choices.below(used.type().components.size()));
+            read = new G1Ast.Access(used, List.of(component.name()));
+            type = component.type();
+            features.add(Feature.COMPONENT_ACCESS);
+        }
+        into.add(new G1Ast.Declare(type, freshName(true), read));
+        return introduced;
+    }
+
+    /** A branch every path of which ends in the exit: the exit, or an if whose branches both exit, then the exit. */
+    private List<Stmt> exitBranch(Ctx ctx, Exit exit, List<String> assigned, int nesting) {
+        var body = new ArrayList<Stmt>();
+        if (exit.kind().equals(Exit.BREAK) && choices.oneIn(2)) assignment(ctx.scope(), body, assigned, null);
+        if (nesting == 0 && choices.oneIn(3)) {
+            Expr test = test(ctx, 1);
+            var then = exitBranch(ctx, exit, assigned, nesting + 1);
+            if (choices.oneIn(2)) {
+                body.add(new G1Ast.If(test, then, exitBranch(ctx, exit, assigned, nesting + 1)));
+                return body;
+            }
+            body.add(new G1Ast.If(test, then, null));
+        }
+        body.add(exitStatement(ctx, exit));
+        return body;
+    }
+
+    private Stmt exitStatement(Ctx ctx, Exit exit) {
+        return switch (exit.kind()) {
+            case Exit.BREAK -> new G1Ast.Break();
+            case Exit.YIELD -> new G1Ast.Yield(expression(exit.type(), ctx.conditionally(), 1));
+            default -> new G1Ast.Return(expression(exit.type(), ctx.conditionally(), 1));
+        };
+    }
+
+    /** A branch that completes normally: an update in a loop body, a local elsewhere (none in a lambda block). */
+    private List<Stmt> fallingBranch(Ctx ctx, Exit exit, List<String> assigned) {
+        var body = new ArrayList<Stmt>();
+        if (exit.kind().equals(Exit.BREAK)) assignment(ctx.scope(), body, assigned, null);
+        else if (lambdas == 0 && choices.oneIn(2)) declaration(ctx.scope(), body, false, false);
+        return body;
+    }
+
+    /**
+     * Guards at method level, one or, steered to #204 half of the time, two in a row; the scope after them, with the
+     * variables they introduce.
+     */
+    private Scope methodGuards(Scope scope, List<Stmt> into, Type result) {
+        for (int n = profile.steers(Steer.ISSUE_204) && choices.oneIn(2) ? 2 : 1; n > 0; n--) {
+            for (Var var : exitGuard(ctx(scope), into, new Exit(Exit.RETURN, result), new ArrayList<>())) scope = scope.with(var);
+        }
+        return scope;
+    }
+
+    /** {@code xs.any(e -> { guard; return c; })}: a lambda block with a guard, whose result reads what it introduces. */
+    private Flow lambdaBlock(Ctx inside, List<Var> vars, String method, String parameter) {
+        var body = new ArrayList<Stmt>();
+        var introduced = exitGuard(inside, body, new Exit(Exit.RETURN, BOOL), new ArrayList<>());
+        var visible = concat(vars, introduced);
+        Expr result;
+        if (introduced.isEmpty()) {
+            result = flow(inside, vars, 1).expr();
+        } else {
+            Ctx after = with(inside, introduced);
+            Expr read = use(introduced.get(choices.below(introduced.size())), after);
+            result = choices.oneIn(2) ? read
+                    : new G1Ast.Logic(read, choices.oneIn(2) ? "&&" : "||", flow(after.conditionally(), visible, 1).expr());
+        }
+        body.add(new G1Ast.Return(result));
+        return new Flow(new G1Ast.LambdaBlock(method, parameter, body), List.of(), List.of());
+    }
+
+    /**
+     * PATTERN_SCOPE_PROBES (javac-filtered, ADR-069 verification 6): a read of a pattern variable declared earlier in the
+     * method, wherever it is: javac decides whether it is in scope, and the program is skipped when it is not.
+     */
+    private void staleRead(Scope scope, List<Stmt> into) {
+        var candidates = patternVariables.stream().filter(v -> !scope.locals().contains(v)).toList();
+        if (candidates.isEmpty()) return;
+        Var var = candidates.get(choices.below(candidates.size()));
+        features.add(Feature.PROBE_STALE_READ);
+        into.add(new G1Ast.Declare(var.type(), freshName(true), new G1Ast.Read(var)));
+    }
+
+    /**
+     * PATTERN_SCOPE_PROBES: {@code if (!(x instanceof V v) || true) { return e; } else { local reading v; }} and a read
+     * of {@code v} after it: JLS 6.3.1 puts {@code v} in the else branch and after the statement, which G1's model does
+     * not generate.
+     */
+    private Scope constantElse(Scope scope, List<Stmt> into, Type result) {
+        Flow leaf;
+        flows++;
+        tests++;
+        try {
+            leaf = patternLeaf(ctx(scope), List.of());
+        } finally {
+            flows--;
+            tests--;
+        }
+        if (leaf == null) return scope;
+        features.add(Feature.PROBE_CONSTANT_ELSE);
+        Var var = leaf.whenTrue().getFirst();
+        var otherwise = new ArrayList<Stmt>();
+        otherwise.add(new G1Ast.Declare(var.type(), freshName(true), new G1Ast.Read(var)));
+        into.add(new G1Ast.If(new G1Ast.Logic(new G1Ast.Not(leaf.expr()), "||", new G1Ast.BoolConst(true)),
+                List.of(new G1Ast.Return(expression(result, ctx(scope), 1))), otherwise));
+        return scope.with(var);
     }
 
     // ---------------------------------------------------------------- pattern conditions (PATTERN_CONDITIONS, ADR-069 M2)
@@ -1444,6 +1703,10 @@ public final class G1 {
         var inside = new Ctx(scope, ctx.helpers(), true, false, null, ctx.traceFree());
         lambdas++;
         try {
+            // Under PATTERN_EXIT a quarter of the lambdas are blocks with a guard; steered, half.
+            if (profile.has(Gate.PATTERN_EXIT) && choices.oneIn(profile.steers(Steer.ISSUE_204) ? 2 : 4)) {
+                return lambdaBlock(inside, vars, method, parameter);
+            }
             Flow body = flow(inside, vars, Math.max(1, depth - 1));
             return new Flow(new G1Ast.Lambda(method, parameter, body.expr()), List.of(), List.of());
         } finally {
@@ -1481,6 +1744,7 @@ public final class G1 {
         Type variant = testedVariant(tested.type());
         String binding = freshName(true);
         features.add(Feature.PATTERN_CONDITION);
+        patternVariables.add(new Var(binding, variant, false, false, true, false));
         if (lambdas > 0) features.add(Feature.PATTERN_IN_LAMBDA);
         if (whileGuard) features.add(Feature.PATTERN_IN_WHILE_CONDITION);
         return new Flow(new G1Ast.PatternTest(subject, variant, binding),
@@ -1970,6 +2234,11 @@ public final class G1 {
                     && read.var().name().equals(binding) && updated.contains(local.name())) {
                 features.add(Feature.BINDING_ACCUMULATOR);
             }
+        }
+        // Under PATTERN_EXIT a quarter of the blocks end in a guard that yields; steered, every one.
+        if (!restricted && yielded == null && exits(1, 4)) {
+            var guarded = new Ctx(owned, ctx.helpers(), true, false, null, false);
+            for (Var var : exitGuard(guarded, body, new Exit(Exit.YIELD, result), new ArrayList<>())) owned = owned.with(var);
         }
         var valueCtx = new Ctx(owned, ctx.helpers(), true, false, null, false);
         // After a loop there, the yield declares nothing either: no switch, whose bindings and blocks would.

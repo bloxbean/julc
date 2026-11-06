@@ -35,9 +35,12 @@ turn one gate on each and steer generation to its construct. Once a defect is fi
 default profile (`DEFAULT_BLOCK_SCOPE`, #291, since G1 r8; `SHADOW_IN_LOOP_BRANCH`, #209, and `LOOP_BREAK_SHAPES`,
 #254 and #255, since G1 r9). `PATTERN_LOOPS` (G1 r10, ADR-069 M1) generates bare type tests and pattern `if`s in
 loop bodies with accumulators, and `PATTERN_CONDITIONS` (G1 r11, ADR-069 M2) conditions over `&&`, `||`, `!`,
-`?:` and lambdas whose pattern variables are read where JLS 6.3.1 puts them in scope; both are off in the default
-profile until ADR-069 M3, and `PATTERN_FLOW_204` turns both on and steers to them for `Adr069PatternFlowPropertyTest`
-and `Adr069PatternFlowFuzzTest`, which require agreement.
+`?:` and lambdas whose pattern variables are read where JLS 6.3.1 puts them in scope, and `PATTERN_EXIT` (G1 r12,
+ADR-069 M3) guards that introduce a variable into the rest of their block; all three are on in the default profile
+since G1 r12, and `PATTERN_FLOW_204` steers to them for `Adr069PatternFlowPropertyTest` and
+`Adr069PatternFlowFuzzTest`, which require agreement. `PATTERN_SCOPE_PROBES` (never in the default profile) also reads
+variables outside G1's model of JLS 6.3; `Adr069JavacFilteredPropertyTest` skips what javac rejects and requires the
+rest to agree or be rejected with a code.
 
 jqwik generates and shrinks the choice list, so a failure is reported as a small program. The last failing
 case is also written to `build/difftest/last-failure.diffcase`.

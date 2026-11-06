@@ -5,6 +5,7 @@ import com.sun.source.tree.BindingPatternTree;
 import com.sun.source.tree.ConditionalExpressionTree;
 import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.IdentifierTree;
+import com.sun.source.tree.IfTree;
 import com.sun.source.tree.InstanceOfTree;
 import com.sun.source.tree.ParenthesizedTree;
 import com.sun.source.tree.Tree;
@@ -19,7 +20,9 @@ import org.julclang.compiler.pir.PirType;
 import org.julclang.core.Constant;
 
 import javax.lang.model.element.Element;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.function.Function;
 
@@ -102,6 +105,43 @@ final class Conditions {
         return !frame.inGuard() && declaresUsedVariable(condition);
     }
 
+    /**
+     * D4: the pattern variables {@code tree}'s condition declares that javac resolves a use of outside {@code tree}. javac
+     * accepts such a use only where JLS 6.3.2.2 introduces the variable into the rest of the block, so one outcome of the
+     * {@code if} falls through to it, and the other's branch cannot complete normally. Empty in a guard, as everything here.
+     */
+    List<Element> introducedBy(IfTree tree, Frame frame) {
+        var introduced = new ArrayList<Element>();
+        if (frame.inGuard()) return introduced;
+        declared(Ifs.condition(tree), introduced);
+        introduced.removeIf(variable -> !facts.isUsedOutside(variable, tree));
+        return introduced;
+    }
+
+    /** The pattern variables declared through JLS 6.3.1's forms. */
+    private void declared(ExpressionTree condition, List<Element> into) {
+        switch (condition) {
+            case ParenthesizedTree parenthesized -> declared(parenthesized.getExpression(), into);
+            case UnaryTree not when not.getKind() == Tree.Kind.LOGICAL_COMPLEMENT -> declared(not.getExpression(), into);
+            case BinaryTree binary when isShortCircuit(binary) -> {
+                declared(binary.getLeftOperand(), into);
+                declared(binary.getRightOperand(), into);
+            }
+            case ConditionalExpressionTree conditional when isBoolean(conditional) -> {
+                declared(conditional.getCondition(), into);
+                declared(conditional.getTrueExpression(), into);
+                declared(conditional.getFalseExpression(), into);
+            }
+            case InstanceOfTree test when test.getPattern() instanceof BindingPatternTree pattern -> into.add(facts.element(pattern.getVariable()));
+            default -> { }
+        }
+    }
+
+    /** Whether {@code frame} binds every one of {@code variables}: the outcome of a D4 {@code if} that falls through. */
+    static boolean bindsAll(Frame frame, List<Element> variables) {
+        return variables.stream().allMatch(variable -> frame.scope().lookup(variable) != null);
+    }
+
     /** Through JLS 6.3.1's forms, the only ones whose pattern variables reach past their own operand. */
     private boolean declaresUsedVariable(ExpressionTree condition) {
         return switch (condition) {
@@ -151,6 +191,12 @@ final class Conditions {
                     : "Store " + operand + " in a local, test the local without the variable where it is declared, and test it again with the variable where you use it";
         }
         return facts.rejectionWithFix(DiagnosticCodes.PATTERN_VARIABLE_SCOPE_UNSUPPORTED, fix, use, use.getName(), where);
+    }
+
+    /** {@code JULC0139} at the first use, outside {@code tree}, of the first of {@code introduced}: a D4 if no outcome bound. */
+    static CompilerException unboundAfter(JavacFacts facts, IfTree tree, List<Element> introduced) {
+        var variable = introduced.getFirst();
+        return unbound(facts, facts.firstUseOutside(variable, tree), variable);
     }
 
     /** {@code condition} with its continuations. */

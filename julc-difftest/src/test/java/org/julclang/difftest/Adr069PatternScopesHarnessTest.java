@@ -274,18 +274,91 @@ class Adr069PatternScopesHarnessTest {
         assertTrue(second <= 2 * first + 16, () -> "sizes " + Arrays.toString(sizes));
     }
 
-    // --- The shapes a later milestone adds: each is JULC0139 until then ---
+    // --- M3: an if that introduces its variable into the rest of the block (D4) ---
 
     @ParameterizedTest(name = "{0}")
     @CsvSource(delimiterString = " ~ ", textBlock = """
-            a03 early return        ~ JULC0139 ~ public static long m(S s) { if (!(s instanceof S.A a)) { return 0; } return a.v().longValue(); }
-            a04 negated or          ~ JULC0139 ~ public static long m(S s) { if (!(s instanceof S.A a) || a.v().signum() == 0) { return 0; } return a.v().longValue(); }
-            a09 lambda block guard  ~ JULC0139 ~ public static long m(S s) { return xs().any(x -> { if (!(x instanceof S.A a)) { return false; } return a.v().signum() > 0; }) ? 1 : 0; }
-            a10 use after if-else   ~ JULC0139 ~ public static long m(S s) { if (s instanceof S.A a) { } else { return 0; } return a.v().longValue(); }
-            b07 break guard         ~ JULC0139 ~ public static long m(S s) { long t = 0; for (S x : xs()) { if (!(x instanceof S.A a)) { break; } t = t + a.v().longValue(); } return t; }
-            c01 after while         ~ JULC0139 ~ public static long m(S s) { S x = s; while (!(x instanceof S.A a)) { x = new S.A(BigInteger.ONE); } return a.v().longValue(); }
+            a03 early return        ~ public static long m(S s, long n) { if (!(s instanceof S.A a)) { return 0; } return a.v().longValue(); }
+            a04 negated or          ~ public static long m(S s, long n) { if (!(s instanceof S.A a) || a.v().signum() == 0) { return 0; } return a.v().longValue(); }
+            a09 lambda block guard  ~ public static long m(S s, long n) { return ys(s).any(x -> { if (!(x instanceof S.A a)) { return false; } return a.v().signum() > 0; }) ? 1 : 0; }
+            a10 use after if-else   ~ public static long m(S s, long n) { if (s instanceof S.A a) { } else { return 0; } return a.v().longValue(); }
+            d01 then falls, else exits ~ public static long m(S s, long n) { if (s instanceof S.C c) { said("c", c.v()); } else { return -1; } return n + c.v().longValue(); }
+            d02 two guards in a row ~ public static long m(S s, long n) { if (!(s instanceof S.A a)) { return 0; } if (!(make(a.v()) instanceof S.C c)) { return 1; } return c.v().longValue() + a.v().longValue(); }
+            d03 guard with &&       ~ public static long m(S s, long n) { if (!(s instanceof S.A a && a.v().signum() > n)) { return -2; } return a.v().longValue(); }
+            d04 traced guard        ~ public static long m(S s, long n) { if (!(echo("g", s) instanceof S.A a)) { return said("x", BigInteger.ZERO).longValue(); } return said("a", a.v()).longValue(); }
+            d05 exit on both inner  ~ public static long m(S s, long n) { if (!(s instanceof S.A a)) { if (n > 0) { return 1; } else { return 2; } } return a.v().longValue(); }
+            d06 several endings     ~ public static long m(S s, long n) { if (s instanceof S.A a) { if (n > 0) { said("n", a.v()); } else { if (a.v().signum() > 0) { return 9; } } } else { return -1; } return n + a.v().longValue(); }
+            d07 loop in falling     ~ public static long m(S s, long n) { long t = 0; if (s instanceof S.A a) { for (S y : ys(s)) { t = t + 1; } } else { return -1; } return t * 100 + a.v().longValue(); }
+            d08 loop in exiting     ~ public static long m(S s, long n) { if (!(s instanceof S.A a)) { long q = 0; for (S y : ys(s)) { q = q + 1; } return q; } return a.v().longValue(); }
+            d09 guard in an else    ~ public static long m(S s, long n) { if (s instanceof S.B b) { return b.w().longValue(); } else { if (!(s instanceof S.A a)) { return 3; } return a.v().longValue(); } }
+            d10 nested if blocks    ~ public static long m(S s, long n) { if (n > 0) { if (!(s instanceof S.A a)) { return 4; } return a.v().longValue() * 2; } return 6; }
+            d11 rest local name     ~ public static long m(S s, long n) { if (!(s instanceof S.A a)) { return 0; } else { long z = 1; } long z = a.v().longValue(); return z; }
+            d12 switch arm yield    ~ public static long m(S s, long n) { return switch (s) { case S.B b -> { if (!(make(b.w()) instanceof S.C c)) { yield 0L; } yield c.v().longValue(); } default -> 7L; }; }
+            d13 break guard         ~ public static long m(S s, long n) { long t = 0; for (S x : ys(s)) { if (!(x instanceof S.A a)) { break; } t = t + a.v().longValue(); } return t; }
+            d14 break in else       ~ public static long m(S s, long n) { long t = 0; for (S x : ys(s)) { if (x instanceof S.C c) { t = t + 1; } else { break; } t = t + c.v().longValue(); } return t; }
+            d15 break, else falls   ~ public static long m(S s, long n) { long t = 0; for (S x : ys(s)) { if (!(x instanceof S.A a)) { break; } else { t = t + n; } t = t + a.v().longValue(); } return t; }
+            d16 break, two accs     ~ public static long m(S s, long n) { long t = 0; long u = 0; for (S x : ys(s)) { if (!(x instanceof S.A a)) { break; } t = t + a.v().longValue(); u = u + 1; } return t * 10 + u; }
+            d18 fold before break   ~ public static long m(S s, long n) { long t = 0; for (S x : ys(s)) { if (!(x instanceof S.A a)) { if (n > 0) { t = t + 100; } break; } t = t + a.v().longValue(); } return t; }
+            d19 fold, two accs      ~ public static long m(S s, long n) { long t = 0; long u = 0; for (S x : ys(s)) { if (!(x instanceof S.A a)) { if (n > 0) { t = t + 100; u = u + 1; } break; } t = t + a.v().longValue(); } return t * 10 + u; }
+            d20 fold if-else, break ~ public static long m(S s, long n) { long t = 0; for (S x : ys(s)) { if (!(x instanceof S.A a)) { if (n > 0) { t = t + 100; } else { t = t + 1; } break; } t = t + a.v().longValue(); } return t; }
+            d21 dead updates, break ~ public static long m(S s, long n) { long t = 0; for (S x : ys(s)) { if (!(x instanceof S.A a)) { t = t + 5; break; } t = t + a.v().longValue(); } return t; }
+            d22 || dead then-side   ~ public static long m(S s, long n) { if (n > 5 || !(s instanceof S.A a)) { return said("d", BigInteger.ONE).longValue() + n; } return a.v().longValue(); }
+            d17 break, nested if    ~ public static long m(S s, long n) { long t = 0; for (S x : ys(s)) { if (!(x instanceof S.A a)) { if (t > n) { break; } else { break; } } t = t + a.v().longValue(); } return t; }
             """)
-    void whatALaterMilestoneAddsIsRejected(String shape, String code, String members) {
+    void anIfThatIntroducesItsVariableAgrees(String shape, String members) {
+        for (var s : everyS()) {
+            for (long n : new long[]{0, 1}) assertAgree(members, s, integer(n));
+        }
+    }
+
+    /**
+     * A branch that ends in a loop that never ends cannot complete normally, so it introduces the variable too. Only inputs
+     * that take the other branch run: the JVM would not stop on the rest. The branch that loops ends in Error, never reached.
+     */
+    @Test
+    void aBranchThatNeverEndsIntroducesTheVariable() {
+        String members = "public static long m(S s) { if (!(s instanceof S.A a)) { long i = 0; while (true) { i = i + 1; } } return a.v().longValue(); }";
+        for (var s : List.of(a(7), a(0), a(-1))) assertAgree(members, s);
+    }
+
+    /** Review M3-S4: a lambda block whose unreachable branch is the if's then-position, typed by the branch that falls through. */
+    @Test
+    void aLambdaBlockGuardThenPositionAgrees() {
+        String members = "public static long m(S s, long n) { return ys(s).map(x -> { if (n > 5 || !(x instanceof S.A a)) { return x; } "
+                + "return (S) new S.C(a.v()); }).size(); }";
+        for (var s : everyS()) {
+            for (long n : new long[]{0, 1}) assertAgree(members, s, integer(n));
+        }
+        // The unreachable end itself, after a loop that never ends, in a Data-returning lambda: every element takes the
+        // branch that falls through, so the loop never runs.
+        String looping = "public static long m(S s, long n) { return JulcList.of(new S.A(BigInteger.ONE), new S.A(BigInteger.TWO)).map(x -> { "
+                + "if (n > 5 || !(x instanceof S.A a)) { while (true) { } } return Builtins.iData(a.v()); }).size(); }";
+        for (long n : new long[]{0, 1}) assertAgree(looping, a(1), integer(n));
+        // The same in a switch arm's block, and in a fold loop whose falling side holds a nested loop updating the sum.
+        String arm = "public static long m(S s, long n) { return switch (s) { case S.A a -> { if (n > 5 || !(make(a.v()) instanceof S.C c)) { "
+                + "while (true) { } } yield c.v().longValue(); } default -> 3L; }; }";
+        for (long n : new long[]{0, 1}) assertAgree(arm, a(4), integer(n));
+        String fold = "public static long m(S s, long n) { long t = 0; for (S x : JulcList.of(s, s)) { if (!(x instanceof S.A a)) { while (true) { } } "
+                + "for (S y : ys(s)) { t = t + a.v().longValue(); } } return t; }";
+        for (long n : new long[]{0, 1}) assertAgree(fold, a(3), integer(n));
+    }
+
+    /** D8 on a variable D4 introduced: an update under a nested if in a break loop would be lost where the if rejoins. */
+    @Test
+    void anUpdateOfAnIntroducedVariableIsRejected() {
+        assertRejected("public static long m(S s) { long t = 0; for (S x : ys(s)) { if (!(x instanceof S.A a)) { break; } "
+                + "if (t > 0) { a = new S.A(BigInteger.ONE); } t = t + a.v().longValue(); } return t; }", "JULC0140");
+    }
+
+    // --- What stays rejected: JULC0139 ---
+
+    @ParameterizedTest(name = "{0}")
+    @CsvSource(delimiterString = " ~ ", textBlock = """
+            c01 after while         ~ JULC0139 ~ public static long m(S s) { S x = s; while (!(x instanceof S.A a)) { x = new S.A(BigInteger.ONE); } return a.v().longValue(); }
+            c02 while body          ~ JULC0139 ~ public static long m(S s) { long t = 0; S x = s; while (x instanceof S.A a) { t = t + a.v().longValue(); x = new S.D(); } return t; }
+            g01 guard variable      ~ JULC0074 ~ public static long m(S s) { return switch (s) { case S.A a when s instanceof S.A b && b.v().signum() > 0 -> 1L; default -> 0L; }; }
+            """)
+    void whatStaysRejected(String shape, String code, String members) {
         assertRejected(members, code);
     }
 

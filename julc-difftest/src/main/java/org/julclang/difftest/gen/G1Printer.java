@@ -102,6 +102,7 @@ final class G1Printer {
                 patternBranches(p, indent);
             }
             case G1Ast.Break b -> line(indent, "break;");
+            case G1Ast.Yield y -> line(indent, "yield " + expression(y.value(), indent) + ";");
             case G1Ast.Return r -> line(indent, "return " + expression(r.value(), indent) + ";");
             case G1Ast.While w -> {
                 line(indent, "long " + w.counter() + " = 0;");
@@ -166,7 +167,27 @@ final class G1Printer {
             case G1Ast.PatternTest t -> expression(t.subject(), indent) + " instanceof " + t.variant().name + " " + t.binding();
             case G1Ast.Paren p -> "(" + expression(p.operand(), indent) + ")";
             case G1Ast.Lambda l -> "xs." + l.method() + "(" + l.parameter() + " -> " + expression(l.body(), indent) + ")";
+            case G1Ast.LambdaBlock l -> "xs." + l.method() + "(" + l.parameter() + " -> { " + inline(l.body()) + "})";
         };
+    }
+
+    /** Statements on one line, as a lambda block's: declarations, ifs and returns, with no switch in them. */
+    private static String inline(List<Stmt> statements) {
+        var text = new StringBuilder();
+        for (Stmt statement : statements) {
+            switch (statement) {
+                case G1Ast.Declare d -> text.append(d.type().name).append(' ').append(d.name()).append(" = ")
+                        .append(expression(d.init())).append("; ");
+                case G1Ast.Return r -> text.append("return ").append(expression(r.value())).append("; ");
+                case G1Ast.If i -> {
+                    text.append("if (").append(expression(i.test())).append(") { ").append(inline(i.then())).append('}');
+                    if (i.otherwise() != null) text.append(" else { ").append(inline(i.otherwise())).append('}');
+                    text.append(' ');
+                }
+                default -> throw new IllegalArgumentException("not in a lambda block: " + statement);
+            }
+        }
+        return text.toString();
     }
 
     /** A method call's receiver: a switch expression there needs parentheses. */

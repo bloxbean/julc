@@ -1,6 +1,7 @@
 package org.julclang.compiler.frontend.javac.lower;
 
 import com.sun.source.tree.BindingPatternTree;
+import com.sun.source.tree.BlockTree;
 import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.IfTree;
 import com.sun.source.tree.InstanceOfTree;
@@ -11,6 +12,8 @@ import org.julclang.compiler.pir.PirHelpers;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
 
+import javax.lang.model.element.Element;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
 
@@ -58,10 +61,51 @@ final class Ifs {
 
     /** The {@code if} at {@code index}, which continues with what follows it, then {@code cont}. */
     PirTerm inSequence(IfTree tree, List<? extends StatementTree> following, int index, Frame frame, PirTerm cont) {
+        var introduced = lowering.conditions().introducedBy(tree, frame);
+        if (!introduced.isEmpty()) return introducing(tree, introduced, following, index, frame, cont);
         if (Exits.holdsLoop(tree.getThenStatement()) || holdsLoopInElse(tree)) return ifWithLoop(tree, following, index, frame, cont);
         boolean exits = Exits.holdsExit(tree.getThenStatement())
                 || tree.getElseStatement() != null && Exits.holdsExit(tree.getElseStatement());
         return exits ? ifWithExit(tree, following, index, frame, cont) : ifForEffect(tree, following, index, frame, cont);
+    }
+
+    /**
+     * ADR-069 D4: an {@code if} that introduces {@code introduced} into the rest of its block. The outcome whose frame binds
+     * them falls through: its branch and the rest of the block are one statement list, lowered once in that frame by
+     * today's routing. The other outcome's branch cannot complete normally, which javac has proved, so its end is an
+     * {@code Error} no path reaches.
+     */
+    private PirTerm introducing(IfTree tree, List<Element> introduced, List<? extends StatementTree> following, int index, Frame frame,
+                                PirTerm cont) {
+        var rest = following.subList(index + 1, following.size());
+        var falling = new PirTerm[1];
+        Function<Frame, PirTerm> then = inner -> Conditions.bindsAll(inner, introduced)
+                ? (falling[0] = statements.sequence(spliced(tree.getThenStatement(), rest), 0, inner, cont))
+                : statements.branch(tree.getThenStatement(), inner, unreachable(frame));
+        Function<Frame, PirTerm> otherwise = inner -> Conditions.bindsAll(inner, introduced)
+                ? (falling[0] = statements.sequence(spliced(tree.getElseStatement(), rest), 0, inner, cont))
+                : tree.getElseStatement() == null ? unreachable(frame) : statements.branch(tree.getElseStatement(), inner, unreachable(frame));
+        var result = lowering.conditions().branch(condition(tree), frame, then, otherwise);
+        // No outcome bound them: a defect here, refused at the first use rather than compiled to a script that fails (M3-C7).
+        if (falling[0] == null) throw Conditions.unboundAfter(facts, tree, introduced);
+        // Typed by what falls through: in a lambda block the unreachable end's own type is only a placeholder (review M3-S4).
+        typing.typedAs(result, typing.ofTerm(falling[0]));
+        return terms.at(tree, result);
+    }
+
+    /** A branch's statements, none for a missing one, then {@code rest}. */
+    static List<StatementTree> spliced(StatementTree branch, List<? extends StatementTree> rest) {
+        var list = new ArrayList<StatementTree>();
+        if (branch instanceof BlockTree block) list.addAll(block.getStatements());
+        else if (branch != null) list.add(branch);
+        list.addAll(rest);
+        return list;
+    }
+
+    /** The end of a branch javac has proved cannot complete: of the block's value type, which no path reaches. */
+    private static PirTerm unreachable(Frame frame) {
+        var type = frame.exit().returnType();
+        return new PirTerm.Error(type != null ? type : new PirType.UnitType());
     }
 
     private static boolean holdsLoopInElse(IfTree tree) {

@@ -33,4 +33,17 @@ class Adr069PatternFlowFuzzTest {
             System.err.println("Adr069PatternFlowFuzzTest: no oracle (javac VerifyError), input skipped");
         }
     }
+
+    /**
+     * ADR-069 verification 6's javac-filtered mode ({@link Adr069JavacFilteredPropertyTest}): the same decoding under
+     * {@code G1.Profile.JAVAC_FILTERED_204}; programs javac rejects are skipped, and no other may diverge.
+     */
+    @FuzzTest(maxDuration = "60s")
+    void javacFilteredProgramsDoNotDiverge(FuzzedDataProvider data) {
+        var inputs = new ArrayList<Integer>();
+        for (int n = data.consumeInt(0, MAX_INPUTS); n > 0 && data.remainingBytes() > 0; n--) inputs.add(data.consumeByte() & 0xff);
+        var plan = new ArrayList<Integer>();
+        while (data.remainingBytes() > 0 && plan.size() < MAX_PLAN) plan.add(data.consumeByte() & 0xff);
+        Adr069JavacFilteredPropertyTest.check("Adr069PatternFlowFuzzTest.javacFiltered", plan, inputs);
+    }
 }

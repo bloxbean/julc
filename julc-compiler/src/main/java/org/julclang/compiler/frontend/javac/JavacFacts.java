@@ -196,6 +196,14 @@ public final class JavacFacts {
         return rejectionWithFix(DiagnosticCodes.PATTERN_VARIABLE_REASSIGNED, fix, assignment, name);
     }
 
+    /** The first use of {@code variable} javac resolved outside {@code statement}, or null. */
+    public IdentifierTree firstUseOutside(Element variable, Tree statement) {
+        for (var use : patternUses.getOrDefault(variable, List.of())) {
+            if (!within(use, statement)) return use;
+        }
+        return null;
+    }
+
     /** Whether {@code tree} is {@code ancestor} or lies inside it. */
     public boolean within(Tree tree, Tree ancestor) {
         for (Tree at = tree; at != null; at = parent(at)) {

@@ -14,6 +14,7 @@ import net.jqwik.api.lifecycle.PropagationMode;
 import org.julclang.difftest.gen.G1;
 import org.julclang.difftest.gen.KnownDivergences;
 
+import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
@@ -25,7 +26,8 @@ import static org.junit.jupiter.api.Assertions.fail;
 /**
  * ADR-069's generated shapes (verification 6, accepted shapes): programs under {@link G1.Profile#PATTERN_FLOW_204}
  * (M1's bare type tests and pattern {@code if}s in loop bodies with accumulators, and M2's pattern conditions over
- * {@code &&}, {@code ||}, {@code !}, {@code ?:} and lambdas, in every position) must compile and <em>agree</em> with
+ * {@code &&}, {@code ||}, {@code !}, {@code ?:} and lambdas, in every position, and M3's guards that introduce a variable
+ * into the rest of a method, lambda, switch-arm or loop block) must compile and <em>agree</em> with
  * the JVM at every optimization level. Unlike {@link G1PropertyTest}, nothing may stand in for agreement: a
  * rejection is a failure whatever its code ({@code JULC0139} and {@code JULC0011} included, and {@code JULC0140}
  * since the generator never assigns a pattern variable), and so is a mismatch the registry would explain. A
@@ -34,11 +36,12 @@ import static org.junit.jupiter.api.Assertions.fail;
 @AddLifecycleHook(value = CampaignVerifier.RecordSeed.class, propagateTo = PropagationMode.ALL_DESCENDANTS)
 class Adr069PatternFlowPropertyTest {
 
-    /** The share of all tries that must contain each of the gate's constructs. */
-    static final double MIN_PERCENT = 3.0;
+    /** The share of all tries that must contain each of the gates' constructs. */
+    static final double MIN_PERCENT = 2.0;
     static final Set<String> QUOTA_FEATURES = KnownDivergences.names(EnumSet.of(G1.Feature.BARE_TYPE_TEST,
             G1.Feature.LOOP_PATTERN_IF, G1.Feature.LOOP_PATTERN_ELSE_IF, G1.Feature.PATTERN_CONDITION,
-            G1.Feature.PATTERN_IN_WHILE_CONDITION, G1.Feature.PATTERN_IN_LAMBDA, G1.Feature.BREAK, G1.Feature.HELPER_CALL));
+            G1.Feature.PATTERN_IN_WHILE_CONDITION, G1.Feature.PATTERN_IN_LAMBDA, G1.Feature.EXIT_GUARD, G1.Feature.EXIT_BREAK,
+            G1.Feature.EXIT_YIELD, G1.Feature.BREAK, G1.Feature.HELPER_CALL));
 
     /** The largest share of tries that may be skipped for want of an oracle ({@link #noOracle}). */
     static final double MAX_SKIPPED_PERCENT = 2.0;
@@ -77,7 +80,9 @@ class Adr069PatternFlowPropertyTest {
         if (skipped * 100.0 > MAX_SKIPPED_PERCENT * tries) {
             fail(skipped + " of " + tries + " tries had no oracle (javac VerifyError), more than " + MAX_SKIPPED_PERCENT + "%");
         }
-        var failures = coverage.quotaFailures(QUOTA_FEATURES, MIN_PERCENT);
+        var failures = new ArrayList<>(coverage.quotaFailures(QUOTA_FEATURES, MIN_PERCENT));
+        // A guard in a lambda block is rarer (about 2.4% of programs): at least one.
+        failures.addAll(coverage.quotaFailures(KnownDivergences.names(EnumSet.of(G1.Feature.EXIT_LAMBDA)), 0.01));
         if (!failures.isEmpty()) fail("Coverage quotas not met:\n" + String.join("\n", failures) + "\n" + coverage.report());
     }
 

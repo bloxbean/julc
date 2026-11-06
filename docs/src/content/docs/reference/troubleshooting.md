@@ -394,11 +394,9 @@ var result = switch (action) {
 
 ### 1.13 `Unsupported instanceof pattern: <expression>`
 
-**Hint:** `instanceof is supported only with sealed interface variants: if (x
-instanceof Variant v) { ... }`
-
 **Cause:** `instanceof` was used with a type that is not a variant of a sealed
-interface, or the pattern form is not supported.
+interface, or with a record pattern (`x instanceof R(var a, var b)`). A type test
+(`x instanceof Bid`) and a type pattern (`x instanceof Bid b`) of a variant are supported.
 
 **Fix:** Use `instanceof` only for sealed interface variant matching.
 
@@ -638,11 +636,9 @@ var total = BigInteger.ZERO;
 return total;
 ```
 
-An `instanceof` pattern variable is only in scope when the pattern is the whole
-condition of an `if` statement outside a loop. Used anywhere else, for example
-`if (x instanceof Bid b && b.amount() > 0)` or inside a loop body, it is reported as
-undefined until [#204](https://github.com/bloxbean/julc/issues/204). Use a `switch` on the sealed type there, which binds case
-variables in every position.
+An `instanceof` pattern variable that JuLC does not bind is reported as `JULC0139`
+([1.28](#128-julc0139-a-pattern-variable-is-used-where-julc-does-not-bind-it)), not as an
+undefined variable.
 
 `JulcMap.of(...)` used to be reported as `Undefined variable: JulcMap`; it now
 reports `JULC0062` ([1.23](#123-julc0062-julcmapof-is-off-chain-only-and-has-no-on-chain-implementation)).
@@ -877,8 +873,45 @@ This holds when the pattern takes every value of the field, as `var` does. `case
 `inner` is an `A`, so a rewrite has to keep that test: the error says so, and a value that does not match must go to what the
 next case does.
 
-An `instanceof` with a record pattern is `JULC0077`, and the same rewrite applies: `s instanceof A a`, then `a.v()`. JuLC binds
-the variable only when the `instanceof` is the whole condition of an `if`.
+An `instanceof` with a record pattern is `JULC0077`, and the same rewrite applies: `s instanceof A a`, then `a.v()`.
+
+### 1.28 `JULC0139` A pattern variable is used where JuLC does not bind it
+
+**Cause:** JuLC binds an `instanceof` pattern variable wherever Java puts it in scope within
+one statement (`&&`, `||`, `!`, `?:`, the `if` and its branches, lambdas, loop bodies) and
+after an `if` whose other branch leaves the block. It does not carry a variable out of a
+`while` loop's condition, into the loop's body or past the loop.
+
+**Fix:** test the value without the variable where the loop tests it, and test it again with
+the variable where you use it:
+
+```java
+// WRONG: c is used after the loop that tests it
+while (!(s instanceof Circle c)) { s = next(s); }
+return c.radius();
+
+// CORRECT
+while (!(s instanceof Circle)) { s = next(s); }
+if (s instanceof Circle c) { return c.radius(); }
+```
+
+If the tested value is a call, store it in a local first, so the second test does not call
+it again.
+
+### 1.29 `JULC0140` Reassigning pattern variable `<name>` is not supported
+
+**Cause:** Java lets a pattern variable that is not `final` be reassigned; JuLC does not. In
+a loop the update could be lost on the path that rejoins the rest of the body.
+
+**Fix:** declare a new local with the value you need.
+
+```java
+// WRONG
+if (x instanceof Bid b) { if (late) { b = penalised(b); } total = total + b.amount(); }
+
+// CORRECT
+if (x instanceof Bid b) { Bid bid = late ? penalised(b) : b; total = total + bid.amount(); }
+```
 
 ## 2. Validation Errors (subset rules)
 
@@ -1244,11 +1277,9 @@ for (var amount : amounts) {
 ### 2.18 `JULC0059` `Pattern variable '<name>' has the same name as a field of <Class>`
 
 **Cause:** An `instanceof` pattern variable has the same name as a field of the class,
-including a `@Param` field. JuLC binds a pattern variable only when the pattern is the
-whole condition of an `if` statement outside a loop. In any other position (a loop body,
-an `&&` condition, a negated guard, a ternary, a lambda) the name resolved to the field
-instead, so the code silently read or updated the field ([#204](https://github.com/bloxbean/julc/issues/204)). The name is rejected in
-every position, including the one where the variable is bound correctly.
+including a `@Param` field. The rule dates from JuLC's first frontend, which resolved names
+by spelling, so such a name could read or update the field instead of the variable. The name
+is rejected in every position.
 
 **Fix:** Rename the pattern variable. `switch` case patterns are not affected.
 

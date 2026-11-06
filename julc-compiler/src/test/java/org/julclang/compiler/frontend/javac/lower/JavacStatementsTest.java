@@ -317,6 +317,8 @@ class JavacStatementsTest {
             "static BigInteger m(S s) { if ((s instanceof S.A a)) { return a.v(); } return BigInteger.ZERO; }",
             "static BigInteger m(S s) { if (s instanceof S.A a && a.v().signum() > 0) { return a.v(); } return BigInteger.ZERO; }",
             "static BigInteger m(S s) { return s instanceof S.A a ? a.v() : BigInteger.ZERO; }",
+            "static BigInteger m(S s) { if (!(s instanceof S.A a)) { return BigInteger.ZERO; } return a.v(); }",
+            "static BigInteger m(S s) { if (s instanceof S.A a) { } else { return BigInteger.ZERO; } return a.v(); }",
     })
     void aPatternVariableBinds(String members) {
         assertDoesNotThrow(() -> new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()).compileMethod(source(SUM + members), "m", List.of()));
@@ -328,13 +330,13 @@ class JavacStatementsTest {
         assertEquals("JULC0077", javac(SUM + "static boolean m(S s) { return (s instanceof S.A a ? a : s) instanceof S t; }").diagnostics().getFirst().code());
     }
 
-    /** Shapes a later milestone of ADR-069 binds: until then each is JULC0139, never a read of something else. */
+    /** ADR-069 D5: a variable a while carries out of its condition is JULC0139, never a read of something else. */
     @ParameterizedTest
     @ValueSource(strings = {
-            "static BigInteger m(S s) { if (!(s instanceof S.A a)) { return BigInteger.ZERO; } return a.v(); }",
-            "static BigInteger m(S s) { if (s instanceof S.A a) { } else { return BigInteger.ZERO; } return a.v(); }",
+            "static BigInteger m(S s) { while (!(s instanceof S.A a)) { s = new S.A(BigInteger.ONE); } return a.v(); }",
+            "static BigInteger m(S s) { BigInteger t = BigInteger.ZERO; while (s instanceof S.A a) { t = t.add(a.v()); s = new S.B(t, t); } return t; }",
     })
-    void aPatternVariableJulcDoesNotBindYet(String members) {
+    void aPatternVariableAWhileCarriesIsRejected(String members) {
         assertEquals("JULC0139", javac(SUM + members).diagnostics().getFirst().code());
     }
 

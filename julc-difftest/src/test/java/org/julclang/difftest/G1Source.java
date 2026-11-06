@@ -97,12 +97,72 @@ final class G1Source {
 
     /**
      * ADR-069's pattern features read from a printed program with javac's parser: a bare type test; a pattern test that
-     * is a whole {@code if} condition (through parentheses) in a loop, and one in an {@code else if}; and a pattern test
-     * anywhere else, in a {@code while} condition, and in a lambda.
+     * is a whole {@code if} condition (through parentheses) in a loop, and one in an {@code else if}; a pattern test
+     * anywhere else, in a {@code while} condition, and in a lambda; and a guard, by its context.
      */
     static Set<G1.Feature> patterns(String source) {
         var found = EnumSet.noneOf(G1.Feature.class);
         new TreePathScanner<Void, Void>() {
+            /**
+             * A guard (ADR-069 D4): an if in a block whose condition declares a pattern variable that a later statement
+             * of the block reads; names are unique in a generated method. Its context is the innermost loop, switch arm
+             * or lambda around it, or the method.
+             */
+            @Override
+            public Void visitIf(IfTree node, Void unused) {
+                var declared = new HashSet<String>();
+                new TreeScanner<Void, Void>() {
+                    @Override
+                    public Void visitBindingPattern(BindingPatternTree binding, Void nothing) {
+                        declared.add(binding.getVariable().getName().toString());
+                        return super.visitBindingPattern(binding, nothing);
+                    }
+                }.scan(node.getCondition(), null);
+                if (!declared.isEmpty() && getCurrentPath().getParentPath().getLeaf() instanceof BlockTree block) {
+                    var read = new HashSet<String>();
+                    boolean after = false;
+                    for (StatementTree statement : block.getStatements()) {
+                        if (after) {
+                            new TreeScanner<Void, Void>() {
+                                @Override
+                                public Void visitIdentifier(IdentifierTree identifier, Void nothing) {
+                                    read.add(identifier.getName().toString());
+                                    return null;
+                                }
+
+                                /** A helper's name is no read of a variable: helpers take names from the same pool. */
+                                @Override
+                                public Void visitMethodInvocation(MethodInvocationTree call, Void nothing) {
+                                    if (!(call.getMethodSelect() instanceof IdentifierTree)) scan(call.getMethodSelect(), nothing);
+                                    return scan(call.getArguments(), nothing);
+                                }
+                            }.scan(statement, null);
+                        }
+                        if (statement == node) after = true;
+                    }
+                    read.retainAll(declared);
+                    if (!read.isEmpty()) {
+                        found.add(G1.Feature.EXIT_GUARD);
+                        for (TreePath up = getCurrentPath().getParentPath(); up != null; up = up.getParentPath()) {
+                            Tree leaf = up.getLeaf();
+                            if (leaf instanceof EnhancedForLoopTree || leaf instanceof WhileLoopTree) {
+                                found.add(G1.Feature.EXIT_BREAK);
+                                break;
+                            }
+                            if (leaf instanceof CaseTree) {
+                                found.add(G1.Feature.EXIT_YIELD);
+                                break;
+                            }
+                            if (leaf instanceof LambdaExpressionTree) {
+                                found.add(G1.Feature.EXIT_LAMBDA);
+                                break;
+                            }
+                        }
+                    }
+                }
+                return super.visitIf(node, unused);
+            }
+
             @Override
             public Void visitInstanceOf(InstanceOfTree node, Void unused) {
                 if (node.getPattern() == null) {

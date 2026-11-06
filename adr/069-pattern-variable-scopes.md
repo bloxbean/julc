@@ -745,6 +745,64 @@ derived from JuLC's own output. A newly supported shape must **agree**; a reject
     pattern `if`. With no class to run there is no oracle, so the #204 property and fuzz tests skip such a program,
     count the skip and bound its share; every other harness verdict stays strict.
 
+### M3: the early-exit guard (D4), documentation, gates on by default (2026-11-06)
+
+- **Code** (`julc-compiler`):
+  - `Conditions.introducedBy` collects the variables a condition declares (through `!`, `&&`, `||`, parentheses and
+    boolean `?:`) that javac resolves a use of outside the `if`; it is empty in a guard. `Ifs.inSequence` and
+    `LoopBody.sequence` ask it before any of today's routing.
+  - `Ifs.introducing` and `LoopBody.introducing`: the outcome whose frame binds every such variable lowers its branch
+    and the rest of the block as one statement list; the other outcome's branch ends in `Error`. In `LoopBody` the
+    unreachable end is a `Shape` component that keeps the break mode and the carried values, and `fold()` clears it.
+  - If no outcome binds the variables (a defect, never reached), the `if` is refused with `JULC0139` at the first use.
+  - A D4 `if` is typed by the outcome that falls through (`Typing.typedAs`), so the `Error`'s own type never decides an
+    inference.
+- **Deviation from D4's text:** the `Error`'s type is the exit's return type, or `Unit` in a lambda block or `void`
+  method, and `carried.type()` in `LoopBody`, rather than the per-context list. Typing the whole `if` by its falling
+  outcome makes the `Error`'s type irrelevant, so the per-context sources are not needed (review M3-C2, M3-S4).
+- **Tests:**
+  - `Adr069PatternScopesHarnessTest` flips a03, a04, a09 and a10 to agreement and adds d01–d22, each over every
+    variant and `n` in {0, 1}:
+    - `return`, `yield` and `break` in each break shape, with a falling branch that ends in several places;
+    - a non-falling branch whose inner `if` exits on both sides;
+    - loops in either branch, two guards in a row, a guard inside an `else`, a traced guard;
+    - a `rest` local with a branch local's name, two accumulators;
+    - review M3-S1's fold rows (d18–d20), an accumulator updated before a `break`, and a `||` whose dead side is the
+      then-position.
+  - Unreachable ends after `while (true)`, run only on inputs that fall through: in a method, in a Data-returning lambda
+    block, in a switch arm, and in a fold loop with a nested loop.
+  - D8 on an introduced variable is `JULC0140`.
+  - What stays rejected is pinned: a variable after a `while` and in its body (`JULC0139`), and a guard's variable
+    (`JULC0074`).
+  - Compiler tests flip the early-return and after-`if`-`else` rows to compiling. The `JavacSubsetCodesTest` row moves
+    to a `while` form, which adds one new frozen row; no row moved.
+- **Mutation check:** with M3-S1's bug restored in `Shape.fold()`, rows d18–d20 fail ("Error term encountered" where
+  the JVM returns a value) at every level; with the fix they pass.
+- **Documentation** (D7):
+  - `getting-started` §8.3, `api-reference`, and the starter pack;
+  - troubleshooting 1.13 and 1.20, the new 1.28 (`JULC0139`) and 1.29 (`JULC0140`), and 2.18 (`JULC0059`);
+  - the conditionals best practice, and the release notes ("`instanceof` pattern variables wherever Java has them in
+    scope").
+- **Generator** (G1 r12):
+  - gate `PATTERN_EXIT` (guards in method bodies, break loops, switch arms and lambda blocks). The three ADR-069 gates
+    are on in the default profile; the all-gates-off hash is unchanged. For these gates the distribution check allows
+    0.03 against the r11 default (loop share 0.461 to 0.441), since they draw choices in every condition.
+  - the javac-filtered mode: gate `PATTERN_SCOPE_PROBES`, `Adr069JavacFilteredPropertyTest`, and a second Jazzer
+    target. In the property test, 300 tries gave 173 programs that agree at every level, 127 that javac rejects
+    (skipped), no JuLC rejection, no divergence, and no missing oracle.
+  - 325 G1 tests green. `Adr069PatternFlowPropertyTest`: 400 tries, all AGREE.
+  - Jazzer `generatedProgramsAgree` for 30 minutes with the gates on by default: 30,867 executions, no crash, nothing
+    skipped.
+  - Known gap: the generator's exiting branches hold inner `if`s that themselves exit, so the shape M3-S1 needed (an
+    inner `if` that falls through, then a `break`) is covered by harness rows d18–d20 only.
+- **Reviews:**
+  - Semantics: CHANGES REQUESTED for **M3-S1 (P0)**. In a branch that breaks, an inner `if` with no `break` took the
+    unreachable end into its fold value, so the script failed where Java runs on: a liveness divergence, never an
+    acceptance. Fixed, with rows. S2–S4 (docs, wording, the lambda `Error` type) are fixed.
+  - Code: CHANGES REQUESTED for **M3-C1 (P1, the same defect)**. Fixed. Also fixed: C2 (typed by the falling outcome),
+    C3 (the #240 release-notes heading my edit had replaced is restored), C4–C6 (docs), C7 (the fail-closed refusal),
+    C8 (`bindsAll`) and C9 (rows).
+
 ## Revision history
 
 - r1 (2026-11-06): initial proposal.

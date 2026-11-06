@@ -214,9 +214,10 @@ if (action instanceof Deposit d) {
 }
 ```
 
-The pattern variable is bound when the `instanceof` test is the whole condition of an `if`
-statement outside a loop; elsewhere use a `switch` until [#204](https://github.com/bloxbean/julc/issues/204). It may not reuse the name
-of a field or `@Param` (`JULC0059`).
+The pattern variable can be used wherever Java has it in scope ([#204](https://github.com/bloxbean/julc/issues/204)), except where a
+`while` loop's condition would carry it into the body or past the loop (`JULC0139`) or a
+`switch` guard declares it (`JULC0074`). It may not be reassigned (`JULC0140`) and may not
+reuse the name of a field or `@Param` (`JULC0059`).
 
 ### For-Each Loop
 ```java

@@ -162,6 +162,15 @@ final class Typing {
         return facts.registry().resolveNamed(termTypes.infer(read));
     }
 
+    /**
+     * {@code term} says {@code type} of itself (identity): an {@code if} that ADR-069 D4 lowers is typed by the outcome that
+     * falls through, never by the branch whose unreachable end is {@code Error}.
+     */
+    PirTerm typedAs(PirTerm term, PirType type) {
+        termTypes.record(term, type);
+        return term;
+    }
+
     /** Keeps {@code type} with {@code term} (identity): a diamond's type is worked out here, and no tree says it. */
     PirTerm keep(PirTerm term, PirType type) {
         kept.add(term);
