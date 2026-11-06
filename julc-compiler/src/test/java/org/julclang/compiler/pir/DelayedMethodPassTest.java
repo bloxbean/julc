@@ -778,14 +778,21 @@ class DelayedMethodPassTest {
         }
     }
 
-    /** A variable, a literal and a negative literal ({@code 0 - n}) have no effect and next to no cost: they go in as they are. */
+    /**
+     * A variable, a literal and constant integer arithmetic ({@code -5} is {@code 0 - 5}; {@code 1 + 2}) have no effect and
+     * next to no cost, and the arithmetic folds where it is read: they go in as they are (#306 review F1).
+     */
     @Test
-    void aVariableOrALiteralGoesInAsItIs() {
-        for (var operand : List.of(variable("x"), integer(1), builtin(DefaultFun.SubtractInteger, integer(0), integer(5)))) {
+    void aVariableALiteralOrConstantArithmeticGoesInAsItIs() {
+        for (var operand : List.of(variable("x"), integer(1), builtin(DefaultFun.SubtractInteger, integer(0), integer(5)),
+                builtin(DefaultFun.AddInteger, integer(1), integer(2)), builtin(DefaultFun.SubtractInteger, integer(1), integer(5)),
+                builtin(DefaultFun.MultiplyInteger, builtin(DefaultFun.AddInteger, integer(1), integer(2)), integer(3)))) {
             assertSame(operand, once(operand));
         }
-        for (var operand : List.of(builtin(DefaultFun.SubtractInteger, integer(1), integer(5)), builtin(DefaultFun.SubtractInteger, integer(0), variable("x")),
-                builtin(DefaultFun.AddInteger, integer(0), integer(5)))) {
+        // a variable inside, a builtin that can fail, a method read, or a builtin that is not integer arithmetic: bound
+        for (var operand : List.of(builtin(DefaultFun.SubtractInteger, integer(0), variable("x")), builtin(DefaultFun.QuotientInteger, integer(1), integer(0)),
+                builtin(DefaultFun.AddInteger, variable("C.k"), integer(1)), builtin(DefaultFun.AddInteger, integer(1), builtin(DefaultFun.ModInteger, integer(1), integer(0))),
+                builtin(DefaultFun.LengthOfByteString, bytes(2)))) {
             assertInstanceOf(PirTerm.Let.class, once(operand));
         }
     }

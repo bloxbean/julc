@@ -210,17 +210,27 @@ public final class PirHelpers {
         return new PirTerm.Let(read.name(), operand, body.apply(read));
     }
 
-    /** Whether evaluating {@code term} has no effect and next to no cost, so that it can be read more than once. */
+    /**
+     * Whether evaluating {@code term} has no effect and next to no cost, so that it can be read more than once: a variable,
+     * a constant, or {@link #isConstantArithmetic constant arithmetic}, which the optimizer folds to a constant at each read.
+     */
     private static boolean isTrivialOperand(PirTerm term) {
-        return term instanceof PirTerm.Var && !isMethodRead(term) || term instanceof PirTerm.Const || isNegatedLiteral(term);
+        return term instanceof PirTerm.Var && !isMethodRead(term) || term instanceof PirTerm.Const || isConstantArithmetic(term);
     }
 
-    /** {@code 0 - n} for an integer literal {@code n}: a negative literal such as {@code -5}, as the frontend lowers it. */
-    private static boolean isNegatedLiteral(PirTerm term) {
-        return term instanceof PirTerm.App(PirTerm.App(PirTerm.Builtin(var fun), PirTerm.Const(var zero)), PirTerm.Const(var n))
-                && fun == DefaultFun.SubtractInteger
-                && zero instanceof Constant.IntegerConst(var z) && z.signum() == 0
-                && n instanceof Constant.IntegerConst;
+    /**
+     * Integer addition, subtraction or multiplication of integer constants, or of such terms: a negative literal such as
+     * {@code -5} ({@code 0 - 5}, as the frontend lowers it), or {@code 1 + 2}. It cannot fail and has no effect. Bound, it
+     * would fold to a constant that the optimizer does not copy into each read, so it is left to fold where it is read.
+     */
+    private static boolean isConstantArithmetic(PirTerm term) {
+        return term instanceof PirTerm.App(PirTerm.App(PirTerm.Builtin(var fun), var left), var right)
+                && (fun == DefaultFun.AddInteger || fun == DefaultFun.SubtractInteger || fun == DefaultFun.MultiplyInteger)
+                && isIntegerConstant(left) && isIntegerConstant(right);
+    }
+
+    private static boolean isIntegerConstant(PirTerm term) {
+        return term instanceof PirTerm.Const(Constant.IntegerConst _) || isConstantArithmetic(term);
     }
 
     /**

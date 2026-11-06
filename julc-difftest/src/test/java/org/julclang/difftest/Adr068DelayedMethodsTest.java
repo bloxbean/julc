@@ -216,6 +216,26 @@ class Adr068DelayedMethodsTest {
         assertAgree(method, integer(-2), integer(1));
     }
 
+    /**
+     * Constant arithmetic is not bound, so it folds where it is read: a handler of it compiles to the bytes of the same
+     * handler of the folded literal, at every level that folds (#306 review F1).
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {"BigInteger.valueOf(Math.abs(1 + 2))|BigInteger.valueOf(Math.abs(3))",
+            "BigInteger.ONE.add(BigInteger.TWO).abs()|BigInteger.valueOf(3).abs()",
+            "BigInteger.valueOf(Math.max(1 + 2, 2 - 5))|BigInteger.valueOf(Math.max(3, -3))",
+            "BigInteger.valueOf(BigInteger.TWO.multiply(BigInteger.TEN).signum())|BigInteger.valueOf(BigInteger.valueOf(20).signum())",
+            "BigInteger.valueOf(BigInteger.valueOf(-5).compareTo(BigInteger.ONE.add(BigInteger.ONE)))|BigInteger.valueOf(BigInteger.valueOf(-5).compareTo(BigInteger.TWO))"})
+    void constantArithmeticFoldsLikeItsLiteral(String pair) {
+        var sides = pair.split("\\|");
+        var src = "import java.math.BigInteger;\nclass Folds { static BigInteger m() { return %s; } }";
+        for (var level : List.of(OptimizationLevel.BASELINE, OptimizationLevel.PV11_SAFE, OptimizationLevel.PV11_COSTED)) {
+            var arithmetic = UplcFlatEncoder.encodeProgram(compiler(level).compileMethod(src.formatted(sides[0]), "m").program());
+            var literal = UplcFlatEncoder.encodeProgram(compiler(level).compileMethod(src.formatted(sides[1]), "m").program());
+            assertArrayEquals(literal, arithmetic, sides[0] + " at " + level);
+        }
+    }
+
     private static final String DECODED = "Builtins.unIData(Builtins.iData(BigInteger.ONE))";
 
     private static String chain(int depth, String first, String link) {

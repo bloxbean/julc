@@ -213,6 +213,52 @@ class KnownDivergencesTest {
         }
     }
 
+    /**
+     * The confirmation rerun end to end, on a program that exhausts the budget by its cost alone: a loop of 20,000
+     * additions needs more memory than the budget gives. The real rerun at {@link KnownDivergences#CONFIRMATION_FACTOR}
+     * times the budget finishes with the JVM's value, so T13 explains it at every level; without a rerun nothing does
+     * (#306 review: the saved T13 reproducers no longer exhaust the budget).
+     */
+    @Test
+    void aCostlyProgramIsExplainedByARealConfirmationRerun() {
+        var diffCase = new DiffCase("a costly loop", """
+                import java.math.BigInteger;
+                import org.julclang.core.types.JulcList;
+
+                public class Probe {
+                    public static BigInteger m(BigInteger a, BigInteger b, JulcList<BigInteger> xs) {
+                        BigInteger s = a;
+                        long i = 0;
+                        while (i < 20000) {
+                            s = s.add(b);
+                            i = i + 1;
+                        }
+                        return s;
+                    }
+                }
+                """, "Probe", "m", List.of(new PlutusData.IntData(BigInteger.ONE), new PlutusData.IntData(BigInteger.TWO),
+                new PlutusData.ListData(List.of())));
+        var report = RUNNER.run(diffCase);
+        assertEquals(value(40001), report.jvm());
+        for (var entry : report.results().entrySet()) {
+            var config = entry.getKey();
+            var result = entry.getValue();
+            assertEquals(BUDGET, result.uplc(), config.toString());
+            var factors = new ArrayList<Long>();
+            var observations = new ArrayList<Observation>();
+            KnownDivergences.Rerun rerun = factor -> {
+                var execution = RUNNER.rerun(diffCase, config, factor);
+                factors.add(factor);
+                observations.add(execution.observation());
+                return execution;
+            };
+            assertEquals(Optional.of("T13"), KNOWN.explain(diffCase, config, DEEP, result, rerun), config.toString());
+            assertEquals(List.of((long) KnownDivergences.CONFIRMATION_FACTOR), factors, config.toString());
+            assertEquals(List.of(value(40001)), observations, config.toString());
+            assertEquals(Optional.empty(), KNOWN.explain(diffCase, config, DEEP, result), "no rerun, no T13");
+        }
+    }
+
     @Test
     void aRerunThatDisagreesWithTheJvmIsNotT13() {
         var factors = new ArrayList<Long>();

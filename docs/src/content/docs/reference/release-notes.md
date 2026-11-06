@@ -18,11 +18,13 @@ form was already fixed.
   nested calls grow the script linearly: the six nested `abs()` calls now make 106 bytes.
 - **Script bytes change** for programs that pass such an operand: a call, a record field or
   arithmetic, such as `x.v().signum()` or `a.add(b).abs()`. That includes stdlib methods kept in
-  the script. Programs whose operands are variables and literals are unchanged. In every shape
-  measured, the new script is no larger. Execution costs less wherever the operand is read
-  twice. Where only one read runs (a negative `signum` receiver, or `compareTo` taking its
-  "less than" branch), it costs 48,000 more CPU units and 300 more memory units. A new hash
-  means a new script address or policy ID. `BASELINE` changes too.
+  the script. Programs whose operands are variables, literals or arithmetic on literals are
+  unchanged. In every shape measured, the new script is no larger. Where the operand is read
+  twice it costs less CPU, and usually less memory. `max` or `min` of two cheap operands, such as
+  `a.add(b).max(b.multiply(a))`, can use up to about 200 more memory units. Where only one read
+  runs (a negative `signum` receiver, or `compareTo` taking its "less than" branch), it costs
+  48,000 more CPU units and 300 more memory units. A new hash means a new script address or
+  policy ID. `BASELINE` changes too.
 
 ## Upcoming preview: javac is JuLC's only Java reader (ADR-068 M5, M6)
 
