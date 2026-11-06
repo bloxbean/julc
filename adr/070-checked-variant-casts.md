@@ -41,7 +41,8 @@ fields happen to decode (#288's impact).
 - `Casts.cast`: a primitive target goes to `primitive`; any other target returns the lowered operand, decoding a pair
   list when the target is a map. `requireNativeView` (ADR-047) checks native boundaries first.
 - `PlutusData.cast(x, T.class)` is the same view, documented as unchecked (ADR-068 D6).
-- `PlutusData` is itself a sealed interface whose variants are records (`MapData`, `BytesData`, ...), and the stdlib
+- `PlutusData` is itself a sealed interface (`MapData`, `ListData`, `IntData` and `BytesData` are records; `ConstrData`
+  is a final class), and the stdlib
   downcasts to them: `(PlutusData.MapData) Builtins.sndPair(...)` and `(PlutusData.BytesData) token` in `ValuesLib`.
   These are views of Data's own representation, not of a `Constr`-encoded sum; the registry holds `PlutusData` as no
   `SumType`.
@@ -122,10 +123,13 @@ fields happen to decode (#288's impact).
 1. the erasure of T is a record V that is a constructor of a sum the registry holds as a `SumType` (a `Constr`-encoded
    sealed interface P: the program's own, a library's, or a ledger sum such as `ScriptInfo`). `PlutusData`'s variants
    are not: the registry holds no `SumType` for `PlutusData` (D2); and
-2. x's static type is a member of P's family but not statically V: P itself, an intersection with a bound in P's family
-   (`TypeTests.isOf`, e.g. `Record & S` from a `?:` of two variants), or a type variable whose bound is one of those (a
-   generic method's `<T extends S>`, read through the bound as JLS 5.1.6.1 reads it). A specialised copy (ADR-059) sees
-   the type its producer bound.
+2. x's static type, as javac attributes it, is a member of P's family but not statically V: P itself, an intersection
+   with a bound in P's family (`TypeTests.isOf`, e.g. `Record & S` from a `?:` of two variants), or a type variable or
+   captured wildcard read through its upper bound, as JLS 5.1.6.1 reads it. The decision uses javac's types and the
+   erasure of T only, never an ADR-059 specialisation's environment: the JVM checks against the erasure (5.1.6.3), so a
+   specialised copy checks exactly where its template does. JuLC rejects bounded type parameters today (ADR-059's
+   bounded-template rule, `JULC0012` for an unspecialised type variable), so the type-variable clause matters for
+   captured wildcards (`xs.head()` on `JulcList<? extends S>`) and keeps the rule complete if that subset grows.
 
 An operand that is statically V is a same-type cast (D2). An operand of another variant of P cannot reach a cast:
 javac rejects `(B) a` on records.
@@ -136,13 +140,20 @@ javac rejects `(B) a` on records.
 readOnce(x) as #operand;  if FstPair(UnConstrData(#operand)) == tag(V) then #operand else Error    // illustrative
 ```
 
-- The tag test is `TypeTests`', refactored so both use one: `TypeTests.variant(TypeElement V, TypeMirror operand)`
-  returns V's constructor when (1) and (2) hold, and nothing otherwise (never a rejection, so every other cast falls
-  through to D2), and `TypeTests.tagTest(PirTerm scrutinee, Constructor c)` builds the comparison. `instanceof` and its
-  `tag()` use the same two. `Casts` gains `TypeTests` as a collaborator.
+- The tag test is `TypeTests`', refactored so both use one, with the cast's own rule kept apart:
+  - `TypeTests.constructorOf(TypeElement V)`: V's constructor when (1) holds (exactly one sealed parent that the registry
+    holds as a `SumType`, a plain record that is no `@NewType`, a non-negative index among the permitted types), and
+    nothing otherwise. It never rejects.
+  - `TypeTests.tagTest(PirTerm scrutinee, Constructor c)`: the comparison.
+  - `instanceof` keeps its own operand rule (P or V, `JULC0126` otherwise), its diagnostics and its terms; only the
+    construction is shared, so its frozen rows (e.g. `a instanceof S.A b` with `a` typed `S.A`) do not move.
+  - `Casts` adds (2): `isOf(operand, V)` first (a same-type cast, no check), then `isOf(operand, P)`. `isOf` gains a
+    `TypeVariable` case that reads the upper bound, recursively (a bound may be an intersection or a variable).
+    `Casts` gains `TypeTests` as a collaborator.
 - `readOnce` (#146) binds the operand unless it is a variable or a literal, so it runs once.
-- `Error` carries no trace (I4); it is typed as the target's PIR type and located at the cast (`terms.at`), so a source
-  map and the debugger point at the cast that failed.
+- `Error` carries no trace (I4). It is typed as the then-branch is (`typing.ofTerm` of the operand term), so the two
+  branches agree for any typed pass and no type variable's PIR type is ever asked for; and it is located at the cast
+  (`terms.at`), so a source map and the debugger point at the cast that failed.
 - Every level, including BASELINE: the maintainer's policy since #146 (ADR-032 amendment) is that JuLC is a preview,
   so a correctness fix changes the default rather than sitting behind an opt-in. That policy is confirmed for this issue.
 
@@ -156,8 +167,10 @@ Unchanged, so their bytes stay (I3):
 - `PlutusData`'s own variants: `(PlutusData.MapData) d`, `(PlutusData.BytesData) b`. They view Data's representation;
   a `Constr` tag test would reject every map and bytestring. They stay an unchecked view, a JVM divergence ADR-068 D6
   already records;
-- a cast from a type with no representation of the family: `(V)(Object) x` (an ADR-062 T9 view) and
-  `PlutusData.cast(x, V.class)` (an ADR-068 D6 view). A plain `(V) d` from a `PlutusData` value does not compile;
+- a cast from a type with no representation of the family: `(V)(Object) x` (an ADR-062 T9 view), an operand of an
+  unbounded type variable (bound `Object`), an operand typed as an open super-interface of P (such as
+  `PlutusDataConvertible`), and `PlutusData.cast(x, V.class)` (an ADR-068 D6 view). A plain `(V) d` from a `PlutusData`
+  value does not compile;
 - a cast whose target has no tag of its own: a sealed interface (including a sealed sub-interface, which JuLC does not
   represent as a sum of its own), an open interface, a plain record, and a variant `TypeTests` would reject (D3).
 
@@ -222,16 +235,18 @@ must agree with the JVM on every variant.
 
 1. **D1 positions**, each over every variant (a passing and a failing check): a local, an argument, a return, a loop
    body, a lambda body, a `?:` arm, a switch-arm value, an ADR-069 D4 continuation, a traced operand (I2), `(A)(S) x`
-   (two checks), a ternary operand (`Record & S`), a `var` of one, a `<T extends S>` parameter, a `(T) s` with
-   `T extends A`, a ledger `ScriptInfo` of each purpose, a multi-purpose validator's default handler casting the wrong
-   `ScriptInfo`, and #288's reproducer.
+   (one check: the inner cast to S is a view), a ternary operand (`Record & S`), a `var` of one, an accessor or record
+   component typed S (`(A) xs.head()`, `(A) box.value()`), a captured wildcard (`JulcList<? extends S>`), a ledger
+   `ScriptInfo` of each purpose, a multi-purpose validator's default handler casting the wrong `ScriptInfo`, and #288's
+   reproducer. The harness counts the JVM's `ClassCastException` as a failure, as it counts any exception.
 2. **The failure is observable and placed** (I4): a cast whose result is never read, and one passed to a helper that
    ignores its argument, still fail on the wrong variant at every level (no pass may drop the check); a failing cast
    between two traced calls leaves only the first trace; a cast in an operand that `&&`, `||`, a `?:` arm or an
    unselected switch arm skips does not run; a cast in an `instanceof` operand whose pattern variable is then read.
 3. **D2 unchanged** (I3): compatibility pins (frozen bytes and PIR) for an upcast, a same-type cast (and a pattern
-   variable typed V), `(V)(Object) x`, `PlutusData.cast`, `PlutusData`'s variants as `ValuesLib` uses them, a generic
-   accessor's result, a record component as operand, and a cast to a sealed or open interface. Views that diverge from
+   variable typed V, an accessor or component typed V), `(V)(Object) x`, an `Object`-typed accessor result,
+   `PlutusData.cast`, `PlutusData`'s variants as `ValuesLib` uses them, a cast to a sealed or open interface, and the
+   existing `instanceof` frozen rows, including a V-typed operand. Bounded type parameters stay rejected, pinned. Views that diverge from
    the JVM today are pinned by term, not by JVM agreement. `library-discovery-pre-cleanup.txt` and the frozen reference
    do not move. `theBuildOrder`'s rejections keep their first error.
 4. **Guards** keep rejecting reference casts (`JULC0072`), pinned.
@@ -263,7 +278,9 @@ All of the above green on the merge head; a Codex review with no open P0 or P1.
 
 ## Open questions
 
-- **Q1. `(V)(Object) x` and `PlutusData.cast`.** Lean: stay views (documented, T9); revisit with ADR-062 S2.
+- **Q1. `(V)(Object) x`, unbounded type variables, open super-interfaces, `PlutusData.cast`, and `PlutusData`'s own
+  variants.** Lean: stay views (documented, T9, ADR-068 D6); revisit with ADR-062 S2. `PlutusData`'s variants could be
+  checked by Data kind (`ChooseData`) rather than by tag: a possible follow-up, so this is a choice, not a limit.
 - **Q2. `((V) x).f()` (`JULC0055`).** Lean: a follow-up; with D1 the receiver's type is known and the read is safe.
 - **Q3. Casts in switch guards (`JULC0072`).** Lean: a follow-up; the guard rule exists only because casts were
   unchecked.
@@ -289,3 +306,14 @@ All of the above green on the merge head; a Codex review with no open P0 or P1.
   - Verification: unused casts, traces around a failing cast, skipped operands, D2 compatibility pins, guards, ternary
     and type-variable rows, multi-purpose default handler (F2, S6, C8, C9).
   - References: 5.1.6.1, 5.1.6.3 and 15.16 added (S7).
+- r3 (2026-11-06, responds to round 2 of `b6af2c48`: semantics APPROVED (S9–S12), code APPROVED (C10–C12), Codex
+  F3–F5):
+  - `TypeTests` split: `constructorOf` and `tagTest` are shared; `instanceof` keeps its own operand rule, diagnostics and
+    terms, so its frozen rows stay; the same-type exemption is the cast's (F3 P1).
+  - D1 decides from javac's types and the erasure only, never an ADR-059 environment; bounded type parameters stay
+    rejected and are pinned; `isOf` reads type variables and captured wildcards through their bounds (F4, C10, S10, C12).
+  - The `Error` is typed as the then-branch is (C11).
+  - Verification: `(A)(S) x` is one check; accessor and component rows split by attributed type; the harness counts
+    `ClassCastException` as a failure (F5, C9).
+  - D2 and Q1: unbounded type variables and open super-interfaces stay views; a `ChooseData` check of `PlutusData`'s
+    variants recorded as a follow-up; `PlutusData`'s wording (S9, S11, S12).
