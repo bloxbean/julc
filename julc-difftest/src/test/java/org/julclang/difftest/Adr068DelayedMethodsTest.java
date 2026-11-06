@@ -24,7 +24,6 @@ import java.util.Collections;
 import java.util.List;
 
 import static org.julclang.difftest.Adr068CallsHarnessTest.assertAgree;
-import static org.julclang.difftest.Adr068CallsHarnessTest.assertBothDivergeAlike;
 import static org.julclang.difftest.Adr068CallsHarnessTest.bool;
 import static org.julclang.difftest.Adr068CallsHarnessTest.integer;
 import static org.julclang.difftest.Adr068CallsHarnessTest.list;
@@ -193,12 +192,48 @@ class Adr068DelayedMethodsTest {
         assertAgree(method, bool(true), integer(1));
     }
 
-    /** No delayed read among the operands: T13's documented behaviour, which this does not touch. */
+    /** No delayed read among the operands: such an operand is bound too, and runs once, in order (#146). */
     @ParameterizedTest
     @ValueSource(strings = {"said(\"R\", a).abs().longValue()", "said(\"R\", a).signum()", "said(\"R\", a).compareTo(b)", "said(\"R\", a).max(b).longValue()",
             "b.max(said(\"A\", a)).longValue()", "said(\"R\", a).add(b).abs().longValue()", "said(\"R\", a).add(b).signum()"})
-    void anOperandThatIsNoDelayedReadRunsAsItDid(String body) {
-        assertBothDivergeAlike("public static long m(BigInteger a, BigInteger b) { return " + body + "; }", integer(3), integer(1));
+    void anOperandThatIsNoDelayedReadRunsOnce(String body) {
+        assertAgree("public static long m(BigInteger a, BigInteger b) { return " + body + "; }", integer(3), integer(1));
+        assertAgree("public static long m(BigInteger a, BigInteger b) { return " + body + "; }", integer(-3), integer(1));
+    }
+
+    /**
+     * #146: one expression nests a handler 24 deep around a traced operand. Each level reads the level below once, so the
+     * script is linear and the trace shows once; reading it twice per level would make 2^24 copies.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {"%s.abs()", "%s.max(b)", "b.min(%s)", "BigInteger.valueOf(%s.signum())", "BigInteger.valueOf(%s.compareTo(b))",
+            "(%s.compareTo(b) == -1 ? a : b)", "((%s.compareTo(b) == -1 || b.compareTo(a) == -1) ? a : b)", "%s.add(b).abs().max(a)"})
+    void aNestOfHandlersIsLinear(String level) {
+        String expression = "said(\"K\", a)";
+        for (int i = 0; i < 24; i++) expression = level.formatted(expression);
+        String method = "public static BigInteger m(BigInteger a, BigInteger b) { return " + expression + "; }";
+        assertAgree(method, integer(3), integer(-1));
+        assertAgree(method, integer(-2), integer(1));
+    }
+
+    /**
+     * Constant arithmetic is not bound, so it folds where it is read: a handler of it compiles to the bytes of the same
+     * handler of the folded literal, at every level that folds (#306 review F1).
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {"BigInteger.valueOf(Math.abs(1 + 2))|BigInteger.valueOf(Math.abs(3))",
+            "BigInteger.ONE.add(BigInteger.TWO).abs()|BigInteger.valueOf(3).abs()",
+            "BigInteger.valueOf(Math.max(1 + 2, 2 - 5))|BigInteger.valueOf(Math.max(3, -3))",
+            "BigInteger.valueOf(BigInteger.TWO.multiply(BigInteger.TEN).signum())|BigInteger.valueOf(BigInteger.valueOf(20).signum())",
+            "BigInteger.valueOf(BigInteger.valueOf(-5).compareTo(BigInteger.ONE.add(BigInteger.ONE)))|BigInteger.valueOf(BigInteger.valueOf(-5).compareTo(BigInteger.TWO))"})
+    void constantArithmeticFoldsLikeItsLiteral(String pair) {
+        var sides = pair.split("\\|");
+        var src = "import java.math.BigInteger;\nclass Folds { static BigInteger m() { return %s; } }";
+        for (var level : List.of(OptimizationLevel.BASELINE, OptimizationLevel.PV11_SAFE, OptimizationLevel.PV11_COSTED)) {
+            var arithmetic = UplcFlatEncoder.encodeProgram(compiler(level).compileMethod(src.formatted(sides[0]), "m").program());
+            var literal = UplcFlatEncoder.encodeProgram(compiler(level).compileMethod(src.formatted(sides[1]), "m").program());
+            assertArrayEquals(literal, arithmetic, sides[0] + " at " + level);
+        }
     }
 
     private static final String DECODED = "Builtins.unIData(Builtins.iData(BigInteger.ONE))";
@@ -289,10 +324,10 @@ class Adr068DelayedMethodsTest {
         assertAgree(runSum(KS + "public static BigInteger m(BigInteger a) { " + body + " }", integer(-1)));
     }
 
-    /** No read in the operand: it runs as it did, in the test and in the binding. */
+    /** No read in the operand: it is bound too, so it runs once for the test and the binding (#146). */
     @Test
-    void aPatternOnAnOperandThatIsNoReadRunsAsItDid() {
-        assertBothDivergeAlike(runSum(KS + "static S made(BigInteger v) { return new A(said(\"M\", v)); } "
+    void aPatternOnAnOperandThatIsNoReadRunsOnce() {
+        assertAgree(runSum(KS + "static S made(BigInteger v) { return new A(said(\"M\", v)); } "
                 + "public static BigInteger m(BigInteger a) { if (made(a) instanceof A q) { return q.x(); } return a; }", integer(1)));
     }
 

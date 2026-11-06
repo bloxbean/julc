@@ -7,7 +7,6 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import java.math.BigInteger;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.stream.Stream;
 
@@ -104,17 +103,6 @@ class Adr068StatementsHarnessTest {
         assertEquals(4, report.results().size());
         report.results().forEach((config, result) -> {
         });
-    }
-
-    /** Both frontends differ from the JVM, the same way: the reference's behaviour, ported and pinned. */
-    private static void assertBothDivergeAlike(String members, PlutusData... args) {
-        var report = run(members, List.of(args));
-        var observations = new HashSet<>();
-        report.results().forEach((config, result) -> {
-            assertEquals(Verdict.Kind.MISMATCH, result.verdict().kind(), report::describe);
-            observations.add(result.uplc());
-        });
-        assertEquals(1, observations.size(), report::describe);
     }
 
     private static void assertFixedOnJavac(String members, PlutusData... args) {
@@ -408,11 +396,11 @@ class Adr068StatementsHarnessTest {
         return Stream.concat(table.entries().stream(), Stream.of(entries)).toList();
     }
 
-    /** {@code e} is lowered twice, as in the reference: where the test holds it runs twice, so a trace in it shows twice. */
+    /** {@code e} is bound once for the test and the binding, so a trace in it shows once, as on the JVM (#146). */
     @Test
-    void anOperandThatTracesRunsTwiceWhereTheTestHolds() {
+    void anOperandThatTracesRunsOnce() {
         String helper = "static S echo(S s) { note(\"e\"); return s; } ";
-        assertBothDivergeAlike(helper + "public static BigInteger m(S s) { if (echo(s) instanceof S.A a) { return a.v(); } return BigInteger.ZERO; }", a(1));
+        assertAgree(helper + "public static BigInteger m(S s) { if (echo(s) instanceof S.A a) { return a.v(); } return BigInteger.ZERO; }", a(1));
         assertAgree(helper + "public static BigInteger m(S s) { if (echo(s) instanceof S.A a) { return a.v(); } return BigInteger.ZERO; }", b(1, 2));
     }
 
