@@ -609,6 +609,27 @@ derived from JuLC's own output. A newly supported shape must **agree**; a reject
   accumulator). Lean: pin them now, and decide in a follow-up whether D8 should cover them too, since that would
   reject programs that compile.
 
+## Implementation results
+
+### M0: baseline pins (2026-11-06)
+
+- `Adr069PatternScopesHarnessTest` (julc-difftest, 29 tests, all four levels against the JVM):
+  - what compiles today and must keep agreeing: a01, a05, a traced operand, a01 in a loop that updates nothing, seven
+    unused-variable shapes (one per D2 hook, including a conditional lambda and a `while` condition) and an unused
+    variable in an accumulator loop, a01 whose then-branch loop updates the variable, and review r3 F13's shape (an
+    accumulator-free outer loop whose inner `if` updates the variable through a nested loop): all **agree**;
+  - the shapes the ADR adds, each pinned with today's code: a02, a03, a04, a06, a07, a07b, a08, a lambda-block guard,
+    a use after an `if`-`else`, a `while`-condition read, b01, b02, b03, b05, b06, a `break` guard, b08 and c01 are
+    `JULC0011`; four bare-test shapes are `JULC0077`;
+  - assignments today: outside a loop `JULC0061`; in an accumulator loop `JULC0116`; under an `if` with a nested loop in
+    an accumulator loop `JULC0114`;
+  - R1: `S.A q = (S.A) s; q.v()` on `B(10, 4)` is a MISMATCH at every level (the JVM throws `ClassCastException`, the VM
+    returns 10).
+- `Adr069CompatibilityPinsTest` (julc-compiler): 14 programs that compile today, frozen in `frozen-reference.tsv`
+  (bytes, diagnostics and source positions at every level with and without a source map, and PIR text at every level),
+  and 2 rejections with their first diagnostic: 170 new rows.
+- Full `./gradlew build -PskipSigning=true --continue`: green; no existing frozen row moved.
+
 ## Revision history
 
 - r1 (2026-11-06): initial proposal.
