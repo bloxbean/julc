@@ -37,6 +37,29 @@ at runtime; a cast is never a decoder. Most other misuse, such as a G2 point con
 list, is rejected by javac itself (`JULC0085`). A `switch` expression that yields one group's
 native list compiles, with or without a cast to its own type.
 
+## Upcoming preview: `abs`, `signum`, `max`, `min` and `compareTo` evaluate each operand once (#146)
+
+These read an operand more than once: `abs` and `signum` their receiver, and `max`, `min` and
+`compareTo` both operands. An operand that was more than a variable or a literal was evaluated
+again at each read. A traced operand traced twice, and nesting one of these inside another
+doubled the script at each level: six nested `abs()` calls made a 4,792-byte script at
+`PV11_SAFE` ([#146](https://github.com/bloxbean/julc/issues/146)). The `compareTo(...) OP 0`
+form was already fixed.
+
+- `BigInteger`'s `abs`, `signum`, `max`, `min` and `compareTo`, and `Math.abs`, `Math.max` and
+  `Math.min`, now evaluate an operand that is not a variable or a literal once, receiver first,
+  as Java does. So does the operand of `if (x instanceof T t)`. A trace in it shows once, and
+  nested calls grow the script linearly: the six nested `abs()` calls now make 106 bytes.
+- **Script bytes change** for programs that pass such an operand: a call, a record field or
+  arithmetic, such as `x.v().signum()` or `a.add(b).abs()`. That includes stdlib methods kept in
+  the script. Programs whose operands are variables, literals or arithmetic on literals are
+  unchanged. In every shape measured, the new script is no larger. Where the operand is read
+  twice it costs less CPU, and usually less memory. `max` or `min` of two cheap operands, such as
+  `a.add(b).max(b.multiply(a))`, can use up to about 200 more memory units. Where only one read
+  runs (a negative `signum` receiver, or `compareTo` taking its "less than" branch), it costs
+  48,000 more CPU units and 300 more memory units. A new hash means a new script address or
+  policy ID. `BASELINE` changes too.
+
 ## Upcoming preview: javac is JuLC's only Java reader (ADR-068 M5, M6)
 
 JuLC now reads every Java source with javac, on every host: the compiler API, the Gradle plugin, the annotation processor, the testkit (`JulcEval`, `ValidatorTest`, `ContractTest`), the CLI

@@ -5,10 +5,12 @@ method: m
 tag: Probe$A Probe$S 0
 tag: Probe$B Probe$S 1
 arg: 05
-expect: DIVERGE T12 Value/Value
-jvm: Value 01 ["receiver"]
-uplc: Value 01 ["receiver", "receiver"]
+expect: AGREE
 note: ADR-067 review F36, retained: signum evaluates a call receiver twice (#146), so the guard traces twice on-chain and once on the JVM. Values agree.
+note: #146 (fixed): signum binds a receiver that is not a variable or a literal and evaluates it once, so the guard
+note: traces once, as on the JVM; the expectation is AGREE and recorded.jvm and recorded.base keep the old pins.
+recorded.jvm: Value 01 ["receiver"]
+recorded.base: Value 01 ["receiver", "receiver"]
 ---
 import java.math.BigInteger;
 import org.julclang.stdlib.Builtins;

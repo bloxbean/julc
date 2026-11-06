@@ -33,7 +33,7 @@ jobs:
       uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4
 
     - name: Build with Gradle
-      run: ./gradlew build -PskipSigning=true --stacktrace
+      run: ./gradlew build --parallel -PskipSigning=true --stacktrace
 
     # Fails the PR, not release day, when a module starts or stops publishing without the Central deployment
     # scope in build.gradle following it.

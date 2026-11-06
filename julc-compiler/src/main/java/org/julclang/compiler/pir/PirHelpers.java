@@ -183,25 +183,24 @@ public final class PirHelpers {
     }
 
     /**
-     * {@code body} of an operand it evaluates more than once, ahead of all else and on every path. A delayed read runs at
-     * each read, and each level of a chain of such methods would double the one below, so an operand that
-     * {@link #holdsMethodRead holds a read} is bound once, where {@code body} would have run it, which moves no failure. Any
-     * other operand goes in as it is: the handlers keep their shape for those (T13).
+     * {@code body} of an operand it evaluates more than once, ahead of all else and on every path. Java evaluates the
+     * operand once, so an operand that is not a variable or a constant is bound once, where {@code body} would first have
+     * run it, which moves no failure. Read twice, it would repeat its traces and its cost, and each level of a nest of such
+     * handlers would double the size and cost of the level below (#146). A variable or a constant goes in as it is.
      */
     public static PirTerm readOnce(PirTerm operand, PirType type, UnaryOperator<PirTerm> body) {
-        return boundOnce("#operand", holdsMethodRead(operand), operand, type, freeVariables(operand), body);
+        return boundOnce("#operand", !isTrivialOperand(operand), operand, type, freeVariables(operand), body);
     }
 
     /**
      * {@code body} of a receiver and an argument it may each read more than once, as {@link #readOnce(PirTerm, PirType, UnaryOperator)}.
-     * The receiver runs first, so a receiver that has an effect is bound ahead of a bound argument.
+     * {@code body} runs the receiver first, then the argument, as Java does, so the receiver is bound ahead of the argument.
      */
     public static PirTerm readOnce(PirTerm receiver, PirTerm argument, PirType type, BinaryOperator<PirTerm> body) {
-        boolean bindArgument = holdsMethodRead(argument);
-        boolean bindReceiver = holdsMethodRead(receiver) || bindArgument && !isTrivialOperand(receiver);
         var avoid = freeVariables(receiver, argument);
-        return boundOnce("#receiver", bindReceiver, receiver, type, avoid, receiverRead ->
-                boundOnce("#argument", bindArgument, argument, type, avoid, argumentRead -> body.apply(receiverRead, argumentRead)));
+        return boundOnce("#receiver", !isTrivialOperand(receiver), receiver, type, avoid, receiverRead ->
+                boundOnce("#argument", !isTrivialOperand(argument), argument, type, avoid,
+                        argumentRead -> body.apply(receiverRead, argumentRead)));
     }
 
     private static PirTerm boundOnce(String base, boolean bind, PirTerm operand, PirType type, Set<String> avoid,
@@ -211,8 +210,27 @@ public final class PirHelpers {
         return new PirTerm.Let(read.name(), operand, body.apply(read));
     }
 
+    /**
+     * Whether evaluating {@code term} has no effect and next to no cost, so that it can be read more than once: a variable,
+     * a constant, or {@link #isConstantArithmetic constant arithmetic}, which the optimizer folds to a constant at each read.
+     */
     private static boolean isTrivialOperand(PirTerm term) {
-        return term instanceof PirTerm.Var && !isMethodRead(term) || term instanceof PirTerm.Const;
+        return term instanceof PirTerm.Var && !isMethodRead(term) || term instanceof PirTerm.Const || isConstantArithmetic(term);
+    }
+
+    /**
+     * Integer addition, subtraction or multiplication of integer constants, or of such terms: a negative literal such as
+     * {@code -5} ({@code 0 - 5}, as the frontend lowers it), or {@code 1 + 2}. It cannot fail and has no effect. Bound, it
+     * would fold to a constant that the optimizer does not copy into each read, so it is left to fold where it is read.
+     */
+    private static boolean isConstantArithmetic(PirTerm term) {
+        return term instanceof PirTerm.App(PirTerm.App(PirTerm.Builtin(var fun), var left), var right)
+                && (fun == DefaultFun.AddInteger || fun == DefaultFun.SubtractInteger || fun == DefaultFun.MultiplyInteger)
+                && isIntegerConstant(left) && isIntegerConstant(right);
+    }
+
+    private static boolean isIntegerConstant(PirTerm term) {
+        return term instanceof PirTerm.Const(Constant.IntegerConst _) || isConstantArithmetic(term);
     }
 
     /**
@@ -223,19 +241,6 @@ public final class PirHelpers {
      */
     public static boolean isMethodRead(PirTerm term) {
         return term instanceof PirTerm.Var variable && variable.name().indexOf('.') > 0;
-    }
-
-    /**
-     * Whether {@link #isMethodRead a read} is anywhere in {@code term}. The binder of a method with parameters is a function,
-     * and calling it is no read of a value, so such a call alone does not count.
-     */
-    private static boolean holdsMethodRead(PirTerm term) {
-        var holds = new boolean[] {isMethodRead(term) && !(((PirTerm.Var) term).type() instanceof PirType.FunType)};
-        mapChildren(term, child -> {
-            holds[0] |= holdsMethodRead(child);
-            return child;
-        });
-        return holds[0];
     }
 
     /**

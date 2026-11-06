@@ -95,6 +95,48 @@ also compared numerically against the pre-change file and its SHA-256 reproduced
 unchanged. External DevKit tests remain explicitly opt-in and were not run;
 runtime evaluation configuration and the lowering algorithm were not changed.
 
+### Policy amendment — issue #146 (2026-11-06, accepted)
+
+**Problem.** `abs`, `signum`, `max`, `min` and `compareTo`, `Math`'s delegates and the operand of an
+`if (x instanceof T t)` pattern read an operand more than once, and an operand that was more than a variable or a
+literal ran at each read. That is an observable divergence from Java: a traced operand traces twice
+(ADR-062 T12/T13). Nested calls also double the script at each level, and the fuzzer's programs ran the compiler
+out of memory. ADR-068 D4/D6 fixed the `a.compareTo(b) OP 0` form at every level and left these forms open.
+
+**Decision.** These forms bind an operand that is not a variable, a literal or constant integer
+arithmetic once, receiver first (`PirHelpers.readOnce`), at **every** optimization level, `BASELINE` included,
+and as the default with no opt-in release first. This is an exception to two rules:
+- This ADR's "`BASELINE` remains byte-compatible for historical-script reproduction".
+- ADR-062 P6's opt-in release before a default that changes script bytes, hashes or costs.
+
+The exception covers this semantic fix only. It is not a precedent for optimizations, which keep the rollout
+policy below.
+
+**Why the exception.** It restores Java's evaluation, so traces and evaluation count match the JVM. It is not a
+profitability rewrite. A level that kept the defect would keep a known semantic divergence and an exponentially
+growing script on purpose. JuLC is a preview, and the maintainer has stated that no one uses it for real work. ADR-068 D4/D6 took the same course for the `OP 0` form.
+
+**Alternatives considered.**
+- **Keep the old lowering at `BASELINE`, fix it from `PV11_SAFE`.** This preserves historical bytes at
+  `BASELINE`, but keeps the trace divergence and the exponential growth there. It also needs two lowerings of
+  each handler to maintain and test. Rejected.
+- **An opt-in flag first, the default in a later release (P6 as written).** The default compiler would keep
+  producing double traces and exponentially sized scripts for a release, for no compatibility gain in a preview
+  with no deployed users. Rejected.
+- **Bind only when the operand is costly.** It does not fix the trace divergence for cheap traced operands, and
+  needs a cost judgement in the lowering. Rejected. Constant integer arithmetic stays unbound because it cannot
+  fail, has no effect, and folds where it is read.
+
+**Reproducing older artifacts.** `BASELINE` of a compiler with this change does not give the earlier bytes for
+programs that pass such an operand. To reproduce such an artifact, pin the compiler release or commit that produced it,
+together with the same target and optimization level.
+Programs whose operands are only variables, literals and constant arithmetic keep their bytes.
+
+**Maintainer decision (2026-11-06).** Confirmed: the fix is the default at every level, `BASELINE` included,
+with no opt-in release ("No one is using JULC and it is still preview, should not we do it default"). The release
+notes announce the change and its cost trade-off ("`abs`, `signum`, `max`, `min` and `compareTo` evaluate each
+operand once (#146)").
+
 PV11 makes fourteen Batch 6 builtins available to Plutus V3 and enables
 `Case` over selected builtin constant types. JuLC already exposes and evaluates
 the builtins, but most high-level Java operations still lower to pre-PV11

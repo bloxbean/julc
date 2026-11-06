@@ -34,9 +34,9 @@ import java.util.function.Supplier;
  * that interface. Anything else is rejected: the comparison would run on a value of some other type, where
  * Java tests the value's class.
  * <p>
- * <b>Evaluation order.</b> The operand is evaluated once, then the test. As in the reference, {@code if (e instanceof V v)}
- * reads {@code e} a second time for {@code v}, so where the test holds {@code e} runs twice, and a trace in it shows twice,
- * unless it holds a read of a method, which {@code Ifs} binds once. In a guard the operand is evaluated once, by the dispatch.
+ * <b>Evaluation order.</b> The operand is evaluated once, then the test. In {@code if (e instanceof V v)}, {@code Ifs} binds
+ * {@code e} once, unless it is a variable or a literal ({@code PirHelpers.readOnce}, #146): the test and {@code v} read that
+ * one binding, so a trace in {@code e} shows once, as in Java. In a guard the dispatch reads the operand it is given.
  */
 final class TypeTests {
 
@@ -58,11 +58,11 @@ final class TypeTests {
     }
 
     /**
-     * {@link #instanceOf(InstanceOfTree, Frame)} of {@code operand}, the term of {@code tree}'s operand. A guard lowers its
-     * own: {@code GuardRules} takes an operand there only if a declaration types it, which no call of a method does.
+     * {@link #instanceOf(InstanceOfTree, Frame)} of {@code operand}, the term of {@code tree}'s operand. In a guard too, the
+     * test reads {@code operand} and does not lower the operand again, so a caller that bound it once reads it once.
      */
     PirTerm instanceOf(InstanceOfTree tree, Frame frame, Supplier<PirTerm> operand) {
-        if (frame.inGuard()) return totalDispatch(tree, frame);
+        if (frame.inGuard()) return totalDispatch(tree, operand);
         var scrutinee = operand.get();
         var constructor = constructor(tree, variantOf(tree));
         var tag = new PirTerm.App(new PirTerm.Builtin(DefaultFun.FstPair),
@@ -76,9 +76,9 @@ final class TypeTests {
      * {@code true} for V and {@code false} for the others, so a tag that is no constructor fails and selects no later arm.
      * {@code SwitchRules} has shown the operand is V or that interface, and rejected a pattern the arm could see.
      */
-    private PirTerm totalDispatch(InstanceOfTree tree, Frame frame) {
+    private PirTerm totalDispatch(InstanceOfTree tree, Supplier<PirTerm> operand) {
         var variant = guardVariantOf(tree);
-        var scrutinee = lowering.expr(tree.getExpression(), frame);
+        var scrutinee = operand.get();
         var tested = constructor(tree, variant);
         var parent = facts.sealedParents(variant).getFirst();
         var constructors = ((PirType.SumType) facts.registry().lookupNominal(facts.identity(parent)).orElseThrow()).constructors();
