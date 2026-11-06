@@ -166,8 +166,9 @@ does not require an enclosing <code dir="auto">if</code>. Nested switch arms int
 rejected (<a href="https://github.com/bloxbean/julc/issues/162">#162</a>): cached field reads
 could otherwise use the original record. Copy it to a fresh arm-local accumulator
 and update that copy instead. This is conservative even if you yield the record
-without reading its fields. It does not prohibit otherwise-supported reassignment
-of an <code dir="auto">instanceof</code> binding; those bindings use a different lowering path.</p>
+without reading its fields. Reassigning an <code dir="auto">instanceof</code> pattern variable is rejected
+too (<code dir="auto">JULC0140</code>), except in the long-supported form where it is the whole condition of an
+<code dir="auto">if</code> outside a loop with accumulators, and a loop in that <code dir="auto">if</code> updates it.</p>
 <div class="sl-heading-wrapper level-h3"><h3 id="loops-inside-an-if-outside-a-loop-body">Loops inside an if outside a loop body</h3><a class="sl-anchor-link" href="#loops-inside-an-if-outside-a-loop-body"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Loops inside an if outside a loop body”</span></a></div>
 <p>A loop inside an <code dir="auto">if</code> at method level or inside a switch-expression arm preserves
 its accumulator updates for statements after the branch. This fixes

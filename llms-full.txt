@@ -3,7 +3,7 @@
 > Single-file dump of the JuLC docsite, suitable for AI agent ingestion.
 
 julcVersion: 0.1.0-pre20
-Generated: 2026-11-06T06:17:26.129Z
+Generated: 2026-11-06T14:59:36.254Z
 Site: https://julc.dev
 Repo: https://github.com/bloxbean/julc
 Examples: https://github.com/bloxbean/julc-examples
@@ -358,7 +358,7 @@ Build artifact: `build/classes/META-INF/plutus/MyValidator.plutus.json` — the 
 - **Rejected:** reassignment of a switch case-pattern variable ([#162](https://github.com/bloxbean/julc/issues/162)); copy it to a fresh arm-local accumulator instead. Otherwise-supported `instanceof` binding reassignment is unchanged.
 - Where an assignment is supported, `x += y` (also `-=`, `*=`, `/=`, `%=`) means `x = x op y` on integers, and `+=` appends to a `String`. `&=`, `|=`, `^=` and shift compound operators are rejected (`JULC0052`): evaluate the check first, then write `ok = ok && c`. `x++` is rejected.
 - Declare one variable per statement (`BigInteger a = x, b = y;` is `JULC0053`). Overloaded methods are rejected unless every declaration compiles to the same code (`JULC0054`). A local, parameter or field may share a method's name. Calling a member on a value whose type is unknown, such as `d.amount()` on `PlutusData`, is `JULC0055`. Do not update a static field or `@Param` in a loop except in the entrypoint, and only when no other method reads it (`JULC0056`); copy it into a local accumulator. Do not reassign a for-each variable in a loop that updates no variable declared before it (`JULC0058`); declare a new local.
-- An `instanceof` pattern variable is bound only when `x instanceof T v` is the whole condition of an `if` outside a loop ([#204](https://github.com/bloxbean/julc/issues/204)). In a loop body, an `&&` condition, a `!` guard, a ternary or a lambda, switch on the sealed type instead. A pattern variable may not reuse a field or `@Param` name (`JULC0059`).
+- An `instanceof` pattern variable can be used wherever Java has it in scope ([#204](https://github.com/bloxbean/julc/issues/204)): `&&`, `||`, `!`, `?:`, lambdas, loop bodies, and after an `if (!(x instanceof T v)) return/break;` guard. A bare `x instanceof T` works too. Not supported: a variable carried out of a `while` condition (`JULC0139`) or declared in a switch guard (`JULC0074`); reassigning one (`JULC0140`); reusing a field or `@Param` name (`JULC0059`).
 - **Method calls** to `@OnchainLibrary` static methods, stdlib (`ContextsLib`, `ListsLib`, etc.), instance methods on `JulcList`/`JulcMap`/`String`/`byte[]`/`BigInteger`, and `Builtins.*` (Plutus builtins).
 - **Lambdas as HOF arguments** to `list.map(...)`, `list.filter(...)`, `list.any(...)`, `list.all(...)`. Must be passed inline; cannot be stored in a variable and called via `.apply()`. Compiled `any`/`all` evaluate the predicate for every element (no early exit), so guard a predicate that can fail with `&&`. Assign `map`'s result to a typed `JulcList<T>` local before a lambda uses its elements. Do **not** use `list.find(...)` (the compiled result is an optional value, not the element) or the static `ListsLib.any/all/filter/map/find/foldl/zip` forms (not declared in Java, so javac rejects them); write a fold as an accumulator loop.
 - **Annotations**: `@SpendingValidator`, `@MintingValidator`, `@CertifyingValidator`, `@WithdrawValidator`, `@VotingValidator`, `@ProposingValidator` on the class; `@Entrypoint` on the entrypoint method; `@Param` on `static` fields for parameterized validators; `@OnchainLibrary` on library classes; `@NewType` on single-field record wrappers.
@@ -657,6 +657,10 @@ A value is built from its components alone, so a constructor's body does not run
 ##### 6.19 A record is its components
 
 A record's Data is its components, so a record's body holds only nested types (`JULC0080`), and a declared `toPlutusData` or explicit accessor is rejected (`JULC0101`). Each name binds as Java binds it: javac reads the source.
+
+##### 6.20 javac 21 to 25.0.2: a `VerifyError` in the JVM tests (not a JuLC bug)
+
+Run tests on JDK 25.0.3 or later. On an older JDK, avoid declaring two pattern variables in one condition (`p instanceof C c || p instanceof B b`) in a method that also has a pattern `switch` whose arm copies its case variable and loops over an `instanceof` test: javac emits a class the JVM refuses to load. Nest the second test, or move the `switch` into a helper.
 
 #### 7. Common errors — root cause and fix
 
@@ -2888,11 +2892,26 @@ if (datum instanceof OutputDatum.OutputDatumInline inline) {
 }
 ```
 
-The pattern variable (`inline` above) is bound when the `instanceof` test is the whole
-condition of an `if` statement outside a loop. In other positions (a loop body, an `&&`
-condition, a negated guard, a ternary or a lambda) it is not bound yet ([#204](https://github.com/bloxbean/julc/issues/204)) and
-compilation fails, usually with `Undefined variable`; use a `switch` on the sealed type there.
-A pattern variable may not reuse the name of a field or `@Param` (`JULC0059`).
+The pattern variable (`inline` above) can be used wherever Java puts it in scope
+([#204](https://github.com/bloxbean/julc/issues/204)):
+
+```java
+if (action instanceof Bid bid && bid.amount().signum() > 0) { ... }
+long n = action instanceof Bid bid ? bid.amount().longValue() : 0;
+if (!(action instanceof Bid bid)) {
+    return false;              // the guard: bid is in scope for the rest of the block
+}
+return bid.amount().signum() > 0;
+```
+
+That includes `&&`, `||`, `!`, `?:`, lambdas, loop bodies, and the rest of a block after an
+`if` whose other branch leaves with `return`, `yield` or `break`. A plain type test
+`x instanceof Bid` works anywhere too. Two forms stay unsupported: a variable carried out of
+a `while` loop's condition into its body or past the loop (`JULC0139`, with a rewrite), and
+one declared in a `switch` guard (`JULC0074`). A pattern variable may
+not be reassigned (`JULC0140`; the one exception is the form that compiled before #204, a
+loop updating the variable of an `if` whose whole condition is its test) and may not reuse the
+name of a field or `@Param` (`JULC0059`).
 
 ##### 8.4 For-Each Loops
 
@@ -11027,8 +11046,9 @@ Reassigning a case-pattern variable itself (`case Only p -> ... p = ...`) is now
 rejected ([#162](https://github.com/bloxbean/julc/issues/162)): cached field reads
 could otherwise use the original record. Copy it to a fresh arm-local accumulator
 and update that copy instead. This is conservative even if you yield the record
-without reading its fields. It does not prohibit otherwise-supported reassignment
-of an `instanceof` binding; those bindings use a different lowering path.
+without reading its fields. Reassigning an `instanceof` pattern variable is rejected
+too (`JULC0140`), except in the long-supported form where it is the whole condition of an
+`if` outside a loop with accumulators, and a loop in that `if` updates it.
 
 ##### Loops inside an if outside a loop body
 
@@ -14040,9 +14060,10 @@ if (action instanceof Deposit d) {
 }
 ```
 
-The pattern variable is bound when the `instanceof` test is the whole condition of an `if`
-statement outside a loop; elsewhere use a `switch` until [#204](https://github.com/bloxbean/julc/issues/204). It may not reuse the name
-of a field or `@Param` (`JULC0059`).
+The pattern variable can be used wherever Java has it in scope ([#204](https://github.com/bloxbean/julc/issues/204)), except where a
+`while` loop's condition would carry it into the body or past the loop (`JULC0139`) or a
+`switch` guard declares it (`JULC0074`). It may not be reassigned (`JULC0140`) and may not
+reuse the name of a field or `@Param` (`JULC0059`).
 
 ##### For-Each Loop
 ```java
@@ -14661,6 +14682,36 @@ class VestingValidator {
 Source: https://julc.dev/reference/release-notes/
 
 > JuLC release notes and migration guidance
+
+#### Upcoming preview: `instanceof` pattern variables wherever Java has them in scope (#204)
+
+JuLC used to bind an `instanceof` pattern variable only when `x instanceof T v` was the whole
+condition of an `if` outside a loop body with accumulators. Everywhere else a use of the
+variable was `Undefined variable` ([#204](https://github.com/bloxbean/julc/issues/204), ADR-069).
+It now follows Java's scope rules (JLS 6.3.1, 6.3.2.2):
+
+```java
+if (x instanceof Bid b && b.amount().signum() > 0) { ... }        // &&, ||, !, parentheses
+long n = x instanceof Bid b ? b.amount().longValue() : 0;          // ?: and any value position
+outputs.any(o -> o.datum() instanceof OutputDatumInline d && ...); // lambdas
+for (var x : actions) { if (x instanceof Bid b) { total = total + ...; } } // loops with accumulators
+if (!(x instanceof Bid b)) { return false; }                       // the early-exit guard:
+return b.amount().signum() > 0;                                    // b is in scope after it
+```
+
+A bare type test, `x instanceof Bid`, now works wherever an expression may stand.
+
+- **Unchanged bytes:** programs that compiled before compile to the same bytes. The new
+  lowering runs only where a variable is used in a position that was rejected before.
+- **Bound once, under its test:** a variable is bound only where its test passed, and its
+  operand is evaluated once, in Java's order.
+- **Still rejected, now with a rewrite:** a variable carried out of a `while` condition
+  into the loop body or past the loop is `JULC0139`, which replaces `Undefined variable`
+  for pattern variables. Reassigning a pattern variable is `JULC0140`, except in the form
+  that compiled before: the variable of an `if` whose whole condition is its test, outside a
+  loop with accumulators, updated by a loop in that `if`. Switch-guard bindings stay
+  `JULC0074`. `JULC0077` no longer covers a test of a variant: it is left for record patterns
+  and for a test of a type that is no variant, such as the sealed interface itself.
 
 #### Upcoming preview: build native BLS point and scalar lists one element at a time (#240)
 
@@ -17906,11 +17957,10 @@ var result = switch (action) {
 
 ##### 1.13 `Unsupported instanceof pattern: <expression>`
 
-**Hint:** `instanceof is supported only with sealed interface variants: if (x
-instanceof Variant v) { ... }`
-
-**Cause:** `instanceof` was used with a type that is not a variant of a sealed
-interface, or the pattern form is not supported.
+**Cause:** `instanceof` was used with a type that is not a record variant of a sealed
+interface (including the sealed interface itself, `x instanceof Action`), or with a record
+pattern (`x instanceof R(var a, var b)`). A type test (`x instanceof Bid`) and a type pattern
+(`x instanceof Bid b`) of a variant are supported.
 
 **Fix:** Use `instanceof` only for sealed interface variant matching.
 
@@ -18150,11 +18200,9 @@ var total = BigInteger.ZERO;
 return total;
 ```
 
-An `instanceof` pattern variable is only in scope when the pattern is the whole
-condition of an `if` statement outside a loop. Used anywhere else, for example
-`if (x instanceof Bid b && b.amount() > 0)` or inside a loop body, it is reported as
-undefined until [#204](https://github.com/bloxbean/julc/issues/204). Use a `switch` on the sealed type there, which binds case
-variables in every position.
+An `instanceof` pattern variable that JuLC does not bind is reported as `JULC0139`
+([1.28](#128-julc0139-a-pattern-variable-is-used-where-julc-does-not-bind-it)), not as an
+undefined variable.
 
 `JulcMap.of(...)` used to be reported as `Undefined variable: JulcMap`; it now
 reports `JULC0062` ([1.23](#123-julc0062-julcmapof-is-off-chain-only-and-has-no-on-chain-implementation)).
@@ -18389,8 +18437,47 @@ This holds when the pattern takes every value of the field, as `var` does. `case
 `inner` is an `A`, so a rewrite has to keep that test: the error says so, and a value that does not match must go to what the
 next case does.
 
-An `instanceof` with a record pattern is `JULC0077`, and the same rewrite applies: `s instanceof A a`, then `a.v()`. JuLC binds
-the variable only when the `instanceof` is the whole condition of an `if`.
+An `instanceof` with a record pattern is `JULC0077`, and the same rewrite applies: `s instanceof A a`, then `a.v()`.
+
+##### 1.28 `JULC0139` A pattern variable is used where JuLC does not bind it
+
+**Cause:** JuLC binds an `instanceof` pattern variable wherever Java puts it in scope within
+one statement (`&&`, `||`, `!`, `?:`, the `if` and its branches, lambdas, loop bodies) and
+after an `if` whose other branch leaves the block. It does not carry a variable out of a
+`while` loop's condition, into the loop's body or past the loop.
+
+**Fix:** test the value without the variable where the loop tests it, and test it again with
+the variable where you use it:
+
+```java
+// WRONG: c is used after the loop that tests it
+while (!(s instanceof Circle c)) { s = next(s); }
+return c.radius();
+
+// CORRECT
+while (!(s instanceof Circle)) { s = next(s); }
+if (s instanceof Circle c) { return c.radius(); }
+```
+
+If the tested value is a call, store it in a local first, so the second test does not call
+it again.
+
+##### 1.29 `JULC0140` Reassigning pattern variable `<name>` is not supported
+
+**Cause:** Java lets a pattern variable that is not `final` be reassigned; JuLC does not. In
+a loop the update could be lost on the path that rejoins the rest of the body. The one form
+that compiled before #204 still does: a loop inside an `if` whose whole condition is the test,
+outside a loop with accumulators, updating that `if`'s variable.
+
+**Fix:** declare a new local with the value you need.
+
+```java
+// WRONG
+if (x instanceof Bid b) { if (late) { b = penalised(b); } total = total + b.amount(); }
+
+// CORRECT
+if (x instanceof Bid b) { Bid bid = late ? penalised(b) : b; total = total + bid.amount(); }
+```
 
 #### 2. Validation Errors (subset rules)
 
@@ -18756,11 +18843,9 @@ for (var amount : amounts) {
 ##### 2.18 `JULC0059` `Pattern variable '<name>' has the same name as a field of <Class>`
 
 **Cause:** An `instanceof` pattern variable has the same name as a field of the class,
-including a `@Param` field. JuLC binds a pattern variable only when the pattern is the
-whole condition of an `if` statement outside a loop. In any other position (a loop body,
-an `&&` condition, a negated guard, a ternary, a lambda) the name resolved to the field
-instead, so the code silently read or updated the field ([#204](https://github.com/bloxbean/julc/issues/204)). The name is rejected in
-every position, including the one where the variable is bound correctly.
+including a `@Param` field. The rule dates from JuLC's first frontend, which resolved names
+by spelling, so such a name could read or update the field instead of the variable. The name
+is rejected in every position.
 
 **Fix:** Rename the pattern variable. `switch` case patterns are not affected.
 
@@ -19872,6 +19957,22 @@ static boolean mint(PlutusData redeemer, ScriptContext ctx) { ... }
 @Entrypoint(purpose = Purpose.SPEND)
 static boolean spend(Optional<PlutusData> datum, PlutusData redeemer, ScriptContext ctx) { ... }
 ```
+
+##### Q: Why do my Java tests fail with `VerifyError: Inconsistent stackmap frames`?
+
+This is a known javac bug, not a JuLC one: javac in JDK 21 to 25.0.2 can emit a class the JVM
+refuses to load. JDK 25.0.3 and later compile it correctly. It is triggered when a method has:
+
+- an `if` whose condition declares two pattern variables, through `||`, `&&` or `?:`, for
+  example `if (p instanceof C c || p instanceof B b)`, and
+- later, a pattern `switch` whose arm copies its case variable into a local and loops over an
+  `if (p instanceof ...)`.
+
+JuLC compiles such a method correctly for the chain, but your Java unit tests of it fail to
+load. Use JDK 25.0.3 or later to run your tests, or avoid the shape:
+
+- declare one pattern variable per condition, nesting a second `if` instead of `||`/`&&`, or
+- move the `switch` into a helper method of its own.
 
 #### Retired codes
 
