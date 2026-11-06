@@ -6,7 +6,9 @@ import org.julclang.stdlib.StdlibRegistry;
 import org.julclang.vm.OptimizationCostProfiles;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Function;
 
 /**
@@ -23,6 +25,15 @@ final class Adr060Corpus {
     record Entry(String id, String source, String method, List<List<PlutusData>> inputs) {
         boolean validator() { return method == null; }
     }
+
+    /**
+     * The {@link O11BlsTypesFixtures#FIXTURES} added after the byte oracle was captured: they use
+     * the #240 producers, which did not exist at {@code ef932b21}. Listed by name, so a fixture
+     * appended later is not dropped silently: it stays in {@link #capturedEntries()} and fails the
+     * snapshot's row check until it is either captured or listed here.
+     */
+    static final Set<String> O11_ADDED_AFTER_CAPTURE = Set.of("CONS_RECURSION", "VALIDATE_ONCE", "CONS_ORDER",
+            "G2_CONS", "CONS_EMPTY_AND_MIXED", "CONS_LOOPS", "CONS_SWITCH", "CAST_VIEWS");
 
     static final List<OptimizationLevel> LEVELS = List.of(OptimizationLevel.NONE, OptimizationLevel.BASELINE,
             OptimizationLevel.PV11_SAFE, OptimizationLevel.PV11_COSTED);
@@ -57,6 +68,34 @@ final class Adr060Corpus {
         addValidators(entries, "hygiene", hygieneSources());
         // @Param validators, a multi-validator and the construct-shaped programs of the G1 oracle.
         entries.addAll(BinderNameIndependenceTest.CLASS_LEVEL);
+    }
+
+    /**
+     * The entries the byte oracle was captured for: every entry except the O11 fixtures added
+     * after the capture (the #240 fixtures use producers that did not exist at {@code ef932b21}).
+     * The binder-name test still renames over all of {@link #entries()}.
+     */
+    static List<Entry> capturedEntries() {
+        var excluded = o11IdsAddedAfterCapture();
+        return entries().stream().filter(e -> !excluded.contains(e.id())).toList();
+    }
+
+    /** The corpus ids of {@link #O11_ADDED_AFTER_CAPTURE}; every listed name must be a fixture. */
+    static Set<String> o11IdsAddedAfterCapture() {
+        var ids = new HashSet<String>();
+        var found = new HashSet<String>();
+        var fixtures = O11BlsTypesFixtures.FIXTURES;
+        for (int i = 0; i < fixtures.size(); i++) {
+            if (O11_ADDED_AFTER_CAPTURE.contains(fixtures.get(i).name())) {
+                ids.add("o11-" + i);
+                found.add(fixtures.get(i).name());
+            }
+        }
+        if (!found.equals(O11_ADDED_AFTER_CAPTURE)) {
+            throw new IllegalStateException("O11_ADDED_AFTER_CAPTURE names no fixture: " + O11_ADDED_AFTER_CAPTURE.stream()
+                    .filter(name -> !found.contains(name)).toList());
+        }
+        return ids;
     }
 
     private static <F> void addFixtures(List<Entry> entries, String prefix, List<F> fixtures, Function<F, Entry> map) {
