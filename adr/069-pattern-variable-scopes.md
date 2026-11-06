@@ -629,6 +629,15 @@ derived from JuLC's own output. A newly supported shape must **agree**; a reject
   (bytes, diagnostics and source positions at every level with and without a source map, and PIR text at every level),
   and 2 rejections with their first diagnostic: 170 new rows.
 - Full `./gradlew build -PskipSigning=true --continue`: green; no existing frozen row moved.
+- M0 review (one reviewer agent, CHANGES REQUESTED; M0-1 P1, M0-2 to M0-4 P2, M0-5 to M0-7 P3), all applied before M1:
+  build-order pins for a01, a05 and the `ifWithLoop` route, each with two lowering-time errors whose frozen first one is
+  not first in source order (M0-1); b04, n05–n07 and n08 (M0-2); the unread whole-condition form in a method body, an
+  accumulator-free loop and a lambda block, and a01 in a switch-arm block (M0-3); unread variables through
+  `breakingIf`'s fold and in-place branches, `joined`, and two accumulators in fold and break form (M0-4); unread `||`,
+  a boolean `?:` as a condition, and a lambda expression body (M0-5); the class comment now says these rows are M0's
+  javac baselines and names the rows D8 flips (M0-6); the `&&` accumulator-loop agree row and a variant `C` with `A`'s
+  layout (M0-7). Totals: `Adr069PatternScopesHarnessTest` 34 tests, `Adr069CompatibilityPinsTest` 33 tests and 319 frozen
+  rows, all green on the pre-M1 code.
 
 ## Revision history
 

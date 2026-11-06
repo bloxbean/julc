@@ -14,8 +14,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * ADR-069: {@code instanceof} pattern variables beyond the plain {@code if}. Each program runs on the JVM and, at every
- * level, on the VM; the JVM is the oracle. {@code S} has variants of different layouts ({@code A(v)}, {@code B(v, w)}) and a
- * nullary one ({@code D}), so a read under a failed test fails or differs.
+ * level, on the VM; the JVM is the oracle. {@code S} has variants of different layouts ({@code A(v)}, {@code B(v, w)}), a
+ * nullary one ({@code D}), and one with A's layout ({@code C(v)}): a read under a failed test fails, differs, or, on a
+ * {@code C}, reads a plausible value that only the comparison with the JVM catches.
  * <p>
  * M0 pins what {@code main} does before the change: the shapes the ADR adds, with the code each is rejected with today, and
  * the shapes that compile today, which must keep agreeing. The milestones turn the rejections into agreement.
@@ -38,9 +39,11 @@ class Adr069PatternScopesHarnessTest {
                         record A(BigInteger v) implements S { }
                         record B(BigInteger v, BigInteger w) implements S { }
                         record D() implements S { }
+                        record C(BigInteger v) implements S { }
                     }
                     static JulcList<S> xs() {
-                        return JulcList.of(new S.A(BigInteger.TWO), new S.D(), new S.B(BigInteger.TEN, BigInteger.ONE), new S.A(BigInteger.valueOf(7)));
+                        return JulcList.of(new S.A(BigInteger.TWO), new S.D(), new S.B(BigInteger.TEN, BigInteger.ONE), new S.C(BigInteger.valueOf(5)),
+                                new S.A(BigInteger.valueOf(7)));
                     }
                     %s
                 }
@@ -48,7 +51,8 @@ class Adr069PatternScopesHarnessTest {
     }
 
     private static final TagTable TAGS = new TagTable(List.of(
-            new TagTable.Entry("Case$S$A", "Case$S", 0), new TagTable.Entry("Case$S$B", "Case$S", 1), new TagTable.Entry("Case$S$D", "Case$S", 2)));
+            new TagTable.Entry("Case$S$A", "Case$S", 0), new TagTable.Entry("Case$S$B", "Case$S", 1), new TagTable.Entry("Case$S$D", "Case$S", 2),
+            new TagTable.Entry("Case$S$C", "Case$S", 3)));
 
     private static PlutusData integer(long value) {
         return new PlutusData.IntData(BigInteger.valueOf(value));
@@ -70,9 +74,13 @@ class Adr069PatternScopesHarnessTest {
         return constr(2);
     }
 
+    private static PlutusData c(long v) {
+        return constr(3, integer(v));
+    }
+
     /** One of each variant, and a zero and a negative where the shapes compare. */
     private static List<PlutusData> everyS() {
-        return List.of(a(7), a(0), a(-1), b(10, 4), d());
+        return List.of(a(7), a(0), a(-1), b(10, 4), d(), c(9));
     }
 
     private static DiffRunner.Report run(String members, PlutusData... args) {
@@ -123,6 +131,17 @@ class Adr069PatternScopesHarnessTest {
             }
         }
         assertAgree("public static long m() { long t = 0; for (S x : xs()) { if (x instanceof S.A a) { t = t + 1; } } return t; }");
+        for (long n : new long[]{0, 1}) {
+            assertAgree("public static long m(long n) { long t = 0; for (S x : xs()) { if (x instanceof S.A a && n > 0) { t = t + 1; } } return t; }",
+                    integer(n));
+        }
+    }
+
+    /** n08: a switch over the sealed interface, in a loop, the rewrite that works today. */
+    @Test
+    void aSwitchInALoopAgrees() {
+        assertAgree("public static long m() { long t = 0; for (S x : xs()) { t = t + switch (x) { case S.A a -> a.v().longValue(); "
+                + "case S.B b -> b.w().longValue(); case S.C c -> 100; case S.D d -> 1; }; } return t; }");
     }
 
     // --- M0: the shapes the ADR adds, as rejected today (each flips in M1-M3) ---
@@ -142,6 +161,7 @@ class Adr069PatternScopesHarnessTest {
             b01 for                 ~ JULC0011 ~ public static long m(S s) { long t = 0; for (S x : xs()) { if (x instanceof S.A a) { t = t + a.v().longValue(); } } return t; }
             b02 for &&              ~ JULC0011 ~ public static long m(S s) { long t = 0; for (S x : xs()) { if (x instanceof S.A a && a.v().signum() > 0) { t = t + a.v().longValue(); } } return t; }
             b03 for else-if         ~ JULC0011 ~ public static long m(S s) { long t = 0; for (S x : xs()) { if (x instanceof S.B b) { t = t + b.w().longValue(); } else if (x instanceof S.A a) { t = t + a.v().longValue(); } } return t; }
+            b04 while               ~ JULC0011 ~ public static long m(S s) { long t = 0; long i = 0; while (i < 4) { S x = xs().get(i); if (x instanceof S.A a) { t = t + a.v().longValue(); } i = i + 1; } return t; }
             b05 nested for          ~ JULC0011 ~ public static long m(S s) { long t = 0; for (S y : xs()) { for (S x : xs()) { if (x instanceof S.A a) { t = t + a.v().longValue(); } } } return t; }
             b06 for break           ~ JULC0011 ~ public static long m(S s) { long t = 0; for (S x : xs()) { if (x instanceof S.B b) { t = t + b.w().longValue(); break; } t = t + 1; } return t; }
             b07 break guard         ~ JULC0011 ~ public static long m(S s) { long t = 0; for (S x : xs()) { if (!(x instanceof S.A a)) { break; } t = t + a.v().longValue(); } return t; }
@@ -151,6 +171,9 @@ class Adr069PatternScopesHarnessTest {
             n02 bare test           ~ JULC0077 ~ public static long m(S s) { if (s instanceof S.A) { return 1; } return 0; }
             n03 bare test negated   ~ JULC0077 ~ public static long m(S s) { return !(s instanceof S.A) ? 1 : 0; }
             n04 bare test value     ~ JULC0077 ~ public static long m(S s) { boolean c = s instanceof S.A; return c ? 1 : 0; }
+            n05 bare else-if, loop  ~ JULC0077 ~ public static long m(S s) { long t = 0; for (S x : xs()) { if (x instanceof S.B) { t = t + 10; } else if (x instanceof S.A) { t = t + 1; } } return t; }
+            n06 bare negated, loop  ~ JULC0077 ~ public static long m(S s) { long t = 0; for (S x : xs()) { if (!(x instanceof S.A)) { t = t + 1; } } return t; }
+            n07 bare test, lambda   ~ JULC0077 ~ public static long m(S s) { return xs().any(x -> x instanceof S.C) ? 1 : 0; }
             """)
     void whatTheAdrAddsIsRejectedToday(String shape, String code, String members) {
         assertRejected(members, code);
