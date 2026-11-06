@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.ArrayList;
 import java.util.Set;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
@@ -336,6 +337,51 @@ class LibrarySourceResolverTest {
             assertEquals(2, result.size());
             assertTrue(result.get("com.example.FirstLib").source().contains("class FirstLib"));
             assertTrue(result.get("com.example.SecondLib").source().contains("class SecondLib"));
+        }
+    }
+
+    @Test
+    void scanClasspathSources_skipsAnUnreadableEntryWithAWarningAndReadsTheRest(@TempDir Path tempDir) throws Exception {
+        // ADR-071 D2: an index listing a source the jar does not hold costs that source only, and is reported.
+        Path broken = tempDir.resolve("broken.jar");
+        try (var out = new JarOutputStream(Files.newOutputStream(broken))) {
+            addJarDirectory(out, "META-INF/");
+            addJarDirectory(out, "META-INF/plutus-sources/");
+            addJarEntry(out, "META-INF/plutus-sources/index.txt", "com/example/Missing.java\n");
+        }
+        Path good = createPlutusSourcesJar(tempDir.resolve("good.jar"), Map.of(
+                "com/example/GoodLib.java", "package com.example; class GoodLib {}"));
+        var warnings = new ArrayList<String>();
+        try (var classLoader = new URLClassLoader(new URL[]{broken.toUri().toURL(), good.toUri().toURL()}, null)) {
+            Map<String, LibrarySource> result = LibrarySourceResolver.scanClasspathSources(classLoader, warnings::add);
+
+            assertTrue(result.containsKey("com.example.GoodLib"), result.keySet().toString());
+            assertFalse(result.containsKey("com.example.Missing"));
+            assertEquals(1, warnings.size(), warnings.toString());
+            assertTrue(warnings.getFirst().contains("Missing.java"), warnings.toString());
+        }
+    }
+
+    @Test
+    void scanClasspathSources_readsAJarRewrittenAfterAnEarlierScan(@TempDir Path tempDir) throws Exception {
+        // ADR-071 D2: resources are opened without the JDK's URL cache, so a rebuilt jar (as in a Gradle daemon) is
+        // read from disk, not through a stale cached JarFile.
+        Path jar = tempDir.resolve("lib.jar");
+        createPlutusSourcesJar(jar, Map.of("com/example/V1.java", "package com.example; class V1 {}"));
+        try (var first = new URLClassLoader(new URL[]{jar.toUri().toURL()}, null)) {
+            assertTrue(LibrarySourceResolver.scanClasspathSources(first).containsKey("com.example.V1"));
+        }
+        Files.delete(jar);
+        createPlutusSourcesJar(jar, Map.of(
+                "com/example/V1.java", "package com.example; class V1 { /* rebuilt */ }",
+                "com/example/V2.java", "package com.example; class V2 {}"));
+        var warnings = new ArrayList<String>();
+        try (var second = new URLClassLoader(new URL[]{jar.toUri().toURL()}, null)) {
+            Map<String, LibrarySource> result = LibrarySourceResolver.scanClasspathSources(second, warnings::add);
+
+            assertEquals(List.of(), warnings);
+            assertTrue(result.get("com.example.V1").source().contains("rebuilt"));
+            assertTrue(result.containsKey("com.example.V2"));
         }
     }
 

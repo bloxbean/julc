@@ -77,6 +77,12 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
     /** Same-project @OnchainLibrary sources: FQCN -> source metadata */
     private final Map<String, LibrarySource> sameProjectLibraries = new LinkedHashMap<>();
 
+    /**
+     * Libraries marked by a meta-annotated annotation: library FQCN -> marker annotation FQCN (ADR-071 D1). JuLC's own
+     * compilation must see the marker's source too, which the validator need not reference.
+     */
+    private final Map<String, String> metaMarkers = new LinkedHashMap<>();
+
     /** Classpath library sources: FQCN -> source metadata */
     private final Map<String, LibrarySource> classpathLibraries = new LinkedHashMap<>();
 
@@ -166,15 +172,22 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
     }
 
     private void collectSameProjectLibraries(RoundEnvironment roundEnv) {
-        for (Element element : roundEnv.getElementsAnnotatedWith(
-                findTypeElement("org.julclang.stdlib.annotation.OnchainLibrary"))) {
+        var candidates = new LinkedHashSet<Element>(roundEnv.getElementsAnnotatedWith(
+                findTypeElement(ONCHAIN_LIBRARY)));
+        // ADR-071 D1: also classes carrying an annotation that is itself annotated @OnchainLibrary.
+        for (Element root : roundEnv.getRootElements()) {
+            collectMetaAnnotated(root, candidates);
+        }
+        for (Element element : candidates) {
             if (!(element instanceof TypeElement typeElement)) {
                 continue;
             }
             String simpleName = typeElement.getSimpleName().toString();
             if (typeElement.getNestingKind() != NestingKind.TOP_LEVEL) {
                 processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
-                        "@OnchainLibrary must be declared on a top-level class. Nested on-chain libraries are not supported.",
+                        onchainLibraryMarker(typeElement) + " makes " + simpleName + " an on-chain library, and"
+                                + " @OnchainLibrary must be declared on a top-level class. Nested on-chain libraries are"
+                                + " not supported.",
                         element);
                 continue;
             }
@@ -196,13 +209,106 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
         }
     }
 
+    private static final String ONCHAIN_LIBRARY = "org.julclang.stdlib.annotation.OnchainLibrary";
+
+    /** Adds {@code element} and its nested types that are meta-annotated on-chain libraries (ADR-071 D1). */
+    private void collectMetaAnnotated(Element element, Set<Element> into) {
+        if (!(element instanceof TypeElement type)) return;
+        String marker = onchainLibraryMarker(type);
+        if (marker != null && !marker.equals("@OnchainLibrary")) {
+            into.add(type);
+            recordMarker(type);
+        }
+        for (Element member : type.getEnclosedElements()) collectMetaAnnotated(member, into);
+    }
+
+    /** Remembers the meta-annotated marker of {@code type}, and its source if it is in this compilation. */
+    private void recordMarker(TypeElement type) {
+        for (var mirror : type.getAnnotationMirrors()) {
+            var annotation = (TypeElement) mirror.getAnnotationType().asElement();
+            boolean meta = annotation.getAnnotationMirrors().stream().anyMatch(m ->
+                    ((TypeElement) m.getAnnotationType().asElement()).getQualifiedName().contentEquals(ONCHAIN_LIBRARY));
+            if (!meta) continue;
+            String markerFqcn = annotation.getQualifiedName().toString();
+            metaMarkers.put(type.getQualifiedName().toString(), markerFqcn);
+            var path = trees.getPath(annotation);
+            if (path != null && !sameProjectLibraries.containsKey(markerFqcn)) {
+                try {
+                    sameProjectLibraries.put(markerFqcn, LibrarySourceResolver.librarySourceFromSimpleName(
+                            annotation.getSimpleName().toString(),
+                            path.getCompilationUnit().getSourceFile().getCharContent(true).toString()));
+                } catch (IOException e) {
+                    processingEnv.getMessager().printMessage(Diagnostic.Kind.WARNING,
+                            "Could not read source for annotation " + markerFqcn + ": " + e.getMessage(), annotation);
+                }
+            }
+        }
+    }
+
+    /**
+     * The annotation that makes {@code type} an on-chain library, as source text ({@code @OnchainLibrary} or
+     * {@code @StateContract}), or null. One level of meta-annotation (ADR-071 D1).
+     */
+    private static String onchainLibraryMarker(TypeElement type) {
+        for (var mirror : type.getAnnotationMirrors()) {
+            var annotation = (TypeElement) mirror.getAnnotationType().asElement();
+            if (annotation.getQualifiedName().contentEquals(ONCHAIN_LIBRARY)) return "@OnchainLibrary";
+            for (var meta : annotation.getAnnotationMirrors()) {
+                if (((TypeElement) meta.getAnnotationType().asElement()).getQualifiedName().contentEquals(ONCHAIN_LIBRARY)) {
+                    return "@" + annotation.getSimpleName();
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * On-demand discovery (ADR-071 D1): classes of this compilation that {@code source} refers to (imports and
+     * same-package references), and that are on-chain libraries, are added to the same-project pool, transitively.
+     * A processor is only invoked in a round that holds one of its annotations, so a library whose only marker is a
+     * framework annotation may have been entered in a round this processor never saw.
+     */
+    private void discoverReferencedLibraries(String source) {
+        var queue = new ArrayDeque<String>();
+        queue.add(source);
+        var seen = new HashSet<String>();
+        while (!queue.isEmpty()) {
+            String text = queue.poll();
+            String pkg = LibrarySourceResolver.extractPackageName(text);
+            var names = new LinkedHashSet<String>(LibrarySourceResolver.extractImportPaths(text).values());
+            for (String simple : LibrarySourceResolver.extractReferencedClassNames(text)) {
+                names.add(pkg.isEmpty() ? simple : pkg + "." + simple);
+            }
+            for (String fqcn : names) {
+                if (!seen.add(fqcn) || sameProjectLibraries.containsKey(fqcn)) continue;
+                TypeElement type = processingEnv.getElementUtils().getTypeElement(fqcn);
+                if (type == null || type.getNestingKind() != NestingKind.TOP_LEVEL || onchainLibraryMarker(type) == null) {
+                    continue;
+                }
+                var path = trees.getPath(type);
+                if (path == null) continue;   // not a source of this compilation (class-path libraries come from jars)
+                try {
+                    String librarySource = path.getCompilationUnit().getSourceFile().getCharContent(true).toString();
+                    sameProjectLibraries.put(fqcn, LibrarySourceResolver.librarySourceFromSimpleName(
+                            type.getSimpleName().toString(), librarySource));
+                    recordMarker(type);
+                    queue.add(librarySource);
+                } catch (IOException e) {
+                    processingEnv.getMessager().printMessage(Diagnostic.Kind.WARNING,
+                            "Could not read source for on-chain library " + fqcn + ": " + e.getMessage(), type);
+                }
+            }
+        }
+    }
+
     private TypeElement findTypeElement(String qualifiedName) {
         return processingEnv.getElementUtils().getTypeElement(qualifiedName);
     }
 
     private void scanClasspathLibraries() {
-        classpathLibraries.putAll(
-                LibrarySourceResolver.scanClasspathSources(getClass().getClassLoader()));
+        classpathLibraries.putAll(LibrarySourceResolver.scanClasspathSources(getClass().getClassLoader(),
+                problem -> processingEnv.getMessager().printMessage(Diagnostic.Kind.WARNING,
+                        "JuLC skipped an on-chain library source on the processor path: " + problem)));
     }
 
     private void processElement(Element element, TypeElement annotation) {
@@ -217,7 +323,8 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
             }
             String source = path.getCompilationUnit().getSourceFile().getCharContent(true).toString();
 
-            // 2. Resolve library sources needed by this validator
+            // 2. Resolve library sources needed by this validator (discovering meta-annotated ones on demand)
+            discoverReferencedLibraries(source);
             List<String> librarySources = resolveLibrarySources(source);
 
             // 3. Compile with JulcCompiler (multi-file if libraries found)
@@ -346,8 +453,15 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
      */
     private List<String> resolveLibrarySources(String validatorSource) {
         var pool = libraryPool();
-
-        return LibrarySourceResolver.resolve(validatorSource, pool);
+        var resolved = new ArrayList<>(LibrarySourceResolver.resolveLibrarySources(validatorSource, pool));
+        // ADR-071 D1: a meta-annotated library's marker annotation, which nothing may reference by import.
+        var names = new HashSet<String>();
+        resolved.forEach(library -> names.add(library.fqcn()));
+        for (var library : List.copyOf(resolved)) {
+            String marker = metaMarkers.get(library.fqcn());
+            if (marker != null && names.add(marker) && pool.containsKey(marker)) resolved.add(pool.get(marker));
+        }
+        return resolved.stream().map(LibrarySource::source).toList();
     }
 
     /**

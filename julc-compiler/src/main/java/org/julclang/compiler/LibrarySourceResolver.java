@@ -34,6 +34,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -224,45 +225,82 @@ public final class LibrarySourceResolver {
      * @return map of FQCN to source metadata
      */
     public static Map<String, LibrarySource> scanClasspathSources(ClassLoader classLoader) {
+        return scanClasspathSources(classLoader, problem -> { });
+    }
+
+    /**
+     * {@link #scanClasspathSources(ClassLoader)}, reporting every entry it had to skip (ADR-071 D2). Each index and
+     * each indexed source is read independently, so one unreadable jar costs only its own sources; resources are
+     * opened without the JDK's URL cache, so a jar rebuilt in a long-lived JVM (a Gradle daemon) is read from disk
+     * instead of through a stale cached {@code JarFile}.
+     *
+     * @param warnings receives one message per skipped index, source or directory
+     */
+    public static Map<String, LibrarySource> scanClasspathSources(ClassLoader classLoader, Consumer<String> warnings) {
         var result = new LinkedHashMap<String, LibrarySource>();
         // JARs must ship index.txt for reliable discovery. Loose file-system
         // directories are also scanned to support IDE/dev/test classpaths.
+        Enumeration<URL> indexes;
         try {
-            Enumeration<URL> indexes = classLoader.getResources(PLUTUS_SOURCES_INDEX);
-            while (indexes.hasMoreElements()) {
-                scanIndexedSources(indexes.nextElement(), result);
-            }
+            indexes = classLoader.getResources(PLUTUS_SOURCES_INDEX);
         } catch (IOException e) {
-            // Fall through to directory scan
+            warnings.accept("cannot list " + PLUTUS_SOURCES_INDEX + " resources: " + e);
+            indexes = Collections.emptyEnumeration();
         }
-        try {
-            Enumeration<URL> resources = classLoader.getResources(PLUTUS_SOURCES_DIR);
-            while (resources.hasMoreElements()) {
-                URL resourceUrl = resources.nextElement();
-                if ("file".equals(resourceUrl.getProtocol())) {
-                    File dir = new File(resourceUrl.getPath());
-                    scanFileSystemSources(dir, dir, result);
-                }
+        while (indexes.hasMoreElements()) {
+            URL index = indexes.nextElement();
+            try {
+                scanIndexedSources(index, result, warnings);
+            } catch (IOException e) {
+                warnings.accept("cannot read " + index + ": " + e);
             }
+        }
+        Enumeration<URL> resources;
+        try {
+            resources = classLoader.getResources(PLUTUS_SOURCES_DIR);
         } catch (IOException e) {
-            // Silently ignore
+            warnings.accept("cannot list " + PLUTUS_SOURCES_DIR + " resources: " + e);
+            resources = Collections.emptyEnumeration();
+        }
+        while (resources.hasMoreElements()) {
+            URL resourceUrl = resources.nextElement();
+            if ("file".equals(resourceUrl.getProtocol())) {
+                File dir = new File(resourceUrl.getPath());
+                scanFileSystemSources(dir, dir, result, warnings);
+            }
         }
         return result;
     }
 
-    private static void scanIndexedSources(URL indexUrl, Map<String, LibrarySource> result) throws IOException {
-        try (var indexStream = indexUrl.openStream()) {
-            var indexContent = new String(indexStream.readAllBytes(), StandardCharsets.UTF_8);
-            for (String rawEntry : indexContent.split("\n")) {
-                String entry = rawEntry.strip();
-                if (entry.isEmpty() || !entry.endsWith(".java")) continue;
-                try (var sourceStream = resolveIndexedSourceUrl(indexUrl, entry).openStream()) {
+    private static void scanIndexedSources(URL indexUrl, Map<String, LibrarySource> result, Consumer<String> warnings)
+            throws IOException {
+        String indexContent;
+        try (var indexStream = openUncached(indexUrl)) {
+            indexContent = new String(indexStream.readAllBytes(), StandardCharsets.UTF_8);
+        }
+        for (String rawEntry : indexContent.split("\n")) {
+            String entry = rawEntry.strip();
+            if (entry.isEmpty() || !entry.endsWith(".java")) continue;
+            URL sourceUrl = null;
+            try {
+                sourceUrl = resolveIndexedSourceUrl(indexUrl, entry);
+                try (var sourceStream = openUncached(sourceUrl)) {
                     var source = new String(sourceStream.readAllBytes(), StandardCharsets.UTF_8);
                     var fqcn = fqcnFromResourcePath(entry);
                     result.putIfAbsent(fqcn, librarySourceFromPath(fqcn, normalizeResourcePath(entry), source));
                 }
+            } catch (IOException e) {
+                warnings.accept("cannot read " + (sourceUrl != null ? sourceUrl : entry) + " listed in " + indexUrl
+                        + ": " + e);
             }
         }
+    }
+
+    /** Opens a resource bypassing the JDK's URL cache (a cached JarFile outlives a rebuilt jar). */
+    private static java.io.InputStream openUncached(URL url) throws IOException {
+        var connection = url.openConnection();
+        connection.setUseCaches(false);
+        return connection.getInputStream();
     }
 
     private static URL resolveIndexedSourceUrl(URL indexUrl, String entry) throws IOException {
@@ -281,7 +319,8 @@ public final class LibrarySourceResolver {
                 .orElse("");
     }
 
-    private static void scanFileSystemSources(File root, File dir, Map<String, LibrarySource> result) {
+    private static void scanFileSystemSources(File root, File dir, Map<String, LibrarySource> result,
+                                              Consumer<String> warnings) {
         if (!dir.exists() || !dir.isDirectory()) return;
         File[] files = dir.listFiles();
         if (files == null) return;
@@ -289,7 +328,7 @@ public final class LibrarySourceResolver {
         Arrays.sort(files, Comparator.comparing(File::getName));
         for (File file : files) {
             if (file.isDirectory()) {
-                scanFileSystemSources(root, file, result);
+                scanFileSystemSources(root, file, result, warnings);
             } else if (file.getName().endsWith(".java")) {
                 try {
                     String source = Files.readString(file.toPath());
@@ -297,7 +336,7 @@ public final class LibrarySourceResolver {
                     String fqcn = fqcnFromResourcePath(resourcePath);
                     result.putIfAbsent(fqcn, librarySourceFromPath(fqcn, resourcePath, source));
                 } catch (IOException e) {
-                    // skip unreadable files
+                    warnings.accept("cannot read " + file + ": " + e);
                 }
             }
         }
