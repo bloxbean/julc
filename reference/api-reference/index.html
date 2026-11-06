@@ -1766,7 +1766,9 @@ multi-scalar multiplication requires PV11 and takes the native lists
 <code dir="auto">JulcScalars</code> and <code dir="auto">JulcG1Points</code>/<code dir="auto">JulcG2Points</code> built by <code dir="auto">Builtins.scalars</code>,
 <code dir="auto">Builtins.g1Points</code>/<code dir="auto">g2Points</code> or decoded from Data lists by
 <code dir="auto">Builtins.scalarsFromList</code> and <code dir="auto">Builtins.g1PointsFromCompressed</code>/
-<code dir="auto">g2PointsFromCompressed</code> (ADR-047). See
+<code dir="auto">g2PointsFromCompressed</code>, or built one element at a time with
+<code dir="auto">Builtins.scalarsEmpty</code>/<code dir="auto">scalarsCons</code>, <code dir="auto">g1PointsEmpty</code>/<code dir="auto">g1PointsCons</code> and
+<code dir="auto">g2PointsEmpty</code>/<code dir="auto">g2PointsCons</code> (ADR-047 and its #240 amendment). See
 <a href="/stdlib/stdlib-guide/#blslib----bls12-381-curve-operations">Standard Library Guide</a>
 for full documentation.</p>
 <table>

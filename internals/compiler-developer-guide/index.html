@@ -502,7 +502,13 @@ type off the <code dir="auto">Var</code>) and <code dir="auto">scalarsFromList</
 <code dir="auto">g2PointsFromCompressed</code> (a <code dir="auto">LetRec</code> decoding loop applied to the Data list
 outside the loop’s own binding, so a user variable named like the loop is never
 captured, decoding each element with <code dir="auto">UnIData</code>, or <code dir="auto">UnBData</code> then
-<code dir="auto">uncompress</code>); no Data encoder can appear
+<code dir="auto">uncompress</code>), plus the incremental forms of the #240 amendment:
+<code dir="auto">scalarsEmpty</code>/<code dir="auto">g1PointsEmpty</code>/<code dir="auto">g2PointsEmpty</code> (the empty native list
+constant, the same one <code dir="auto">scalars()</code>/<code dir="auto">g1Points()</code> lower to) and
+<code dir="auto">scalarsCons</code>/<code dir="auto">g1PointsCons</code>/<code dir="auto">g2PointsCons</code> (one <code dir="auto">MkCons</code> of the element over
+the list, bound once like the literal chain; both arguments typed by the
+registry’s native signature table, so the element must be the list’s own
+element type and the list the native list of that universe); no Data encoder can appear
 between an element and its list. MSM semantics are the VM’s: all scalars
 validated first, zip to the shorter list, empty sum is the identity. No
 fusion of <code dir="auto">scalarMul</code>/<code dir="auto">add</code> chains exists (the crossover is seven points on

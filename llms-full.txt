@@ -3,7 +3,7 @@
 > Single-file dump of the JuLC docsite, suitable for AI agent ingestion.
 
 julcVersion: 0.1.0-pre20
-Generated: 2026-11-06T03:45:16.071Z
+Generated: 2026-11-06T06:17:26.129Z
 Site: https://julc.dev
 Repo: https://github.com/bloxbean/julc
 Examples: https://github.com/bloxbean/julc-examples
@@ -729,7 +729,10 @@ results are the opaque types `JulcG1`, `JulcG2`, `JulcMlResult`
 give bytes and only `g1Uncompress`/`g2Uncompress` take them back. MSM takes
 the native lists from `Builtins.scalars(...)`/`g1Points(...)`/`g2Points(...)`
 or `Builtins.scalarsFromList(JulcList<BigInteger>)`/
-`g1PointsFromCompressed(JulcList<byte[]>)`. Declare BLS locals with the typed
+`g1PointsFromCompressed(JulcList<byte[]>)`, or built one element at a time
+(e.g. in a recursive helper over points already uncompressed and checked) with
+`Builtins.g1PointsEmpty()`/`g1PointsCons(p, ps)`, the G2 forms and
+`scalarsEmpty()`/`scalarsCons(s, ss)`; a cons puts its element first. Declare BLS locals with the typed
 names or `var`; a `byte[]` local holding a point is `JULC0041`.
 
 ##### NativeValueLib (PV11)
@@ -13445,6 +13448,26 @@ The native lists come from `Builtins`:
 | `Builtins.scalarsFromList(JulcList<BigInteger>)` | Decode a Data list of integers element by element (fails at a non-integer element) |
 | `Builtins.g1Points(JulcG1...)` / `g2Points(JulcG2...)` | A native point list from points |
 | `Builtins.g1PointsFromCompressed(JulcList<byte[]>)` / `g2PointsFromCompressed(...)` | Uncompress each element of a Data list of compressed points, in order (fails at a non-bytes element or an invalid encoding) |
+| `Builtins.scalarsEmpty()` / `g1PointsEmpty()` / `g2PointsEmpty()` | The empty native list (the same constant as `scalars()`/`g1Points()`/`g2Points()`) |
+| `Builtins.scalarsCons(BigInteger, JulcScalars)` | Prepend a scalar (`MkCons`; the new scalar is first) |
+| `Builtins.g1PointsCons(JulcG1, JulcG1Points)` / `g2PointsCons(JulcG2, JulcG2Points)` | Prepend a point the program already holds (`MkCons`; the new point is first) |
+
+The empty and cons forms build a list one element at a time, typically in a
+recursive helper that returns it, so a contract that has already uncompressed
+and checked each point can pass those same points to the multiplication
+instead of decompressing them again with `g1PointsFromCompressed`. A cons puts
+its element first: a recursion that conses the head onto the result for the
+tail keeps the source order, a loop accumulator (`acc = g1PointsCons(p, acc)`)
+reverses it, and the scalars must be built the same way as the points. To walk
+a raw Data list held as `PlutusData`, recurse over `Builtins.unListData(data)`
+with `nullList`/`headList`/`tailList`: those builtins take the list itself, not
+the `PlutusData` that wraps it (`NullList: expected list` otherwise). The
+lists stay opaque: there is no `isEmpty`/`head`/`tail` on them, and a native
+list cannot be a second accumulator of the same loop (the loop packs several
+accumulators as Data), so give it a loop or a recursion of its own. A cast never
+converts to or from a native type (`(JulcG1Points)(Object) xs` and
+`PlutusData.cast(d, JulcG1Points.class)` are `JULC0041`). A `switch` expression
+may yield a native list, as long as every arm yields the same group's list.
 
 ##### Usage
 
@@ -13452,6 +13475,7 @@ The native lists come from `Builtins`:
 import org.julclang.core.types.JulcG1;
 import org.julclang.core.types.JulcG2;
 import org.julclang.core.types.JulcMlResult;
+import org.julclang.core.types.JulcG1Points;
 import org.julclang.core.types.JulcList;
 import org.julclang.stdlib.Builtins;
 import org.julclang.stdlib.lib.BlsLib;
@@ -13491,6 +13515,23 @@ class BlsExamples {
         JulcG1 sum = BlsLib.g1MultiScalarMul(
                 Builtins.scalarsFromList(scalars),
                 Builtins.g1PointsFromCompressed(compressedPoints));
+        return BlsLib.g1Equal(sum, BlsLib.g1Uncompress(expected));
+    }
+
+    // Check every point once and keep the checked point: built one element at a time,
+    // in source order, and returned from a recursive helper
+    static JulcG1Points checked(JulcList<byte[]> encoded) {
+        if (encoded.isEmpty()) return Builtins.g1PointsEmpty();
+        byte[] b = encoded.head();
+        JulcG1 p = BlsLib.g1Uncompress(b); // fails on an invalid encoding or a point outside G1
+        if (!Builtins.equalsByteString(BlsLib.g1Compress(p), b)) {
+            Builtins.error();               // not the canonical encoding
+        }
+        return Builtins.g1PointsCons(p, checked(encoded.tail()));
+    }
+
+    static boolean verifyChecked(JulcList<BigInteger> scalars, JulcList<byte[]> compressedPoints, byte[] expected) {
+        JulcG1 sum = BlsLib.g1MultiScalarMul(Builtins.scalarsFromList(scalars), checked(compressedPoints));
         return BlsLib.g1Equal(sum, BlsLib.g1Uncompress(expected));
     }
 }
@@ -14472,7 +14513,9 @@ multi-scalar multiplication requires PV11 and takes the native lists
 `JulcScalars` and `JulcG1Points`/`JulcG2Points` built by `Builtins.scalars`,
 `Builtins.g1Points`/`g2Points` or decoded from Data lists by
 `Builtins.scalarsFromList` and `Builtins.g1PointsFromCompressed`/
-`g2PointsFromCompressed` (ADR-047). See
+`g2PointsFromCompressed`, or built one element at a time with
+`Builtins.scalarsEmpty`/`scalarsCons`, `g1PointsEmpty`/`g1PointsCons` and
+`g2PointsEmpty`/`g2PointsCons` (ADR-047 and its #240 amendment). See
 [Standard Library Guide](/stdlib/stdlib-guide/#blslib----bls12-381-curve-operations)
 for full documentation.
 
@@ -14618,6 +14661,41 @@ class VestingValidator {
 Source: https://julc.dev/reference/release-notes/
 
 > JuLC release notes and migration guidance
+
+#### Upcoming preview: build native BLS point and scalar lists one element at a time (#240)
+
+`Builtins` gains six producers for the native lists that `bls12_381_G1_multiScalarMul`
+and `bls12_381_G2_multiScalarMul` take ([#240](https://github.com/bloxbean/julc/issues/240), ADR-047 amendment):
+
+| Method | Lowering |
+|---|---|
+| `scalarsEmpty()`, `g1PointsEmpty()`, `g2PointsEmpty()` | the empty native list constant, the same one `scalars()`, `g1Points()`, `g2Points()` produce |
+| `scalarsCons(BigInteger, JulcScalars)`, `g1PointsCons(JulcG1, JulcG1Points)`, `g2PointsCons(JulcG2, JulcG2Points)` | one `MkCons`, the new element first |
+
+They can be used inside recursive helpers and returned from them, so a contract that has
+already uncompressed and checked each point can multiply those same points instead of
+decompressing them a second time with `g1PointsFromCompressed`. On the pinned PV11 costs,
+validating 24 compressed G1 points and then calling `g1PointsFromCompressed` and the
+multiplication costs 3,633,587,600 CPU; validating each point once and consing it costs
+2,342,911,604 CPU (one 52.9 million CPU decompression saved per point). Building the list by
+cons costs 48,000 CPU and 300 memory per element after the first more than the converter or
+the literal `g1Points(...)` chain: each cons is bound once, as the literal chain is, so the
+compiler can type it.
+
+The ADR-047 typing rules apply unchanged: the element must be a point of the list's group
+(or an integer for scalars) and the list must be the native list of that group, so a G2 point
+on a G1 list, compressed bytes, Data, or a `JulcList` where a native list is required is
+`JULC0041`. The lists stay opaque: no Data encoding, no datum, redeemer, record or Data
+list, no `==`, and no `isEmpty`/`head`/`tail`. This is an addition: programs that do not
+call the new methods compile to the same bytes and hashes.
+
+A Java cast or `PlutusData.cast` that changes a native type (for example
+`(JulcG1Points)(Object) g2PointsEmpty()`, `PlutusData.cast(d, JulcG1Points.class)`, the same
+through a variable whose type is `Object`, or a cast of a native value to `long`) is now
+`JULC0041`. Such casts compiled before, for the existing producers as well, and always failed
+at runtime; a cast is never a decoder. Most other misuse, such as a G2 point consed onto a G1
+list, is rejected by javac itself (`JULC0085`). A `switch` expression that yields one group's
+native list compiles, with or without a cast to its own type.
 
 #### Upcoming preview: `abs`, `signum`, `max`, `min` and `compareTo` evaluate each operand once (#146)
 
@@ -22846,7 +22924,13 @@ type off the `Var`) and `scalarsFromList`/`g1PointsFromCompressed`/
 `g2PointsFromCompressed` (a `LetRec` decoding loop applied to the Data list
 outside the loop's own binding, so a user variable named like the loop is never
 captured, decoding each element with `UnIData`, or `UnBData` then
-`uncompress`); no Data encoder can appear
+`uncompress`), plus the incremental forms of the #240 amendment:
+`scalarsEmpty`/`g1PointsEmpty`/`g2PointsEmpty` (the empty native list
+constant, the same one `scalars()`/`g1Points()` lower to) and
+`scalarsCons`/`g1PointsCons`/`g2PointsCons` (one `MkCons` of the element over
+the list, bound once like the literal chain; both arguments typed by the
+registry's native signature table, so the element must be the list's own
+element type and the list the native list of that universe); no Data encoder can appear
 between an element and its list. MSM semantics are the VM's: all scalars
 validated first, zip to the shorter list, empty sum is the identity. No
 fusion of `scalarMul`/`add` chains exists (the crossover is seven points on

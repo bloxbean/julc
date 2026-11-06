@@ -471,7 +471,10 @@ results are the opaque types <code dir="auto">JulcG1</code>, <code dir="auto">Ju
 give bytes and only <code dir="auto">g1Uncompress</code>/<code dir="auto">g2Uncompress</code> take them back. MSM takes
 the native lists from <code dir="auto">Builtins.scalars(...)</code>/<code dir="auto">g1Points(...)</code>/<code dir="auto">g2Points(...)</code>
 or <code dir="auto">Builtins.scalarsFromList(JulcList&lt;BigInteger&gt;)</code>/
-<code dir="auto">g1PointsFromCompressed(JulcList&lt;byte[]&gt;)</code>. Declare BLS locals with the typed
+<code dir="auto">g1PointsFromCompressed(JulcList&lt;byte[]&gt;)</code>, or built one element at a time
+(e.g. in a recursive helper over points already uncompressed and checked) with
+<code dir="auto">Builtins.g1PointsEmpty()</code>/<code dir="auto">g1PointsCons(p, ps)</code>, the G2 forms and
+<code dir="auto">scalarsEmpty()</code>/<code dir="auto">scalarsCons(s, ss)</code>; a cons puts its element first. Declare BLS locals with the typed
 names or <code dir="auto">var</code>; a <code dir="auto">byte[]</code> local holding a point is <code dir="auto">JULC0041</code>.</p>
 <div class="sl-heading-wrapper level-h3"><h3 id="nativevaluelib-pv11">NativeValueLib (PV11)</h3><a class="sl-anchor-link" href="#nativevaluelib-pv11"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “NativeValueLib (PV11)”</span></a></div>
 <p>Native Mary-era <code dir="auto">Value</code> operations use opaque <code dir="auto">JulcValue</code>. Convert explicitly
