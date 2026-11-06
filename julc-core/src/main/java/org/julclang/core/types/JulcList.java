@@ -69,10 +69,16 @@ public interface JulcList<T> extends Iterable<T>, ToPlutusData {
     /** Keep only elements satisfying the predicate. */
     JulcList<T> filter(java.util.function.Predicate<T> pred);
 
-    /** Return true if any element satisfies the predicate. */
+    /**
+     * Return true if any element satisfies the predicate. The elements are tested from the first, and none after the first
+     * that satisfies it; on-chain too.
+     */
     boolean any(java.util.function.Predicate<T> pred);
 
-    /** Return true if all elements satisfy the predicate. */
+    /**
+     * Return true if all elements satisfy the predicate. The elements are tested from the first, and none after the first
+     * that does not satisfy it; on-chain too.
+     */
     boolean all(java.util.function.Predicate<T> pred);
 
     /** Return the first element satisfying the predicate, or null if none. */

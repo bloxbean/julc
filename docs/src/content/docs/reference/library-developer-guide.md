@@ -743,24 +743,31 @@ The recursion pattern:
 
 ### 5.6 Pattern: HOF with Lambda Parameters
 
-Higher-order functions accept lambda (`Lam`) parameters. Here is `ListsLibHof.any`, which uses `foldl` internally:
+Higher-order functions accept lambda (`Lam`) parameters. Here is `PirHofBuilders.any` (which
+`ListsLibHof.any` calls), a `LetRec` loop that applies the predicate to each element from the
+first and stops at the first that passes, as `JulcList.any` does on the JVM:
 
 ```java
 public static PirTerm any(PirTerm list, PirTerm predicate) {
-    var accVar = new PirTerm.Var("acc", new PirType.BoolType());
-    var xVar = new PirTerm.Var("x", new PirType.DataType());
-    var predApp = new PirTerm.App(predicate, xVar);
-    var body = new PirTerm.IfThenElse(
-            predApp,
-            new PirTerm.Const(Constant.bool(true)),
-            accVar);
-    var foldFn = new PirTerm.Lam("acc", new PirType.BoolType(),
-            new PirTerm.Lam("x", new PirType.DataType(), body));
-    return foldl(foldFn, new PirTerm.Const(Constant.bool(false)), list);
+    return stopAt(list, predicate, true);   // all: stopAt(list, predicate, false)
+}
+
+private static PirTerm stopAt(PirTerm list, PirTerm predicate, boolean stopOn) {
+    var avoid = PirHelpers.freeVariables(list, predicate);
+    var listType = new PirType.ListType(new PirType.DataType());
+    var lstVar = new PirTerm.Var(PirHelpers.hygienicName("#lst", avoid), listType);
+    var goVar = new PirTerm.Var(PirHelpers.hygienicName("#go", avoid), new PirType.FunType(listType, new PirType.BoolType()));
+    // go lst = if NullList lst then !stopOn else if pred (HeadList lst) then (stopOn or go (TailList lst)) ...
+    ...
+    return new PirTerm.LetRec(List.of(new PirTerm.Binding(goVar.name(), goBody)), new PirTerm.App(goVar, list));
 }
 ```
 
-**Source:** `julc-stdlib/src/main/java/org/julclang/stdlib/ListsLibHof.java` (lines 28-39)
+The predicate is applied inside the loop, so it must be a value: a lambda or a variable. Every
+binder the builder invents is named with `PirHelpers.hygienicName` against the free variables of
+the terms in its scope (ADR-060).
+
+**Source:** `julc-compiler/src/main/java/org/julclang/compiler/pir/PirHofBuilders.java`
 
 ### 5.7 Registering PIR Methods in `StdlibRegistry`
 

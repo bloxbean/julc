@@ -259,8 +259,8 @@ Helpers that return values also keep a large shared calculation in one place; se
 
 | Operation | Returns | Notes |
 |-----------|---------|-------|
-| `list.any(x -> ...)` | `boolean` | evaluates the predicate for every element |
-| `list.all(x -> ...)` | `boolean` | evaluates the predicate for every element |
+| `list.any(x -> ...)` | `boolean` | stops at the first element that passes |
+| `list.all(x -> ...)` | `boolean` | stops at the first element that fails |
 | `list.filter(x -> ...)` | `JulcList<T>` | builds a new list |
 | `list.map(x -> ...)` | `JulcList<R>` | builds a new list; assign it to a typed local before using its elements |
 
@@ -295,10 +295,11 @@ list operation's own implementation, such as `x`, was compiled wrongly
 ([PR #186](https://github.com/bloxbean/julc/pull/186)). List operations are compiler
 lowerings like any other code: test them through the compiled script.
 
-On the JVM, `JulcList.any` returns at the first match. The compiled `any` and `all`
-evaluate the predicate for the whole list instead. A predicate that fails on a later
-element therefore fails the script, even where the Java method would already have
-returned. For `[5, 0]` this returns true on the JVM and fails on-chain:
+`any` and `all` test the elements in order and stop at the element that decides the answer,
+on the JVM and in the compiled script: `any` at the first element that passes, `all` at the
+first that fails. The elements after it are never tested, so a predicate that would fail on
+one of them does not fail the script. For `[5, 0]` this returns true on the JVM and on-chain,
+because `5` decides the answer before `0` is divided by:
 
 ```java
 static boolean anyLargeShare(JulcList<BigInteger> parts) {
@@ -306,17 +307,9 @@ static boolean anyLargeShare(JulcList<BigInteger> parts) {
 }
 ```
 
-Guard the predicate with `&&`, which does stop early, so every element is safe to test:
-
-```java
-static boolean anyLargeShare(JulcList<BigInteger> parts) {
-    return parts.any(p -> p.signum() > 0
-            && BigInteger.valueOf(100).divide(p).compareTo(BigInteger.TEN) > 0);
-}
-```
-
-This also means `any` costs a full pass over the list. When an early exit matters for
-cost, use a loop with `break`.
+The elements before the answer are tested, so `[0, 5]` fails in both places. Before the
+upcoming preview the compiled `any` and `all` tested every element, and the first case failed
+the script ([#312](https://github.com/bloxbean/julc/issues/312)).
 
 The result of `map` needs a typed local before a lambda uses its elements:
 

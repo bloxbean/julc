@@ -2,8 +2,10 @@
 
 **Status:** Accepted (2026-11-06): approved in design review by Codex at `dde2a487` and by the semantics and code
 reviewers at `b6af2c48` (their P2/P3 points addressed in r3 and r4). The implementation follows in the same PR.
-**Amendment r5–r6 (2026-11-07): D5 Proposed.** D5 closes Q6 (ADR-062 T7): `any` and `all` stop at the element that
-decides the answer, as on the JVM. D1–D4 stay as accepted.
+**Amendment r5–r7 (2026-11-07): D5 Accepted**, approved in design review at `2ae82140` by Codex and by the semantics and
+code reviewers (their round-2 P2/P3 points applied in M2, r7). D5 closes Q6 (ADR-062 T7): `any` and `all` stop at the
+element that decides the answer, as on the JVM. D1–D4 stay as accepted. The every-level default awaits the
+maintainer's confirmation in the PR.
 **Date:** 2026-11-06 (r5: 2026-11-07)
 **Risk class:** correctness-sensitive, **medium**. Today a downcast to the wrong variant reads another variant's fields
 and carries on, where Java throws: a validator can accept a datum its own Java tests reject. The fix changes the bytes
@@ -554,6 +556,48 @@ are applied:
   corrected.
 - **F8.** The release notes and starter pack no longer suggest `instanceof` for operands it rejects.
 
+### M2: D5 (2026-11-07)
+
+- **Code** (`julc-compiler`):
+  - `PirHofBuilders.any`/`all` are one `LetRec` loop, `stopAt(list, predicate, stopOn)`, that returns at the deciding
+    element; its javadoc states that the predicate must be a value.
+  - `Calls.hof` binds a function that is not a lambda (a conditional of lambdas) once, after the receiver, through a
+    two-type `PirHelpers.readOnce` overload (the one-type form delegates to it), for all five list methods. The bound
+    variable is typed as the chosen lambda's function type (review F11).
+  - Javadocs: `PirHofBuilders`, `Lambdas`, `JulcList` (the contract: `any`/`all` stop at the deciding element).
+- **Tests:**
+  - `Adr068LambdasHarnessTest` (61 tests, every level against the JVM): T7's pins flip to `anyStopsAtTheFirstMatch` and
+    `allStopsAtTheFirstRefusal` (failing and traced predicates over lists where the answer comes first, later or
+    never); a traced list evaluated once before the tests; nested, looped, filtered and captured `any`/`all`; results as
+    conditions; a conditional function for each of the five methods, its condition traced or failing, on empty and
+    non-empty lists, after a receiver held in a local and after a receiver written at the call (traced, or failing
+    before the condition runs) (F12, S21, C22).
+  - `Adr070CheckedCastsHarnessTest`: the Q6 pin becomes `aCastInAnyOrAllRunsOnlyUpToTheAnswer`, agreeing on every
+    variant.
+  - `LambdaPrograms`: pipelines end, half the time over integers, with a traced or a failing test, and the model runs
+    `any`/`all`/`find` as explicit loops. `Adr068LambdasPropertyTest`: 450 tries, all agreeing with the model and the
+    JVM, 193 ending in an effectful test. Widening the model found a bug in the model itself (it took `10 / x` to have
+    `x`'s sign), not in JuLC.
+  - Jazzer `Adr068LambdasFuzzTest`, 30 minutes over the widened model: 93,116 executions, no crash.
+  - `Adr070ChosenFunctionTest` (PIR): a conditional function is bound inside the receiver's binding to a variable of
+    function type; a lambda written at the call is not bound.
+  - `StdlibLibraryProviderTest`: the provider's `any`/`all` stop before a division by zero past the answer (S15).
+  - The saved case `diverge-t7-any-short-circuit` is changed in place to `agree-t7-any-short-circuit` (`AGREE`), and T7
+    is closed in `accepted-divergences-review.tsv`.
+  - `ValueOrientedExamplesTest`: the page's `any` example returns true for `[5, 0]` and fails for `[0, 5]`, as on the
+    JVM; the `&&`-guarded variant is gone from the page.
+- **Moved pins (I6), each checked:**
+  - Frozen reference: 513 rows, every one a program that calls `any` or `all` (a script over the recording's
+    `.moved` file); the one program with a conditional function (`xs().any(s instanceof S.A a ? … : …)`) is among them.
+  - `Adr060ByteSnapshotTest`: 14 hygiene rows at `BASELINE` without source maps, all `any`/`all` programs, explained.
+  - `O9ListIndexPromotionTest` (`pairCaseTest`): fixture 20, `CALLBACK_HELPER`, whose `groups.any` changes; its 8
+    golden rows re-captured with the promotion rule off, 5 to 10 bytes smaller.
+  - The Blaster fixtures call neither `any` nor `all`.
+- **Cost:** as D5's tables; the seven example validators shrink at every level.
+- **Docs:** release notes (#312 section; the #288 bullet), value-oriented code (the table and the example), stdlib guide,
+  AI starter pack, compiler and library developer guides; ADR-062 T7 and Q2. The skill's copy of the starter pack
+  (`tools/claude-skill`) is refreshed at release and lags ADR-069 too.
+
 ## Revision history
 
 - r1 (2026-11-06): initial proposal.
@@ -598,3 +642,7 @@ are applied:
   - `BooleanProof`'s effect on consumers (C15); a provider test (S15); I6 reworded and checked mechanically (C20);
     compatibility without the stdlib claim (C18, S17); byte pairs per level and the example validators' sizes (C19,
     S20); the lambda model uses explicit loops (S19); the builder's flag is `stopOn` (C21).
+- r7 (2026-11-07, responds to design review round 2 of `2ae82140`: Codex APPROVED (F9, F10 resolved; F11, F12 P2),
+  semantics APPROVED (S21, S22 P3), code APPROVED (C22, C23 P3)): the bound function is typed as a function (F11, C23);
+  receiver-at-the-call and failing-condition rows for every list method (F12, S21, C22); the renamed saved case is
+  committed as such (S22). D5 accepted; M2 results recorded.

@@ -19,6 +19,10 @@ import java.util.List;
  * This class lives in {@code julc-compiler} so that {@code TypeMethodRegistry} can reference it
  * without a dependency on {@code julc-stdlib}.
  * <p>
+ * Each builder applies its function to the elements as the JVM's {@code JulcList} does, from the first: {@code any},
+ * {@code all} and {@code find} stop at the element that decides their answer (ADR-070 D5), and {@code map},
+ * {@code filter} and {@code foldl} visit every element.
+ * <p>
  * Caller terms (lists, predicates, functions, initial values) are placed inside the builders'
  * own binders. Every such binder is named with {@link PirHelpers#hygienicName} against the
  * free variables of the caller terms in its scope, so a user variable such as an outer lambda
@@ -29,41 +33,45 @@ public final class PirHofBuilders {
     private PirHofBuilders() {}
 
     /**
-     * Returns true if the predicate holds for any element of the list.
-     * <p>
-     * Implemented as a left fold: foldl (\acc x -> if pred(x) then True else acc) False list
+     * Returns true if the predicate holds for some element of the list, testing the elements from the first and stopping
+     * at the first that holds, as {@code JulcList.any} does on the JVM:
+     * {@code go lst = if NullList lst then False else if pred (HeadList lst) then True else go (TailList lst)}.
      */
     public static PirTerm any(PirTerm list, PirTerm predicate) {
-        var avoid = PirHelpers.freeVariables(predicate);
-        var accVar = new PirTerm.Var(PirHelpers.hygienicName("#acc", avoid), new PirType.BoolType());
-        var xVar = new PirTerm.Var(PirHelpers.hygienicName("#x", avoid), new PirType.DataType());
-        var predApp = new PirTerm.App(predicate, xVar);
-        var body = new PirTerm.IfThenElse(
-                predApp,
-                new PirTerm.Const(Constant.bool(true)),
-                accVar);
-        var foldFn = new PirTerm.Lam(accVar.name(), new PirType.BoolType(),
-                new PirTerm.Lam(xVar.name(), new PirType.DataType(), body));
-        return foldl(foldFn, new PirTerm.Const(Constant.bool(false)), list);
+        return stopAt(list, predicate, true);
     }
 
     /**
-     * Returns true if the predicate holds for all elements of the list.
-     * <p>
-     * Implemented as a left fold: foldl (\acc x -> if pred(x) then acc else False) True list
+     * Returns true if the predicate holds for every element of the list, testing the elements from the first and
+     * stopping at the first that does not, as {@code JulcList.all} does on the JVM:
+     * {@code go lst = if NullList lst then True else if pred (HeadList lst) then go (TailList lst) else False}.
      */
     public static PirTerm all(PirTerm list, PirTerm predicate) {
-        var avoid = PirHelpers.freeVariables(predicate);
-        var accVar = new PirTerm.Var(PirHelpers.hygienicName("#acc", avoid), new PirType.BoolType());
-        var xVar = new PirTerm.Var(PirHelpers.hygienicName("#x", avoid), new PirType.DataType());
-        var predApp = new PirTerm.App(predicate, xVar);
-        var body = new PirTerm.IfThenElse(
-                predApp,
-                accVar,
-                new PirTerm.Const(Constant.bool(false)));
-        var foldFn = new PirTerm.Lam(accVar.name(), new PirType.BoolType(),
-                new PirTerm.Lam(xVar.name(), new PirType.DataType(), body));
-        return foldl(foldFn, new PirTerm.Const(Constant.bool(true)), list);
+        return stopAt(list, predicate, false);
+    }
+
+    /**
+     * The loop of {@link #any} ({@code stopOn} true) and {@link #all} ({@code stopOn} false): the first element whose test
+     * gives {@code stopOn} is the answer, and an empty or exhausted list gives the opposite. No element after the deciding one
+     * is tested (ADR-070 D5). The predicate runs inside the loop, so it must be a value (a lambda or a variable): a caller
+     * evaluates any other function expression once, after the list, as Java does ({@code Calls.hof}).
+     */
+    private static PirTerm stopAt(PirTerm list, PirTerm predicate, boolean stopOn) {
+        // The predicate runs under go and lst; the list is applied under go.
+        var avoid = PirHelpers.freeVariables(list, predicate);
+        var listType = new PirType.ListType(new PirType.DataType());
+        var lstVar = new PirTerm.Var(PirHelpers.hygienicName("#lst", avoid), listType);
+        var goVar = new PirTerm.Var(PirHelpers.hygienicName("#go", avoid), new PirType.FunType(listType, new PirType.BoolType()));
+
+        var nullCheck = new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), lstVar);
+        var test = new PirTerm.App(predicate, new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), lstVar));
+        var recurse = new PirTerm.App(goVar, new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), lstVar));
+        var answer = new PirTerm.Const(Constant.bool(stopOn));
+        var step = stopOn ? new PirTerm.IfThenElse(test, answer, recurse) : new PirTerm.IfThenElse(test, recurse, answer);
+        var body = new PirTerm.IfThenElse(nullCheck, new PirTerm.Const(Constant.bool(!stopOn)), step);
+
+        var goBody = new PirTerm.Lam(lstVar.name(), listType, body);
+        return new PirTerm.LetRec(List.of(new PirTerm.Binding(goVar.name(), goBody)), new PirTerm.App(goVar, list));
     }
 
     /**

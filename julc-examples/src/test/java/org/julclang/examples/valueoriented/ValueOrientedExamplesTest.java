@@ -223,18 +223,11 @@ class ValueOrientedExamplesTest {
         }
     }
 
-    // --- any and all check every element (a current limitation the page describes) ---
+    // --- any and all stop at the deciding element, as on the JVM (ADR-070 D5, #312) ---
 
-    static final String ANY_EVERY_ELEMENT = """
+    static final String ANY_STOPS_AT_THE_ANSWER = """
             static boolean anyLargeShare(JulcList<BigInteger> parts) {
                 return parts.any(p -> BigInteger.valueOf(100).divide(p).compareTo(BigInteger.TEN) > 0);
-            }
-            """;
-
-    static final String ANY_GUARDED = """
-            static boolean anyLargeShare(JulcList<BigInteger> parts) {
-                return parts.any(p -> p.signum() > 0
-                        && BigInteger.valueOf(100).divide(p).compareTo(BigInteger.TEN) > 0);
             }
             """;
 
@@ -249,14 +242,14 @@ class ValueOrientedExamplesTest {
     }
 
     @Test
-    void anyChecksEveryElement() {
-        // Java's any stops at 5 (100 / 5 = 20 > 10) and returns true. The compiled any also
-        // evaluates the predicate for 0, so the script fails.
-        assertFalse(evaluateSnippet(ANY_EVERY_ELEMENT, "anyLargeShare", ints(5, 0)).isSuccess());
-        var guarded = evaluateSnippet(ANY_GUARDED, "anyLargeShare", ints(5, 0));
-        assertInstanceOf(EvalResult.Success.class, guarded, guarded.toString());
+    void anyStopsAtTheDecidingElement() {
+        // Java's any stops at 5 (100 / 5 = 20 > 10) and returns true without dividing by 0; so does the script.
+        var stops = evaluateSnippet(ANY_STOPS_AT_THE_ANSWER, "anyLargeShare", ints(5, 0));
+        assertInstanceOf(EvalResult.Success.class, stops, stops.toString());
         assertEquals(new org.julclang.core.Term.Const(org.julclang.core.Constant.bool(true)),
-                ((EvalResult.Success) guarded).resultTerm());
+                ((EvalResult.Success) stops).resultTerm());
+        // The 0 comes first here: it is tested, and the division fails, as it throws in Java.
+        assertFalse(evaluateSnippet(ANY_STOPS_AT_THE_ANSWER, "anyLargeShare", ints(0, 5)).isSuccess());
     }
 
     // --- The page shows exactly the tested code ---
@@ -270,9 +263,8 @@ class ValueOrientedExamplesTest {
         snippets.addAll(regions(SOURCE_ROOT.resolve("org/julclang/examples/valueoriented/PaymentGateValidatorTest.java")));
         snippets.add(TYPES);
         BEFORE.values().forEach(before -> snippets.add(before.snippet()));
-        snippets.add(ANY_EVERY_ELEMENT);
-        snippets.add(ANY_GUARDED);
-        assertEquals(22, snippets.size(), "regions, types, before examples and the any examples");
+        snippets.add(ANY_STOPS_AT_THE_ANSWER);
+        assertEquals(21, snippets.size(), "regions, types, before examples and the any example");
         for (String snippet : snippets)
             assertTrue(page.contains(snippet), "The page does not show this tested code:\n" + snippet);
     }

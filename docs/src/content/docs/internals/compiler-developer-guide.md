@@ -1642,12 +1642,12 @@ not bypass lookup or target-legality checks. See ADR-035 for the contract.
 
 | Method | Signature | Implementation |
 |--------|-----------|----------------|
-| `any(predicate, list)` | `(T→Bool, List<T>) → Bool` | Left fold, short-circuit |
-| `all(predicate, list)` | `(T→Bool, List<T>) → Bool` | Left fold, short-circuit |
-| `find(predicate, list)` | `(T→Bool, List<T>) → Optional<T>` | LetRec recursion |
+| `any(list, predicate)` | `(List<T>, T→Bool) → Bool` | LetRec recursion, stops at the first true |
+| `all(list, predicate)` | `(List<T>, T→Bool) → Bool` | LetRec recursion, stops at the first false |
+| `find(list, predicate)` | `(List<T>, T→Bool) → Optional<T>` | LetRec recursion |
 | `foldl(f, init, list)` | `((A,T)→A, A, List<T>) → A` | LetRec recursion |
-| `map(f, list)` | `(T→U, List<T>) → List<U>` | `reverse(foldl(...))` |
-| `filter(pred, list)` | `(T→Bool, List<T>) → List<T>` | `reverse(foldl(...))` |
+| `map(list, f)` | `(List<T>, T→U) → List<U>` | `reverse(foldl(...))` |
+| `filter(list, pred)` | `(List<T>, T→Bool) → List<T>` | `reverse(foldl(...))` |
 | `zip(a, b)` | `(List<T>, List<U>) → List<Pair<T,U>>` | LetRec, stops at shorter list |
 
 **Math delegates (allows `Math.abs(x)` syntax):**

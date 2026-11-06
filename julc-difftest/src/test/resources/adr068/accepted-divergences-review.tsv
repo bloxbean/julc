@@ -7,7 +7,7 @@ T3	open	== on BigInteger is value equality on-chain, reference on the JVM (D6: J
 T4	open	== on records, sealed types and Data (D6: JULC0086 in M3)
 T5	open	== on byte[] and equals of records with byte[] components (D6: JULC0086, JULC0087 in M3)
 T6	open	int and long are unbounded on-chain (an ADR-062 S5 decision)
-T7	open	any/all do not short-circuit on-chain
+T7	closed	fixed by ADR-070 D5 (#312): any and all stop at the deciding element on-chain, at every level
 T8	open	builtins that throw off-chain (S2)
 T9	open	on-chain-only casts fail off-chain (S2)
 T10	open	JulcAssocMap key equality off-chain (D6: deep byte[] equality in M1)

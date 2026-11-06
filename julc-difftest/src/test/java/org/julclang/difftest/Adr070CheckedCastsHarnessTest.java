@@ -147,16 +147,21 @@ class Adr070CheckedCastsHarnessTest {
     }
 
     /**
-     * Risk (ADR-070, Q6): JuLC's {@code any} runs the predicate on every element, where the JVM stops at the first true. A
-     * checked cast in the predicate fails on an element the JVM never reaches: true on the JVM, a failure on-chain (before
-     * ADR-070, true, with B read as A). Pinned until any and all stop early.
+     * A checked cast in an {@code any} or {@code all} predicate runs on the elements the JVM tests and no further (D5): true
+     * when an A comes first, a failure when a B does. Before D5 the predicate ran on every element, so the first was a
+     * failure on-chain and true on the JVM (Q6).
      */
     @Test
-    void anyRunsTheCastOnEveryElement() {
-        var report = run("public static boolean m(S s) { return JulcList.of(s, (S) new S.B(BigInteger.ONE, BigInteger.TWO)).any(x -> value((S.A) x) > 0); }",
-                constr(0, integer(5)));
-        assertEquals(new Observation.Value(new PlutusData.ConstrData(1, List.of()), List.of()), report.jvm(), report::describe);
-        report.results().values().forEach(result -> assertTrue(result.uplc() instanceof Observation.Failure, report::describe));
+    void aCastInAnyOrAllRunsOnlyUpToTheAnswer() {
+        for (var s : EVERY_S) {
+            for (String body : new String[]{
+                    "return JulcList.of(s, (S) new S.B(BigInteger.ONE, BigInteger.TWO)).any(x -> value((S.A) x) > 0);",
+                    "return JulcList.of(s, (S) new S.B(BigInteger.ONE, BigInteger.TWO)).all(x -> value((S.A) x) > 9);",
+                    "return JulcList.of((S) new S.A(BigInteger.TWO), s).any(x -> value((S.A) x) > 5);"}) {
+                var report = run("public static boolean m(S s) { " + body + " }", s);
+                assertTrue(report.all(Verdict.Kind.AGREE), report::describe);
+            }
+        }
     }
 
     /** Casts that need no check: each agrees on every variant, today and after M1 (D2). */
