@@ -593,6 +593,12 @@ derived from JuLC's own output. A newly supported shape must **agree**; a reject
   branch that falls through: one PIR object, serialised once per position. A chain of such `if`s grows exponentially
   in emitted size. It is today's behaviour for every program, unchanged here; ADR-050's join could share it, as an
   optimisation with its own byte changes.
+- **R4. A javac 25.0.2 `VerifyError`.** `if (p instanceof C p1 || p instanceof B p2) { ... }` (or `&&`, or a `?:` with
+  a binding in each arm) followed by `switch (p) { case A w -> { A f1 = w; for (...) { if (p instanceof C v1) { f1 =
+  ...; } } yield ...; } ... }` compiles, and the JVM refuses the class ("Inconsistent stackmap frames"). The defect is
+  javac's, not JuLC's, and a program like it fails its own Java tests. Steering G1 away from it would remove M2's main
+  shape, so the #204 property and fuzz tests skip such a program, with no oracle to judge it, and bound how many they
+  skip. The reproducer is kept with the M2 evidence, and is worth reporting to OpenJDK.
 - **R2.** `JULC0059` (a pattern variable named like a field) exists for parity with the deleted JavaParser frontend,
   whose scopes were keyed by name. With `Scope` keyed by element it may be liftable (Q2).
 
@@ -685,6 +691,59 @@ derived from JuLC's own output. A newly supported shape must **agree**; a reject
 - **Known gaps carried to M2:** the generator often tests a subject already typed as the variant (always true), so
   M2's steer weights subjects towards the sealed type. `JULC0139`'s catalogue text describes the finished feature;
   M1–M3 ship in this one PR.
+
+### M2: `&&`, `||`, `!`, `?:` and the value form (2026-11-06)
+
+- **Code** (`julc-compiler`):
+  - `Conditions.branch` lowers `!` by swapping the continuations, `&&` and `||` by short circuit, and a boolean `?:` as
+    a condition. A continuation that two paths reach goes through `shared`. A value position's `true`/`false` constants
+    pass through as they are. A trivial term is copied fresh to each path by `Terms.copied`, which carries its
+    provenance read and source position, while `Typing.copied` carries its recorded types. Anything else is bound once
+    as a `#cond-join-N` thunk, around the sub-condition, under every binder that encloses it.
+  - `declaresUsedVariable` walks the same forms. The value form (`Conditions.value`) serves `Operators.binary` (`&&`,
+    `||`), `Operators.unary` (`!`) and `Operators.conditional`. A value `?:` lowers each arm once, in its side's frame,
+    and keeps both representation checks.
+  - Positions are recorded where `Lowering.expr` and `Ifs` record them, never on a whole result.
+- **Tests:**
+  - `Adr069PatternScopesHarnessTest` gains rows that agree at all four levels, over every variant and both values of
+    `n`:
+    - a02, a06, a07, a07b, a08, `while` conditions with one and two accumulators (a11, a12), b02 and b08;
+    - c02–c23: a negated `||` with `else`, a join under a binder, double negation, a boolean `?:` as a test, a nested
+      test on a bound variable, a traced short circuit, lambda captures, a non-trivial shared value, a record-typed
+      `?:`, `||` and `!` in loops with and without `break`, nested ternaries, two call operands as a value and as an
+      `if`, a `||` whose shared branch holds a loop, two accumulators under `&&`/`||`, `joined` with `&&` and `||`, a
+      conditional lambda under `&&`, a boolean `?:` value whose arms bind, and a join inside a lambda;
+    - a native `byte[]` and a `PlutusData` `?:` under `!`/`||`;
+    - `aNestOfConditionsIsLinear`: depths 6, 12 and 24, mixing `&&`, `||`, `!` and boolean `?:`, with continuations that
+      are no constant. Every program agrees, and size grows linearly.
+  - `Adr069PatternScopesTest` gains unit tests on the term lowering builds: a trivial shared continuation is copied and
+    never joined; a non-trivial one is joined once per sub-condition that shares it; sibling and nested joins have
+    distinct names (I7); no node that `Conditions` builds is placed twice. `JavacStatementsTest` flips the `&&` and `?:`
+    rows.
+- **Frozen reference:** no row moved (I4).
+- **Generator** (G1 r11): gate `PATTERN_CONDITIONS`. It builds conditions over `&&`, `||`, `!`, parentheses, boolean
+  `?:` and lambdas, tracking JLS 6.3.1's when-true and when-false sets, in `if`s, loop-body updates, values, `while`
+  conditions and `any`/`all` lambdas. Under the steer, subjects have the sealed interface's type 3 times in 4, so tests
+  have both outcomes. Default and historical profile hashes are unchanged.
+  - Property test (400 tries, both gates): every program agrees, none skipped.
+  - Jazzer, `./gradlew :julc-difftest:fuzz --tests '*Adr069PatternFlowFuzzTest.generatedProgramsAgree'
+    -Pfuzz.duration=30m`: 1,801 s, 29,983 executions, no crash, nothing skipped.
+  - Two earlier runs stopped on R4's javac `VerifyError` (no JuLC verdict). One of those inputs is now in the replay set
+    as `javac-verifyerror-skipped`, which shows the skip path at work.
+- **Reviews:**
+  - Code reviewer: APPROVED. Applied: M2-C1 (a copy carries `Typing`'s records), M2-C2 (the unit tests above), M2-C3
+    (the harness rows above) and M2-C4 (no position on a whole result). M2-C5 (a join applied to unit, other than
+    `#cond-join`, is not trivial) is a cost-only change, left as it is. M2-C6 (diagnostic order) is noted below.
+  - Semantics reviewer: APPROVED. Its probes are harness rows: M2-S1 (c15, c16), M2-S3 (the `PlutusData` row) and M2-S4
+    (c17). M2-S2: a shared continuation is built before its condition, so a new program with errors in both reports the
+    branch's error first. Every such program was rejected before M2.
+- **Found along the way:**
+  - JuLC's `any` does not stop at the first match, so a traced predicate traces on every element. This is the known
+    no-short-circuit behaviour of `any`/`all`, not this ADR's. Row c23 does not trace.
+  - R4: javac 25.0.2 emits a class the JVM rejects (`VerifyError`). The trigger is two pattern bindings in one `if`
+    condition (through `?:`, `||` or `&&`), followed by a pattern `switch` whose arm copies its binding and loops over a
+    pattern `if`. With no class to run there is no oracle, so the #204 property and fuzz tests skip such a program,
+    count the skip and bound its share; every other harness verdict stays strict.
 
 ## Revision history
 

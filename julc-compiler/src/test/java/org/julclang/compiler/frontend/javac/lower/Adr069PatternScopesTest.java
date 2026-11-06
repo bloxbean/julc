@@ -1,7 +1,9 @@
 package org.julclang.compiler.frontend.javac.lower;
 
 import com.sun.source.tree.BindingPatternTree;
+import com.sun.source.tree.MethodTree;
 import com.sun.source.util.TreeScanner;
+import org.julclang.compiler.CompilationContext;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JulcCompiler;
@@ -19,11 +21,15 @@ import org.junit.jupiter.params.provider.ValueSource;
 import javax.lang.model.element.Element;
 import java.math.BigInteger;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -154,6 +160,98 @@ class Adr069PatternScopesTest {
         assertTrue(failure.getMessage().startsWith("I1"), failure.getMessage());
     }
 
+    // --- D2's joins, on the term as lowering builds it ---
+
+    /** The term {@code m} lowers to, alone, with no stdlib. */
+    private static PirTerm lowered(String members) {
+        var term = new PirTerm[1];
+        var program = JavacProgram.analyze(List.of(JavacFrontend.Unit.of(SUM.formatted(members))), List.of());
+        program.read(facts -> {
+            var methods = new ArrayList<MethodTree>();
+            new TreeScanner<Void, Void>() {
+                @Override
+                public Void visitMethod(MethodTree tree, Void unused) {
+                    if (tree.getName().contentEquals("m")) methods.add(tree);
+                    return null;
+                }
+            }.scan(program.roots().getFirst(), null);
+            term[0] = new Lowering(facts, CompilationContext.resolve(new CompilerOptions())).method(methods.getFirst(), Scope.empty(), false);
+            return null;
+        });
+        return term[0];
+    }
+
+    /**
+     * The names of the joins in {@code term}, and whether any node other than a variable is placed twice: a pattern test's
+     * trivial operand is one {@code Var} read by its test and its {@code let}, as {@code patternIf} has always built it. The
+     * programs compare with {@code equals}: some lowerings, {@code signum}'s, place a node of their own twice.
+     */
+    private record Shape(List<String> joins, List<String> shared) {
+        boolean sharesANode() {
+            return !shared.isEmpty();
+        }
+
+        static Shape of(PirTerm term) {
+            var joins = new ArrayList<String>();
+            var seen = Collections.newSetFromMap(new IdentityHashMap<PirTerm, Boolean>());
+            var shared = new ArrayList<String>();
+            walk(term, joins, seen, shared);
+            return new Shape(joins, shared);
+        }
+
+        private static void walk(PirTerm term, List<String> joins, Set<PirTerm> seen, List<String> shared) {
+            if (!seen.add(term) && !(term instanceof PirTerm.Var)) shared.add(term.toString());
+            switch (term) {
+                case PirTerm.Let let -> {
+                    if (let.name().startsWith("#cond-join-")) joins.add(let.name());
+                    walk(let.value(), joins, seen, shared);
+                    walk(let.body(), joins, seen, shared);
+                }
+                case PirTerm.Lam lam -> walk(lam.body(), joins, seen, shared);
+                case PirTerm.App app -> {
+                    walk(app.function(), joins, seen, shared);
+                    walk(app.argument(), joins, seen, shared);
+                }
+                case PirTerm.IfThenElse branch -> {
+                    walk(branch.cond(), joins, seen, shared);
+                    walk(branch.thenBranch(), joins, seen, shared);
+                    walk(branch.elseBranch(), joins, seen, shared);
+                }
+                default -> { }
+            }
+        }
+    }
+
+    /** A trivial continuation that both paths of {@code &&} reach is copied, never joined, and never one node twice. */
+    @Test
+    void aTrivialSharedContinuationIsCopied() {
+        var shape = Shape.of(lowered("static BigInteger m(S s) { if (s instanceof S.A a && a.v().equals(BigInteger.ONE)) { return a.v(); } else { return BigInteger.ZERO; } }"));
+        assertEquals(List.of(), shape.joins());
+        assertFalse(shape.sharesANode(), shape.shared()::toString);
+    }
+
+    /**
+     * Any other is lowered once and bound once as a join, whatever the number of paths: the else branch, which both
+     * operands of {@code &&} reach, and the then-branch, which both operands of the inner {@code ||} reach.
+     */
+    @Test
+    void aSharedContinuationIsJoinedOnce() {
+        var shape = Shape.of(lowered("static BigInteger m(S s) { if (s instanceof S.A a && (a.v().equals(BigInteger.ONE) || a.v().equals(BigInteger.TWO))) { return a.v(); } "
+                + "else { return BigInteger.TEN.add(BigInteger.TWO); } }"));
+        assertEquals(List.of("#cond-join-1", "#cond-join-2"), shape.joins());
+        assertFalse(shape.sharesANode(), shape.shared()::toString);
+    }
+
+    /** I7: sibling joins (a boolean ?: as a condition) and nested ones have distinct names. */
+    @Test
+    void joinsHaveDistinctNames() {
+        var shape = Shape.of(lowered("static BigInteger m(S s, BigInteger t) { if ((s instanceof S.A a ? a.v().equals(t) : s instanceof S.B b && b.w().equals(t)) "
+                + "&& t.equals(BigInteger.TEN)) { return BigInteger.TEN.add(BigInteger.ONE); } return BigInteger.TEN.add(BigInteger.TWO); }"));
+        assertTrue(shape.joins().size() >= 2, shape.joins()::toString);
+        assertEquals(shape.joins().size(), Set.copyOf(shape.joins()).size(), shape.joins()::toString);
+        assertFalse(shape.sharesANode(), shape.shared()::toString);
+    }
+
     // --- D6 and D8: the words ---
 
     private static CompilerException rejected(String members) {
@@ -183,8 +281,8 @@ class Adr069PatternScopesTest {
     /** I5: a pattern variable javac resolved and JuLC did not bind is JULC0139, never an undefined variable. */
     @ParameterizedTest
     @ValueSource(strings = {
-            "static BigInteger m(S s) { if (s instanceof S.A a && a.v().signum() > 0) { return a.v(); } return BigInteger.ZERO; }",
-            "static BigInteger m(S s) { return s instanceof S.A a ? a.v() : BigInteger.ZERO; }",
+            "static BigInteger m(S s) { BigInteger t = BigInteger.ZERO; while (s instanceof S.A a) { t = t.add(a.v()); s = new S.B(t, t); } return t; }",
+            "static BigInteger m(S s) { while (!(s instanceof S.A a)) { s = new S.A(BigInteger.ONE); } return a.v(); }",
     })
     void anUnboundVariableIsNeverUndefined(String members) {
         var diagnostic = rejected(members).diagnostics().getFirst();
@@ -206,7 +304,8 @@ class Adr069PatternScopesTest {
     /** An operand that is no variable would run again in a second test: the fix stores it first. */
     @Test
     void anUnboundVariableOfACallSaysStoreItFirst() {
-        var diagnostic = rejected("static S pick(S s) { return s; } static BigInteger m(S s) { return pick(s) instanceof S.A a ? a.v() : BigInteger.ZERO; }")
+        var diagnostic = rejected("static S pick(S s) { return s; } static BigInteger m(S s) { while (!(pick(s) instanceof S.A a)) { s = new S.A(BigInteger.ONE); } "
+                + "return a.v(); }")
                 .diagnostics().getFirst();
         assertEquals("JULC0139", diagnostic.code(), diagnostic.message());
         assertTrue(diagnostic.suggestion().startsWith("Store pick(s) in a local"), diagnostic.suggestion());

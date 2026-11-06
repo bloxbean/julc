@@ -139,6 +139,11 @@ final class Operators {
     }
 
     PirTerm binary(BinaryTree tree, Frame frame) {
+        // ADR-069 D3: a short circuit whose pattern variable is used binds it where Java has it in scope.
+        if ((tree.getKind() == Tree.Kind.CONDITIONAL_AND || tree.getKind() == Tree.Kind.CONDITIONAL_OR)
+                && lowering.conditions().binds(tree, frame)) {
+            return lowering.conditions().value(tree, frame);
+        }
         var compareTo = compareToZero(tree);
         if (compareTo != null) return compareTo.lower(frame);
         var left = lowering.expr(tree.getLeftOperand(), frame);
@@ -230,6 +235,9 @@ final class Operators {
             // Java's negation of a type's minimum value wraps to that value (JLS 15.15.4); the reference gives the positive one.
             return new PirTerm.Const(Constant.integer(BigInteger.valueOf(minimumValue(tree.getExpression()))));
         }
+        if (tree.getKind() == Tree.Kind.LOGICAL_COMPLEMENT && lowering.conditions().binds(tree, frame)) {
+            return lowering.conditions().value(tree, frame);
+        }
         var operand = lowering.expr(tree.getExpression(), frame);
         return switch (tree.getKind()) {
             case LOGICAL_COMPLEMENT -> new PirTerm.IfThenElse(operand, bool(false), bool(true));
@@ -266,14 +274,28 @@ final class Operators {
 
     /** ADR-047: the term is typed by its then branch, so where a native type is in play the else branch must match. */
     PirTerm conditional(ConditionalExpressionTree tree, Frame frame) {
-        var condition = lowering.expr(tree.getCondition(), frame);
-        var thenTerm = lowering.expr(tree.getTrueExpression(), frame);
-        var elseTerm = lowering.expr(tree.getFalseExpression(), frame);
+        PirTerm result;
+        PirTerm thenTerm;
+        PirTerm elseTerm;
+        if (lowering.conditions().binds(tree.getCondition(), frame)) {
+            // ADR-069 D3: each arm in the frame its side of the condition gives, lowered once; the checks read both arms.
+            var arms = new PirTerm[2];
+            result = lowering.conditions().branch(tree.getCondition(), frame,
+                    inner -> arms[0] = lowering.expr(tree.getTrueExpression(), inner),
+                    inner -> arms[1] = lowering.expr(tree.getFalseExpression(), inner));
+            thenTerm = arms[0];
+            elseTerm = arms[1];
+        } else {
+            var condition = lowering.expr(tree.getCondition(), frame);
+            thenTerm = lowering.expr(tree.getTrueExpression(), frame);
+            elseTerm = lowering.expr(tree.getFalseExpression(), frame);
+            result = new PirTerm.IfThenElse(condition, thenTerm, elseTerm);
+        }
         typing.requireNativeBoundary("Conditional else branch", typing.of(tree.getFalseExpression(), elseTerm),
                 typing.of(tree.getTrueExpression(), thenTerm), tree.getFalseExpression());
         typing.requireOneRepresentation(tree, "a conditional", Arrays.asList(typing.held(tree.getTrueExpression(), thenTerm),
                 typing.held(tree.getFalseExpression(), elseTerm)));
-        return new PirTerm.IfThenElse(condition, thenTerm, elseTerm);
+        return result;
     }
 
     // --- a.compareTo(b) OP 0 (D6) ---

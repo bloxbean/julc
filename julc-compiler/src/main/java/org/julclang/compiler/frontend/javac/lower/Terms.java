@@ -253,6 +253,29 @@ public final class Terms {
         if (debug != null) debug.markUnsupported(element, reason);
     }
 
+    /**
+     * A fresh node equal to {@code term}, a trivial term that two paths of a condition reach (ADR-069 D2, joins): a
+     * constant, {@code Error}, a variable, or an application of a generated join to unit. One node is never placed twice,
+     * so the copy carries the original's read and position under its own identity.
+     */
+    PirTerm copied(PirTerm term) {
+        PirTerm copy = switch (term) {
+            case PirTerm.Const constant -> new PirTerm.Const(constant.value());
+            case PirTerm.Error error -> new PirTerm.Error(error.type());
+            case PirTerm.Var read -> {
+                var fresh = new PirTerm.Var(read.name(), read.type());
+                var element = provenance.readOf(read);
+                if (element != null) provenance.read(fresh, element);
+                yield fresh;
+            }
+            case PirTerm.App(PirTerm.Var join, PirTerm.Const unit) -> new PirTerm.App(new PirTerm.Var(join.name(), join.type()), new PirTerm.Const(unit.value()));
+            default -> throw new IllegalArgumentException("not a trivial term: " + term);
+        };
+        var at = positions.get(term);
+        if (at != null) positions.put(copy, at);
+        return copy;
+    }
+
     /** Records where {@code term} came from, when this compilation has a source map. */
     <T extends PirTerm> T at(Tree tree, T term) {
         if (sourceMaps && locating) positions.put(term, facts.location(tree));

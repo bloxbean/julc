@@ -10,6 +10,7 @@ import java.util.ArrayList;
  * to the input sequence, then to the plan, one byte per choice, as {@link G1FuzzTest}'s do, under
  * {@code G1.Profile.PATTERN_FLOW_204}, and every configuration must agree with the JVM. A divergence the registry does
  * not explain is written to {@code build/difftest/last-failure.diffcase} with {@code found.by: Adr069PatternFlowFuzzTest}.
+ * An input whose program has no oracle (javac 25.0.2's VerifyError, ADR-069 R4) is skipped with a line on stderr.
  * <p>
  * {@code ./gradlew :julc-difftest:test} replays every input in
  * {@code Adr069PatternFlowFuzzTestInputs/generatedProgramsAgree/};
@@ -27,6 +28,9 @@ class Adr069PatternFlowFuzzTest {
         for (int n = data.consumeInt(0, MAX_INPUTS); n > 0 && data.remainingBytes() > 0; n--) inputs.add(data.consumeByte() & 0xff);
         var plan = new ArrayList<Integer>();
         while (data.remainingBytes() > 0 && plan.size() < MAX_PLAN) plan.add(data.consumeByte() & 0xff);
-        Adr069PatternFlowPropertyTest.check("Adr069PatternFlowFuzzTest", plan, inputs);
+        // No oracle (javac 25.0.2's VerifyError, ADR-069 R4; Adr069PatternFlowPropertyTest.noOracle): skip the input.
+        if (Adr069PatternFlowPropertyTest.check("Adr069PatternFlowFuzzTest", plan, inputs) == null) {
+            System.err.println("Adr069PatternFlowFuzzTest: no oracle (javac VerifyError), input skipped");
+        }
     }
 }

@@ -6,6 +6,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
 import java.math.BigInteger;
+import java.util.Arrays;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -41,6 +42,7 @@ class Adr069PatternScopesHarnessTest {
                         record D() implements S { }
                         record C(BigInteger v) implements S { }
                     }
+                    static S make(BigInteger v) { return v.signum() > 0 ? new S.C(v) : new S.D(); }
                     static JulcList<S> ys(S s) {
                         return JulcList.of(new S.C(BigInteger.valueOf(3)), s, new S.B(BigInteger.ONE, BigInteger.TWO), s, new S.A(BigInteger.valueOf(4)));
                     }
@@ -189,23 +191,98 @@ class Adr069PatternScopesHarnessTest {
         for (var s : everyS()) assertAgree(members, s);
     }
 
+    // --- M2: &&, ||, !, parentheses and ?:, in conditions and values (D3) ---
+
+    /** Each over every variant, and both values of {@code n} where it appears. */
+    @ParameterizedTest(name = "{0}")
+    @CsvSource(delimiterString = " ~ ", textBlock = """
+            a02 &&                  ~ public static long m(S s, long n) { if (s instanceof S.A a && a.v().signum() > 0) { return 1; } return 0; }
+            a06 ternary value       ~ public static long m(S s, long n) { long v = s instanceof S.A a ? a.v().longValue() : 5; return v; }
+            a07 ternary condition   ~ public static long m(S s, long n) { return s instanceof S.A a && a.v().signum() > 0 ? 1 : 0; }
+            a07b boolean local      ~ public static long m(S s, long n) { boolean c = s instanceof S.A a && a.v().signum() > 0; return c ? 1 : 0; }
+            a08 lambda              ~ public static long m(S s, long n) { return ys(s).any(x -> x instanceof S.A a && a.v().signum() > 5) ? 1 : 0; }
+            a11 while condition     ~ public static long m(S s, long n) { long t = 0; while (s instanceof S.A a && a.v().longValue() > t) { t = t + 1; } return t; }
+            a12 while, two accs     ~ public static long m(S s, long n) { long t = 0; long u = 0; while (s instanceof S.A a && a.v().longValue() > t) { t = t + 1; u = u + 2; } return t * 10 + u; }
+            b02 for &&              ~ public static long m(S s, long n) { long t = 0; for (S x : ys(s)) { if (x instanceof S.A a && a.v().signum() > 0) { t = t + a.v().longValue(); } } return t; }
+            b08 for ternary         ~ public static long m(S s, long n) { long t = 0; for (S x : ys(s)) { t = t + (x instanceof S.A a ? a.v().longValue() : 1); } return t; }
+            c02 negated or, else    ~ public static long m(S s, long n) { if (!(s instanceof S.A a) || a.v().signum() == 0) { return 0; } else { return a.v().longValue(); } }
+            c03 join under binder   ~ public static long m(S s, long n) { if (s instanceof S.A a && (a.v().signum() > 0 || a.v().signum() < 0)) { return a.v().longValue(); } return 7; }
+            c04 double negation     ~ public static long m(S s, long n) { return !(!(s instanceof S.A a) || a.v().signum() == 0) && a.v().signum() > 0 ? 1 : 0; }
+            c05 boolean ?: as test  ~ public static long m(S s, long n) { if (n > 0 ? s instanceof S.A a && a.v().signum() > 0 : s instanceof S.B b && b.w().signum() > 0) { return 1; } return 2; }
+            c06 test of a variable  ~ public static long m(S s, long n) { if (s instanceof S.A a && make(a.v()) instanceof S.C c && c.v().compareTo(a.v()) == 0) { return c.v().longValue(); } return 0; }
+            c07 traced shortcircuit ~ public static long m(S s, long n) { return echo("l", s) instanceof S.A a && said("r", a.v()).signum() > 0 || echo("o", s) instanceof S.B b && said("w", b.w()).signum() > 0 ? 1 : 0; }
+            c08 lambda captures     ~ public static long m(S s, long n) { return ys(s).any(x -> s instanceof S.A a && x instanceof S.A b && b.v().compareTo(a.v()) < 0) ? 1 : 0; }
+            c09 shared value join   ~ public static long m(S s, long n) { long v = (s instanceof S.A a && a.v().signum() > 0) ? a.v().longValue() * 3 : said("e", BigInteger.TEN).longValue() + n; return v; }
+            c10 record ?: value     ~ public static long m(S s, long n) { S r = s instanceof S.A a && a.v().signum() > 0 ? new S.C(a.v()) : s; return r instanceof S.C c ? c.v().longValue() : -1; }
+            c11 || in a loop        ~ public static long m(S s, long n) { long t = 0; for (S x : ys(s)) { if (!(x instanceof S.C c) || c.v().signum() > n) { t = t + 1; } else { t = t + c.v().longValue(); } } return t; }
+            c12 ! in a break loop   ~ public static long m(S s, long n) { long t = 0; for (S x : ys(s)) { if (!(x instanceof S.A a)) { t = t + 1; } else { t = t + a.v().longValue(); break; } } return t; }
+            c13 nested ternaries    ~ public static long m(S s, long n) { return s instanceof S.A a ? (a.v().signum() > 0 ? a.v().longValue() : -a.v().longValue()) : s instanceof S.B b ? b.w().longValue() : 9; }
+            c14 parenthesized &&    ~ public static long m(S s, long n) { return ((s instanceof S.A a) && (a.v().signum() >= n)) ? 1 : 0; }
+            c15 two call operands   ~ public static long m(S s, long n) { return echo("l", s) instanceof S.A a && echo("r", make(a.v().add(BigInteger.TEN))) instanceof S.C c && c.v().subtract(a.v()).longValue() == 10 ? 1 : 0; }
+            c16 the same, as an if  ~ public static long m(S s, long n) { if (echo("l", s) instanceof S.A a && echo("r", make(a.v().add(BigInteger.TEN))) instanceof S.C c && c.v().subtract(a.v()).longValue() == 10) { return c.v().longValue(); } return 0; }
+            c17 || then a loop      ~ public static long m(S s, long n) { if (!(s instanceof S.A a) || a.v().signum() > n) { long q = 0; for (S y : ys(s)) { q = q + 1; } return q; } return 5; }
+            c18 two accs, && and || ~ public static long m(S s, long n) { long t = 0; long u = 0; for (S x : ys(s)) { if (x instanceof S.A a && a.v().signum() > 0 || x instanceof S.C c && c.v().signum() > n) { t = t + 1; } else { u = u + 1; } } return t * 10 + u; }
+            c19 joined, &&          ~ public static long m(S s, long n) { long t = 0; for (S x : ys(s)) { if (x instanceof S.A a && a.v().signum() > n) { t = t + a.v().longValue(); } else { break; } t = t + 1; } return t; }
+            c20 joined, ||          ~ public static long m(S s, long n) { long t = 0; for (S x : ys(s)) { if (!(x instanceof S.C c) || c.v().signum() > n) { t = t + 1; } else { t = t + c.v().longValue(); break; } t = t + 2; } return t; }
+            c21 lambda choice, &&   ~ public static long m(S s, long n) { return xs().any(s instanceof S.A a && a.v().signum() > n ? x -> a.v().signum() > 0 : x -> false) ? 1 : 0; }
+            c22 boolean ?: value    ~ public static long m(S s, long n) { boolean c = n > 0 ? s instanceof S.A a && a.v().signum() > 0 : s instanceof S.C d && d.v().signum() > 0; return c ? 1 : 0; }
+            c23 join in a lambda    ~ public static long m(S s, long n) { return ys(s).any(x -> (s instanceof S.A a && x instanceof S.C c && c.v().compareTo(a.v()) < 0) ? c.v().add(BigInteger.ONE).signum() > 0 : BigInteger.valueOf(n).add(BigInteger.TEN).signum() > 10) ? 1 : 0; }
+            """)
+    void aConditionAgrees(String shape, String members) {
+        for (var s : everyS()) {
+            for (long n : new long[]{0, 1}) assertAgree(members, s, integer(n));
+        }
+    }
+
+    /** A value of another representation under a binding condition: native bytes, and Data views behind a negation. */
+    @Test
+    void aConditionalOfOtherRepresentationsAgrees() {
+        for (var s : everyS()) {
+            assertAgree("public static byte[] m(S s) { return !(s instanceof S.A a) || a.v().signum() == 0 ? new byte[]{1} : new byte[]{2, 3}; }", s);
+            for (long n : new long[]{0, 7}) {
+                assertAgree("public static PlutusData m(S s, PlutusData d) { return !(s instanceof S.A a) ? d : (PlutusData) Builtins.iData(a.v()); }", s, integer(n));
+            }
+        }
+    }
+
+    /**
+     * I6: a condition that nests &&, || and ! over pattern tests, with continuations that are no constant, grows linearly in
+     * its depth: each level adds the same few bytes, and every program agrees with the JVM.
+     */
+    @Test
+    void aNestOfConditionsIsLinear() {
+        var sizes = new int[3];
+        int[] depths = {6, 12, 24};
+        for (int k = 0; k < depths.length; k++) {
+            var condition = "s instanceof S.A a0 && a0.v().signum() >= 0";
+            for (int i = 1; i <= depths[k]; i++) {
+                condition = switch (i % 3) {
+                    case 1 -> "(!(s instanceof S.B b" + i + ") || b" + i + ".w().signum() > " + i + ") && (" + condition + ")";
+                    case 2 -> "s instanceof S.A a" + i + " && (a" + i + ".v().signum() > " + i + " || " + condition + ")";
+                    default -> "(n > " + i + " ? s instanceof S.C c" + i + " && c" + i + ".v().signum() > 0 : (" + condition + "))";
+                };
+            }
+            var members = "public static long m(S s, long n) { if (" + condition + ") { return said(\"t\", BigInteger.ONE).longValue(); } "
+                    + "return said(\"f\", BigInteger.TWO).longValue(); }";
+            for (var s : everyS()) {
+                for (long n : new long[]{0, 30}) assertAgree(members, s, integer(n));
+            }
+            sizes[k] = run(members, a(1), integer(0)).results().values().iterator().next().measurement().scriptBytes();
+        }
+        int first = sizes[1] - sizes[0];
+        int second = sizes[2] - sizes[1];
+        assertTrue(second <= 2 * first + 16, () -> "sizes " + Arrays.toString(sizes));
+    }
+
     // --- The shapes a later milestone adds: each is JULC0139 until then ---
 
     @ParameterizedTest(name = "{0}")
     @CsvSource(delimiterString = " ~ ", textBlock = """
-            a02 &&                  ~ JULC0139 ~ public static long m(S s) { if (s instanceof S.A a && a.v().signum() > 0) { return 1; } return 0; }
             a03 early return        ~ JULC0139 ~ public static long m(S s) { if (!(s instanceof S.A a)) { return 0; } return a.v().longValue(); }
             a04 negated or          ~ JULC0139 ~ public static long m(S s) { if (!(s instanceof S.A a) || a.v().signum() == 0) { return 0; } return a.v().longValue(); }
-            a06 ternary value       ~ JULC0139 ~ public static long m(S s) { long v = s instanceof S.A a ? a.v().longValue() : 5; return v; }
-            a07 ternary condition   ~ JULC0139 ~ public static long m(S s) { return s instanceof S.A a && a.v().signum() > 0 ? 1 : 0; }
-            a07b boolean local      ~ JULC0139 ~ public static long m(S s) { boolean c = s instanceof S.A a && a.v().signum() > 0; return c ? 1 : 0; }
-            a08 lambda              ~ JULC0139 ~ public static long m(S s) { return xs().any(x -> x instanceof S.A a && a.v().signum() > 5) ? 1 : 0; }
             a09 lambda block guard  ~ JULC0139 ~ public static long m(S s) { return xs().any(x -> { if (!(x instanceof S.A a)) { return false; } return a.v().signum() > 0; }) ? 1 : 0; }
             a10 use after if-else   ~ JULC0139 ~ public static long m(S s) { if (s instanceof S.A a) { } else { return 0; } return a.v().longValue(); }
-            a11 while condition     ~ JULC0139 ~ public static long m(S s) { long t = 0; while (s instanceof S.A a && a.v().longValue() > t) { t = t + 1; } return t; }
-            b02 for &&              ~ JULC0139 ~ public static long m(S s) { long t = 0; for (S x : xs()) { if (x instanceof S.A a && a.v().signum() > 0) { t = t + a.v().longValue(); } } return t; }
             b07 break guard         ~ JULC0139 ~ public static long m(S s) { long t = 0; for (S x : xs()) { if (!(x instanceof S.A a)) { break; } t = t + a.v().longValue(); } return t; }
-            b08 for ternary         ~ JULC0139 ~ public static long m(S s) { long t = 0; for (S x : xs()) { t = t + (x instanceof S.A a ? a.v().longValue() : 1); } return t; }
             c01 after while         ~ JULC0139 ~ public static long m(S s) { S x = s; while (!(x instanceof S.A a)) { x = new S.A(BigInteger.ONE); } return a.v().longValue(); }
             """)
     void whatALaterMilestoneAddsIsRejected(String shape, String code, String members) {

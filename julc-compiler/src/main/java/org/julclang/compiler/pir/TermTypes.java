@@ -34,6 +34,14 @@ public final class TermTypes {
     }
 
     /** Record the source element types of a lowered {@code JulcArray.of(...)} term (identity). */
+    /** {@code copy} stands for {@code original}, a node placed again (ADR-069 D2): it says of itself what the original says. */
+    public void copied(PirTerm original, PirTerm copy) {
+        var type = termTypes.get(original);
+        if (type != null) termTypes.put(copy, type);
+        var elements = arrayLiterals.get(original);
+        if (elements != null) arrayLiterals.put(copy, elements);
+    }
+
     public void recordArrayLiteral(PirTerm term, List<PirType> elementTypes) {
         arrayLiterals.put(term, List.copyOf(elementTypes));
     }

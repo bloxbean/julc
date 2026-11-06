@@ -75,7 +75,7 @@ public final class Lowering {
         var typeMethods = TypeMethodRegistry.defaultRegistry();
         this.targets = new CallTargets(facts, typing, typeMethods);
         this.typeTests = new TypeTests(facts, terms, typing, this);
-        this.conditions = new Conditions(facts, terms, this, typeTests);
+        this.conditions = new Conditions(facts, terms, this, typeTests, typing);
         this.fieldUpdates = new FieldUpdates(facts);
         this.statements = new Statements(facts, terms, typing, this, targets, typeTests, context, fieldUpdates);
         this.operators = new Operators(facts, typing, targets, this);

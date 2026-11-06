@@ -311,20 +311,27 @@ class JavacStatementsTest {
         assertTrue(javac(SUM + "static boolean m(S s) { return s instanceof S.A(var v); }").getMessage().contains("Unsupported instanceof pattern: "));
     }
 
-    /** ADR-069 D2: the whole condition under a second pair of parentheses is a condition {@code Conditions} lowers. */
+    /** ADR-069 D2, D3: the variable is bound wherever JLS 6.3.1 has it in scope within the condition and its branches. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "static BigInteger m(S s) { if ((s instanceof S.A a)) { return a.v(); } return BigInteger.ZERO; }",
+            "static BigInteger m(S s) { if (s instanceof S.A a && a.v().signum() > 0) { return a.v(); } return BigInteger.ZERO; }",
+            "static BigInteger m(S s) { return s instanceof S.A a ? a.v() : BigInteger.ZERO; }",
+    })
+    void aPatternVariableBinds(String members) {
+        assertDoesNotThrow(() -> new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()).compileMethod(source(SUM + members), "m", List.of()));
+    }
+
+    /** Bound now, the variable meets the next rule: a test of the sealed interface itself names no variant. */
     @Test
-    void aParenthesizedPatternBinds() {
-        assertDoesNotThrow(() -> new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()).compileMethod(source(SUM
-                + "static BigInteger m(S s) { if ((s instanceof S.A a)) { return a.v(); } return BigInteger.ZERO; }"), "m", List.of()));
+    void aBoundVariableTestedAgainstTheInterface() {
+        assertEquals("JULC0077", javac(SUM + "static boolean m(S s) { return (s instanceof S.A a ? a : s) instanceof S t; }").diagnostics().getFirst().code());
     }
 
     /** Shapes a later milestone of ADR-069 binds: until then each is JULC0139, never a read of something else. */
     @ParameterizedTest
     @ValueSource(strings = {
-            "static BigInteger m(S s) { if (s instanceof S.A a && a.v().signum() > 0) { return a.v(); } return BigInteger.ZERO; }",
             "static BigInteger m(S s) { if (!(s instanceof S.A a)) { return BigInteger.ZERO; } return a.v(); }",
-            "static BigInteger m(S s) { return s instanceof S.A a ? a.v() : BigInteger.ZERO; }",
-            "static boolean m(S s) { return (s instanceof S.A a ? a : s) instanceof S t; }",
             "static BigInteger m(S s) { if (s instanceof S.A a) { } else { return BigInteger.ZERO; } return a.v(); }",
     })
     void aPatternVariableJulcDoesNotBindYet(String members) {

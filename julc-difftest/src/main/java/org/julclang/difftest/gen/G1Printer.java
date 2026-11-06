@@ -105,7 +105,8 @@ final class G1Printer {
             case G1Ast.Return r -> line(indent, "return " + expression(r.value(), indent) + ";");
             case G1Ast.While w -> {
                 line(indent, "long " + w.counter() + " = 0;");
-                line(indent, "while (" + w.counter() + " < " + w.bound() + ") {");
+                String guard = w.guard() == null ? "" : " && " + expression(w.guard(), indent);
+                line(indent, "while (" + w.counter() + " < " + w.bound() + guard + ") {");
                 statements(w.body(), indent + 1);
                 line(indent + 1, w.counter() + " = " + w.counter() + " + 1;");
                 line(indent, "}");
@@ -162,6 +163,9 @@ final class G1Printer {
             case G1Ast.Fail f -> "fail(" + expression(f.value(), indent) + ")";
             case G1Ast.Switch w -> switchExpression(w, indent);
             case G1Ast.TypeTest t -> expression(t.subject(), indent) + " instanceof " + t.variant().name;
+            case G1Ast.PatternTest t -> expression(t.subject(), indent) + " instanceof " + t.variant().name + " " + t.binding();
+            case G1Ast.Paren p -> "(" + expression(p.operand(), indent) + ")";
+            case G1Ast.Lambda l -> "xs." + l.method() + "(" + l.parameter() + " -> " + expression(l.body(), indent) + ")";
         };
     }
 

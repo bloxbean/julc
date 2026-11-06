@@ -14,8 +14,11 @@ import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.ForLoopTree;
 import com.sun.source.tree.IdentifierTree;
 import com.sun.source.tree.IfTree;
+import com.sun.source.tree.InstanceOfTree;
+import com.sun.source.tree.LambdaExpressionTree;
 import com.sun.source.tree.MemberSelectTree;
 import com.sun.source.tree.MethodInvocationTree;
+import com.sun.source.tree.ParenthesizedTree;
 import com.sun.source.tree.PatternCaseLabelTree;
 import com.sun.source.tree.StatementTree;
 import com.sun.source.tree.SwitchExpressionTree;
@@ -90,6 +93,68 @@ final class G1Source {
         var reader = new Reader();
         reader.scan(unit, null);
         return new Reading(reader.features, reader.armsPermuted, reader.violations);
+    }
+
+    /**
+     * ADR-069's pattern features read from a printed program with javac's parser: a bare type test; a pattern test that
+     * is a whole {@code if} condition (through parentheses) in a loop, and one in an {@code else if}; and a pattern test
+     * anywhere else, in a {@code while} condition, and in a lambda.
+     */
+    static Set<G1.Feature> patterns(String source) {
+        var found = EnumSet.noneOf(G1.Feature.class);
+        new TreePathScanner<Void, Void>() {
+            @Override
+            public Void visitInstanceOf(InstanceOfTree node, Void unused) {
+                if (node.getPattern() == null) {
+                    found.add(G1.Feature.BARE_TYPE_TEST);
+                    return super.visitInstanceOf(node, unused);
+                }
+                TreePath path = getCurrentPath().getParentPath();
+                Tree child = node;
+                while (path.getLeaf() instanceof ParenthesizedTree) {
+                    child = path.getLeaf();
+                    path = path.getParentPath();
+                }
+                if (path.getLeaf() instanceof IfTree statement && statement.getCondition() == child) {
+                    boolean inLoop = false;
+                    for (TreePath up = path; up != null; up = up.getParentPath()) {
+                        if (up.getLeaf() instanceof EnhancedForLoopTree || up.getLeaf() instanceof WhileLoopTree) inLoop = true;
+                    }
+                    if (inLoop) found.add(G1.Feature.LOOP_PATTERN_IF);
+                    if (path.getParentPath().getLeaf() instanceof IfTree outer && outer.getElseStatement() == statement) {
+                        found.add(G1.Feature.LOOP_PATTERN_ELSE_IF);
+                    }
+                } else {
+                    found.add(G1.Feature.PATTERN_CONDITION);
+                }
+                Tree below = node;
+                for (TreePath up = getCurrentPath().getParentPath(); up != null; up = up.getParentPath()) {
+                    if (up.getLeaf() instanceof LambdaExpressionTree) found.add(G1.Feature.PATTERN_IN_LAMBDA);
+                    if (up.getLeaf() instanceof WhileLoopTree loop && loop.getCondition() == below) {
+                        found.add(G1.Feature.PATTERN_IN_WHILE_CONDITION);
+                    }
+                    below = up.getLeaf();
+                }
+                return super.visitInstanceOf(node, unused);
+            }
+        }.scan(parse(source), null);
+        return found;
+    }
+
+    private static CompilationUnitTree parse(String source) {
+        var file = new SimpleJavaFileObject(URI.create("string:///Probe.java"), JavaFileObject.Kind.SOURCE) {
+            @Override
+            public CharSequence getCharContent(boolean ignoreEncodingErrors) {
+                return source;
+            }
+        };
+        var task = (JavacTask) JAVAC.getTask(null, FILES, diagnostic -> {
+        }, List.of("-proc:none"), null, List.of(file));
+        try {
+            return task.parse().iterator().next();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     private static final class Reader extends TreePathScanner<Void, Void> {

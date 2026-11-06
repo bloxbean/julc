@@ -25,7 +25,7 @@ import static org.julclang.difftest.gen.G1Ast.BOOL;
 import static org.julclang.difftest.gen.G1Ast.UNREADABLE;
 
 /**
- * The second program grammar (ADR-066 D2, G1 r10): user records and sealed interfaces with record variants,
+ * The second program grammar (ADR-066 D2, G1 r11): user records and sealed interfaces with record variants,
  * {@code static final} fields, helpers, method-level {@code if} and {@code instanceof} patterns, G0's loops
  * with accumulators of any generated type, record and sealed arguments and results, traces and failures, and
  * {@code switch} expressions with type patterns, {@code default}, {@code yield} blocks, loops in arms and nesting
@@ -60,7 +60,7 @@ public final class G1 {
      * The decoding's version, saved with every case (ADR-066 G1-I5). Change it whenever a plan, an input sequence or
      * a profile would decode to something different.
      */
-    public static final String VERSION = "G1 r10";
+    public static final String VERSION = "G1 r11";
 
     /**
      * The switches of a generation profile (ADR-066 D6), each gating a construct whose defect is open; once the fix is
@@ -114,7 +114,16 @@ public final class G1 {
          * read under {@code &&}, {@code ||}, {@code !} or {@code ?:} (M2) or after an early exit (M3). Off in the
          * default profile until ADR-069 M3.
          */
-        PATTERN_LOOPS;
+        PATTERN_LOOPS,
+        /**
+         * ADR-069 M2 (#204), since G1 r11: conditions over {@code &&}, {@code ||}, {@code !}, parentheses, boolean
+         * {@code ?:} and {@code xs.any}/{@code xs.all} lambdas that mix pattern tests, bare tests and comparisons, with
+         * reads of each pattern variable exactly where JLS 6.3.1 puts it in scope: in the condition, in the branches of
+         * an {@code if} (method level and loop bodies), in the arms of a value {@code ?:}, and in a {@code while}
+         * condition (read there only). Wherever a condition is generated (boolean locals, returns, arguments, tests),
+         * and never a variable read after its statement (M3). Off in the default profile until ADR-069 M3.
+         */
+        PATTERN_CONDITIONS;
 
         /** The switches G1 defines but does not implement yet: they wait for ADR-067 (M3, part 2). */
         public static final Set<Gate> INERT =
@@ -148,9 +157,12 @@ public final class G1 {
          */
         ISSUE_291_LOOPS(Gate.DEFAULT_BLOCK_SCOPE),
         /**
-         * ADR-069 M1's shapes (#204): a family always, more loops, half of the loop bodies with {@code break}, two in
-         * three loop-body statements a pattern {@code if}, a quarter of the conditions a bare type test, and a variant
-         * compared with its own type only (no JULC0078 by design).
+         * ADR-069's shapes (#204): a family always, more loops, half of the loop bodies with {@code break}, two in
+         * three loop-body statements a pattern {@code if}, a quarter of the conditions a bare type test, tested values
+         * mostly of a sealed interface's type (both outcomes) or a pattern variable's component, a third of them calls
+         * when one is possible, and a variant compared with its own type only (no JULC0078 by design); with
+         * PATTERN_CONDITIONS on, a third of the conditions, ternaries and while loops and half of the conditional updates
+         * are pattern conditions, three levels deep.
          */
         ISSUE_204(Gate.PATTERN_LOOPS);
 
@@ -195,10 +207,12 @@ public final class G1 {
         /** The historical profile that rediscovers #291's rejection of loops in a default arm block (ADR-066 D10.1). */
         public static final Profile REDISCOVER_291_LOOPS = DEFAULT.with(Gate.DEFAULT_BLOCK_SCOPE).steered(Steer.ISSUE_291_LOOPS);
         /**
-         * ADR-069 M1's campaign (#204): the default profile with {@link Gate#PATTERN_LOOPS} and steered to its shapes;
-         * every program must agree with the JVM ({@code Adr069PatternFlowPropertyTest}, {@code Adr069PatternFlowFuzzTest}).
+         * ADR-069's campaign (#204): the default profile with {@link Gate#PATTERN_LOOPS} (M1) and
+         * {@link Gate#PATTERN_CONDITIONS} (M2), steered to their shapes; every program must agree with the JVM
+         * ({@code Adr069PatternFlowPropertyTest}, {@code Adr069PatternFlowFuzzTest}).
          */
-        public static final Profile PATTERN_FLOW_204 = DEFAULT.with(Gate.PATTERN_LOOPS).steered(Steer.ISSUE_204);
+        public static final Profile PATTERN_FLOW_204 =
+                DEFAULT.with(Gate.PATTERN_LOOPS).with(Gate.PATTERN_CONDITIONS).steered(Steer.ISSUE_204);
 
         public Profile {
             var gates = EnumSet.noneOf(Gate.class);
@@ -335,7 +349,13 @@ public final class G1 {
         /** {@code if (x instanceof V v)} in the body of a loop with accumulators (PATTERN_LOOPS, ADR-069 M1). */
         LOOP_PATTERN_IF,
         /** An {@code else if} chain of pattern tests in a loop body (PATTERN_LOOPS). */
-        LOOP_PATTERN_ELSE_IF;
+        LOOP_PATTERN_ELSE_IF,
+        /** A pattern test that is not a whole {@code if} condition (PATTERN_CONDITIONS, ADR-069 D3). */
+        PATTERN_CONDITION,
+        /** A pattern test in a {@code while} condition (PATTERN_CONDITIONS). */
+        PATTERN_IN_WHILE_CONDITION,
+        /** A pattern test in a lambda body (PATTERN_CONDITIONS). */
+        PATTERN_IN_LAMBDA;
 
         /**
          * The features with a quota: D8's list without the features of the gated constructs (guards, record patterns,
@@ -347,7 +367,8 @@ public final class G1 {
         public static final Set<Feature> GATED =
                 Collections.unmodifiableSet(EnumSet.of(SHADOW_IN_LOOP_BRANCH, ZERO_ARG_HELPER, LOOP_BREAK_SHAPE,
                         TRACE_IN_COMPARISON, ASSIGN_PATTERN_BINDING, DEFAULT_BLOCK_SHADOW,
-                        DEFAULT_BLOCK_AFTER_LOOP, BARE_TYPE_TEST, LOOP_PATTERN_IF, LOOP_PATTERN_ELSE_IF));
+                        DEFAULT_BLOCK_AFTER_LOOP, BARE_TYPE_TEST, LOOP_PATTERN_IF, LOOP_PATTERN_ELSE_IF, PATTERN_CONDITION,
+                        PATTERN_IN_WHILE_CONDITION, PATTERN_IN_LAMBDA));
     }
 
     /** A decoded program: its source, its tag table, its features, its profile and its entry parameters. */
@@ -833,9 +854,13 @@ public final class G1 {
         }
         if (choices.oneIn(3)) {
             features.add(Feature.METHOD_LEVEL_IF);
-            Expr test = test(ctx(scope), EXPRESSION_DEPTH);
-            var then = branch(scope, result);
-            body.add(new G1Ast.If(test, then, branch(scope, result)));
+            if (conditions(2, 4)) {
+                body.add(flowIf(scope, result, true));
+            } else {
+                Expr test = test(ctx(scope), EXPRESSION_DEPTH);
+                var then = branch(scope, result);
+                body.add(new G1Ast.If(test, then, branch(scope, result)));
+            }
         } else {
             String preferred = profile.steers(Steer.ISSUE_209) ? shadowRead
                     : profile.steers(Steer.ISSUE_291) ? defaultShadowed : null;
@@ -863,6 +888,10 @@ public final class G1 {
     /** {@code if (c) { locals; return e; }} at method level. */
     private void earlyReturn(Scope scope, List<Stmt> into, Type result) {
         features.add(Feature.METHOD_LEVEL_IF);
+        if (conditions(2, 4)) {
+            into.add(flowIf(scope, result, false));
+            return;
+        }
         Expr test = test(ctx(scope), EXPRESSION_DEPTH);
         into.add(new G1Ast.If(test, branch(scope, result), null));
     }
@@ -1007,8 +1036,19 @@ public final class G1 {
             String counter = "i" + counters++;
             methodNames.add(counter);
             int bound = choices.below(4);
-            body(body.with(new Var(counter, BIG, true, false, false, false)), statements, updated, true);
-            into.add(new G1Ast.While(counter, bound, statements));
+            Scope counted = body.with(new Var(counter, BIG, true, false, false, false));
+            // Under PATTERN_CONDITIONS a condition after the bound, whose variables are read in it only (M2).
+            Expr guard = null;
+            if (conditions(3, 6)) {
+                whileGuard = true;
+                try {
+                    guard = flowCondition(ctx(counted), 2).expr();
+                } finally {
+                    whileGuard = false;
+                }
+            }
+            body(counted, statements, updated, true);
+            into.add(new G1Ast.While(counter, bound, guard, statements));
         }
     }
 
@@ -1046,7 +1086,18 @@ public final class G1 {
                     : kind <= 1 && choices.oneIn(3))) {
                 kind = 7;
             }
+            // Under PATTERN_CONDITIONS a third of the conditional updates read pattern conditions; steered, half of them
+            // and of the pattern ifs in bodies without break (whose pattern ifs may break).
+            if (profile.has(Gate.PATTERN_CONDITIONS) && conditionalUpdates
+                    && (profile.steers(Steer.ISSUE_204) ? (kind == 2 || kind == 7 && !breakAware) && choices.oneIn(2)
+                    : kind == 2 && choices.oneIn(3))) {
+                kind = 8;
+            }
             switch (kind) {
+                case 8 -> {
+                    hasIfUpdate = true;
+                    flowUpdate(scope, into, assigned);
+                }
                 case 7 -> {
                     hasIfUpdate = true;
                     patternBreak = false;
@@ -1154,9 +1205,18 @@ public final class G1 {
      * One of the candidates; steered to #204, a call a third of the time there is one, so that a helper's traces show
      * the order the test is evaluated in.
      */
-    private Tested pick(List<Tested> candidates) {
-        var calls = candidates.stream().filter(t -> t.helper() != null).toList();
-        if (profile.steers(Steer.ISSUE_204) && !calls.isEmpty() && choices.oneIn(3)) return calls.get(choices.below(calls.size()));
+    private Tested pick(List<Tested> candidates, List<Var> patternVariables) {
+        if (profile.steers(Steer.ISSUE_204)) {
+            var calls = candidates.stream().filter(t -> t.helper() != null).toList();
+            if (!calls.isEmpty() && choices.oneIn(3)) return calls.get(choices.below(calls.size()));
+            // A component of a pattern variable in scope half of the time: a nested test.
+            var nested = candidates.stream()
+                    .filter(t -> t.var() != null && !t.components().isEmpty() && patternVariables.contains(t.var())).toList();
+            if (!nested.isEmpty() && choices.oneIn(2)) return nested.get(choices.below(nested.size()));
+            // A value of a sealed interface's type three times in four: a test with both outcomes.
+            var sealed = candidates.stream().filter(t -> t.type().kind == Kind.SEALED).toList();
+            if (!sealed.isEmpty() && !choices.oneIn(4)) return sealed.get(choices.below(sealed.size()));
+        }
         return candidates.get(choices.below(candidates.size()));
     }
 
@@ -1194,7 +1254,7 @@ public final class G1 {
     private Expr typeTest(Ctx ctx, int depth) {
         var candidates = tested(ctx);
         if (candidates.isEmpty()) return null;
-        Tested tested = pick(candidates);
+        Tested tested = pick(candidates, List.of());
         Expr subject = testedExpression(tested, ctx, depth);
         features.add(Feature.BARE_TYPE_TEST);
         return new G1Ast.TypeTest(subject, testedVariant(tested.type()));
@@ -1233,7 +1293,7 @@ public final class G1 {
                                       Type type, int chain) {
         if (subject == null || choices.oneIn(3)) {
             var candidates = tested(ctx(scope));
-            Tested tested = pick(candidates);
+            Tested tested = pick(candidates, List.of());
             subject = testedExpression(tested, ctx(scope), EXPRESSION_DEPTH);
             type = tested.type();
         }
@@ -1263,6 +1323,8 @@ public final class G1 {
         }
         List<Stmt> otherwise = null;
         int otherwiseKind = choices.below(4);
+        // Steered to #204, an outermost test has an else if half of the time.
+        if (profile.steers(Steer.ISSUE_204) && otherwiseKind == 0 && chain == 1) otherwiseKind = 3;
         if (otherwiseKind == 2) {
             otherwise = new ArrayList<>();
             if (breaks && !thenBreaks && choices.oneIn(3)) {
@@ -1276,6 +1338,223 @@ public final class G1 {
             otherwise = List.of(patternIf(scope, assigned, breakAware, nesting, subject, type, chain + 1));
         }
         return new G1Ast.PatternIf(subject, variant, binding, choices.oneIn(4), then, otherwise);
+    }
+
+    // ---------------------------------------------------------------- pattern conditions (PATTERN_CONDITIONS, ADR-069 M2)
+
+    /**
+     * A condition and the pattern variables it introduces when true and when false (JLS 6.3.1): {@code x instanceof V v}
+     * introduces {@code v} when true; {@code a && b} what either introduces when true, and {@code b} sees what {@code a}
+     * introduces when true; {@code a || b} the same when false; {@code !a} swaps; parentheses keep; a boolean
+     * {@code c ? a : b}, whose arms see what {@code c} introduces when true and when false, introduces nothing, as does
+     * a lambda. Names are unique in a method, so no variable is introduced twice.
+     */
+    private record Flow(Expr expr, List<Var> whenTrue, List<Var> whenFalse) {
+    }
+
+    /** How many flows enclose the expression being generated: no flow, and no switch, is generated inside one. */
+    private int flows;
+    /** How many lambdas enclose the flow being generated. */
+    private int lambdas;
+    /** Whether a {@code while} condition's flow is being generated. */
+    private boolean whileGuard;
+
+    private static Ctx with(Ctx ctx, List<Var> vars) {
+        Scope scope = ctx.scope();
+        for (Var var : vars) scope = scope.with(var);
+        return new Ctx(scope, ctx.helpers(), ctx.conditional(), ctx.constant(), ctx.preferred(), ctx.traceFree());
+    }
+
+    private static List<Var> concat(List<Var> first, List<Var> second) {
+        var all = new ArrayList<>(first);
+        all.addAll(second);
+        return all;
+    }
+
+    /**
+     * A condition over {@code &&}, {@code ||}, {@code !}, {@code ?:}, a lambda or parentheses, never a lone test: a
+     * whole {@code if} condition that is one pattern test is M1's form. No switch is generated inside it.
+     */
+    private Flow flowCondition(Ctx ctx, int depth) {
+        flows++;
+        tests++;
+        try {
+            return composite(ctx, List.of(), Math.max(1, depth));
+        } finally {
+            flows--;
+            tests--;
+        }
+    }
+
+    private Flow flow(Ctx ctx, List<Var> vars, int depth) {
+        if (depth <= 0 || choices.oneIn(3)) return leaf(ctx, vars);
+        if (choices.oneIn(6)) {
+            Flow inner = flow(ctx, vars, depth - 1);
+            return new Flow(new G1Ast.Paren(inner.expr()), inner.whenTrue(), inner.whenFalse());
+        }
+        return composite(ctx, vars, depth);
+    }
+
+    private Flow composite(Ctx ctx, List<Var> vars, int depth) {
+        boolean lambda = !inHelper && lambdas == 0 && !ctx.constant();
+        switch (choices.below(lambda ? 9 : 8)) {
+            case 0, 1, 2 -> {
+                // a && b, a third of the time with a pattern test on the left (rows a02, b02)
+                Flow left = choices.oneIn(3) ? patternLeaf(ctx, vars) : flow(ctx, vars, depth - 1);
+                if (left == null) left = flow(ctx, vars, depth - 1);
+                Flow right = flow(with(ctx, left.whenTrue()).conditionally(), concat(vars, left.whenTrue()), depth - 1);
+                return new Flow(new G1Ast.Logic(left.expr(), "&&", right.expr()), concat(left.whenTrue(), right.whenTrue()),
+                        List.of());
+            }
+            case 3, 4 -> {
+                Flow left = flow(ctx, vars, depth - 1);
+                Flow right = flow(with(ctx, left.whenFalse()).conditionally(), concat(vars, left.whenFalse()), depth - 1);
+                return new Flow(new G1Ast.Logic(left.expr(), "||", right.expr()), List.of(),
+                        concat(left.whenFalse(), right.whenFalse()));
+            }
+            case 5, 6 -> {
+                Flow operand = flow(ctx, vars, depth - 1);
+                return new Flow(new G1Ast.Not(operand.expr()), operand.whenFalse(), operand.whenTrue());
+            }
+            case 7 -> {
+                Flow test = flow(ctx, vars, depth - 1);
+                Flow then = flow(with(ctx, test.whenTrue()).conditionally(), concat(vars, test.whenTrue()), depth - 1);
+                Flow otherwise = flow(with(ctx, test.whenFalse()).conditionally(), concat(vars, test.whenFalse()), depth - 1);
+                return new Flow(new G1Ast.Cond(test.expr(), then.expr(), otherwise.expr()), List.of(), List.of());
+            }
+            default -> {
+                return lambda(ctx, vars, depth);
+            }
+        }
+    }
+
+    /**
+     * {@code xs.any(e -> …)} or {@code xs.all(e -> …)} over a flow that may read {@code e} and every variable it may
+     * capture: those never assigned (parameters, pattern variables, finals, for-each elements); the others still hide
+     * fields of their names.
+     */
+    private Flow lambda(Ctx ctx, List<Var> vars, int depth) {
+        String method = choices.oneIn(2) ? "any" : "all";
+        String parameter = freshName(true);
+        var locals = new ArrayList<Var>();
+        for (Var var : ctx.scope().locals()) {
+            locals.add(var.guardEligible() && !var.counter() ? var : new Var(var.name(), UNREADABLE, false, false, false, false));
+        }
+        var scope = new Scope(locals, ctx.scope().loopDepth()).with(new Var(parameter, BIG, false, false, true, false));
+        var inside = new Ctx(scope, ctx.helpers(), true, false, null, ctx.traceFree());
+        lambdas++;
+        try {
+            Flow body = flow(inside, vars, Math.max(1, depth - 1));
+            return new Flow(new G1Ast.Lambda(method, parameter, body.expr()), List.of(), List.of());
+        } finally {
+            lambdas--;
+        }
+    }
+
+    /** A test, a read of a variable in scope, a bare type test or a plain condition. */
+    private Flow leaf(Ctx ctx, List<Var> vars) {
+        boolean steered = profile.steers(Steer.ISSUE_204);
+        if (!vars.isEmpty() && (steered ? !choices.oneIn(3) : choices.oneIn(3))) {
+            return new Flow(use(vars.get(choices.below(vars.size())), ctx), List.of(), List.of());
+        }
+        switch (choices.below(4)) {
+            case 0, 1 -> {
+                Flow pattern = patternLeaf(ctx, vars);
+                if (pattern != null) return pattern;
+            }
+            case 2 -> {
+                Expr bare = typeTest(ctx, 1);
+                if (bare != null) return new Flow(bare, List.of(), List.of());
+            }
+            default -> {
+            }
+        }
+        return new Flow(condition(ctx, 0), List.of(), List.of());
+    }
+
+    /** {@code x instanceof V v}, or null when nothing in scope can be tested. */
+    private Flow patternLeaf(Ctx ctx, List<Var> vars) {
+        var candidates = tested(ctx);
+        if (candidates.isEmpty()) return null;
+        Tested tested = pick(candidates, vars);
+        Expr subject = testedExpression(tested, ctx, 1);
+        Type variant = testedVariant(tested.type());
+        String binding = freshName(true);
+        features.add(Feature.PATTERN_CONDITION);
+        if (lambdas > 0) features.add(Feature.PATTERN_IN_LAMBDA);
+        if (whileGuard) features.add(Feature.PATTERN_IN_WHILE_CONDITION);
+        return new Flow(new G1Ast.PatternTest(subject, variant, binding),
+                List.of(new Var(binding, variant, false, false, true, false)), List.of());
+    }
+
+    /**
+     * A read of a pattern variable in scope: a {@code boolean} component, an integer component compared, another
+     * component compared with {@code equals} against its own type, or the variable compared with its own type.
+     */
+    private Expr use(Var var, Ctx ctx) {
+        var components = var.type().components;
+        if (!components.isEmpty() && !choices.oneIn(4)) {
+            Component component = components.get(choices.below(components.size()));
+            features.add(Feature.COMPONENT_ACCESS);
+            Expr read = new G1Ast.Access(var, List.of(component.name()));
+            if (component.type() == BOOL) return read;
+            if (component.type() == BIG) {
+                var operands = profile.has(Gate.TRACE_IN_COMPARISON) ? ctx : ctx.withoutTraces();
+                return new G1Ast.Compare(read, integer(operands, 1), COMPARISONS[choices.below(COMPARISONS.length)]);
+            }
+            return new G1Ast.Equals(read, atom(component.type(), ctx));
+        }
+        return new G1Ast.Equals(new G1Ast.Read(var), atom(var.type(), ctx));
+    }
+
+    /** {@code if (flow) { locals; return e; } [else { …; return e; }]} at method level, each branch reading its variables. */
+    private G1Ast.If flowIf(Scope scope, Type result, boolean otherwise) {
+        Flow flow = flowCondition(ctx(scope), profile.steers(Steer.ISSUE_204) ? 3 : 2);
+        var then = flowBranch(scope, flow.whenTrue(), result);
+        return new G1Ast.If(flow.expr(), then, otherwise ? flowBranch(scope, flow.whenFalse(), result) : null);
+    }
+
+    private List<Stmt> flowBranch(Scope scope, List<Var> vars, Type result) {
+        for (Var var : vars) scope = scope.with(var);
+        String preferred = vars.isEmpty() ? null : vars.get(choices.below(vars.size())).name();
+        var body = new ArrayList<Stmt>();
+        if (choices.oneIn(3)) scope = declaration(scope, body, false, false);
+        body.add(new G1Ast.Return(expression(result, ctx(scope).preferring(preferred), EXPRESSION_DEPTH)));
+        return body;
+    }
+
+    /** {@code if (flow) { [local;] acc = e; } [else { acc2 = e; }]} in a loop body, each branch reading its variables. */
+    private void flowUpdate(Scope scope, List<Stmt> into, List<String> assigned) {
+        Flow flow = flowCondition(ctx(scope), profile.steers(Steer.ISSUE_204) ? 3 : 2);
+        var then = new ArrayList<Stmt>();
+        Scope branch = scope;
+        for (Var var : flow.whenTrue()) branch = branch.with(var);
+        if (choices.oneIn(3)) branch = declaration(branch, then, false, false);
+        assignment(branch, then, assigned, flow.whenTrue().isEmpty() ? null : flow.whenTrue().getFirst().name());
+        List<Stmt> otherwise = null;
+        if (choices.oneIn(2)) {
+            otherwise = new ArrayList<>();
+            Scope other = scope;
+            for (Var var : flow.whenFalse()) other = other.with(var);
+            assignment(other, otherwise, assigned, flow.whenFalse().isEmpty() ? null : flow.whenFalse().getFirst().name());
+        }
+        into.add(new G1Ast.If(flow.expr(), then, otherwise));
+    }
+
+    /** A value {@code (flow ? a : b)} whose arms read the variables the condition introduces when true and when false. */
+    private Expr flowTernary(Type type, Ctx ctx, int depth) {
+        Flow flow = flowCondition(ctx, depth);
+        String whenTrue = flow.whenTrue().isEmpty() ? null : flow.whenTrue().getFirst().name();
+        String whenFalse = flow.whenFalse().isEmpty() ? null : flow.whenFalse().getFirst().name();
+        Expr then = expression(type, with(ctx, flow.whenTrue()).conditionally().preferring(whenTrue), depth - 1);
+        Expr otherwise = expression(type, with(ctx, flow.whenFalse()).conditionally().preferring(whenFalse), depth - 1);
+        return new G1Ast.Cond(flow.expr(), then, otherwise);
+    }
+
+    /** Whether PATTERN_CONDITIONS is on and a production chosen one time in {@code steered} or {@code plain}. */
+    private boolean conditions(int steered, int plain) {
+        return profile.has(Gate.PATTERN_CONDITIONS) && flows == 0
+                && choices.oneIn(profile.steers(Steer.ISSUE_204) ? steered : plain);
     }
 
     /**
@@ -1457,6 +1736,8 @@ public final class G1 {
             Expr test = typeTest(ctx, depth);
             if (test != null) return test;
         }
+        // Under PATTERN_CONDITIONS a tenth of the conditions are pattern conditions; steered to #204, a third.
+        if (conditions(3, 10)) return flowCondition(ctx, depth).expr();
         if (depth == 0 || choices.below(3) == 0) return atom(BOOL, ctx);
         return switch (choices.below(13)) {
             case 0, 1 -> comparison(ctx, depth);
@@ -1533,6 +1814,7 @@ public final class G1 {
     }
 
     private Expr ternary(Type type, Ctx ctx, int depth) {
+        if (conditions(3, 6)) return flowTernary(type, ctx, depth);
         Expr test = test(ctx, depth - 1);
         Expr then = expression(type, ctx.conditionally(), depth - 1);
         return new G1Ast.Cond(test, then, expression(type, ctx.conditionally(), depth - 1));

@@ -178,6 +178,12 @@ final class Typing {
         termTypes.record(read, declared);
     }
 
+    /** {@code copy} stands for {@code original}, a trivial continuation placed on a second path (ADR-069 D2). */
+    void copied(PirTerm original, PirTerm copy) {
+        termTypes.copied(original, copy);
+        if (kept.contains(original)) kept.add(copy);
+    }
+
     /**
      * Keeps with a lowered {@code switch} the type its arms agree on, which the match alone does not say: read through what
      * the lowering wraps them in. Arms that differ but are all Data-shaped are Data, which is their encoding; arms that

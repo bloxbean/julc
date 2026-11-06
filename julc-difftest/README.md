@@ -34,8 +34,10 @@ defect is open are gated by a generation profile, printed in every record; the h
 turn one gate on each and steer generation to its construct. Once a defect is fixed below, its gate is on in the
 default profile (`DEFAULT_BLOCK_SCOPE`, #291, since G1 r8; `SHADOW_IN_LOOP_BRANCH`, #209, and `LOOP_BREAK_SHAPES`,
 #254 and #255, since G1 r9). `PATTERN_LOOPS` (G1 r10, ADR-069 M1) generates bare type tests and pattern `if`s in
-loop bodies with accumulators; it is off in the default profile until ADR-069 M3, and `PATTERN_FLOW_204` turns it on
-and steers to it for `Adr069PatternFlowPropertyTest` and `Adr069PatternFlowFuzzTest`, which require agreement.
+loop bodies with accumulators, and `PATTERN_CONDITIONS` (G1 r11, ADR-069 M2) conditions over `&&`, `||`, `!`,
+`?:` and lambdas whose pattern variables are read where JLS 6.3.1 puts them in scope; both are off in the default
+profile until ADR-069 M3, and `PATTERN_FLOW_204` turns both on and steers to them for `Adr069PatternFlowPropertyTest`
+and `Adr069PatternFlowFuzzTest`, which require agreement.
 
 jqwik generates and shrinks the choice list, so a failure is reported as a small program. The last failing
 case is also written to `build/difftest/last-failure.diffcase`.
