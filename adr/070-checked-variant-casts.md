@@ -2,12 +2,15 @@
 
 **Status:** Accepted (2026-11-06): approved in design review by Codex at `dde2a487` and by the semantics and code
 reviewers at `b6af2c48` (their P2/P3 points addressed in r3 and r4). The implementation follows in the same PR.
-**Date:** 2026-11-06
+**Amendment r5 (2026-11-07): D5 Proposed.** D5 closes Q6 (ADR-062 T7): `any` and `all` stop at the element that
+decides the answer, as on the JVM. D1–D4 stay as accepted.
+**Date:** 2026-11-06 (r5: 2026-11-07)
 **Risk class:** correctness-sensitive, **medium**. Today a downcast to the wrong variant reads another variant's fields
 and carries on, where Java throws: a validator can accept a datum its own Java tests reject. The fix changes the bytes
 and cost of every program that downcasts.
 **Issues:** [#288](https://github.com/bloxbean/julc/issues/288) (found in the ADR-067 review),
-[#309](https://github.com/bloxbean/julc/issues/309) (found again as ADR-069's R1)
+[#309](https://github.com/bloxbean/julc/issues/309) (found again as ADR-069's R1),
+[#312](https://github.com/bloxbean/julc/issues/312) (D5: `any`/`all`, ADR-062 T7)
 **Relates to:** [ADR-062](062-jvm-uplc-semantic-consistency-programme.md) (semantic consistency; T9 covers `(T)(Object)`
 representation casts), [ADR-063](063-differential-jvm-uplc-test-harness.md) (harness),
 [ADR-067](067-switch-guards-record-patterns.md) (guards reject reference casts pending #288),
@@ -64,6 +67,8 @@ fields happen to decode (#288's impact).
   casts, map views, `PlutusData`'s own variants, `PlutusData.cast`, and casts from a type with no representation
   (`(T)(Object) x`).
 - G3. The operand runs once, in Java's order.
+- G4 (r5). `JulcList.any` and `all` test elements as the JVM does, from the first, and stop at the element that decides
+  the answer, so a predicate that fails or traces past that element no longer splits the chain from the JVM (D5).
 
 **Non-goals**
 
@@ -74,7 +79,9 @@ fields happen to decode (#288's impact).
 - Casts to a type JuLC represents with no tag of its own: a sealed sub-interface of a sealed interface, an open
   interface, or a variant that `TypeTests` rejects (`JULC0126`, `JULC0127`, two sealed parents). They stay views, as
   today; no program that compiles stops compiling (D3, Q5).
-- `JulcList.any`/`all` evaluating the predicate on every element (a known divergence): see Risks.
+- `JulcList.any`/`all` evaluating the predicate on every element (a known divergence): see Risks. *(r5: D5 brings it
+  into scope.)* The other list functions keep their lowering: `map`, `filter` and `foldl` test every element on the JVM
+  too, and `find` already stops at the first match.
 
 ## Pinned normative references
 
@@ -95,6 +102,18 @@ fields happen to decode (#288's impact).
   rule is 15.5's, quoted above.
 - **15.7.1**: the operand is evaluated before the cast is applied (paraphrase).
 
+For D5 (r5) the oracle is JuLC's own JVM list, the harness's JVM side: `JulcArrayList` in `julc-core` at `728cb835`
+(lines 123–136), which the `JulcList` interface documents only as "Return true if any element satisfies the predicate"
+and "… all elements …":
+
+```java
+public boolean any(Predicate<T> pred) { for (T elem : delegate) { if (pred.test(elem)) return true; } return false; }
+public boolean all(Predicate<T> pred) { for (T elem : delegate) { if (!pred.test(elem)) return false; } return true; }
+```
+
+(quoted with the loop bodies joined onto one line). The elements are tested from the first; none after the deciding
+one is tested; an empty list tests none.
+
 ## Threat model and trust assumptions
 
 - The transaction is untrusted: an attacker picks the datum or redeemer, and so the variant a cast sees.
@@ -114,6 +133,14 @@ fields happen to decode (#288's impact).
   error must stay (`Adr069CompatibilityPinsTest.theBuildOrder`), and the stdlib's casts are D2's. Constrains D2.
 - **I4. A failure as the JVM's.** A failed check is a script failure that adds no trace of its own, so the trace log
   equals the JVM's up to the failure. Constrains D1.
+- **I5 (r5). The deciding element is the last one tested.** `xs.any(p)` applies `p` to the elements of `xs` in order
+  and to none after the first for which it is true; `xs.all(p)` to none after the first for which it is false. On an
+  empty list neither applies `p`. `xs` is evaluated once, before any `p`. So value, failure and trace log equal
+  `JulcArrayList`'s at every level. Constrains D5.
+- **I6 (r5). Nothing else moves.** Only programs that call `any` or `all` (in any form: `JulcList.any`/`all`,
+  `ListsLib.any`/`all`, the library provider's `any`/`all`) change bytes. `find`, `map`, `filter`, `foldl` and `zip`
+  lower as before. Frozen rows that move are exactly those of programs with an `any` or `all`, each reviewed.
+  Constrains D5.
 
 ## Decisions
 
@@ -199,6 +226,66 @@ and the AI starter pack (a downcast fails on the wrong variant; `instanceof`/`sw
 - **Check `(V)(Object) x` too.** `Object` and `PlutusData` views are documented as unchecked and used as representation
   casts (T9); checking them is ADR-062 S2's work, not this one's.
 
+### D5 (r5). `any` and `all` stop at the deciding element
+
+**Problem.** `PirHofBuilders.any` and `all` are a left fold over the whole list
+(`foldl (\acc x -> if p x then True else acc) False xs`), so `p` runs on every element. On the JVM `any` returns at the
+first true and `all` at the first false (pinned references). A predicate that fails or traces on an element past the
+deciding one makes the chain and the JVM disagree: `xs.any(x -> TEN.divide(x).signum() > 0)` over `[1, 0]` is true on
+the JVM and fails on-chain. This is ADR-062 T7, pinned by `Adr068LambdasHarnessTest`
+(`anyDoesNotStopAtTheFirstMatch`, `allDoesNotStopAtTheFirstRefusal`). D1 widens it: a checked cast in a predicate
+fails on an element the JVM never reaches (Risks; `Adr070CheckedCastsHarnessTest.anyRunsTheCastOnEveryElement`). The
+docs tell users to guard every predicate with `&&` because of it.
+
+**Decision.** `any` and `all` are built as `find` already is, a recursive loop that returns at the deciding element
+(illustrative):
+
+```
+any xs p = letrec #go = \#lst -> if NullList #lst then False
+                                 else if p (HeadList #lst) then True else #go (TailList #lst)
+           in #go xs
+all xs p = letrec #go = \#lst -> if NullList #lst then True
+                                 else if p (HeadList #lst) then #go (TailList #lst) else False
+           in #go xs
+```
+
+- One builder serves both (`PirHofBuilders.any`/`all`), so every entry point changes together: `JulcList.any`/`all`
+  (`TypeMethodRegistry`), `ListsLib.any`/`all` (`StdlibRegistry`, `ListsLibHof`) and the library provider's generic
+  `any`/`all` (`StdlibLibraryProvider`).
+- `#go` and `#lst` are named with `PirHelpers.hygienicName` against the free variables of both the list and the
+  predicate, which run under them (ADR-060), as in `find`.
+- The predicate is applied to `HeadList #lst` directly, as the fold applied it to its element parameter; at every
+  entry point it is a lambda (or the provider's adapter lambda), so its own parameter binds the element once.
+- Every optimization level, `BASELINE` and `NONE` included, by default, with no opt-in release. This follows #146's
+  policy amendment (ADR-032): a semantic fix that restores Java's evaluation is not an optimization, and a level that
+  kept the old fold would keep a known divergence on purpose.
+
+The cost per tested element falls (one application of `#go` instead of the fold's step and accumulator), and no element
+past the deciding one is visited. Measured on a prototype of the loop (`xs.any(x -> x.signum() > 0)`, PV11_SAFE, CPU
+and memory; M2 re-measures on the implementation):
+
+| List | Fold (before) | Loop (D5) |
+|---|---|---|
+| empty | 708,466 / 3,964 | 660,466 / 3,664 |
+| 10 elements, the first decides | 13,057,496 / 57,274 | 1,371,273 / 6,631 |
+| 10 elements, the last decides | 13,057,496 / 57,274 | 12,053,400 / 51,910 |
+| 10 elements, none decides | 13,057,496 / 57,274 | 12,529,496 / 53,974 |
+
+The script is 5 bytes smaller at `BASELINE`, `PV11_SAFE` and `PV11_COSTED` (107 → 102, 91 → 86) and 10 at `NONE`
+(112 → 102). `all` is the mirror within 0.6%.
+
+*Alternatives rejected:*
+
+- **Behind an optimization level first** (ADR-062 Q2's lean). `NONE` and `BASELINE` would keep the divergence; the
+  harness compares every level with the JVM; #146's amendment settled that a semantic fix applies at every level.
+- **A lazy accumulator in the fold** (`\acc x -> if acc then True else p x`). It stops calling `p` after the answer, so
+  it agrees, but it still walks the whole list and pays a step per element.
+- **`any` as `find(...)` is present.** It builds and inspects an optional value per call, for no gain over the loop.
+- **Write `any`/`all` as Java loops in `ListsLib`.** The builders inline the HOF lambda; a library loop would take the
+  predicate as a value and cost more.
+- **Document the divergence as allowed.** Users cannot guard every predicate, and after D1 a cast in a predicate fails.
+- **Make `map`, `filter` or `foldl` stop early too.** They visit every element on the JVM as well; they already agree.
+
 ## Affected stages and modules
 
 | Module | Stage | Change |
@@ -206,6 +293,10 @@ and the AI starter pack (a downcast fails on the wrong variant; `instanceof`/`sw
 | `julc-compiler` | javac lowering (`Casts`, `TypeTests`, `Lowering` wiring) | D1's check; `TypeTests.variant` and `tagTest` shared with `instanceof`; `PirHelpers.readOnce` |
 | `julc-difftest` | harness, generator | rows per decision, R1's pin flips, a G1 gate for downcasts |
 | `docs` | release notes, troubleshooting, starter pack | D4 |
+| `julc-compiler` | PIR builders (`PirHofBuilders.any`/`all`), used by `TypeMethodRegistry` | D5's loop |
+| `julc-stdlib` | `ListsLibHof`, `StdlibRegistry`, `StdlibLibraryProvider` | none in code; they call the same builders (D5) |
+| `julc-difftest` | lambda harness and model (`LambdaPrograms`) | D5: T7's pins flip; effectful `any`/`all` bodies |
+| `docs` | value-oriented code, stdlib guide, starter pack, release notes, compiler developer guide | D5: the `&&` advice goes |
 
 ## Compatibility
 
@@ -218,6 +309,11 @@ and the AI starter pack (a downcast fails on the wrong variant; `instanceof`/`sw
   validators. The release notes name the change; the repinning is the downstream repositories' own step.
 - **Behaviour:** a downcast to the wrong variant now fails, where it returned another variant's fields. That is the
   JVM's behaviour.
+- **D5 (r5):** every program that calls `any` or `all` changes bytes and hash at every level, the stdlib's own callers
+  included; the cost falls (M2 measures size and cost). A program whose predicate failed past the deciding element
+  now succeeds, and one whose predicate traced there logs fewer traces, both as on the JVM. No program that succeeded
+  before fails now: the loop tests a prefix of the elements the fold tested, in the same order. Downstream hashes of
+  validators that use `any`/`all` move; the release notes name the change.
 
 ## Implementation milestones
 
@@ -228,6 +324,11 @@ and the AI starter pack (a downcast fails on the wrong variant; `instanceof`/`sw
   repository's compiler at every level. Exit: green; frozen reference unchanged.
 - **M1. D1, D4.** The check, tests, docs; the generator gate. Exit: R1 and #288 agree with the JVM; frozen rows moved
   only for programs with a D1 cast, each reviewed; cost recorded; Jazzer run.
+- **M2 (r5). D5.** Entry gate: D5 approved in design review. T7's pins (`anyDoesNotStopAtTheFirstMatch`,
+  `allDoesNotStopAtTheFirstRefusal`, `anyRunsTheCastOnEveryElement`) are M2's baseline: they pin today's divergence and
+  flip in this milestone. A cost probe records size and cost before and after. Then the loop, harness rows (I5), the
+  lambda model widened, docs. Exit: the pins agree with the JVM; frozen rows moved only for programs with `any` or
+  `all`, each reviewed (I6); cost recorded; lambda property test and a Jazzer run green.
 
 Each milestone: targeted tests, a full build on the exact head, review by Claude reviewer agents; Codex at the end.
 
@@ -258,6 +359,19 @@ must agree with the JVM on every variant.
    agreement, and a Jazzer run.
 6. **Cost:** the 14 example validators' FLAT size at every level before and after; the check's CPU and memory from
    the harness's measurements of the D1 rows before and after.
+7. **D5 (r5), I5**, all four levels against the JVM, values and traces:
+   - T7's pins flip to agreement, and `anyRunsTheCastOnEveryElement` with them;
+   - `any` and `all` with the deciding element first, in the middle, last and absent, and an empty list;
+   - a predicate that fails past the deciding element (agrees: a value) and before it (agrees: a failure); a traced
+     predicate (the JVM's trace prefix); a traced list expression (evaluated once, before the predicate);
+   - nested (`any` in `all`'s predicate and the reverse), in a loop body, in another lambda, and capturing locals and
+     pattern variables;
+   - the lambda model `LambdaPrograms` lets `any`/`all` bodies fail and trace and stops at the answer, so
+     `Adr068LambdasPropertyTest` and its Jazzer target cover effectful bodies.
+8. **D5, I6:** the frozen-reference recording lists every moved row; each is a program with `any` or `all`. Hygiene
+   and binder-name tests (`BinderNameIndependenceTest`, `BuilderBinderHygieneTest`, `GeneratedBinderNameLintTest`) stay
+   green. A cost probe: size, CPU and memory at every level for `any`/`all` over lists of 0, 1 and 10 elements with the
+   deciding element first, last and absent, before and after.
 
 ## Production and audit gates
 
@@ -274,6 +388,10 @@ All of the above green on the merge head; a Codex review with no open P0 or P1.
   JVM never reaches: `xs.any(x -> ((A) x)...)` over `[A(5), B(1, 2)]` is true on the JVM and, after D1, a failure on-chain
   (before D1 it read `B` as `A` and returned true). The new divergence fails closed, where the old one read the wrong
   fields; the root cause is the known no-short-circuit divergence, tracked separately (Q6). A harness row pins it.
+  *(r5: D5 removes it; the row flips to agreement in M2.)*
+- **D5 changes every `any`/`all` program's hash (r5).** Downstream pins of such validators move with no source change.
+  The cost only falls, and the release notes name it. A program that relied on a later element's failure to reject a
+  transaction was relying on behaviour its own JVM tests contradict.
 - **Tags that came through views.** A value obtained through an unchecked view (`PlutusData.cast(d, B.class)`,
   `(B)(Object) x`) carries whatever tag its Data has. After an upcast, a later checked `(B) s` tests that tag. Data built
   with a standalone record's tag 0 for a variant whose sum tag is not 0 used to pass and now fails; typed boundaries
@@ -292,7 +410,8 @@ All of the above green on the merge head; a Codex review with no open P0 or P1.
 - **Q5. Casts JuLC cannot check** (a sealed sub-interface, an open interface, a variant `TypeTests` rejects, a library
   sum the registry lacks; a nested sealed hierarchy is rejected earlier, `JULC0109`). Lean: stay views, as listed; each would need a tag range or a registry entry first.
 - **Q6. `any`/`all` short-circuit.** Lean: a separate issue to make them stop at the first true (and false), which also
-  fixes the trace divergence; not a blocker for D1, whose new failure is fail-closed.
+  fixes the trace divergence; not a blocker for D1, whose new failure is fail-closed. **Resolved in r5 by D5**, in this
+  PR at the maintainer's request (#312).
 
 ## Implementation results
 
@@ -412,3 +531,6 @@ are applied:
   predicate is the cast's alone; `instanceof` keeps `isOf`, and a captured-wildcard `instanceof` stays `JULC0126`,
   pinned (F6).
 - Accepted (2026-11-06).
+- r5 (2026-11-07, at the maintainer's request to fix `any`/`all` in this PR): D5 added, resolving Q6 and ADR-062 T7
+  (#312): `any` and `all` stop at the deciding element, at every level. G4, I5, I6, M2, verification items 7 and 8,
+  compatibility, affected modules and risks updated. D1–D4 unchanged.
