@@ -28,7 +28,7 @@ If you find a bug or have a feature request, please [open a GitHub issue](https:
 2. Build the project (skip GPG signing for dev builds):
 
    ```bash
-   ./gradlew build -PskipSigning=true
+   ./gradlew build --parallel -PskipSigning=true
    ```
 
 3. Run all tests:
