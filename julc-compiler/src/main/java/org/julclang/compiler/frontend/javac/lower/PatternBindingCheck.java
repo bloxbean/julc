@@ -103,6 +103,9 @@ public final class PatternBindingCheck {
             if (!let.value().equals(operand)) {
                 throw new IllegalStateException("I1: pattern variable '" + let.name() + "' binds another term than its tested operand");
             }
+            if (!operand.equals(introduction.operand())) {
+                throw new IllegalStateException("I1: pattern variable '" + let.name() + "' is tested and bound on another operand than its own");
+            }
             open.merge(introduction.variable(), 1, Integer::sum);
             try {
                 walk(let.body(), null);

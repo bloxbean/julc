@@ -121,6 +121,16 @@ class Adr069PatternScopesTest {
         });
     }
 
+    /** Test and binding agree with each other, on another operand than the one the introduction was built for (review F17). */
+    @Test
+    void anIntroductionOfAnotherOperandOnBothSidesFails() {
+        withVariable(a -> {
+            var provenance = new Provenance();
+            var term = new PirTerm.IfThenElse(tagTest(OTHER, 0), introduction(provenance, a, OTHER, BODY), ELSE);
+            assertI1(term, provenance);
+        });
+    }
+
     @Test
     void anIntroductionInTheElseBranchFails() {
         withVariable(a -> {

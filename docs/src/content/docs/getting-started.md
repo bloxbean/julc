@@ -844,7 +844,9 @@ That includes `&&`, `||`, `!`, `?:`, lambdas, loop bodies, and the rest of a blo
 `x instanceof Bid` works anywhere too. Two forms stay unsupported: a variable carried out of
 a `while` loop's condition into its body or past the loop (`JULC0139`, with a rewrite), and
 one declared in a `switch` guard (`JULC0074`). A pattern variable may
-not be reassigned (`JULC0140`) and may not reuse the name of a field or `@Param` (`JULC0059`).
+not be reassigned (`JULC0140`; the one exception is the form that compiled before #204, a
+loop updating the variable of an `if` whose whole condition is its test) and may not reuse the
+name of a field or `@Param` (`JULC0059`).
 
 ### 8.4 For-Each Loops
 

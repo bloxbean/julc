@@ -211,7 +211,9 @@ final class LoopBody {
 
     private PirTerm foldIf(IfTree tree, List<? extends StatementTree> list, int index, Frame frame, Shape shape) {
         var condition = lowering.conditions().choice(Ifs.condition(tree), frame);
-        var result = branches(condition, tree, shape);
+        // With statements after it, the if's value is the accumulators mid-body, never the body's end: a normal fold, even
+        // in a branch whose end is unreachable (review F16). Last in the body, it is the end.
+        var result = branches(condition, tree, index + 1 < list.size() ? shape.fold() : shape);
         if (index + 1 >= list.size()) return result;
         return shape.carried().rebound(result, sequence(list, index + 1, frame, shape));
     }

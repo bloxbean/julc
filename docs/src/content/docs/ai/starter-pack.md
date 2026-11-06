@@ -353,6 +353,10 @@ A value is built from its components alone, so a constructor's body does not run
 
 A record's Data is its components, so a record's body holds only nested types (`JULC0080`), and a declared `toPlutusData` or explicit accessor is rejected (`JULC0101`). Each name binds as Java binds it: javac reads the source.
 
+### 6.20 javac 21 to 25.0.2: a `VerifyError` in the JVM tests (not a JuLC bug)
+
+Run tests on JDK 25.0.3 or later. On an older JDK, avoid declaring two pattern variables in one condition (`p instanceof C c || p instanceof B b`) in a method that also has a pattern `switch` whose arm copies its case variable and loops over an `instanceof` test: javac emits a class the JVM refuses to load. Nest the second test, or move the `switch` into a helper.
+
 ## 7. Common errors — root cause and fix
 
 | Error message | Likely cause | Fix |

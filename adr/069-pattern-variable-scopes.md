@@ -596,9 +596,12 @@ derived from JuLC's own output. A newly supported shape must **agree**; a reject
 - **R4. A javac 25.0.2 `VerifyError`.** `if (p instanceof C p1 || p instanceof B p2) { ... }` (or `&&`, or a `?:` with
   a binding in each arm) followed by `switch (p) { case A w -> { A f1 = w; for (...) { if (p instanceof C v1) { f1 =
   ...; } } yield ...; } ... }` compiles, and the JVM refuses the class ("Inconsistent stackmap frames"). The defect is
-  javac's, not JuLC's, and a program like it fails its own Java tests. Steering G1 away from it would remove M2's main
-  shape, so the #204 property and fuzz tests skip such a program, with no oracle to judge it, and bound how many they
-  skip. The reproducer is kept with the M2 evidence, and is worth reporting to OpenJDK.
+  javac's, not JuLC's, and a program like it fails its own Java tests. Checked on 2026-11-06: javac from JDK 21.0.3,
+  22, 23.0.1, 24.0.2, 25.0.1 and 25.0.2 emits the bad class; 25.0.3, 25.0.4 and GraalVM 25.3 (25.0.4.1) compile it
+  correctly, so it is fixed upstream from 25.0.3. CI runs the latest Temurin 25 and is not affected; the defect was hit
+  on a local 25.0.2. Steering G1 away from it would remove M2's main shape, so the #204 property and fuzz tests skip
+  such a program, with no oracle to judge it, and bound how many they skip. Troubleshooting and the AI starter pack
+  record it as a known issue, with JDK 25.0.3 or later as the remedy and the shapes to avoid on older JDKs.
 - **R2.** `JULC0059` (a pattern variable named like a field) exists for parity with the deleted JavaParser frontend,
   whose scopes were keyed by name. With `Scope` keyed by element it may be liftable (Q2).
 
@@ -802,6 +805,25 @@ derived from JuLC's own output. A newly supported shape must **agree**; a reject
   - Code: CHANGES REQUESTED for **M3-C1 (P1, the same defect)**. Fixed. Also fixed: C2 (typed by the falling outcome),
     C3 (the #240 release-notes heading my edit had replaced is restored), C4–C6 (docs), C7 (the fail-closed refusal),
     C8 (`bindsAll`) and C9 (rows).
+
+### Final review (Codex, of `515ab536`)
+
+CHANGES REQUESTED, with three findings, all fixed:
+
+- **F16 (P1).** M3-S1 had a second path. In a loop with no `break`, `foldIf` passed the unreachable end to an inner
+  `if` that has statements after it. That `if`'s value is mid-body, so a trace after it was lost before an `error()`:
+  a failure with different traces than the JVM's.
+  - Fix: `foldIf` folds normally when statements follow, and keeps the unreachable end only when it is the body's last
+    statement. For every other shape `fold()` is the same shape, so no compiled program moves.
+  - Test: `aFoldBeforeAnUnreachableEndRunsWhatFollowsIt`, with one and two accumulators, every variant and both `n`.
+    With the old `foldIf` restored, it fails.
+- **F17 (P2).** I1's check now also requires the tested operand to equal the one recorded with the introduction, and a
+  negative test changes both together.
+- **F18 (P2).** The docs and the `JULC0077` summary say the a01 form keeps its loop-updated variable (`JULC0140`'s one
+  exception), and that `JULC0077` also covers a test of a type that is no variant.
+
+The same commit documents R4 as a known issue (troubleshooting, AI starter pack). Its affected versions were measured on
+2026-11-06: javac 21 to 25.0.2 is affected, and 25.0.3 or later is fixed.
 
 ## Revision history
 

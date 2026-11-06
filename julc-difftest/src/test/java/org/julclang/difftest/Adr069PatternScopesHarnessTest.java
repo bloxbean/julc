@@ -343,6 +343,26 @@ class Adr069PatternScopesHarnessTest {
         for (long n : new long[]{0, 1}) assertAgree(fold, a(3), integer(n));
     }
 
+    /**
+     * Review F16: in a loop with no break, a branch that cannot complete (it ends in a loop that never ends) holds an if
+     * followed by more statements. That if's value is mid-body, so the trace after it runs and then error() fails, as on
+     * the JVM. Inputs of every variant: the non-A ones fail before reaching the loop.
+     */
+    @Test
+    void aFoldBeforeAnUnreachableEndRunsWhatFollowsIt() {
+        String one = "public static long m(S s, long n) { long t = 0; for (S x : JulcList.of(s)) { if (!(x instanceof S.A a)) { "
+                + "if (n > 0) { t = t + 1; } said(\"after\", BigInteger.valueOf(t)); Builtins.error(); while (true) { } } t = t + a.v().longValue(); } return t; }";
+        String two = "public static long m(S s, long n) { long t = 0; long u = 0; for (S x : JulcList.of(s)) { if (!(x instanceof S.A a)) { "
+                + "if (n > 0) { t = t + 1; u = u + 2; } said(\"after\", BigInteger.valueOf(t + u)); Builtins.error(); while (true) { } } "
+                + "t = t + a.v().longValue(); u = u + 1; } return t * 10 + u; }";
+        for (var s : everyS()) {
+            for (long n : new long[]{0, 1}) {
+                assertAgree(one, s, integer(n));
+                assertAgree(two, s, integer(n));
+            }
+        }
+    }
+
     /** D8 on a variable D4 introduced: an update under a nested if in a break loop would be lost where the if rejoins. */
     @Test
     void anUpdateOfAnIntroducedVariableIsRejected() {

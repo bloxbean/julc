@@ -27,8 +27,11 @@ A bare type test, `x instanceof Bid`, now works wherever an expression may stand
   operand is evaluated once, in Java's order.
 - **Still rejected, now with a rewrite:** a variable carried out of a `while` condition
   into the loop body or past the loop is `JULC0139`, which replaces `Undefined variable`
-  for pattern variables. Reassigning a pattern variable is `JULC0140`. Switch-guard bindings
-  stay `JULC0074`. `JULC0077` now covers only record patterns in `instanceof`.
+  for pattern variables. Reassigning a pattern variable is `JULC0140`, except in the form
+  that compiled before: the variable of an `if` whose whole condition is its test, outside a
+  loop with accumulators, updated by a loop in that `if`. Switch-guard bindings stay
+  `JULC0074`. `JULC0077` no longer covers a test of a variant: it is left for record patterns
+  and for a test of a type that is no variant, such as the sealed interface itself.
 
 ## Upcoming preview: build native BLS point and scalar lists one element at a time (#240)
 

@@ -930,7 +930,7 @@
       "category": "CONTROL_FLOW",
       "severity": "error",
       "template": "Unsupported instanceof pattern: {0}",
-      "summary": "An instanceof with a record pattern, such as `x instanceof R(var a, var b)`, is not supported. A type test (`x instanceof R`) and a type pattern (`x instanceof R r`) are.",
+      "summary": "An instanceof with a record pattern, such as `x instanceof R(var a, var b)`, or one whose type is no record variant of a sealed interface (the sealed interface itself, for one), is not supported. A type test (`x instanceof R`) and a type pattern (`x instanceof R r`) of a variant are.",
       "fix": "Use a type pattern (x instanceof R r) and read the components through r, or a switch."
     },
     {

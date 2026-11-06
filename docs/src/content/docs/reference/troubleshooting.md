@@ -394,9 +394,10 @@ var result = switch (action) {
 
 ### 1.13 `Unsupported instanceof pattern: <expression>`
 
-**Cause:** `instanceof` was used with a type that is not a variant of a sealed
-interface, or with a record pattern (`x instanceof R(var a, var b)`). A type test
-(`x instanceof Bid`) and a type pattern (`x instanceof Bid b`) of a variant are supported.
+**Cause:** `instanceof` was used with a type that is not a record variant of a sealed
+interface (including the sealed interface itself, `x instanceof Action`), or with a record
+pattern (`x instanceof R(var a, var b)`). A type test (`x instanceof Bid`) and a type pattern
+(`x instanceof Bid b`) of a variant are supported.
 
 **Fix:** Use `instanceof` only for sealed interface variant matching.
 
@@ -901,7 +902,9 @@ it again.
 ### 1.29 `JULC0140` Reassigning pattern variable `<name>` is not supported
 
 **Cause:** Java lets a pattern variable that is not `final` be reassigned; JuLC does not. In
-a loop the update could be lost on the path that rejoins the rest of the body.
+a loop the update could be lost on the path that rejoins the rest of the body. The one form
+that compiled before #204 still does: a loop inside an `if` whose whole condition is the test,
+outside a loop with accumulators, updating that `if`'s variable.
 
 **Fix:** declare a new local with the value you need.
 
@@ -2391,6 +2394,22 @@ static boolean mint(PlutusData redeemer, ScriptContext ctx) { ... }
 @Entrypoint(purpose = Purpose.SPEND)
 static boolean spend(Optional<PlutusData> datum, PlutusData redeemer, ScriptContext ctx) { ... }
 ```
+
+### Q: Why do my Java tests fail with `VerifyError: Inconsistent stackmap frames`?
+
+This is a known javac bug, not a JuLC one: javac in JDK 21 to 25.0.2 can emit a class the JVM
+refuses to load. JDK 25.0.3 and later compile it correctly. It is triggered when a method has:
+
+- an `if` whose condition declares two pattern variables, through `||`, `&&` or `?:`, for
+  example `if (p instanceof C c || p instanceof B b)`, and
+- later, a pattern `switch` whose arm copies its case variable into a local and loops over an
+  `if (p instanceof ...)`.
+
+JuLC compiles such a method correctly for the chain, but your Java unit tests of it fail to
+load. Use JDK 25.0.3 or later to run your tests, or avoid the shape:
+
+- declare one pattern variable per condition, nesting a second `if` instead of `||`/`&&`, or
+- move the `switch` into a helper method of its own.
 
 ## Retired codes
 
