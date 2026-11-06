@@ -33,7 +33,7 @@ final class Adr060Corpus {
      * snapshot's row check until it is either captured or listed here.
      */
     static final Set<String> O11_ADDED_AFTER_CAPTURE = Set.of("CONS_RECURSION", "VALIDATE_ONCE", "CONS_ORDER",
-            "G2_CONS", "CONS_EMPTY_AND_MIXED", "CONS_LOOPS", "CONS_SWITCH");
+            "G2_CONS", "CONS_EMPTY_AND_MIXED", "CONS_LOOPS", "CONS_SWITCH", "CAST_VIEWS");
 
     static final List<OptimizationLevel> LEVELS = List.of(OptimizationLevel.NONE, OptimizationLevel.BASELINE,
             OptimizationLevel.PV11_SAFE, OptimizationLevel.PV11_COSTED);

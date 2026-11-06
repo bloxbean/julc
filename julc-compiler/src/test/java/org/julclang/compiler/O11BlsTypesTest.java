@@ -81,7 +81,8 @@ class O11BlsTypesTest {
             "G2_CONS", "225 029e90c66f35d80475cff250026fb8c672b77617ddf725f4d7719192",
             "CONS_EMPTY_AND_MIXED", "410 a0ce17903b087d903a320777989798b5f5af27cd6cc3c6fb32a763ce",
             "CONS_LOOPS", "559 46f2ad09411eb12c4b558bbf3acd3ee19ea8b1616199851a54ab4968",
-            "CONS_SWITCH", "327 31b391b946bdd0b081e68310afbf25d836355fc301bfb8b6edfe2ad6");
+            "CONS_SWITCH", "327 31b391b946bdd0b081e68310afbf25d836355fc301bfb8b6edfe2ad6",
+            "CAST_VIEWS", "168 b55df08bb69f59b0edd4ba5cc66ff2adec38bdc811f26099aa0f47fd");
 
     /** ADR-043 (O9) promotes the repeatedly indexed boundary list at PV11_COSTED, so the chain's own get fails as IndexArray there. */
     private static final Map<String, String> COSTED_FAILURE_PREFIX = Map.of(
@@ -318,6 +319,20 @@ class O11BlsTypesTest {
                         "JULC0041", "Cast to JulcG1 received G2, but requires G1"),
                 new Bad("a G2 point cast through Object into a G1 literal list", "static JulcG1Points m(byte[] dst) { return Builtins.g1Points((JulcG1)(Object) Builtins.bls12_381_G2_hashToGroup(dst, dst)); }",
                         "JULC0041", "Cast to JulcG1 received G2, but requires G1"),
+                // a variable whose Java type is Object holds what its binder holds (#307 review F1)
+                new Bad("a G2 list held as Object and cast to a G1 list", "static JulcG1Points m() { var x = (Object) Builtins.g2PointsEmpty(); return Builtins.g1PointsCons(Builtins.bls12_381_G1_hashToGroup(new byte[]{1}, new byte[]{}), (JulcG1Points) x); }",
+                        "JULC0041", "Cast to JulcG1Points received NativeList[G2], but requires NativeList[G1]"),
+                new Bad("a G2 list held as Object and PlutusData.cast to a G1 list", "static JulcG1Points m() { var x = (Object) Builtins.g2PointsEmpty(); return Builtins.g1PointsCons(Builtins.bls12_381_G1_hashToGroup(new byte[]{1}, new byte[]{}), PlutusData.cast(x, JulcG1Points.class)); }",
+                        "JULC0041", "PlutusData.cast to JulcG1Points received NativeList[G2], but requires NativeList[G1]"),
+                new Bad("a G1 point held as Object and cast to PlutusData", "static PlutusData m(byte[] dst) { var x = (Object) Builtins.bls12_381_G1_hashToGroup(dst, dst); return (PlutusData) x; }",
+                        "JULC0041", "Cast to PlutusData received G1, but requires Data"),
+                // a primitive cast is a view too (#307 review F2)
+                new Bad("a G1 list cast through Object to long, as a scalar", "static JulcScalars m() { return Builtins.scalarsCons(BigInteger.valueOf((long)(Object) Builtins.g1PointsEmpty()), Builtins.scalarsEmpty()); }",
+                        "JULC0041", "Cast to long received NativeList[G1], but requires Integer"),
+                new Bad("a G1 list cast through Object to long", "static long m() { return (long)(Object) Builtins.g1PointsEmpty(); }",
+                        "JULC0041", "Cast to long received NativeList[G1], but requires Integer"),
+                new Bad("a G1 point held as Object and cast to long", "static long m(byte[] dst) { var x = (Object) Builtins.bls12_381_G1_hashToGroup(dst, dst); return (long) x; }",
+                        "JULC0041", "Cast to long received G1, but requires Integer"),
                 // a switch expression has javac's type, so one that yields one group's lists compiles (fixture CONS_SWITCH);
                 // one that mixes groups has no common native type
                 new Bad("a switch expression mixing G1 and G2 lists", "sealed interface S permits A, B {}\n record A(BigInteger x) implements S {}\n record B(BigInteger y) implements S {}\n static JulcG1Points m(S s, byte[] dst) { JulcG1Points ps = switch (s) { case A a -> Builtins.g1PointsEmpty(); case B b -> Builtins.g2PointsEmpty(); }; return ps; }",

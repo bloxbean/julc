@@ -474,7 +474,10 @@ evidence neither way (see the evidence).
   wrong element or list type (a G2 point on a G1 list, bytes, Data or a `JulcList` where a
   native list is required) stops at javac's own error, `JULC0085`, before `JULC0041`. The
   casts javac admits (through `Object`, and `PlutusData.cast`) are checked by
-  `Casts.requireNativeView`. The two limitations r2 listed are gone: a `switch` expression
+  `Casts.requireNativeView`. It checks each value the cast views, through parentheses, `?:`, `switch` results
+  and other casts, against the cast's type, primitive types included (`(long)(Object) points` is rejected). A
+  variable whose Java type is `Object` is checked by the type its binder holds (`var x = (Object) points;
+  (JulcG1Points) x`). A value whose type cannot be shown is never viewed as a native type (r4). The two limitations r2 listed are gone: a `switch` expression
   has javac's type, so one whose arms yield one group's list compiles (`CONS_SWITCH`, with
   arrows, blocks and `yield`, and under a cast to its own type), and `ListsLib.foldl` has no
   Java declaration, so javac rejects any call of it; a fold is an accumulator loop.
@@ -518,3 +521,4 @@ commands are in the [evidence](evidence/047-bls-types.md#amendment-1-240-increme
 | 2026-10-10 | Amendment 1 (#240) | `scalarsEmpty`/`scalarsCons`, `g1PointsEmpty`/`g1PointsCons`, `g2PointsEmpty`/`g2PointsCons`: incremental native lists for MSM over points the program already holds; typing and isolation unchanged; additive. |
 | 2026-10-11 | Amendment 1 r2 (review of `4cc63c24`) | Casts and `PlutusData.cast` are typed native boundaries (closes a pre-existing ADR-047 gap); evaluation order pinned; `CONS_LOOPS`; PV11-only node evidence and the failed DevKit gate attempt recorded; switch/foldl limitations listed; wording. |
 | 2026-11-06 | Amendment 1 r3 (port to the javac frontend, after ADR-068) | The intrinsics and fixtures carry over unchanged. The cast check moves from `PirGenerator` (deleted with JavaParser) to `Casts.requireNativeView`. Misuse that javac types itself is `JULC0085`. A `switch` expression yielding a native list now compiles (`CONS_SWITCH`, answering the review of `4474dcd1`); `foldl` cannot be called from Java. `CONS_ORDER` is 421 bytes, not 402: the javac frontend's lowering of its two recursive helpers, not this amendment. |
+| 2026-11-06 | Amendment 1 r4 (responds to review of `1dcc65bf`) | F1: a cast of a variable whose Java type is `Object` is checked by the type its binder holds, and a value whose type cannot be shown is never viewed as a native type. F2: a cast to a primitive type is checked too, before the primitive lowering. Six new misuse cases; `CAST_VIEWS` shows that views keeping the native type still compile and agree. |

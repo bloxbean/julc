@@ -504,6 +504,20 @@ The `switch` limitation is gone: `CONS_SWITCH` agrees on Java, Truffle and Scalu
 `CONS_ORDER` (402 → 421, `f32127c8…`): javac's lowering of its recursive helpers applies each
 through a unit wrapper. That is ADR-068's lowering, which this amendment does not change.
 
+**r4 (review of `1dcc65bf`).** Two casts still reached `MkCons` with the wrong list and failed there on Java
+and Scalus at every level:
+- F1: through a local, `var x = (Object) g2PointsEmpty(); (JulcG1Points) x`, and the same with `PlutusData.cast`;
+- F2: through a primitive cast, `(long)(Object) g1PointsEmpty()`.
+
+`requireNativeView` now:
+- reads a variable whose Java type is `Object` by the type its binder holds;
+- rejects a value whose type cannot be shown when the cast's type is native;
+- runs before the primitive lowering.
+
+Six misuse cases pin the shapes: the two forms through a local, a G1 point held as `Object` and cast to
+`PlutusData`, and three casts to `long`. `CAST_VIEWS` keeps the native type through `Object`, both forms and a
+direct cast. It agrees on Java, Truffle and Scalus at every level (168 bytes, `b55df08b…` at `PV11_SAFE`).
+
 ### Producer shape (`incrementalProducersLowerToTheEmptyConstantAndOneMkConsPerElement`)
 
 The three empty forms are the empty constant of their universe as the whole program at

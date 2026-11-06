@@ -449,6 +449,23 @@ final class O11BlsTypesFixtures {
                             && BlsLib.g1Equal(BlsLib.g1MultiScalarMul(ss, cast), oracle);
                 }""");
 
+    /**
+     * #307 review F1: a cast that does not change the native type stays a view, through a variable whose Java type is
+     * {@code Object} too, in both forms. Each view multiplies like the list it views.
+     */
+    static final String CAST_VIEWS = method("""
+                static boolean castViews(JulcList<byte[]> encoded, JulcList<BigInteger> scalars) {
+                    JulcG1Points ps = Builtins.g1PointsFromCompressed(encoded);
+                    var held = (Object) ps;
+                    JulcG1Points back = (JulcG1Points) held;
+                    JulcG1Points viewed = PlutusData.cast(held, JulcG1Points.class);
+                    JulcScalars ss = Builtins.scalarsFromList(scalars);
+                    JulcG1 oracle = BlsLib.g1MultiScalarMul(ss, ps);
+                    return BlsLib.g1Equal(BlsLib.g1MultiScalarMul(ss, back), oracle)
+                            && BlsLib.g1Equal(BlsLib.g1MultiScalarMul(ss, viewed), oracle)
+                            && BlsLib.g1Equal(BlsLib.g1MultiScalarMul(ss, (JulcG1Points) (Object) ps), oracle);
+                }""");
+
     /** 22 (#240): the G2 forms, through a recursive helper and directly; the empty G2 list and the empty scalars give the identity. */
     static final String G2_CONS = method("""
                 static JulcG2Points g2Collect(JulcList<byte[]> xs) {
@@ -612,6 +629,8 @@ final class O11BlsTypesFixtures {
                     Input.ok("one", integers(3), points(G1_GENERATOR), DST))),
             new Fixture("CONS_LOOPS", CONS_LOOPS, "consLoops", List.of(
                     Input.ok("three", THREE_POINTS, integers(2, 3, 5), PlutusData.bytes(G1_DOUBLE)))),
+            new Fixture("CAST_VIEWS", CAST_VIEWS, "castViews", List.of(
+                    Input.ok("three", THREE_POINTS, integers(2, 3, 5)))),
             new Fixture("CONS_SWITCH", CONS_SWITCH, "consSwitch", List.of(
                     Input.ok("forward", THREE_POINTS, integers(2, 3, 5), PlutusData.constr(0, PlutusData.integer(0))),
                     Input.ok("empty", THREE_POINTS, integers(2, 3, 5), PlutusData.constr(1, PlutusData.integer(0))))));

@@ -67,9 +67,9 @@ final class Casts {
     PirTerm cast(TypeCastTree tree, Frame frame) {
         var operand = tree.getExpression();
         var target = facts.type(tree);
+        requireNativeView("Cast to " + tree.getType(), tree, operand, frame);
         if (target.getKind().isPrimitive()) return primitive(tree, target, operand, frame);
         var inner = lowering.expr(operand, frame);
-        requireNativeView("Cast to " + tree.getType(), tree, operand);
         return toMap(tree) && !isMap(operand, inner) ? new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnMapData), inner) : inner;
     }
 
@@ -121,17 +121,19 @@ final class Casts {
         }
         var argument = tree.getArguments().getFirst();
         var inner = lowering.expr(argument, frame);
-        requireNativeView("PlutusData.cast to " + literal.getExpression(), tree, argument);
+        requireNativeView("PlutusData.cast to " + literal.getExpression(), tree, argument, frame);
         return toMap(tree) && !isMap(argument, inner) ? new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnMapData), inner) : inner;
     }
 
     /**
      * ADR-047 Amendment 1: a cast lowers to the value it views, so it cannot turn a value into a native type, a native value
      * into another type, or one group into another. Each value {@code operand} may be, through parentheses, choices and
-     * other casts, is checked against {@code cast}'s type at the native boundary. A cast to a type with no representation,
-     * such as {@code Object}, says nothing: the cast around it, or the boundary its value reaches, checks.
+     * other casts, is checked against {@code cast}'s type at the native boundary, a primitive type included. A cast to a
+     * type with no representation, such as {@code Object}, says nothing: the cast around it, or the boundary its value
+     * reaches, checks. A variable whose Java type says nothing, such as {@code var x = (Object) points}, is what its binder
+     * holds; a value whose type cannot be shown is never viewed as a native type (#307 review F1, F2).
      */
-    private void requireNativeView(String what, ExpressionTree cast, ExpressionTree operand) {
+    private void requireNativeView(String what, ExpressionTree cast, ExpressionTree operand, Frame frame) {
         PirType target;
         try {
             target = typing.of(cast);
@@ -141,13 +143,25 @@ final class Casts {
         var values = new ArrayList<ExpressionTree>();
         viewedValues(operand, values);
         for (var value : values) {
-            PirType actual;
-            try {
-                actual = typing.of(value);
-            } catch (CompilerException e) {
-                continue; // a value with no type of its own here, such as null, is checked where it is used
+            var actual = viewedType(value, frame);
+            if (actual == null) {
+                if (!facts.registry().containsNativeOpaque(target)) continue; // checked where the value is used
+                actual = new PirType.DataType(); // nothing shows it is the native type the cast claims
             }
             typing.requireNativeBoundary(what, actual, target, cast);
+        }
+    }
+
+    /** {@code value}'s type, or the type its variable's binder holds where its Java type has no representation, or null. */
+    private PirType viewedType(ExpressionTree value, Frame frame) {
+        try {
+            return typing.of(value);
+        } catch (CompilerException e) {
+            if (value instanceof IdentifierTree name && facts.elementOrNull(name) instanceof VariableElement variable) {
+                var binder = frame.scope().lookup(variable);
+                if (binder != null) return facts.registry().resolveNamed(binder.type());
+            }
+            return null;
         }
     }
 

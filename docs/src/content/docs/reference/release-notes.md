@@ -31,7 +31,8 @@ list, no `==`, and no `isEmpty`/`head`/`tail`. This is an addition: programs tha
 call the new methods compile to the same bytes and hashes.
 
 A Java cast or `PlutusData.cast` that changes a native type (for example
-`(JulcG1Points)(Object) g2PointsEmpty()` or `PlutusData.cast(d, JulcG1Points.class)`) is now
+`(JulcG1Points)(Object) g2PointsEmpty()`, `PlutusData.cast(d, JulcG1Points.class)`, the same
+through a variable whose type is `Object`, or a cast of a native value to `long`) is now
 `JULC0041`. Such casts compiled before, for the existing producers as well, and always failed
 at runtime; a cast is never a decoder. Most other misuse, such as a G2 point consed onto a G1
 list, is rejected by javac itself (`JULC0085`). A `switch` expression that yields one group's
