@@ -1,6 +1,7 @@
 # ADR-069: Pattern-variable scopes: `instanceof` beyond the plain `if`
 
-**Status:** Proposed
+**Status:** Accepted (2026-11-06): approved in design review by Codex at `fea7e0e9` and by the semantics and code
+reviewers at `cbfc1b36` (their remaining P2/P3 points addressed in r4). The implementation follows in the same PR.
 **Date:** 2026-11-06
 **Risk class:** correctness-sensitive, **medium**. The new lowering runs only for programs that read a pattern
 variable JuLC cannot bind today, all of which are rejected now (I4); every other program keeps its terms. The risk is
@@ -660,3 +661,4 @@ derived from JuLC's own output. A newly supported shape must **agree**; a reject
     nested-`if` form (F15).
   - `while (true)` rows run on the falling outcome only; the generator emits no non-terminating loops (S17, C22).
   - The splice's scoping argument stated, with rows (S16).
+- Accepted (2026-11-06) at `fea7e0e9`.
