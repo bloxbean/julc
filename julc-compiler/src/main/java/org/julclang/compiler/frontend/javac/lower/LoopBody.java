@@ -80,7 +80,8 @@ final class LoopBody {
         }
 
         PirTerm end(PirTerm value) {
-            if (unreachable) return new PirTerm.Error(carried.type());
+            // The value is still evaluated first, strictly: it can be an if whose branches trace and fail (review F19).
+            if (unreachable) return new PirTerm.Let("#_", value, new PirTerm.Error(carried.type()));
             return breaks() ? next.apply(value) : value;
         }
     }

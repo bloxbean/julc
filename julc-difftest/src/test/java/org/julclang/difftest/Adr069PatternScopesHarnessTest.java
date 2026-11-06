@@ -363,6 +363,21 @@ class Adr069PatternScopesHarnessTest {
         }
     }
 
+    /**
+     * Review F19: in a loop with a break, an unreachable branch ends in an if with no break and nothing after it; both of its
+     * branches trace, fail and never end. The if still runs, so its trace comes before the failure, as on the JVM.
+     */
+    @Test
+    void aFoldAtAnUnreachableEndStillRuns() {
+        String members = "public static long m(S s, long n) { long t = 0; for (S x : JulcList.of(s)) { if (!(x instanceof S.A a)) { "
+                + "if (n > 0) { said(\"then\", BigInteger.ZERO); Builtins.error(); while (true) { } } "
+                + "else { said(\"else\", BigInteger.ZERO); Builtins.error(); while (true) { } } } "
+                + "t = t + a.v().longValue(); break; } return t; }";
+        for (var s : everyS()) {
+            for (long n : new long[]{0, 1}) assertAgree(members, s, integer(n));
+        }
+    }
+
     /** D8 on a variable D4 introduced: an update under a nested if in a break loop would be lost where the if rejoins. */
     @Test
     void anUpdateOfAnIntroducedVariableIsRejected() {

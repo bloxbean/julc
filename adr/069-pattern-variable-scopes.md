@@ -825,6 +825,18 @@ CHANGES REQUESTED, with three findings, all fixed:
 The same commit documents R4 as a known issue (troubleshooting, AI starter pack). Its affected versions were measured on
 2026-11-06: javac 21 to 25.0.2 is affected, and 25.0.3 or later is fixed.
 
+Round 2 (of `4860b0f5`): F16–F18 RESOLVED. Codex's audit of every `LoopBody` and `Statements` path found one more case
+of the class:
+
+- **F19 (P1).** In `breakingIf`, an unreachable branch that ends in an inner `if` (no `break`, no statements after it)
+  returned `Error` without evaluating that `if`, so the `if`'s traces were lost.
+  - Fix: `Shape.end` binds the value strictly before the `Error` (`let #_ = value in Error`).
+  - Test: `aFoldAtAnUnreachableEndStillRuns` (Codex's program, every variant, both `n`). With the old `end` restored, it
+    fails.
+- The audit found every other path sound: `foldIf` (last and non-last), `breakingIf`'s in-place and joined paths,
+  nested loops, block splicing, locals, expression statements, and `ifForEffect`, `ifWithExit` and `ifWithLoop` with an
+  `Error` continuation.
+
 ## Revision history
 
 - r1 (2026-11-06): initial proposal.
