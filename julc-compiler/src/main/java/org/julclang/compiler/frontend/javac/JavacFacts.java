@@ -442,6 +442,27 @@ public final class JavacFacts {
         return false;
     }
 
+    /**
+     * Whether {@code element} is an on-chain library (ADR-071 D1): it carries {@code @OnchainLibrary} directly, or an
+     * annotation whose annotation interface carries it (one level of meta-annotation).
+     */
+    public boolean isOnchainLibrary(Element element) {
+        return onchainLibraryMarker(element) != null;
+    }
+
+    /**
+     * The annotation that makes {@code element} an on-chain library: {@code @OnchainLibrary} itself, or the
+     * meta-annotated annotation; {@code null} if it is not one.
+     */
+    public String onchainLibraryMarker(Element element) {
+        for (AnnotationMirror mirror : element.getAnnotationMirrors()) {
+            var annotationType = (TypeElement) mirror.getAnnotationType().asElement();
+            if (identity(mirror.getAnnotationType()).equals(JavacNames.ONCHAIN_LIBRARY)) return JavacNames.ONCHAIN_LIBRARY;
+            if (hasAnnotation(annotationType, JavacNames.ONCHAIN_LIBRARY)) return identity(annotationType);
+        }
+        return null;
+    }
+
     /** The identity of a declared type: {@link #identity(TypeElement)} of its class. */
     public String identity(DeclaredType type) {
         return identity((TypeElement) type.asElement());

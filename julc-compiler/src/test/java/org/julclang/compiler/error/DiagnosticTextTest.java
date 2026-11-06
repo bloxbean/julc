@@ -290,6 +290,22 @@ class DiagnosticTextTest {
     }
 
     @Test
+    void aClassIsALibraryOrAValidatorEvenWhenMarkedThroughAMetaAnnotation() {
+        // ADR-071 D1: @Marked implies @OnchainLibrary, so combining it with a validator annotation is JULC0134 too.
+        String marker = """
+                package lib;
+                import org.julclang.stdlib.annotation.OnchainLibrary;
+                import java.lang.annotation.*;
+                @OnchainLibrary @Retention(RetentionPolicy.CLASS) @Target(ElementType.TYPE)
+                public @interface Marked {}
+                """;
+        var error = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions())
+                .compile(VALIDATOR_IMPORTS + "import lib.Marked;\n@Marked @SpendingValidator\nclass V { @Entrypoint static boolean m" + ENTRY + " }",
+                        java.util.List.of(marker)));
+        assertEquals("JULC0134", error.diagnostics().getFirst().code(), error.diagnostics().toString());
+    }
+
+    @Test
     void aClassHasOneValidatorAnnotation() {
         var diagnostic = validatorError("@SpendingValidator @MintingValidator\nclass V { @Entrypoint static boolean m" + ENTRY + " }");
         reports(diagnostic, "JULC0135", "@SpendingValidator");
