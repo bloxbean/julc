@@ -3,6 +3,31 @@ title: "Release Notes"
 description: "JuLC release notes and migration guidance"
 ---
 
+
+## Upcoming preview: a cast to a sealed-interface variant is checked (#288, #309)
+
+A downcast from a sealed interface to one of its record variants used to lower to its operand,
+with no check. Where Java throws `ClassCastException`, the script read the other variant's
+fields through the target's layout and carried on: `A a = (A) s;` on a `B(10, 4)` returned 10
+([#288](https://github.com/bloxbean/julc/issues/288), [#309](https://github.com/bloxbean/julc/issues/309), ADR-070). It now
+tests the variant's tag and fails the script on another variant, as the JVM throws:
+
+```java
+ScriptInfo.MintingScript mint = (ScriptInfo.MintingScript) ctx.scriptInfo();  // fails unless minting
+Withdraw w = (Withdraw) redeemer;                                              // fails on any other action
+```
+
+- Every optimisation level, the operand evaluated once. Casts that need no check keep their
+  bytes: upcasts and same-type casts.
+- A cast from a type JuLC cannot relate to the sealed interface stays an unchecked view, as
+  before: `(V)(Object) x`, `PlutusData.cast(x, V.class)`, casts to `PlutusData`'s own variants,
+  and an operand of an unbounded type variable or an open super-interface. Branch with
+  `instanceof` there.
+- Cost: 14 to 19 bytes of script per checked cast (measured on 13 example validators, which grow
+  by 0.3% to 3%), and a tag test at run time. Blueprint hashes of validators that downcast change.
+- `JulcList.any` and `all` run their predicate on every element, so a cast that would fail on an
+  element after the first match now fails the script where the JVM returns early. Branch with
+  `instanceof` or a `switch` inside such a predicate.
 ## Upcoming preview: `instanceof` pattern variables wherever Java has them in scope (#204)
 
 JuLC used to bind an `instanceof` pattern variable only when `x instanceof T v` was the whole

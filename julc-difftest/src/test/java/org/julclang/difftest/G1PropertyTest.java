@@ -76,8 +76,11 @@ class G1PropertyTest {
         if (!failures.isEmpty()) fail("Coverage quotas not met:\n" + String.join("\n", failures) + "\n" + coverage.report());
     }
 
-    /** The pull-request campaign: a fixed seed and the default profile. */
-    @Property(tries = 150, seed = "20261030")
+    /**
+     * The pull-request campaign: a fixed seed and the default profile; 300 tries since G1 r13, whose default profile
+     * (ADR-069's and ADR-070's gates) left three quota features at two or three of 150 conclusive cases.
+     */
+    @Property(tries = 300, seed = "20261030")
     void generatedProgramsAgree(@ForAll("plans") List<Integer> plan, @ForAll("inputs") List<Integer> inputs) {
         quotasApply = true;
         check("G1PropertyTest", plan, inputs, G1.Profile.DEFAULT);
@@ -138,6 +141,7 @@ class G1PropertyTest {
             case "REDISCOVER_291" -> G1.Profile.REDISCOVER_291;
             case "REDISCOVER_291_LOOPS" -> G1.Profile.REDISCOVER_291_LOOPS;
             case "PATTERN_FLOW_204" -> G1.Profile.PATTERN_FLOW_204;
+            case "DOWNCASTS_309" -> G1.Profile.DOWNCASTS_309;
             default -> G1.Profile.parse(name);
         };
     }

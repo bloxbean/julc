@@ -74,7 +74,7 @@ final class G1Ast {
     // ---------------------------------------------------------------- expressions
 
     sealed interface Expr permits IntConst, BoolConst, Read, Arith, Scale, Cond, Compare, Logic, Not, Equals, New,
-            Access, Call, Trace, Fail, Switch, TypeTest, PatternTest, Paren, Lambda, LambdaBlock {
+            Access, Call, Trace, Fail, Switch, TypeTest, PatternTest, Paren, Lambda, LambdaBlock, Cast {
     }
 
     /** {@code BigInteger.valueOf(value)}. */
@@ -149,6 +149,10 @@ final class G1Ast {
 
     /** {@code xs.method(parameter -> body)}, {@code method} {@code any} or {@code all}, over the entry's {@code xs}. */
     record Lambda(String method, String parameter, Expr body) implements Expr {
+    }
+
+    /** {@code (target) operand}: a cast to a variant (ADR-070 D1). */
+    record Cast(Type target, Expr operand) implements Expr {
     }
 
     /** {@code xs.method(parameter -> { body })}, printed on one line; the body ends in {@code return}. */

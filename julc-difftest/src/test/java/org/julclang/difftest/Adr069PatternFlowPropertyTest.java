@@ -111,7 +111,12 @@ class Adr069PatternFlowPropertyTest {
      * checks nothing, for a program that has no oracle ({@link #noOracle}).
      */
     static CampaignVerifier.Outcome check(String finder, List<Integer> plan, List<Integer> inputs) {
-        var program = G1.decode(plan, G1.Profile.PATTERN_FLOW_204);
+        return check(finder, plan, inputs, G1.Profile.PATTERN_FLOW_204);
+    }
+
+    /** As {@link #check(String, List, List)}, under another profile ({@code Adr070DowncastsPropertyTest}'s). */
+    static CampaignVerifier.Outcome check(String finder, List<Integer> plan, List<Integer> inputs, G1.Profile profile) {
+        var program = G1.decode(plan, profile);
         CampaignVerifier.Outcome outcome;
         try {
             outcome = G1PropertyTest.verify(finder, plan, inputs, program);

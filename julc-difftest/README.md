@@ -41,6 +41,8 @@ since G1 r12, and `PATTERN_FLOW_204` steers to them for `Adr069PatternFlowProper
 `Adr069PatternFlowFuzzTest`, which require agreement. `PATTERN_SCOPE_PROBES` (never in the default profile) also reads
 variables outside G1's model of JLS 6.3; `Adr069JavacFilteredPropertyTest` skips what javac rejects and requires the
 rest to agree or be rejected with a code.
+`DOWNCASTS` (G1 r13, ADR-070) generates `V v = (V) s;` downcasts to a variant, read or not, on in the default profile;
+`DOWNCASTS_309` steers to the wrong variant for `Adr070DowncastsPropertyTest` and `Adr070DowncastsFuzzTest`.
 
 jqwik generates and shrinks the choice list, so a failure is reported as a small program. The last failing
 case is also written to `build/difftest/last-failure.diffcase`.

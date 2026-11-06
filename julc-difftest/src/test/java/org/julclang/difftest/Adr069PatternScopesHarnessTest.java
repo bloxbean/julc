@@ -427,17 +427,14 @@ class Adr069PatternScopesHarnessTest {
     // --- R1 (out of scope): an unchecked cast to a variant reads the other variant's fields ---
 
     /**
-     * {@code (S.A) s} keeps the operand: on a {@code B(10, 4)} the JVM throws {@code ClassCastException} where the VM reads
-     * B's first field as A's. Pinned as it is today; a fix of the cast turns this into agreement.
+     * R1, fixed by ADR-070 (#288, #309): {@code (S.A) s} on a {@code B(10, 4)} fails, as the JVM throws
+     * {@code ClassCastException}, where it used to read B's first field as A's.
      */
     @Test
-    void r1AnUncheckedCastReadsAnotherVariant() {
+    void r1ACheckedCastFailsOnAnotherVariant() {
         var report = run("public static long m(S s) { S.A q = (S.A) s; return q.v().longValue(); }", b(10, 4));
         assertInstanceOf(Observation.Failure.class, report.jvm(), report::describe);
         assertTrue(((Observation.Failure) report.jvm()).detail().contains("ClassCastException"), report::describe);
-        report.results().forEach((config, result) -> {
-            assertEquals(Verdict.Kind.MISMATCH, result.verdict().kind(), report::describe);
-            assertEquals(new PlutusData.IntData(BigInteger.TEN), ((Observation.Value) result.uplc()).data(), report::describe);
-        });
+        assertTrue(report.all(Verdict.Kind.AGREE), report::describe);
     }
 }

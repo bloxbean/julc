@@ -290,7 +290,7 @@ All of the above green on the merge head; a Codex review with no open P0 or P1.
 - **Q4. A check after an `instanceof`.** Lean: keep it; an optimisation pass can drop a tag test already made, measured
   first.
 - **Q5. Casts JuLC cannot check** (a sealed sub-interface, an open interface, a variant `TypeTests` rejects, a library
-  sum the registry lacks). Lean: stay views, as listed; each would need a tag range or a registry entry first.
+  sum the registry lacks; a nested sealed hierarchy is rejected earlier, `JULC0109`). Lean: stay views, as listed; each would need a tag range or a registry entry first.
 - **Q6. `any`/`all` short-circuit.** Lean: a separate issue to make them stop at the first true (and false), which also
   fixes the trace divergence; not a blocker for D1, whose new failure is fail-closed.
 
@@ -311,6 +311,66 @@ All of the above green on the merge head; a Codex review with no open P0 or P1.
 - Cost baseline: the FLAT size, at every level, of the `julc-examples-javac` validators (commit `1263de1`) that
   downcast `ScriptInfo`, compiled with this repository's compiler from the clone. 13 compile on their own; three need
   sibling sources and are left out. The numbers are in the M1 table.
+
+### M1: the check (D1), docs (D4), the generator gate (2026-11-07)
+
+- **Code** (`julc-compiler`):
+  - `Casts.checked` decides D1 from javac's types and the cast's erasure. It needs `TypeTests.constructorOf` (V's parent
+    and constructor, never a rejection), then `isOfThroughBounds` (same type first, then V's family; the cast's alone).
+    The term is `readOnce(operand)`, then `if tagTest then operand else Error`, the `Error` typed as the operand and
+    located at the cast.
+  - `TypeTests.tagTest` is shared with `instanceof`, whose terms and diagnostics are unchanged. `constructorOf` returns
+    nothing for a sum that permits a non-record (a nested sealed interface, which the subset rejects as `JULC0109`;
+    review M1-S1).
+  - `Lowering` wires `TypeTests` into `Casts`.
+- **Tests:**
+  - `Adr070CheckedCastsHarnessTest` (25 tests), every row over every variant at every level:
+    - a downcast in 17 positions, all agreeing: local, argument, return, traced operand, loop, lambda, unused result,
+      ignored argument, between two traces, a `?:` arm, `(A)(S) s`, a component typed S, a list head typed S, a pattern
+      operand, an ADR-069 early-exit rest, and C's layout;
+    - a ternary operand (`Record & S`) and its `var`, casts that `&&`, `||` and `?:` skip, #288's reproducer, a ledger
+      `ScriptInfo` (minting passes, rewarding fails), and the D2 rows;
+    - `any`, pinned as the fail-closed divergence (Q6).
+  - ADR-069's R1 pin flips to agreement.
+  - `Adr070CastsTest`:
+    - `constructorOf` gives user and ledger variants and a sub-interface's own variant;
+    - it gives nothing for `PlutusData`'s variants, a `@NewType`, or a sum permitting a sealed interface;
+    - `isOfThroughBounds` reads `T extends S`, `U extends T` and `X extends S.A`, but not unbounded `W` or `Object`.
+  - Generic entry methods and wildcard-typed locals are rejected before lowering (`JULC0012`), so the type-variable path
+    has unit tests and no end-to-end row.
+- **Frozen reference: no row moved** (I3), over all 5,608 compiler tests.
+- **Cost:**
+  - Measured on `S.A a = (S.A) s; return a.v()` with an `A`: at PV11_SAFE, CPU 606,574 → 1,065,390 (+458,816), memory
+    2,328 → 3,893 (+1,565), and 20 → 34 bytes. With a call operand (`(S.A) pick(s)`): +458,816 CPU, +1,565 memory,
+    27 → 42 bytes.
+  - The 13 example validators grow by 14–19 bytes per cast at PV11_SAFE/COSTED, and by 18–19 at BASELINE and NONE.
+    `Cip68Nft` casts twice and grows by 29–38. Sizes are 649 to 4,435 bytes at PV11_SAFE, so the growth is 0.3% to 2.3%.
+
+    | Validator (PV11_SAFE) | Before | After |
+    |---|---|---|
+    | `OneShotMintPolicy` | 649 | 664 |
+    | `CfProductValidator` | 1,189 | 1,204 |
+    | `CfSimpleWalletValidator` | 1,228 | 1,242 |
+    | `CfAuctionValidator` | 3,078 | 3,093 |
+    | `CfLotteryValidator` | 3,449 | 3,463 |
+    | `CfProxyValidator` | 4,174 | 4,189 |
+    | `Cip68Nft` (two casts) | 2,076 | 2,105 |
+
+- **Generator** (G1 r13):
+  - gate `DOWNCASTS`, on by default (`V v = (V) s` in method bodies, loop bodies and switch arms, sometimes unused);
+    steer `ISSUE_309` (half the subjects are fresh locals, three times in four of another variant);
+  - `Adr070DowncastsPropertyTest`: 300 tries, all AGREE, 26% ending in a JVM `ClassCastException` matched by a UPLC
+    failure with equal traces;
+  - Jazzer `Adr070DowncastsFuzzTest`, 30 minutes: 32,812 executions, no crash;
+  - all G1 tests and ADR-069's property and fuzz tests green under the new default.
+- **Reviews:**
+  - Code reviewer: APPROVED. Applied: M1-C1 (the docs and ADR list every cast that stays a view), M1-C2 (the
+    bound-reading unit test), M1-C3 (`constructorOf` returns the parent), M1-C4 (cost in the release notes).
+  - Semantics reviewer: APPROVED. Applied: M1-S1 (no check for a sum that permits a non-record), M1-S2 (the operand keeps
+    its own type), M1-S3 and M1-S4 (docs). It confirmed that nested sealed hierarchies cannot reach lowering
+    (`JULC0109`).
+- **Docs:** release notes ("a cast to a sealed-interface variant is checked", with the cost), a troubleshooting
+  question, AI starter pack 6.21, and the `Casts` class comment.
 
 ## Revision history
 

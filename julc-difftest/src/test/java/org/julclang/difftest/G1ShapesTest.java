@@ -212,6 +212,9 @@ class G1ShapesTest {
                         var changed = new ArrayList<>(args);
                         changed.set(3 + k, replace(args.get(3 + k), c, d));
                         var before = runner.run(new DiffCase("w", source, "Probe", "m", args, program.tags(), null));
+                        // A program JuLC rejects by an ADR-068 decision the campaigns allow (JULC0078 between two
+                        // variants, which the default profile generates) is no witness either way.
+                        if (policyRejected(before)) continue;
                         var after = runner.run(new DiffCase("w", source, "Probe", "m", changed, program.tags(), null));
                         assertTrue(before.all(Verdict.Kind.AGREE), before.describe());
                         assertTrue(after.all(Verdict.Kind.AGREE), after.describe());
@@ -221,6 +224,12 @@ class G1ShapesTest {
             }
         }
         assertTrue(witnesses >= 3, "chained reads of a nonzero-tag variant component that decide the result: " + witnesses);
+    }
+
+    /** Whether every configuration rejects the program by a decision {@link CampaignVerifier} allows (ADR-068 M6). */
+    private static boolean policyRejected(DiffRunner.Report report) {
+        return report.results().values().stream().allMatch(r -> r.uplc() instanceof Observation.Rejected rejected
+                && CampaignVerifier.policyDecision(rejected.code(), rejected.message()) != null);
     }
 
     /** The record's Data with field {@code c}'s field {@code d} (an integer) increased by 7. */

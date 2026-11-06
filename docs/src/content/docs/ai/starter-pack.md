@@ -357,6 +357,10 @@ A record's Data is its components, so a record's body holds only nested types (`
 
 Run tests on JDK 25.0.3 or later. On an older JDK, avoid declaring two pattern variables in one condition (`p instanceof C c || p instanceof B b`) in a method that also has a pattern `switch` whose arm copies its case variable and loops over an `instanceof` test: javac emits a class the JVM refuses to load. Nest the second test, or move the `switch` into a helper.
 
+### 6.21 A cast to a variant is checked
+
+`(Withdraw) redeemer` and `(ScriptInfo.MintingScript) ctx.scriptInfo()` test the variant and fail the script on any other, as Java throws `ClassCastException` ([#288](https://github.com/bloxbean/julc/issues/288)). To branch, use `instanceof` or a `switch` instead of casting. A cast from a type JuLC cannot relate to the sealed interface stays an unchecked view: `(V)(Object) x`, `PlutusData.cast`, `PlutusData`'s own variants, an unbounded type variable or an open super-interface. Inside a `JulcList.any`/`all` predicate, test with `instanceof` rather than cast: JuLC runs the predicate on every element.
+
 ## 7. Common errors — root cause and fix
 
 | Error message | Likely cause | Fix |

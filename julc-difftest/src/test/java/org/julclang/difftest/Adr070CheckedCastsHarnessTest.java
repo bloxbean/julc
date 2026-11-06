@@ -1,6 +1,7 @@
 package org.julclang.difftest;
 
 import org.julclang.core.PlutusData;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
@@ -15,10 +16,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * the JVM is the oracle. {@code S} has variants of different layouts ({@code A(v)}, {@code B(v, w)}), a nullary one
  * ({@code D}) and one with {@code A}'s layout ({@code C(v)}), so a cast that is not checked reads another variant's fields.
  * <p>
- * M0 pins what {@code main} does before the change: a downcast agrees on its own variant and on the nullary {@code D} (the
- * unchecked read fails there too, and a failure agrees with the JVM's exception when the traces do), and is a MISMATCH on
- * a variant with fields of another type, read through the target's layout. Every other cast agrees. M1 makes the downcasts
- * agree on every variant.
+ * Before ADR-070 a downcast agreed only on its own variant and on the nullary {@code D}, where the unchecked read failed
+ * too, and was a MISMATCH on a variant with fields, read through the target's layout (M0). Now a downcast tests the tag
+ * (D1), so it agrees on every variant: the value on its own, a failure, with the JVM's traces, on any other.
  */
 class Adr070CheckedCastsHarnessTest {
 
@@ -29,6 +29,7 @@ class Adr070CheckedCastsHarnessTest {
                 import java.math.BigInteger;
                 import org.julclang.core.PlutusData;
                 import org.julclang.core.types.JulcList;
+                import org.julclang.ledger.*;
                 import org.julclang.stdlib.Builtins;
 
                 public class Case {
@@ -40,6 +41,10 @@ class Adr070CheckedCastsHarnessTest {
                         record D() implements S { }
                         record C(BigInteger v) implements S { }
                     }
+                    record Box(S value) { }
+                    static S make(BigInteger v) { return v.signum() > 0 ? new S.A(v) : new S.B(v, v); }
+                    static long ignore(S.A a) { return 1; }
+                    static long value(S.A a) { return a.v().longValue(); }
                     %s
                 }
                 """.formatted(members);
@@ -64,7 +69,7 @@ class Adr070CheckedCastsHarnessTest {
         return RUNNER.run(new DiffCase("adr070", program(members), "Case", "m", List.of(args), TAGS, null));
     }
 
-    /** A downcast to A, in each position: the JVM's result on an A, a MISMATCH on every other variant (today). */
+    /** A downcast to A (or to C), in each position: it agrees with the JVM on every variant, a failure on the others. */
     @ParameterizedTest(name = "{0}")
     @CsvSource(delimiterString = " ~ ", textBlock = """
             local                   ~ public static long m(S s) { S.A a = (S.A) s; return a.v().longValue(); }
@@ -74,20 +79,83 @@ class Adr070CheckedCastsHarnessTest {
             in a loop               ~ public static long m(S s) { long t = 0; for (S x : JulcList.of(s, s)) { S.A a = (S.A) x; t = t + a.v().longValue(); } return t; }
             in a lambda             ~ public static long m(S s) { return JulcList.of(s).map(x -> { S.A a = (S.A) x; return a.v(); }).size(); }
             same layout as A        ~ public static long m(S s) { S.C c = (S.C) s; return c.v().longValue(); }
+            unused result           ~ public static long m(S s) { S.A unused = (S.A) s; return 1; }
+            ignored argument        ~ public static long m(S s) { return ignore((S.A) s); }
+            between two traces      ~ public static long m(S s) { said("before", BigInteger.ONE); S.A a = (S.A) s; said("after", BigInteger.TWO); return a.v().longValue(); }
+            in a ternary arm        ~ public static long m(S s) { long v = s instanceof S.D ? 0 : value((S.A) s); return v; }
+            through the interface   ~ public static long m(S s) { S.A a = (S.A) (S) s; return a.v().longValue(); }
+            a component typed S     ~ public static long m(S s) { Box box = new Box(s); S.A a = (S.A) box.value(); return a.v().longValue(); }
+            a list head typed S     ~ public static long m(S s) { S.A a = (S.A) JulcList.of(s).head(); return a.v().longValue(); }
+            a pattern operand       ~ public static long m(S s) { if ((S.A) s instanceof S.A a) { return a.v().longValue(); } return -1; }
+            an early-exit rest      ~ public static long m(S s) { if (!(s instanceof S.B b)) { S.A a = (S.A) s; return a.v().longValue(); } return b.w().longValue(); }
             """)
-    void aDowncastToday(String shape, String members) {
-        for (int i = 0; i < EVERY_S.size(); i++) {
-            var s = EVERY_S.get(i);
+    void aDowncastAgrees(String shape, String members) {
+        for (var s : EVERY_S) {
             var report = run(members, s);
             assertEquals(4, report.results().size());
-            boolean own = shape.startsWith("same layout") ? i == 3 : i == 0;
-            boolean nullary = i == 2;
-            if (own || nullary) {
+            assertTrue(report.all(Verdict.Kind.AGREE), report::describe);
+        }
+    }
+
+    /** A ternary of two variants is {@code Record & S}: its cast is checked (review F1), with its operand evaluated once. */
+    @Test
+    void aTernaryOperandIsChecked() {
+        for (long n : new long[]{-3, 0, 4}) {
+            var report = run("public static long m(long n) { S.A a = (S.A) (n > 0 ? new S.A(BigInteger.valueOf(n)) : new S.B(BigInteger.ONE, BigInteger.TWO)); "
+                    + "return a.v().longValue(); }", integer(n));
+            assertTrue(report.all(Verdict.Kind.AGREE), report::describe);
+            var inferred = run("public static long m(long n) { var x = n > 0 ? new S.A(BigInteger.valueOf(n)) : new S.D(); S.A a = (S.A) x; return a.v().longValue(); }",
+                    integer(n));
+            assertTrue(inferred.all(Verdict.Kind.AGREE), inferred::describe);
+        }
+    }
+
+    /** A cast that &&, || or a ?: arm skips does not run, as on the JVM. */
+    @Test
+    void aSkippedCastDoesNotRun() {
+        for (var s : EVERY_S) {
+            for (String body : new String[]{"return s instanceof S.A && value((S.A) s) > 0 ? 1 : 0;",
+                    "return !(s instanceof S.A) || value((S.A) s) > 0 ? 1 : 0;",
+                    "return s instanceof S.A ? value((S.A) s) : 9;"}) {
+                var report = run("public static long m(S s) { " + body + " }", s);
                 assertTrue(report.all(Verdict.Kind.AGREE), report::describe);
-            } else {
-                assertTrue(report.all(Verdict.Kind.MISMATCH), report::describe);
             }
         }
+    }
+
+    /** #288's reproducer: a B cast to A fails, where it returned B's field. */
+    @Test
+    void issue288() {
+        var report = run("public static BigInteger m(BigInteger a) { S s = new S.B(a, a); S.A x = (S.A) s; return x.v(); }", integer(3));
+        assertTrue(report.all(Verdict.Kind.AGREE), report::describe);
+    }
+
+    /**
+     * A ledger sum: a validator's default handler casting the ScriptInfo it is given. A minting script info passes; a
+     * rewarding one fails, as the JVM throws.
+     */
+    @Test
+    void aLedgerScriptInfoCast() {
+        String members = "public static byte[] m(long n) { ScriptInfo info = n == 0 ? new ScriptInfo.MintingScript(new PolicyId(new byte[]{1, 2})) "
+                + ": new ScriptInfo.RewardingScript(new Credential.PubKeyCredential(new PubKeyHash(new byte[]{3}))); "
+                + "ScriptInfo.MintingScript mint = (ScriptInfo.MintingScript) info; return mint.policyId().hash(); }";
+        for (long n : new long[]{0, 1}) {
+            var report = run(members, integer(n));
+            assertTrue(report.all(Verdict.Kind.AGREE), report::describe);
+        }
+    }
+
+    /**
+     * Risk (ADR-070, Q6): JuLC's {@code any} runs the predicate on every element, where the JVM stops at the first true. A
+     * checked cast in the predicate fails on an element the JVM never reaches: true on the JVM, a failure on-chain (before
+     * ADR-070, true, with B read as A). Pinned until any and all stop early.
+     */
+    @Test
+    void anyRunsTheCastOnEveryElement() {
+        var report = run("public static boolean m(S s) { return JulcList.of(s, (S) new S.B(BigInteger.ONE, BigInteger.TWO)).any(x -> value((S.A) x) > 0); }",
+                constr(0, integer(5)));
+        assertEquals(new Observation.Value(new PlutusData.ConstrData(1, List.of()), List.of()), report.jvm(), report::describe);
+        report.results().values().forEach(result -> assertTrue(result.uplc() instanceof Observation.Failure, report::describe));
     }
 
     /** Casts that need no check: each agrees on every variant, today and after M1 (D2). */
