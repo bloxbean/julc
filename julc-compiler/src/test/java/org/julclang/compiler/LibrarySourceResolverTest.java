@@ -594,6 +594,50 @@ class LibrarySourceResolverTest {
     }
 
     @Test
+    void resolve_aSingleAdmittedCandidateIsResolvedLenientlyToo() {
+        // As above with one candidate: whatever the compilation admits (here a.Counter, maybe only a variable's name)
+        // is resolved after the pool's libraries, with its ambiguities left to javac.
+        var clueX = LibrarySourceResolver.librarySourceFromQualifiedName("x.Clue", "package x; public class Clue {}");
+        var clueY = LibrarySourceResolver.librarySourceFromQualifiedName("y.Clue", "package y; public class Clue {}");
+        var a = LibrarySourceResolver.librarySourceFromQualifiedName("app.Counter", """
+                package app;
+                import x.*;
+                import y.*;
+                public class Counter { static boolean ok() { return Clue.ok(); } }
+                """);
+        var validator = """
+                package app;
+                class V { static boolean f() { java.math.BigInteger Counter = null; return Counter.signum() == 0; } }
+                """;
+
+        var resolved = LibrarySourceResolver.resolve(validator, Map.of("x.Clue", clueX, "y.Clue", clueY),
+                host(Map.of(), name -> name.equals("app.Counter") ? a : null, Set.of()));
+
+        assertTrue(resolved.contains(a.source()), resolved.toString());
+    }
+
+    @Test
+    void resolve_anAnnotationIsNeverFollowedThroughAWildcardImport() {
+        // javac binds @SuppressWarnings to the validator's own package's plain annotation, which the pool does not
+        // hold; a wildcard-imported marker of that name must not be taken instead.
+        var marker = LibrarySourceResolver.librarySourceFromQualifiedName("fw.SuppressWarnings", """
+                package fw;
+                import org.julclang.stdlib.annotation.OnchainLibrary;
+                @OnchainLibrary
+                public @interface SuppressWarnings { String[] value(); }
+                """);
+        var validator = """
+                package app;
+                import fw.*;
+                @SuppressWarnings({"unused"})
+                class V { static boolean f() { return true; } }
+                """;
+
+        assertEquals(List.of(), LibrarySourceResolver.resolve(validator, Map.of("fw.SuppressWarnings", marker),
+                host(Map.of(), name -> null, Set.of("fw.SuppressWarnings"))));
+    }
+
+    @Test
     void resolve_aJarSourceGivesWayToTheCompilationsClassOfTheSameName() {
         var jar = LibrarySourceResolver.librarySourceFromQualifiedName("lib.Counter", """
                 package lib;

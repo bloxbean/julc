@@ -443,7 +443,8 @@ public final class LibrarySourceResolver {
         Queue<LibrarySource> toProcess = new ArrayDeque<>();
 
         var deferred = new ArrayList<LibrarySource>();
-        var resolution = new Resolution(lookup, bySimpleName, resolved, queued, toProcess, deferred, false);
+        var resolution = new Resolution(availableLibraries, lookup, bySimpleName, resolved, queued, toProcess, deferred,
+                false);
 
         resolution.enqueueReferencedLibraries(source, extractPackageName(source), "<source>", diagnostics);
         diagnostics.throwIfErrors();
@@ -458,10 +459,11 @@ public final class LibrarySourceResolver {
             diagnostics.throwIfErrors();
         }
 
-        // ADR-071 D1: wildcard candidates the compilation admits for a bare name that may be a variable. javac decides
-        // whether one is used, so they and what they reach are resolved after everything else, with no ambiguity
-        // reported by the resolver: an ambiguous name inside them takes every candidate, for javac to settle.
-        var speculative = new Resolution(lookup, bySimpleName, resolved, queued, toProcess, deferred, true);
+        // ADR-071 D1: the classes the compilation admits (a bare name may be a variable; javac decides whether one is
+        // used), and what they reach, are resolved after everything else, with no ambiguity reported by the resolver:
+        // an ambiguous name inside them takes every candidate, for javac to settle.
+        var speculative = new Resolution(availableLibraries, lookup, bySimpleName, resolved, queued, toProcess, deferred,
+                true);
         deferred.forEach(candidate -> enqueue(candidate, resolved, queued, toProcess));
         var ignored = new DiagnosticCollector("<speculative>");
         while (!toProcess.isEmpty()) {
@@ -477,8 +479,13 @@ public final class LibrarySourceResolver {
         return new ArrayList<>(resolved.values());
     }
 
-    /** One pass of a resolution: what it enqueues, and whether its ambiguities are left to javac. */
-    private record Resolution(Lookup lookup,
+    /**
+     * One pass of a resolution: what it enqueues, and whether its ambiguities are left to javac. The strict pass takes
+     * only pool entries; every other source (a class the compilation admits, or its replacement of a jar entry) is
+     * deferred to the speculative pass, which reports nothing and leaves ambiguities to javac (ADR-071 D1).
+     */
+    private record Resolution(Map<String, LibrarySource> pool,
+                              Lookup lookup,
                               Map<String, List<LibrarySource>> bySimpleName,
                               Map<String, LibrarySource> resolved,
                               Set<String> queued,
@@ -492,33 +499,37 @@ public final class LibrarySourceResolver {
             SourceContext context = parseSourceContext(source, packageName);
 
             for (String fqcn : context.importsBySimpleName().values()) {
-                enqueue(lookup.exact().apply(fqcn), resolved, queued, toProcess);
+                take(lookup.exact().apply(fqcn));
             }
 
             for (ClassReference reference : context.staticReferences()) {
-                var named = resolveStaticReference(reference, context.packageName(), context.importsBySimpleName(),
+                resolveStaticReference(reference, context.packageName(), context.importsBySimpleName(),
                         context.wildcardPackages(), lookup, bySimpleName,
-                        context.guessableNames().contains(reference.simpleName()), speculative, diagnostics);
-                if (named.admittedCandidates() && !speculative) {
-                    deferred.addAll(named.libraries());
-                } else {
-                    named.libraries().forEach(librarySource -> enqueue(librarySource, resolved, queued, toProcess));
-                }
+                        context.guessableNames().contains(reference.simpleName()), speculative, diagnostics)
+                        .libraries().forEach(this::take);
             }
 
             for (ClassReference reference : context.annotationReferences()) {
-                enqueue(resolveAnnotationReference(reference, context.packageName(), context.importsBySimpleName(),
-                        context.wildcardPackages(), lookup, bySimpleName), resolved, queued, toProcess);
+                take(resolveAnnotationReference(reference, context.packageName(), context.importsBySimpleName(), lookup));
+            }
+        }
+
+        private void take(LibrarySource librarySource) {
+            if (librarySource == null) return;
+            if (!speculative && pool.get(librarySource.fqcn()) != librarySource) {
+                deferred.add(librarySource);
+            } else {
+                enqueue(librarySource, resolved, queued, toProcess);
             }
         }
     }
 
-    /** The libraries a reference names, and whether they are the compilation's wildcard candidates for a bare name. */
-    private record Named(List<LibrarySource> libraries, boolean admittedCandidates) {
-        static final Named NONE = new Named(List.of(), false);
+    /** The libraries a reference names. */
+    private record Named(List<LibrarySource> libraries) {
+        static final Named NONE = new Named(List.of());
 
         static Named of(LibrarySource librarySource) {
-            return librarySource == null ? NONE : new Named(List.of(librarySource), false);
+            return librarySource == null ? NONE : new Named(List.of(librarySource));
         }
     }
 
@@ -526,16 +537,15 @@ public final class LibrarySourceResolver {
      * The library an annotation names, if the host says javac's class of that name is a library marker (ADR-071 D1). A
      * marker the source uses without an import, from its own package, is a reference like any other, so its source,
      * and the libraries it refers to, are compiled with the source. Only the annotation processor answers; for other
-     * hosts no annotation is followed, as before. Resolved by the qualified name, an import, the source's
-     * package, or a single wildcard match; never by the pool-wide simple-name fallback, and never with a diagnostic: an
+     * hosts no annotation is followed, as before. Resolved by the qualified name, a single-type import or the source's
+     * package, in Java's order; never through a wildcard import, where a plain annotation of the same name in the
+     * source's package could be the one javac binds, and never through the pool-wide fallback. No diagnostic: an
      * annotation that names no library is javac's to report.
      */
     private static LibrarySource resolveAnnotationReference(ClassReference reference,
                                                             String packageName,
                                                             Map<String, String> importsBySimpleName,
-                                                            Set<String> wildcardPackages,
-                                                            Lookup lookup,
-                                                            Map<String, List<LibrarySource>> bySimpleName) {
+                                                            Lookup lookup) {
         LibrarySource candidate;
         if (reference.fqcn() != null) {
             candidate = lookup.exact().apply(reference.fqcn());
@@ -545,11 +555,6 @@ public final class LibrarySourceResolver {
             candidate = lookup.exact().apply(packageName.isBlank()
                     ? reference.simpleName()
                     : packageName + "." + reference.simpleName());
-            if (candidate == null) {
-                var wildcard = pooledWildcardCandidates(reference.simpleName(), wildcardPackages, lookup, bySimpleName);
-                if (wildcard.isEmpty()) wildcard = admittedWildcardCandidates(reference.simpleName(), wildcardPackages, lookup);
-                candidate = wildcard.size() == 1 ? wildcard.getFirst() : null;
-            }
         }
         return candidate != null && lookup.markers().test(candidate.fqcn()) ? candidate : null;
     }
@@ -590,13 +595,13 @@ public final class LibrarySourceResolver {
         if (wildcardCandidates.isEmpty() && guessable) {
             var admitted = admittedWildcardCandidates(reference.simpleName(), wildcardPackages, lookup);
             if (admitted.size() == 1) return Named.of(admitted.getFirst());
-            if (!admitted.isEmpty()) return new Named(admitted, true);
+            if (!admitted.isEmpty()) return new Named(admitted);
         }
         if (wildcardCandidates.size() == 1) {
             return Named.of(wildcardCandidates.getFirst());
         }
         if (wildcardCandidates.size() > 1 && speculative) {
-            return new Named(wildcardCandidates, false);
+            return new Named(wildcardCandidates);
         }
         if (wildcardCandidates.size() > 1) {
             diagnostics.error(reference.line(), reference.column(),
@@ -613,7 +618,7 @@ public final class LibrarySourceResolver {
             return Named.of(lookup.chosen().apply(candidates.get(0)));
         }
         if (candidates.size() > 1 && speculative) {
-            return new Named(candidates.stream().map(lookup.chosen()).toList(), false);
+            return new Named(candidates.stream().map(lookup.chosen()).toList());
         }
         if (candidates.size() > 1) {
             diagnostics.error(reference.line(), reference.column(),

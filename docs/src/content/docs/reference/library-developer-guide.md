@@ -80,7 +80,9 @@ a top-level annotation interface that JuLC can compile:
 The marker must be top-level, and so must the classes it marks.
 
 A framework that generates the validator in a later annotation-processing round is supported: JuLC finds the marked
-class by the name the validator uses, through an import, the validator's own package, or a wildcard import.
+class by the name the validator uses, through an import, the validator's own package, or a wildcard import. A class
+uses its marker through a single-type import (`import fw.StateContract;`), a qualified name, or from the marker's own
+package; JuLC does not follow a marker through a wildcard import (`import fw.*;`).
 
 The annotation processor follows the marker. Tools that read source text recognise only `@OnchainLibrary` written on
 the class: the Gradle plugin's `bundleJulcSources`, and the testkit's `SourceDiscovery`. So `bundleJulcSources` does

@@ -1,7 +1,7 @@
 # ADR-071: On-chain library meta-annotations and a robust library-source scan
 
-**Status:** Proposed (r8)
-**Date:** 2026-11-07 (r2–r8: 2026-11-07)
+**Status:** Proposed (r9)
+**Date:** 2026-11-07 (r2–r9: 2026-11-07)
 **Label:** `joust`
 **Risk class:** medium. It changes which sources the annotation processor and the library resolver hand to the
 compiler. A wrong rule could compile a class into a validator that should not be on-chain, or miss one and fail the
@@ -153,10 +153,12 @@ Where it applies:
   - When the compilation holds several classes of that name in wildcard-imported packages, all of them are handed to
     JuLC's javac, with no ambiguity reported by the resolver (r7). javac ignores them for a variable, and reports
     the ambiguity itself for a class.
-  - Those candidates, and what they reach, are resolved after everything else, in a speculative pass (r8). It reports
-    nothing and turns an ambiguity into every candidate, for javac to settle. A resolution's non-speculative part,
-    with its errors, is exactly what it was without them. The resolver's own ambiguity error stays for pool entries,
-    as before.
+  - Every source the compilation supplies, and what it reaches, is resolved after the pool's libraries, in a
+    speculative pass (r8, r9). That covers a class the compilation admits, however many candidates there are, and a
+    replacement of a jar entry. The pass reports nothing and turns an ambiguity into every candidate, for javac to
+    settle. javac then reports any real problem in those sources itself.
+  - The pool's part of a resolution, with its errors, is exactly what it was without them. The resolver's own
+    ambiguity error stays for pool entries, as before.
 
   The processor answers with the class javac names, if it is a top-level library of this compilation (I2,
   `Trees.getPath` non-null). The source is keyed by javac's qualified name, not the source's text. The host is asked
@@ -182,8 +184,10 @@ Where it applies:
   This is what makes the framework case work. javac never calls the processor in the round that entered the user's
   class, but the validator that names it resolves it by exact name.
 - **Markers are references (r2, r8).** The resolver treats every annotation a source uses as a reference, whatever its
-  spelling (`@mark` too). It is resolved by its qualified name, an import, the source's package or a single wildcard
-  match, never through the pool-wide fallback, and with no diagnostic. It is added only if the host says javac's
+  spelling (`@mark` too). It is resolved by its qualified name, a single-type import or the source's package, in
+  Java's order. It is never resolved through a wildcard import (r9): a plain annotation of that name in the source's
+  package, which the pool need not hold, would be the one javac binds. Nor is it resolved through the pool-wide
+  fallback, and it gives no diagnostic. It is added only if the host says javac's
   class of that name is a marker: an annotation interface carrying `@OnchainLibrary` (r8).
   - **The host decides by javac's model** (`Elements.getTypeElement`, `JavacFacts.libraryMarker`), not by reading the
     marker's source. r4–r7 read the annotation's identity from text (imports, qualified names, same-package
@@ -308,7 +312,7 @@ a build that passed before still passes (I1), and the problem is still printed j
 ## Implementation milestones
 
 - **M1 (r1, `566ea845`):** D1 with regex discovery, and D2 with warnings.
-- **M2 (r2–r8):**
+- **M2 (r2–r9):**
   - admission by exact name through the resolver, replacing regex discovery; round collection unchanged (r3);
   - markers as references;
   - `JavacFacts.libraryMarker` as the one rule;
@@ -320,6 +324,7 @@ a build that passed before still passes (I1), and the problem is still printed j
   - bare qualifiers asked without variable guessing, one source per name, import precedence (r6);
   - admitted wildcard candidates left to javac (r7);
   - the speculative pass, and markers decided by javac in the processor only (r8);
+  - every compilation-supplied source resolved speculatively, and annotations never followed through wildcards (r9);
   - scan notes, `IllegalArgumentException` isolation and directory-listing reports;
   - docs.
   - Exit: the tests below are green, the full build is green, the julc-examples outputs match the merge base, and
@@ -374,6 +379,8 @@ Resolver tests (`LibrarySourceResolverTest`):
 | `resolve_aJarSourceGivesWayHoweverItIsReached` | r6 |
 | `resolve_leavesSeveralAdmittedWildcardCandidatesToJavac` | r7 |
 | `resolve_anAmbiguityInsideASpeculativeCandidateIsLeftToJavac` | r8 |
+| `resolve_aSingleAdmittedCandidateIsResolvedLenientlyToo` | r9 |
+| `resolve_anAnnotationIsNeverFollowedThroughAWildcardImport` | r9 |
 | `resolve_aJarSourceGivesWayToTheCompilationsClassOfTheSameName` | r5 |
 | `scanClasspathSources_skipsAnUnreadableEntryReportsItAndReadsTheRest` | |
 | `scanClasspathSources_aMalformedEntryUrlCostsOnlyThatEntry` | |
@@ -464,3 +471,8 @@ Regression evidence:
     testkit and secondary-type variants.
   - **Speculative wildcard candidates** and what they reach are resolved in a separate, lenient pass, so an ambiguity
     inside an unused candidate no longer fails the build (R6-1).
+- **r9** (2026-11-07, responds to Codex's review of r8, `ae752091`, where R5-2, R6-1 and every earlier fix held):
+  - **The speculative pass takes every source the compilation supplies,** not only several wildcard candidates: a
+    single guessed class, and a same-package one, too (R7-1).
+  - **Annotations are never followed through a wildcard import,** so a plain same-package annotation keeps its Java
+    precedence (R7-2).
