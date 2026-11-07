@@ -4,8 +4,8 @@
 reviewers at `b6af2c48` (their P2/P3 points addressed in r3 and r4). The implementation follows in the same PR.
 **Amendment r5–r7 (2026-11-07): D5 Accepted**, approved in design review at `2ae82140` by Codex and by the semantics and
 code reviewers (their round-2 P2/P3 points applied in M2, r7). D5 closes Q6 (ADR-062 T7): `any` and `all` stop at the
-element that decides the answer, as on the JVM. D1–D4 stay as accepted. The every-level default awaits the
-maintainer's confirmation in the PR.
+element that decides the answer, as on the JVM. D1–D4 stay as accepted. The maintainer confirmed the every-level
+default in the PR (r8).
 **Date:** 2026-11-06 (r5: 2026-11-07)
 **Risk class:** correctness-sensitive, **medium**. Today a downcast to the wrong variant reads another variant's fields
 and carries on, where Java throws: a validator can accept a datum its own Java tests reject. The fix changes the bytes
@@ -274,8 +274,10 @@ all xs p = letrec #go = \#lst -> if NullList #lst then True
   release, and it overrides ADR-062 Q2's lean ("behind an optimization level first"). The reasons are #146's (ADR-032's
   policy amendment), whose exception covers only that fix: D5 restores Java's evaluation and is not an optimization; a
   level that kept the fold would keep a known divergence on purpose; JuLC is a preview with no deployed users, as the
-  maintainer stated for #146 and D1. The maintainer asked for D5 in this PR; the every-level default is listed for their
-  confirmation in the PR. To reproduce an older artifact, pin the compiler release or commit that built it.
+  maintainer stated for #146 and D1. The maintainer asked for D5 in this PR and confirmed the every-level default
+  (r8): JuLC is in preview, its scripts run only on testnets for proofs of concept, so changed script bytes are
+  expected, and a correctness fix must apply everywhere. To reproduce an older artifact, pin the compiler release or
+  commit that built it.
 - **A side effect on consumers (r6, review C15).** `BooleanProof` proves the loop's result boolean (every arm is a
   `Bool` constant or the recursive call), where the fold's accumulator was a lambda parameter it could not prove. At
   `PV11_SAFE` and `PV11_COSTED` an `if`, `!` or `&&` over an `any`/`all` result therefore lowers to `Case` instead of
@@ -444,8 +446,8 @@ All of the above green on the merge head; a Codex review with no open P0 or P1.
   fields; the root cause is the known no-short-circuit divergence, tracked separately (Q6). A harness row pins it.
   *(r5: D5 removes it; the row flips to agreement in M2.)*
 - **D5 changes every `any`/`all` program's hash (r5).** Downstream pins of such validators move with no source change.
-  The cost only falls, and the release notes name it. ADR-062 Q2's lean is overridden (r6); the maintainer confirms
-  the every-level default in the PR. A program that relied on a later element's failure to reject a
+  The cost only falls, and the release notes name it. ADR-062 Q2's lean is overridden (r6); the maintainer confirmed
+  the every-level default (r8). A program that relied on a later element's failure to reject a
   transaction was relying on behaviour its own JVM tests contradict.
 - **Tags that came through views.** A value obtained through an unchecked view (`PlutusData.cast(d, B.class)`,
   `(B)(Object) x`) carries whatever tag its Data has. After an upcast, a later checked `(B) s` tests that tag. Data built
@@ -646,3 +648,7 @@ are applied:
   semantics APPROVED (S21, S22 P3), code APPROVED (C22, C23 P3)): the bound function is typed as a function (F11, C23);
   receiver-at-the-call and failing-condition rows for every list method (F12, S21, C22); the renamed saved case is
   committed as such (S22). D5 accepted; M2 results recorded.
+- r8 (2026-11-07, after Codex's final approval of `c25ffd05`): the maintainer confirmed D5's every-level default
+  (`BASELINE` and `NONE` included, no opt-in): JuLC is in preview and used on testnets for proofs of concept, so a
+  change of script bytes is expected, and a correctness fix must apply at every level. Status, D5, risks updated; no
+  code change.

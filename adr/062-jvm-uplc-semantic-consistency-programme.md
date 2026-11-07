@@ -181,8 +181,8 @@ Adopt a six-step programme. Every step has its own ADR, its own acceptance gate,
    rejection one release later, with a quick fix to `.equals`.
 2. **Should `any`, `all` and `find` short-circuit on-chain (T7)?** That changes costs and hashes, and usually
    lowers costs. Lean: yes, behind an optimization level first.
-   *Resolved by ADR-070 D5 (2026-11-07): yes, at every level and by default, not behind a level; `find` already
-   stopped early.*
+   *Resolved by ADR-070 D5 (2026-11-07): yes, at every level and by default, not behind a level, as the maintainer
+   confirmed; `find` already stopped early.*
 3. **Should `int` and `long` stay accepted (T6)?** Rejecting them breaks the `JulcEval` proxy style that uses
    `long` parameters. Lean: accept them only as boundary conversions in test APIs, and reject arithmetic on
    them in contract code.
