@@ -638,6 +638,49 @@ class LibrarySourceResolverTest {
     }
 
     @Test
+    void resolve_keepsTheOrderTheSourceNamesLibrariesIn() {
+        // A class the compilation supplies keeps its place: the order is the compiler's input, and it shows in the
+        // script when the optimizer does not run.
+        var counter = LibrarySourceResolver.librarySourceFromQualifiedName("app.Counter",
+                "package app; public class Counter { public static boolean ok() { return true; } }");
+        var tail = LibrarySourceResolver.librarySourceFromQualifiedName("app.Tail",
+                "package app; public class Tail { public static boolean ok() { return true; } }");
+        var validator = """
+                package app;
+                import app.Counter;
+                import app.Tail;
+                class V { static boolean f() { return Counter.ok() && Tail.ok(); } }
+                """;
+
+        assertEquals(List.of(counter.source(), tail.source()), LibrarySourceResolver.resolve(validator,
+                Map.of("app.Tail", tail), host(Map.of(), name -> name.equals("app.Counter") ? counter : null, Set.of())));
+    }
+
+    @Test
+    void resolve_anAnnotationNamingTheSourcesOwnTypeIsNotFollowed() {
+        // V declares its own @interface Mark; javac binds @Mark to it, not to the package's unrelated marker app.Mark,
+        // whose ambiguous reference must not fail the build.
+        var clueX = LibrarySourceResolver.librarySourceFromQualifiedName("x.Clue", "package x; public class Clue {}");
+        var clueY = LibrarySourceResolver.librarySourceFromQualifiedName("y.Clue", "package y; public class Clue {}");
+        var mark = LibrarySourceResolver.librarySourceFromQualifiedName("app.Mark", """
+                package app;
+                import x.*;
+                import y.*;
+                public @interface Mark { int N = Clue.size(); }
+                """);
+        var validator = """
+                package app;
+                class V {
+                    public @interface Mark {}
+                    @Mark static boolean f() { return true; }
+                }
+                """;
+
+        assertEquals(List.of(), LibrarySourceResolver.resolve(validator,
+                Map.of("app.Mark", mark, "x.Clue", clueX, "y.Clue", clueY), host(Map.of(), name -> null, Set.of("app.Mark"))));
+    }
+
+    @Test
     void resolve_aJarSourceGivesWayToTheCompilationsClassOfTheSameName() {
         var jar = LibrarySourceResolver.librarySourceFromQualifiedName("lib.Counter", """
                 package lib;

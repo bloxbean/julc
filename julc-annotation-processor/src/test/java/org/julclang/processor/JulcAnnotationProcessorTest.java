@@ -853,6 +853,50 @@ class JulcAnnotationProcessorTest {
                 tempDir.resolve("META-INF/plutus/UsesMeta.plutus.json"))).cborHex(), metaScript);
     }
 
+    /**
+     * The library order is the order the validator names them, marked or not, so the script is the same without
+     * optimization and with source maps, where the order shows (ADR-071 I3).
+     */
+    @Test
+    void aMarkedLibraryKeepsItsPlaceInTheLibraryOrder() throws Exception {
+        String other = """
+                import org.julclang.stdlib.annotation.OnchainLibrary;
+                import java.math.BigInteger;
+
+                @OnchainLibrary
+                public class Other {
+                    public static BigInteger thrice(BigInteger x) {
+                        return x.add(x).add(x);
+                    }
+                }
+                """;
+        String validator = """
+                import org.julclang.stdlib.annotation.*;
+                import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+
+                @SpendingValidator
+                public class UsesBoth {
+                    @Entrypoint
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
+                        return MetaMath.twice(redeemer).compareTo(Other.thrice(redeemer)) < 0;
+                    }
+                }
+                """;
+        String direct = "import org.julclang.stdlib.annotation.OnchainLibrary;\n"
+                + META_LIBRARY.replace("@StateLike", "@OnchainLibrary");
+        for (var options : List.of(List.of("-Ajulc.optimization=none"), List.of("-Ajulc.sourceMap=true"))) {
+            var marked = compileWithProcessorSources(Map.of("StateLike", STATE_LIKE, "MetaMath", META_LIBRARY,
+                    "Other", other, "UsesBoth", validator), options);
+            assertTrue(marked.success(), "Expected success, got: " + marked.diagnostics());
+            String markedScript = script("UsesBoth");
+            var plain = compileWithProcessorSources(Map.of("MetaMath", direct, "Other", other, "UsesBoth", validator),
+                    options);
+            assertTrue(plain.success(), "Expected success, got: " + plain.diagnostics());
+            assertEquals(script("UsesBoth"), markedScript, options.toString());
+        }
+    }
+
     /** Regression: a package line read by javac and by JuLC's pattern alike, with a space before the semicolon. */
     @Test
     void librariesWhosePackageLineHasASpaceStillResolve() throws Exception {

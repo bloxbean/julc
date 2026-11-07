@@ -442,85 +442,102 @@ public final class LibrarySourceResolver {
         var queued = new HashSet<String>();
         Queue<LibrarySource> toProcess = new ArrayDeque<>();
 
-        var deferred = new ArrayList<LibrarySource>();
-        var resolution = new Resolution(availableLibraries, lookup, bySimpleName, resolved, queued, toProcess, deferred,
-                false);
+        // ADR-071 D1: a source the compilation supplies (a class it admits, where a bare name may be a variable, or its
+        // replacement of a jar entry), and whatever only such sources reach, is resolved leniently: no ambiguity is
+        // reported by the resolver, and an ambiguous name takes every candidate, for javac to settle. One pass, in the
+        // order the sources are first named, as before; a source first reached leniently and later named by a strict
+        // one is checked strictly then.
+        var resolution = new Resolution(availableLibraries, lookup, bySimpleName, resolved, queued, toProcess);
+        var ignored = new DiagnosticCollector("<lenient>");
 
-        resolution.enqueueReferencedLibraries(source, extractPackageName(source), "<source>", diagnostics);
+        resolution.enqueueReferencedLibraries(source, extractPackageName(source), "<source>", false, diagnostics);
         diagnostics.throwIfErrors();
-        while (!toProcess.isEmpty()) {
+        while (!toProcess.isEmpty() || !resolution.recheck.isEmpty()) {
+            if (!resolution.recheck.isEmpty()) {
+                LibrarySource strictNow = resolution.recheck.poll();
+                resolution.enqueueReferencedLibraries(strictNow.source(), strictNow.packageName(),
+                        strictNow.resourcePath(), false, diagnostics);
+                diagnostics.throwIfErrors();
+                continue;
+            }
             LibrarySource librarySource = toProcess.poll();
             if (resolved.containsKey(librarySource.fqcn())) {
                 continue;
             }
             resolved.put(librarySource.fqcn(), librarySource);
+            boolean lenient = resolution.lenient.contains(librarySource.fqcn());
             resolution.enqueueReferencedLibraries(librarySource.source(), librarySource.packageName(),
-                    librarySource.resourcePath(), diagnostics);
+                    librarySource.resourcePath(), lenient, lenient ? ignored : diagnostics);
             diagnostics.throwIfErrors();
-        }
-
-        // ADR-071 D1: the classes the compilation admits (a bare name may be a variable; javac decides whether one is
-        // used), and what they reach, are resolved after everything else, with no ambiguity reported by the resolver:
-        // an ambiguous name inside them takes every candidate, for javac to settle.
-        var speculative = new Resolution(availableLibraries, lookup, bySimpleName, resolved, queued, toProcess, deferred,
-                true);
-        deferred.forEach(candidate -> enqueue(candidate, resolved, queued, toProcess));
-        var ignored = new DiagnosticCollector("<speculative>");
-        while (!toProcess.isEmpty()) {
-            LibrarySource librarySource = toProcess.poll();
-            if (resolved.containsKey(librarySource.fqcn())) {
-                continue;
-            }
-            resolved.put(librarySource.fqcn(), librarySource);
-            speculative.enqueueReferencedLibraries(librarySource.source(), librarySource.packageName(),
-                    librarySource.resourcePath(), ignored);
         }
 
         return new ArrayList<>(resolved.values());
     }
 
     /**
-     * One pass of a resolution: what it enqueues, and whether its ambiguities are left to javac. The strict pass takes
-     * only pool entries; every other source (a class the compilation admits, or its replacement of a jar entry) is
-     * deferred to the speculative pass, which reports nothing and leaves ambiguities to javac (ADR-071 D1).
+     * The state of one resolution: what it has queued and resolved, and which of those it reached only leniently. A
+     * pool entry named from a strict source is strict; anything else (a source the compilation supplies, or what only
+     * such sources reach) is lenient (ADR-071 D1).
      */
-    private record Resolution(Map<String, LibrarySource> pool,
-                              Lookup lookup,
-                              Map<String, List<LibrarySource>> bySimpleName,
-                              Map<String, LibrarySource> resolved,
-                              Set<String> queued,
-                              Queue<LibrarySource> toProcess,
-                              List<LibrarySource> deferred,
-                              boolean speculative) {
+    private static final class Resolution {
+        private final Map<String, LibrarySource> pool;
+        private final Lookup lookup;
+        private final Map<String, List<LibrarySource>> bySimpleName;
+        private final Map<String, LibrarySource> resolved;
+        private final Set<String> queued;
+        private final Queue<LibrarySource> toProcess;
+        final Set<String> lenient = new HashSet<>();
+        final Queue<LibrarySource> recheck = new ArrayDeque<>();
 
-        void enqueueReferencedLibraries(String source, String packageName, String fileName,
+        Resolution(Map<String, LibrarySource> pool, Lookup lookup, Map<String, List<LibrarySource>> bySimpleName,
+                   Map<String, LibrarySource> resolved, Set<String> queued, Queue<LibrarySource> toProcess) {
+            this.pool = pool;
+            this.lookup = lookup;
+            this.bySimpleName = bySimpleName;
+            this.resolved = resolved;
+            this.queued = queued;
+            this.toProcess = toProcess;
+        }
+
+        void enqueueReferencedLibraries(String source, String packageName, String fileName, boolean fromLenient,
                                         DiagnosticCollector diagnostics) {
             diagnostics.setFileName(fileName);
             SourceContext context = parseSourceContext(source, packageName);
 
             for (String fqcn : context.importsBySimpleName().values()) {
-                take(lookup.exact().apply(fqcn));
+                take(lookup.exact().apply(fqcn), fromLenient);
             }
 
             for (ClassReference reference : context.staticReferences()) {
                 resolveStaticReference(reference, context.packageName(), context.importsBySimpleName(),
                         context.wildcardPackages(), lookup, bySimpleName,
-                        context.guessableNames().contains(reference.simpleName()), speculative, diagnostics)
-                        .libraries().forEach(this::take);
+                        context.guessableNames().contains(reference.simpleName()), fromLenient, diagnostics)
+                        .libraries().forEach(librarySource -> take(librarySource, fromLenient));
             }
 
+            // An annotation naming a type the source declares itself (a nested one, say) is that type. Otherwise the
+            // marker it names, and what the marker reaches, are resolved leniently: javac binds the annotation.
             for (ClassReference reference : context.annotationReferences()) {
-                take(resolveAnnotationReference(reference, context.packageName(), context.importsBySimpleName(), lookup));
+                if (reference.fqcn() == null && context.declaredTypeNames().contains(reference.simpleName())) continue;
+                take(resolveAnnotationReference(reference, context.packageName(), context.importsBySimpleName(), lookup),
+                        true);
             }
         }
 
-        private void take(LibrarySource librarySource) {
+        private void take(LibrarySource librarySource, boolean fromLenient) {
             if (librarySource == null) return;
-            if (!speculative && pool.get(librarySource.fqcn()) != librarySource) {
-                deferred.add(librarySource);
-            } else {
-                enqueue(librarySource, resolved, queued, toProcess);
+            String fqcn = librarySource.fqcn();
+            boolean asLenient = fromLenient || pool.get(fqcn) != librarySource;
+            if (resolved.containsKey(fqcn)) {
+                if (!asLenient && lenient.remove(fqcn)) recheck.add(resolved.get(fqcn));
+                return;
             }
+            if (!queued.add(fqcn)) {
+                if (!asLenient) lenient.remove(fqcn);
+                return;
+            }
+            if (asLenient) lenient.add(fqcn);
+            toProcess.add(librarySource);
         }
     }
 
@@ -562,7 +579,7 @@ public final class LibrarySourceResolver {
     /**
      * The libraries a {@code Name.member} reference names: one, or none. Several when the compilation admits more than
      * one wildcard candidate (ADR-071 D1): the bare name may be a variable, so javac, not the resolver, decides, and
-     * reports the ambiguity if it is a class. In a speculative pass an ambiguity takes every candidate, for javac too.
+     * reports the ambiguity if it is a class. From a lenient source an ambiguity takes every candidate, for javac too.
      */
     private static Named resolveStaticReference(ClassReference reference,
                                                         String packageName,
@@ -571,7 +588,7 @@ public final class LibrarySourceResolver {
                                                         Lookup lookup,
                                                         Map<String, List<LibrarySource>> bySimpleName,
                                                         boolean guessable,
-                                                        boolean speculative,
+                                                        boolean lenient,
                                                         DiagnosticCollector diagnostics) {
         if (reference.fqcn() != null) {
             return Named.of(lookup.exact().apply(reference.fqcn()));
@@ -600,7 +617,7 @@ public final class LibrarySourceResolver {
         if (wildcardCandidates.size() == 1) {
             return Named.of(wildcardCandidates.getFirst());
         }
-        if (wildcardCandidates.size() > 1 && speculative) {
+        if (wildcardCandidates.size() > 1 && lenient) {
             return new Named(wildcardCandidates);
         }
         if (wildcardCandidates.size() > 1) {
@@ -617,7 +634,7 @@ public final class LibrarySourceResolver {
         if (candidates.size() == 1) {
             return Named.of(lookup.chosen().apply(candidates.get(0)));
         }
-        if (candidates.size() > 1 && speculative) {
+        if (candidates.size() > 1 && lenient) {
             return new Named(candidates.stream().map(lookup.chosen()).toList());
         }
         if (candidates.size() > 1) {
@@ -690,7 +707,7 @@ public final class LibrarySourceResolver {
         var fallbackPackageName = packageName == null ? extractPackageName(source) : packageName;
         var staticReferences = extractFallbackClassReferences(source);
         return new SourceContext(fallbackPackageName, extractImportPaths(source),
-                extractWildcardImportPackages(source), staticReferences, List.of(), Set.of());
+                extractWildcardImportPackages(source), staticReferences, List.of(), Set.of(), Set.of());
     }
 
     /**
@@ -719,7 +736,14 @@ public final class LibrarySourceResolver {
         var fieldAccesses = new ArrayList<Tree>();
         var annotations = new ArrayList<Tree>();
         var typeNames = new HashSet<String>();
+        var declaredTypeNames = new HashSet<String>();
         new SourceOrderScanner<Void, Void>() {
+            @Override
+            public Void visitClass(ClassTree type, Void unused) {
+                declaredTypeNames.add(type.getSimpleName().toString());
+                return super.visitClass(type, unused);
+            }
+
             @Override
             public Void visitMethodInvocation(MethodInvocationTree call, Void unused) {
                 if (call.getMethodSelect() instanceof MemberSelectTree select) {
@@ -762,7 +786,7 @@ public final class LibrarySourceResolver {
                     syntax.line(type), syntax.column(type)));
         }
         return new SourceContext(resolvedPackageName, importsBySimpleName, wildcardPackages, staticReferences,
-                annotationReferences, typeNames);
+                annotationReferences, typeNames, declaredTypeNames);
     }
 
     private static Optional<ClassReference> javacReference(JavacSyntax syntax, Tree scope) {
@@ -891,7 +915,8 @@ public final class LibrarySourceResolver {
                                  Set<String> wildcardPackages,
                                  List<ClassReference> staticReferences,
                                  List<ClassReference> annotationReferences,
-                                 Set<String> guessableNames) {
+                                 Set<String> guessableNames,
+                                 Set<String> declaredTypeNames) {
     }
 
     /** A class a source names as a call's or a field access's qualifier, and where (0, 0 when unknown). */
