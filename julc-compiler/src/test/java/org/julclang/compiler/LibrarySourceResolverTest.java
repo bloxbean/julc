@@ -3,6 +3,7 @@ package org.julclang.compiler;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import javax.lang.model.SourceVersion;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
@@ -393,7 +394,101 @@ class LibrarySourceResolverTest {
     }
 
     @Test
-    void scanClasspathSources_skipsAnUnreadableEntryWithAWarningAndReadsTheRest(@TempDir Path tempDir) throws Exception {
+    void resolve_asksTheCompilationOnlyForExactNamesThePoolLacks() {
+        // ADR-071 D1: the host is asked for an import, the source's package and a wildcard package, never through the
+        // pool-wide simple-name fallback, and only for Java names; what it admits is followed, not pooled.
+        var pooled = LibrarySourceResolver.librarySourceFromSimpleName("Pooled", """
+                package other;
+                public class Pooled { public static boolean ok() { return true; } }
+                """);
+        var admitted = LibrarySourceResolver.librarySourceFromQualifiedName("lib.Counter", """
+                package lib;
+                public class Counter { public static boolean ok() { return Pooled.ok(); } }
+                """);
+        var validator = """
+                package app;
+                import lib.Counter;
+                import wild.*;
+                class V { static boolean f() { return Counter.ok() && Local.ok() && Far.ok() && f(1).g(); } }
+                """;
+        var asked = new ArrayList<String>();
+
+        var resolved = LibrarySourceResolver.resolve(validator, Map.of("other.Pooled", pooled), name -> {
+            asked.add(name);
+            return name.equals("lib.Counter") ? admitted : null;
+        });
+
+        // Counter is admitted and followed; Pooled reaches it through the pool-wide fallback, which never asks.
+        assertEquals(List.of(admitted.source(), pooled.source()), resolved);
+        assertTrue(asked.containsAll(List.of("lib.Counter", "app.Local", "wild.Local", "app.Far", "wild.Far")), asked.toString());
+        assertTrue(asked.stream().allMatch(SourceVersion::isName), asked.toString());
+        assertFalse(asked.contains("other.Pooled"), asked.toString());
+        // Nothing admitted stays behind: the same source resolved without the host finds only what the pool holds.
+        assertEquals(List.of(), LibrarySourceResolver.resolve(validator, Map.of("other.Pooled", pooled)));
+    }
+
+    @Test
+    void scanClasspathSources_aMalformedEntryUrlCostsOnlyThatEntry(@TempDir Path tempDir) throws Exception {
+        // ADR-071 D2: a jar under a directory with a space, named by an unencoded URL: building an entry's URL throws
+        // IllegalArgumentException, which costs that jar's entries only.
+        Path spaced = tempDir.resolve("with space");
+        Files.createDirectories(spaced);
+        Path broken = createPlutusSourcesJar(spaced.resolve("broken.jar"), Map.of(
+                "com/example/Broken.java", "package com.example; class Broken {}"));
+        Path good = createPlutusSourcesJar(tempDir.resolve("good.jar"), Map.of(
+                "com/example/GoodLib.java", "package com.example; class GoodLib {}"));
+        var problems = new ArrayList<String>();
+        try (var classLoader = new URLClassLoader(new URL[]{new URL("file:" + broken), good.toUri().toURL()}, null)) {
+            Map<String, LibrarySource> result = LibrarySourceResolver.scanClasspathSources(classLoader, problems::add);
+
+            assertTrue(result.containsKey("com.example.GoodLib"), result.keySet().toString());
+        }
+    }
+
+    @Test
+    void resolve_followsOnlyAnnotationsThatAreMarkers() {
+        // A host may pool any project source (the CLI does): an annotation interface without @OnchainLibrary is never
+        // followed, so a build that compiled without its source still does.
+        var plain = LibrarySourceResolver.librarySourceFromSimpleName("Audit", """
+                package app;
+                @java.lang.annotation.Documented
+                public @interface Audit { String[] value(); }
+                """);
+        var validator = """
+                package app;
+                @Audit({"x"})
+                class V { static boolean f() { return true; } }
+                """;
+
+        assertEquals(List.of(), LibrarySourceResolver.resolve(validator, Map.of("app.Audit", plain)));
+    }
+
+    @Test
+    void resolve_asksNothingForAFieldOrAVariableThatLooksLikeAClass() {
+        var validator = """
+                package app;
+                import java.math.BigInteger;
+                import static java.math.BigInteger.TEN;
+                class V {
+                    static boolean f(BigInteger Counter) {
+                        return BigInteger.ZERO.signum() == 0 && Counter.signum() > 0 && TEN.signum() > 0 && Local.ok();
+                    }
+                }
+                """;
+        var asked = new ArrayList<String>();
+
+        LibrarySourceResolver.resolve(validator, Map.of(), name -> {
+            asked.add(name);
+            return null;
+        });
+
+        assertTrue(asked.contains("app.Local"), asked.toString());
+        assertFalse(asked.contains("app.ZERO") || asked.contains("app.Counter") || asked.contains("app.TEN"),
+                asked.toString());
+    }
+
+    @Test
+    void scanClasspathSources_skipsAnUnreadableEntryReportsItAndReadsTheRest(@TempDir Path tempDir) throws Exception {
         // ADR-071 D2: an index listing a source the jar does not hold costs that source only, and is reported.
         Path broken = tempDir.resolve("broken.jar");
         try (var out = new JarOutputStream(Files.newOutputStream(broken))) {

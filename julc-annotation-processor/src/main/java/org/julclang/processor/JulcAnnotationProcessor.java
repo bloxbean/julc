@@ -19,6 +19,7 @@ import org.julclang.compiler.OptimizationLevel;
 import org.julclang.core.source.SourceMapSerializer;
 import org.julclang.stdlib.StdlibRegistry;
 import org.julclang.vm.OptimizationCostProfile;
+import com.sun.source.util.TreePath;
 import com.sun.source.util.Trees;
 
 import javax.annotation.processing.*;
@@ -42,8 +43,9 @@ import java.util.stream.Collectors;
  * <p>
  * Library discovery:
  * <ol>
- *   <li>Same-project: on-chain library classes of every round's roots: those carrying {@code @OnchainLibrary}, or an
- *       annotation whose annotation interface carries it (ADR-071 D1)</li>
+ *   <li>Same-project: {@code @OnchainLibrary} classes discovered via {@code roundEnv}; a class of this compilation
+ *       that a validator names and that is an on-chain library through a framework's marker annotation is admitted by
+ *       its exact name (ADR-071 D1)</li>
  *   <li>Classpath: Sources bundled in {@code META-INF/plutus-sources/} in dependency JARs</li>
  *   <li>Usage-based: Only libraries imported by the validator are included in compilation</li>
  *   <li>Transitive: Recursively resolves library imports until no new libraries are found</li>
@@ -83,6 +85,9 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
 
     /** Nested library classes already reported, so a class admitted for several validators is reported once. */
     private final Set<Element> reportedNestedLibraries = new HashSet<>();
+
+    /** Marker annotations already reported as having no source. */
+    private final Set<String> reportedMarkers = new HashSet<>();
 
     /** Classpath library sources: FQCN -> source metadata */
     private final Map<String, LibrarySource> classpathLibraries = new LinkedHashMap<>();
@@ -159,19 +164,16 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
     }
 
     private void collectSameProjectLibraries(RoundEnvironment roundEnv) {
-        var candidates = new LinkedHashSet<Element>(roundEnv.getElementsAnnotatedWith(findTypeElement(ONCHAIN_LIBRARY)));
-        // ADR-071 D1: also classes carrying an annotation that is itself annotated @OnchainLibrary.
-        for (Element root : roundEnv.getRootElements()) {
-            collectMetaAnnotated(root, candidates);
-        }
-        for (Element element : candidates) {
+        for (Element element : roundEnv.getElementsAnnotatedWith(findTypeElement(ONCHAIN_LIBRARY))) {
             if (!(element instanceof TypeElement typeElement)) {
                 continue;
             }
             String simpleName = typeElement.getSimpleName().toString();
             if (typeElement.getNestingKind() != NestingKind.TOP_LEVEL) {
-                processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR, nestedLibraryMessage(typeElement),
-                        element);
+                if (reportedNestedLibraries.add(element)) {
+                    processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR, nestedLibraryMessage(typeElement),
+                            element);
+                }
                 continue;
             }
             String fqcn = typeElement.getQualifiedName().toString();
@@ -193,10 +195,10 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
     }
 
     /** Adds {@code element} and the types nested in it that are on-chain libraries, directly or through a marker. */
-    private static void collectMetaAnnotated(Element element, Set<Element> into) {
+    private static void collectLibraries(Element element, Set<Element> into) {
         if (!(element instanceof TypeElement type)) return;
         if (JavacFacts.libraryMarker(type).isPresent()) into.add(type);
-        for (Element member : type.getEnclosedElements()) collectMetaAnnotated(member, into);
+        for (Element member : type.getEnclosedElements()) collectLibraries(member, into);
     }
 
     private static String nestedLibraryMessage(TypeElement type) {
@@ -353,10 +355,19 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
         }
     }
 
-    /** Same-project and class-path libraries, merged by primary name (same-project takes precedence). */
+    /**
+     * Same-project and class-path libraries, merged by primary name (same-project takes precedence). A library of this
+     * compilation that was not collected, such as one marked through a framework's annotation, takes precedence over a
+     * class-path source of the same name too (ADR-071 D1): the compilation's class is the one javac checked.
+     */
     private Map<String, LibrarySource> libraryPool() {
         var pool = new LinkedHashMap<>(classpathLibraries);
         pool.putAll(sameProjectLibraries);
+        for (String fqcn : classpathLibraries.keySet()) {
+            if (sameProjectLibraries.containsKey(fqcn)) continue;
+            var own = libraryOfThisCompilation(fqcn);
+            if (own != null) pool.put(fqcn, own);
+        }
         return pool;
     }
 
@@ -372,11 +383,14 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
     }
 
     /**
-     * The library javac names {@code fqcn}, if it is a top-level on-chain library class of this compilation that the
-     * pool lacks (ADR-071 D1). javac calls this processor only from the first round that holds one of its annotations,
-     * so a class that carries only a framework's marker, entered in an earlier round, or in a round whose annotations
-     * another processor claimed, never reaches {@link #collectSameProjectLibraries}. The resolver asks for the exact names
-     * a source refers to; libraries nested in the class are rejected as they are in a round.
+     * The library javac names {@code fqcn}, if it is a top-level on-chain library class of this compilation (ADR-071 D1).
+     * javac calls this processor only from the first round that holds one of its annotations, so a class that carries
+     * only a framework's marker, entered in an earlier round or in a round whose annotations another processor claimed,
+     * is never collected. The resolver asks for the exact names a source refers to that the pool lacks.
+     * <p>
+     * Any top-level class of this compilation that is asked for has its nested library classes rejected, as
+     * {@link #collectSameProjectLibraries} rejects a nested {@code @OnchainLibrary}; a library whose marker JuLC has no
+     * source for is reported with the remedy.
      */
     private LibrarySource libraryOfThisCompilation(String fqcn) {
         TypeElement type;
@@ -385,14 +399,27 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
         } catch (RuntimeException e) {
             return null;
         }
-        if (type == null || type.getNestingKind() != NestingKind.TOP_LEVEL || JavacFacts.libraryMarker(type).isEmpty()) {
+        if (type == null) {
             return null;
         }
         var path = trees.getPath(type);
         if (path == null) {
             return null;   // a class-path class: its source comes from META-INF/plutus-sources, if anywhere
         }
-        rejectNestedLibraries(type);
+        // Every top-level class of the file has its nested library classes rejected, the asked one's included.
+        for (var declaration : path.getCompilationUnit().getTypeDecls()) {
+            if (trees.getElement(TreePath.getPath(path.getCompilationUnit(), declaration)) instanceof TypeElement top) {
+                rejectNestedLibraries(top);
+            }
+        }
+        if (type.getNestingKind() != NestingKind.TOP_LEVEL) {
+            return null;
+        }
+        var marker = JavacFacts.libraryMarker(type);
+        if (marker.isEmpty()) {
+            return null;
+        }
+        requireMarkerSource(type, marker.get());
         try {
             return LibrarySourceResolver.librarySourceFromQualifiedName(fqcn,
                     path.getCompilationUnit().getSourceFile().getCharContent(true).toString());
@@ -405,13 +432,32 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
 
     private void rejectNestedLibraries(TypeElement type) {
         var nested = new LinkedHashSet<Element>();
-        for (Element member : type.getEnclosedElements()) collectMetaAnnotated(member, nested);
+        for (Element member : type.getEnclosedElements()) collectLibraries(member, nested);
         for (Element element : nested) {
             if (reportedNestedLibraries.add(element)) {
                 processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
                         nestedLibraryMessage((TypeElement) element), element);
             }
         }
+    }
+
+    /**
+     * JuLC compiles a marker annotation's source with the library that carries it. A marker of this compilation, or one
+     * whose jar ships its source in {@code META-INF/plutus-sources}, has one; for any other, JuLC's own compilation could
+     * only report that it cannot find the annotation, so say why here.
+     */
+    private void requireMarkerSource(TypeElement library, TypeElement marker) {
+        String markerName = marker.getQualifiedName().toString();
+        if (markerName.equals(ONCHAIN_LIBRARY) || sameProjectLibraries.containsKey(markerName)
+                || classpathLibraries.containsKey(markerName) || trees.getPath(marker) != null
+                || !reportedMarkers.add(markerName)) {
+            return;
+        }
+        processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR, "@" + marker.getSimpleName() + " makes "
+                + library.getSimpleName() + " an on-chain library, but JuLC has no source for " + markerName + ". JuLC"
+                + " compiles a marker annotation with the libraries that carry it: ship its source in its jar's"
+                + " META-INF/plutus-sources, listed in META-INF/plutus-sources/index.txt, as for an on-chain library.",
+                library);
     }
 
     /**

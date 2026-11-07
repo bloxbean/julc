@@ -1,1 +1,2 @@
 org/julclang/processor/testmarker/StateMarker.java
+org/julclang/processor/testshadow/Shadowed.java

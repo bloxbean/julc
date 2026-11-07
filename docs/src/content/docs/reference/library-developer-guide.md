@@ -44,7 +44,7 @@ public @interface OnchainLibrary {
 }
 ```
 
-**Source:** `julc-stdlib/src/main/java/org/julclang/onchain/annotation/OnchainLibrary.java`
+**Source:** `julc-stdlib/src/main/java/org/julclang/stdlib/annotation/OnchainLibrary.java`
 
 #### A framework's own annotation
 
@@ -65,18 +65,24 @@ compiles to the same script, and a validator finds it through the same imports a
 counts: an annotation annotated with `@StateContract` does not make a library.
 
 JuLC compiles the marker annotation's source together with the libraries that carry it, so the marker must itself be
-code JuLC can compile:
+a top-level annotation interface that JuLC can compile:
 
 - Its members may be primitives, `String` or `Class<?>`, with constant defaults. Arrays and enum members are not
-  supported. A default may read a constant of an on-chain library.
+  supported. A default may read a constant of an on-chain library. A `Class<?>` default that names an on-chain
+  library class (`Limits.class`) must import that class, even from the marker's own package.
 - Its own annotations may be `@Retention`, `@Target` and `@OnchainLibrary`. `@Documented`, `@Inherited` and
   `@Repeatable` are not available to JuLC.
 - A marker in a jar must ship its source in the jar's `META-INF/plutus-sources/`, like any on-chain library
-  ([3.2](#32-the-indextxt-manifest-format)). The Gradle plugin's `bundleJulcSources` task bundles a class only if it
-  carries `@OnchainLibrary` itself, so a framework bundles its users' sources itself.
+  ([3.2](#32-the-indextxt-manifest-format)). The marker carries `@OnchainLibrary` itself, so the Gradle plugin's
+  `bundleJulcSources` task bundles it. If the source is missing, the annotation processor reports it at the library,
+  naming the marker.
 
-The annotation processor follows the marker; the Gradle plugin's `bundleJulcSources`, the testkit's `SourceDiscovery`
-and the CLI's project scan read source text and still recognise only `@OnchainLibrary` written on the class.
+The marker must be top-level, and so must the classes it marks.
+
+The annotation processor follows the marker. Tools that read source text recognise only `@OnchainLibrary` written on
+the class: the Gradle plugin's `bundleJulcSources`, and the testkit's `SourceDiscovery`. So `bundleJulcSources` does
+not bundle a user's marked classes, and a framework that ships them in a jar bundles them itself. The CLI's project
+scan treats every non-validator file of the project as a library source, so marked classes work there as they are.
 
 ### 2.2 Basic Structure
 

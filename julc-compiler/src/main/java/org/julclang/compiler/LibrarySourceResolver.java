@@ -5,12 +5,15 @@ import org.julclang.compiler.frontend.javac.ExpressionRoles;
 import org.julclang.compiler.frontend.javac.JavacSyntax;
 import com.sun.source.tree.AnnotationTree;
 import com.sun.source.tree.ClassTree;
+import com.sun.source.tree.IdentifierTree;
 import com.sun.source.tree.ImportTree;
 import com.sun.source.tree.MemberSelectTree;
 import com.sun.source.tree.MethodInvocationTree;
 import com.sun.source.tree.Tree;
+import com.sun.source.tree.VariableTree;
 import org.julclang.compiler.frontend.javac.SourceOrderScanner;
 
+import javax.lang.model.SourceVersion;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -404,13 +407,14 @@ public final class LibrarySourceResolver {
     private static List<LibrarySource> resolveLibrarySources(String source, Map<String, LibrarySource> availableLibraries,
                                                              Function<String, LibrarySource> classesOfTheCompilation) {
         var asked = new HashMap<String, Optional<LibrarySource>>();
-        Function<String, LibrarySource> admitted = fqcn -> availableLibraries.containsKey(fqcn) ? null
+        Function<String, LibrarySource> admitted = fqcn -> availableLibraries.containsKey(fqcn)
+                || !SourceVersion.isName(fqcn) ? null
                 : asked.computeIfAbsent(fqcn, name -> Optional.ofNullable(classesOfTheCompilation.apply(name))).orElse(null);
         Function<String, LibrarySource> exact = fqcn -> {
             var pooled = availableLibraries.get(fqcn);
             return pooled != null ? pooled : admitted.apply(fqcn);
         };
-        var lookup = new Lookup(exact, admitted);
+        var lookup = new Lookup(exact, admitted, availableLibraries::get);
         var bySimpleName = indexBySimpleName(availableLibraries.values());
         var diagnostics = new DiagnosticCollector("<source>");
         var resolved = new LinkedHashMap<String, LibrarySource>();
@@ -454,7 +458,7 @@ public final class LibrarySourceResolver {
         for (ClassReference reference : context.staticReferences()) {
             LibrarySource librarySource = resolveStaticReference(reference, context.packageName(),
                     context.importsBySimpleName(), context.wildcardPackages(),
-                    lookup, bySimpleName, diagnostics);
+                    lookup, bySimpleName, context.guessableNames().contains(reference.simpleName()), diagnostics);
             enqueue(librarySource, resolved, queued, toProcess);
         }
 
@@ -488,16 +492,25 @@ public final class LibrarySourceResolver {
                     ? reference.simpleName()
                     : packageName + "." + reference.simpleName());
             if (candidate == null) {
-                var wildcard = wildcardCandidates(reference.simpleName(), wildcardPackages, lookup, bySimpleName);
+                var wildcard = wildcardCandidates(reference.simpleName(), wildcardPackages, lookup, bySimpleName, true);
                 candidate = wildcard.size() == 1 ? wildcard.getFirst() : null;
             }
         }
-        return candidate != null && declaresAnnotationInterface(candidate) ? candidate : null;
+        return candidate != null && isMarker(candidate) ? candidate : null;
     }
 
-    private static boolean declaresAnnotationInterface(LibrarySource librarySource) {
-        return Pattern.compile("@\\s*interface\\s+" + Pattern.quote(librarySource.simpleName()) + "\\b")
-                .matcher(librarySource.source()).find();
+    /**
+     * Whether the library's source declares its class as a library marker: an annotation interface that carries
+     * {@code @OnchainLibrary}, as javac's parser reads it. A host's pool may hold other annotation interfaces (the CLI
+     * pools every project source); they are never followed.
+     */
+    private static boolean isMarker(LibrarySource librarySource) {
+        var syntax = JavacSyntax.read(librarySource.source());
+        return !syntax.hasErrors() && syntax.unit().getTypeDecls().stream().anyMatch(type ->
+                type instanceof ClassTree declared && declared.getKind() == Tree.Kind.ANNOTATION_TYPE
+                        && declared.getSimpleName().contentEquals(librarySource.simpleName())
+                        && declared.getModifiers().getAnnotations().stream().anyMatch(annotation ->
+                        simpleName(annotation.getAnnotationType().toString()).equals("OnchainLibrary")));
     }
 
     private static LibrarySource resolveStaticReference(ClassReference reference,
@@ -506,6 +519,7 @@ public final class LibrarySourceResolver {
                                                         Set<String> wildcardPackages,
                                                         Lookup lookup,
                                                         Map<String, List<LibrarySource>> bySimpleName,
+                                                        boolean guessable,
                                                         DiagnosticCollector diagnostics) {
         if (reference.fqcn() != null) {
             return lookup.exact().apply(reference.fqcn());
@@ -519,13 +533,13 @@ public final class LibrarySourceResolver {
         String samePackageFqcn = packageName.isBlank()
                 ? reference.simpleName()
                 : packageName + "." + reference.simpleName();
-        LibrarySource samePackageSource = lookup.exact().apply(samePackageFqcn);
+        LibrarySource samePackageSource = lookup.guessed(samePackageFqcn, guessable);
         if (samePackageSource != null) {
             return samePackageSource;
         }
 
         List<LibrarySource> wildcardCandidates = wildcardCandidates(reference.simpleName(), wildcardPackages, lookup,
-                bySimpleName);
+                bySimpleName, guessable);
         if (wildcardCandidates.size() == 1) {
             return wildcardCandidates.get(0);
         }
@@ -559,11 +573,12 @@ public final class LibrarySourceResolver {
      * compilation admits under the same names (ADR-071 D1).
      */
     private static List<LibrarySource> wildcardCandidates(String simpleName, Set<String> wildcardPackages, Lookup lookup,
-                                                          Map<String, List<LibrarySource>> bySimpleName) {
+                                                          Map<String, List<LibrarySource>> bySimpleName,
+                                                          boolean guessable) {
         var pooled = bySimpleName.getOrDefault(simpleName, List.of()).stream()
                 .filter(librarySource -> wildcardPackages.contains(librarySource.packageName()))
                 .toList();
-        if (!pooled.isEmpty()) return pooled;
+        if (!pooled.isEmpty() || !guessable) return pooled;
         return wildcardPackages.stream()
                 .map(wildcardPackage -> lookup.admitted().apply(wildcardPackage + "." + simpleName))
                 .filter(Objects::nonNull)
@@ -572,9 +587,20 @@ public final class LibrarySourceResolver {
 
     /**
      * How a resolution finds a library by name: {@code exact} looks in the pool, then among the classes the compilation
-     * admits; {@code admitted} only among the latter.
+     * admits; {@code admitted} only among the latter; {@code pooled} only in the pool.
      */
-    private record Lookup(Function<String, LibrarySource> exact, Function<String, LibrarySource> admitted) {
+    private record Lookup(Function<String, LibrarySource> exact, Function<String, LibrarySource> admitted,
+                          Function<String, LibrarySource> pooled) {
+
+        /**
+         * A name built from the source's package or a wildcard package: asked of the compilation only when the source
+         * names it as a bare identifier it does not declare as a variable, since javac resolves only such a name to a
+         * type there. Asking for another (the field in {@code BigInteger.ZERO.signum()}) could make javac read an
+         * unrelated source.
+         */
+        LibrarySource guessed(String fqcn, boolean guessable) {
+            return guessable ? exact.apply(fqcn) : pooled.apply(fqcn);
+        }
     }
 
     private static void enqueue(LibrarySource librarySource,
@@ -597,7 +623,7 @@ public final class LibrarySourceResolver {
         var fallbackPackageName = packageName == null ? extractPackageName(source) : packageName;
         var staticReferences = extractFallbackClassReferences(source);
         return new SourceContext(fallbackPackageName, extractImportPaths(source),
-                extractWildcardImportPackages(source), staticReferences, List.of());
+                extractWildcardImportPackages(source), staticReferences, List.of(), Set.of());
     }
 
     /**
@@ -625,6 +651,7 @@ public final class LibrarySourceResolver {
         var calls = new ArrayList<Tree>();
         var fieldAccesses = new ArrayList<Tree>();
         var annotations = new ArrayList<Tree>();
+        var variables = new HashSet<String>();
         new SourceOrderScanner<Void, Void>() {
             @Override
             public Void visitMethodInvocation(MethodInvocationTree call, Void unused) {
@@ -643,13 +670,38 @@ public final class LibrarySourceResolver {
                 annotations.add(annotation.getAnnotationType());
                 return super.visitAnnotation(annotation, unused);
             }
+
+            @Override
+            public Void visitVariable(VariableTree variable, Void unused) {
+                variables.add(variable.getName().toString());
+                return super.visitVariable(variable, unused);
+            }
         }.scan(unit, null);
         for (Tree scope : calls) javacReference(syntax, scope).ifPresent(staticReferences::add);
         for (Tree scope : fieldAccesses) javacReference(syntax, scope).ifPresent(staticReferences::add);
+        // An annotation names a type, whatever its spelling: no class-name heuristic.
         var annotationReferences = new ArrayList<ClassReference>();
-        for (Tree type : annotations) javacReference(syntax, type).ifPresent(annotationReferences::add);
+        for (Tree type : annotations) {
+            String text = type.toString();
+            annotationReferences.add(new ClassReference(simpleName(text), text.contains(".") ? text : null,
+                    syntax.line(type), syntax.column(type)));
+        }
+        // The qualifiers that are bare identifiers the source does not declare as variables or import statically.
+        for (ImportTree importTree : unit.getImports()) {
+            if (importTree.isStatic()) {
+                variables.add(((MemberSelectTree) importTree.getQualifiedIdentifier()).getIdentifier().toString());
+            }
+        }
+        var guessableNames = new HashSet<String>();
+        for (Tree scope : calls) {
+            if (scope instanceof IdentifierTree identifier) guessableNames.add(identifier.getName().toString());
+        }
+        for (Tree scope : fieldAccesses) {
+            if (scope instanceof IdentifierTree identifier) guessableNames.add(identifier.getName().toString());
+        }
+        guessableNames.removeAll(variables);
         return new SourceContext(resolvedPackageName, importsBySimpleName, wildcardPackages, staticReferences,
-                annotationReferences);
+                annotationReferences, guessableNames);
     }
 
     private static Optional<ClassReference> javacReference(JavacSyntax syntax, Tree scope) {
@@ -664,7 +716,7 @@ public final class LibrarySourceResolver {
     static String describeSourceContext(String source) {
         var context = parseSourceContext(source, null);
         var references = context.staticReferences().stream()
-                .filter(reference -> javax.lang.model.SourceVersion.isIdentifier(reference.simpleName()))
+                .filter(reference -> SourceVersion.isIdentifier(reference.simpleName()))
                 .toList();
         // The four readings the ADR-068 baseline froze, printed as that record printed them.
         return "SourceContext[packageName=" + context.packageName() + ", importsBySimpleName="
@@ -777,7 +829,8 @@ public final class LibrarySourceResolver {
                                  Map<String, String> importsBySimpleName,
                                  Set<String> wildcardPackages,
                                  List<ClassReference> staticReferences,
-                                 List<ClassReference> annotationReferences) {
+                                 List<ClassReference> annotationReferences,
+                                 Set<String> guessableNames) {
     }
 
     /** A class a source names as a call's or a field access's qualifier, and where (0, 0 when unknown). */
