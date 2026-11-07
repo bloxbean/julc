@@ -13,6 +13,7 @@ import org.julclang.compiler.LibrarySource;
 import org.julclang.compiler.LibrarySourceResolver;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.ScriptPurposeMetadata;
+import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.OptimizationConfiguration;
 import org.julclang.compiler.OptimizationLevel;
 import org.julclang.core.source.SourceMapSerializer;
@@ -41,7 +42,8 @@ import java.util.stream.Collectors;
  * <p>
  * Library discovery:
  * <ol>
- *   <li>Same-project: {@code @OnchainLibrary} classes discovered via {@code roundEnv}</li>
+ *   <li>Same-project: on-chain library classes of every round's roots: those carrying {@code @OnchainLibrary}, or an
+ *       annotation whose annotation interface carries it (ADR-071 D1)</li>
  *   <li>Classpath: Sources bundled in {@code META-INF/plutus-sources/} in dependency JARs</li>
  *   <li>Usage-based: Only libraries imported by the validator are included in compilation</li>
  *   <li>Transitive: Recursively resolves library imports until no new libraries are found</li>
@@ -50,17 +52,19 @@ import java.util.stream.Collectors;
  * Uses {@link Trees} to read the original source file and delegates to
  * {@link JulcCompiler} for the actual compilation.
  */
-@SupportedAnnotationTypes({
-        "org.julclang.stdlib.annotation.SpendingValidator",
-        "org.julclang.stdlib.annotation.MintingValidator",
-        "org.julclang.stdlib.annotation.WithdrawValidator",
-        "org.julclang.stdlib.annotation.CertifyingValidator",
-        "org.julclang.stdlib.annotation.VotingValidator",
-        "org.julclang.stdlib.annotation.ProposingValidator",
-        "org.julclang.stdlib.annotation.MultiValidator"
-})
 @SupportedOptions({"julc.projectName", "julc.projectVersion", "julc.sourceMap", "julc.blueprint", "julc.target", "julc.optimization", "julc.costProfile", "julc.frontend"})
 public class JulcAnnotationProcessor extends AbstractProcessor {
+
+    private static final String ONCHAIN_LIBRARY = "org.julclang.stdlib.annotation.OnchainLibrary";
+
+    private static final Set<String> VALIDATOR_ANNOTATIONS = Set.of(
+            "org.julclang.stdlib.annotation.SpendingValidator",
+            "org.julclang.stdlib.annotation.MintingValidator",
+            "org.julclang.stdlib.annotation.WithdrawValidator",
+            "org.julclang.stdlib.annotation.CertifyingValidator",
+            "org.julclang.stdlib.annotation.VotingValidator",
+            "org.julclang.stdlib.annotation.ProposingValidator",
+            "org.julclang.stdlib.annotation.MultiValidator");
 
     private Trees trees;
     private StdlibRegistry stdlib;
@@ -77,11 +81,8 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
     /** Same-project @OnchainLibrary sources: FQCN -> source metadata */
     private final Map<String, LibrarySource> sameProjectLibraries = new LinkedHashMap<>();
 
-    /**
-     * Libraries marked by a meta-annotated annotation: library FQCN -> marker annotation FQCN (ADR-071 D1). JuLC's own
-     * compilation must see the marker's source too, which the validator need not reference.
-     */
-    private final Map<String, String> metaMarkers = new LinkedHashMap<>();
+    /** Nested library classes already reported, so a class admitted for several validators is reported once. */
+    private final Set<Element> reportedNestedLibraries = new HashSet<>();
 
     /** Classpath library sources: FQCN -> source metadata */
     private final Map<String, LibrarySource> classpathLibraries = new LinkedHashMap<>();
@@ -125,16 +126,9 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
 
     @Override
     public Set<String> getSupportedAnnotationTypes() {
-        return Set.of(
-                "org.julclang.stdlib.annotation.SpendingValidator",
-                "org.julclang.stdlib.annotation.MintingValidator",
-                "org.julclang.stdlib.annotation.WithdrawValidator",
-                "org.julclang.stdlib.annotation.CertifyingValidator",
-                "org.julclang.stdlib.annotation.VotingValidator",
-                "org.julclang.stdlib.annotation.ProposingValidator",
-                "org.julclang.stdlib.annotation.MultiValidator",
-                "org.julclang.stdlib.annotation.OnchainLibrary"
-        );
+        var supported = new LinkedHashSet<>(VALIDATOR_ANNOTATIONS);
+        supported.add(ONCHAIN_LIBRARY);
+        return supported;
     }
 
     @Override
@@ -142,27 +136,20 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
         if (processingFailed) {
             return true;
         }
-        // 1. Collect same-project @OnchainLibrary sources
+        // 1. Collect same-project on-chain libraries
         collectSameProjectLibraries(roundEnv);
 
-        // 2. Scan classpath for META-INF/plutus-sources/ (once)
-        if (!classpathScanned) {
-            scanClasspathLibraries();
-            classpathScanned = true;
-        }
-
-        // 3. Process validator elements
+        // 2. Process validator elements
         for (TypeElement annotation : annotations) {
-            String annotationName = annotation.getQualifiedName().toString();
-            if (annotationName.endsWith("OnchainLibrary")) {
-                continue; // already collected above
+            if (!VALIDATOR_ANNOTATIONS.contains(annotation.getQualifiedName().toString())) {
+                continue; // @OnchainLibrary: already collected above
             }
             for (Element element : roundEnv.getElementsAnnotatedWith(annotation)) {
                 processElement(element, annotation);
             }
         }
 
-        // 4. Generate CIP-57 blueprint on final round
+        // 3. Generate CIP-57 blueprint on final round
         if (roundEnv.processingOver() && blueprintEnabled && !processingFailed
                 && !roundEnv.errorRaised() && !compiledValidators.isEmpty()) {
             generateBlueprint();
@@ -172,8 +159,7 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
     }
 
     private void collectSameProjectLibraries(RoundEnvironment roundEnv) {
-        var candidates = new LinkedHashSet<Element>(roundEnv.getElementsAnnotatedWith(
-                findTypeElement(ONCHAIN_LIBRARY)));
+        var candidates = new LinkedHashSet<Element>(roundEnv.getElementsAnnotatedWith(findTypeElement(ONCHAIN_LIBRARY)));
         // ADR-071 D1: also classes carrying an annotation that is itself annotated @OnchainLibrary.
         for (Element root : roundEnv.getRootElements()) {
             collectMetaAnnotated(root, candidates);
@@ -184,10 +170,7 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
             }
             String simpleName = typeElement.getSimpleName().toString();
             if (typeElement.getNestingKind() != NestingKind.TOP_LEVEL) {
-                processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
-                        onchainLibraryMarker(typeElement) + " makes " + simpleName + " an on-chain library, and"
-                                + " @OnchainLibrary must be declared on a top-level class. Nested on-chain libraries are"
-                                + " not supported.",
+                processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR, nestedLibraryMessage(typeElement),
                         element);
                 continue;
             }
@@ -209,105 +192,36 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
         }
     }
 
-    private static final String ONCHAIN_LIBRARY = "org.julclang.stdlib.annotation.OnchainLibrary";
-
-    /** Adds {@code element} and its nested types that are meta-annotated on-chain libraries (ADR-071 D1). */
-    private void collectMetaAnnotated(Element element, Set<Element> into) {
+    /** Adds {@code element} and the types nested in it that are on-chain libraries, directly or through a marker. */
+    private static void collectMetaAnnotated(Element element, Set<Element> into) {
         if (!(element instanceof TypeElement type)) return;
-        String marker = onchainLibraryMarker(type);
-        if (marker != null && !marker.equals("@OnchainLibrary")) {
-            into.add(type);
-            recordMarker(type);
-        }
+        if (JavacFacts.libraryMarker(type).isPresent()) into.add(type);
         for (Element member : type.getEnclosedElements()) collectMetaAnnotated(member, into);
     }
 
-    /** Remembers the meta-annotated marker of {@code type}, and its source if it is in this compilation. */
-    private void recordMarker(TypeElement type) {
-        for (var mirror : type.getAnnotationMirrors()) {
-            var annotation = (TypeElement) mirror.getAnnotationType().asElement();
-            boolean meta = annotation.getAnnotationMirrors().stream().anyMatch(m ->
-                    ((TypeElement) m.getAnnotationType().asElement()).getQualifiedName().contentEquals(ONCHAIN_LIBRARY));
-            if (!meta) continue;
-            String markerFqcn = annotation.getQualifiedName().toString();
-            metaMarkers.put(type.getQualifiedName().toString(), markerFqcn);
-            var path = trees.getPath(annotation);
-            if (path != null && !sameProjectLibraries.containsKey(markerFqcn)) {
-                try {
-                    sameProjectLibraries.put(markerFqcn, LibrarySourceResolver.librarySourceFromSimpleName(
-                            annotation.getSimpleName().toString(),
-                            path.getCompilationUnit().getSourceFile().getCharContent(true).toString()));
-                } catch (IOException e) {
-                    processingEnv.getMessager().printMessage(Diagnostic.Kind.WARNING,
-                            "Could not read source for annotation " + markerFqcn + ": " + e.getMessage(), annotation);
-                }
-            }
+    private static String nestedLibraryMessage(TypeElement type) {
+        var marker = JavacFacts.libraryMarker(type).orElseThrow();
+        if (marker.getQualifiedName().contentEquals(ONCHAIN_LIBRARY)) {
+            return "@OnchainLibrary must be declared on a top-level class. Nested on-chain libraries are not supported.";
         }
-    }
-
-    /**
-     * The annotation that makes {@code type} an on-chain library, as source text ({@code @OnchainLibrary} or
-     * {@code @StateContract}), or null. One level of meta-annotation (ADR-071 D1).
-     */
-    private static String onchainLibraryMarker(TypeElement type) {
-        for (var mirror : type.getAnnotationMirrors()) {
-            var annotation = (TypeElement) mirror.getAnnotationType().asElement();
-            if (annotation.getQualifiedName().contentEquals(ONCHAIN_LIBRARY)) return "@OnchainLibrary";
-            for (var meta : annotation.getAnnotationMirrors()) {
-                if (((TypeElement) meta.getAnnotationType().asElement()).getQualifiedName().contentEquals(ONCHAIN_LIBRARY)) {
-                    return "@" + annotation.getSimpleName();
-                }
-            }
-        }
-        return null;
-    }
-
-    /**
-     * On-demand discovery (ADR-071 D1): classes of this compilation that {@code source} refers to (imports and
-     * same-package references), and that are on-chain libraries, are added to the same-project pool, transitively.
-     * A processor is only invoked in a round that holds one of its annotations, so a library whose only marker is a
-     * framework annotation may have been entered in a round this processor never saw.
-     */
-    private void discoverReferencedLibraries(String source) {
-        var queue = new ArrayDeque<String>();
-        queue.add(source);
-        var seen = new HashSet<String>();
-        while (!queue.isEmpty()) {
-            String text = queue.poll();
-            String pkg = LibrarySourceResolver.extractPackageName(text);
-            var names = new LinkedHashSet<String>(LibrarySourceResolver.extractImportPaths(text).values());
-            for (String simple : LibrarySourceResolver.extractReferencedClassNames(text)) {
-                names.add(pkg.isEmpty() ? simple : pkg + "." + simple);
-            }
-            for (String fqcn : names) {
-                if (!seen.add(fqcn) || sameProjectLibraries.containsKey(fqcn)) continue;
-                TypeElement type = processingEnv.getElementUtils().getTypeElement(fqcn);
-                if (type == null || type.getNestingKind() != NestingKind.TOP_LEVEL || onchainLibraryMarker(type) == null) {
-                    continue;
-                }
-                var path = trees.getPath(type);
-                if (path == null) continue;   // not a source of this compilation (class-path libraries come from jars)
-                try {
-                    String librarySource = path.getCompilationUnit().getSourceFile().getCharContent(true).toString();
-                    sameProjectLibraries.put(fqcn, LibrarySourceResolver.librarySourceFromSimpleName(
-                            type.getSimpleName().toString(), librarySource));
-                    recordMarker(type);
-                    queue.add(librarySource);
-                } catch (IOException e) {
-                    processingEnv.getMessager().printMessage(Diagnostic.Kind.WARNING,
-                            "Could not read source for on-chain library " + fqcn + ": " + e.getMessage(), type);
-                }
-            }
-        }
+        return "@" + marker.getSimpleName() + " makes " + type.getSimpleName() + " an on-chain library, and an on-chain"
+                + " library must be a top-level class. Move " + type.getSimpleName() + " into a file of its own.";
     }
 
     private TypeElement findTypeElement(String qualifiedName) {
         return processingEnv.getElementUtils().getTypeElement(qualifiedName);
     }
 
+    /**
+     * Reads the class path's library sources once, when the first validator needs them. An index or source it cannot
+     * read costs only that entry, and is reported as a note (ADR-071 D2): a note, not a warning, so a build with
+     * {@code -Werror} behaves as before.
+     */
     private void scanClasspathLibraries() {
+        if (classpathScanned) return;
+        classpathScanned = true;
         classpathLibraries.putAll(LibrarySourceResolver.scanClasspathSources(getClass().getClassLoader(),
-                problem -> processingEnv.getMessager().printMessage(Diagnostic.Kind.WARNING,
+                problem -> processingEnv.getMessager().printMessage(Diagnostic.Kind.NOTE,
                         "JuLC skipped an on-chain library source on the processor path: " + problem)));
     }
 
@@ -323,8 +237,8 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
             }
             String source = path.getCompilationUnit().getSourceFile().getCharContent(true).toString();
 
-            // 2. Resolve library sources needed by this validator (discovering meta-annotated ones on demand)
-            discoverReferencedLibraries(source);
+            // 2. Resolve library sources needed by this validator
+            scanClasspathLibraries();
             List<String> librarySources = resolveLibrarySources(source);
 
             // 3. Compile with JulcCompiler (multi-file if libraries found)
@@ -453,15 +367,51 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
      */
     private List<String> resolveLibrarySources(String validatorSource) {
         var pool = libraryPool();
-        var resolved = new ArrayList<>(LibrarySourceResolver.resolveLibrarySources(validatorSource, pool));
-        // ADR-071 D1: a meta-annotated library's marker annotation, which nothing may reference by import.
-        var names = new HashSet<String>();
-        resolved.forEach(library -> names.add(library.fqcn()));
-        for (var library : List.copyOf(resolved)) {
-            String marker = metaMarkers.get(library.fqcn());
-            if (marker != null && names.add(marker) && pool.containsKey(marker)) resolved.add(pool.get(marker));
+
+        return LibrarySourceResolver.resolve(validatorSource, pool, this::libraryOfThisCompilation);
+    }
+
+    /**
+     * The library javac names {@code fqcn}, if it is a top-level on-chain library class of this compilation that the
+     * pool lacks (ADR-071 D1). javac calls this processor only from the first round that holds one of its annotations,
+     * so a class that carries only a framework's marker, entered in an earlier round, or in a round whose annotations
+     * another processor claimed, never reaches {@link #collectSameProjectLibraries}. The resolver asks for the exact names
+     * a source refers to; libraries nested in the class are rejected as they are in a round.
+     */
+    private LibrarySource libraryOfThisCompilation(String fqcn) {
+        TypeElement type;
+        try {
+            type = processingEnv.getElementUtils().getTypeElement(fqcn);
+        } catch (RuntimeException e) {
+            return null;
         }
-        return resolved.stream().map(LibrarySource::source).toList();
+        if (type == null || type.getNestingKind() != NestingKind.TOP_LEVEL || JavacFacts.libraryMarker(type).isEmpty()) {
+            return null;
+        }
+        var path = trees.getPath(type);
+        if (path == null) {
+            return null;   // a class-path class: its source comes from META-INF/plutus-sources, if anywhere
+        }
+        rejectNestedLibraries(type);
+        try {
+            return LibrarySourceResolver.librarySourceFromQualifiedName(fqcn,
+                    path.getCompilationUnit().getSourceFile().getCharContent(true).toString());
+        } catch (IOException e) {
+            processingEnv.getMessager().printMessage(Diagnostic.Kind.WARNING,
+                    "Could not read source for on-chain library " + fqcn + ": " + e.getMessage(), type);
+            return null;
+        }
+    }
+
+    private void rejectNestedLibraries(TypeElement type) {
+        var nested = new LinkedHashSet<Element>();
+        for (Element member : type.getEnclosedElements()) collectMetaAnnotated(member, nested);
+        for (Element element : nested) {
+            if (reportedNestedLibraries.add(element)) {
+                processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
+                        nestedLibraryMessage((TypeElement) element), element);
+            }
+        }
     }
 
     /**

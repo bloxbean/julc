@@ -1,8 +1,11 @@
 # ADR-071: On-chain library meta-annotations and a robust library-source scan
 
-**Status:** Proposed
-**Date:** 2026-11-07
+**Status:** Proposed (r2)
+**Date:** 2026-11-07 (r2: 2026-11-07)
 **Label:** `joust`
+**Risk class:** medium. It changes which sources the annotation processor and the library resolver hand to the
+compiler. A wrong rule could compile a class into a validator that should not be on-chain, or miss one and fail the
+build. It does not change how a compiled source lowers.
 **Motivation:** [JOUST](https://github.com/bloxbean/joust) (JuLC State Contracts) ADR-0001 §12, items 1–2: two
 problems found while building a framework that generates validators from user classes on top of JuLC.
 
@@ -11,7 +14,7 @@ problems found while building a framework that generates validators from user cl
 ### 1. Frameworks cannot make their own annotation imply `@OnchainLibrary`
 
 A framework on top of JuLC (JOUST's `@StateContract`) generates a validator that calls the user's class, so that class
-must be an on-chain library. Today JuLC recognises a same-project library only by a literal `@OnchainLibrary` on it
+must be an on-chain library. JuLC recognises a same-project library only by a literal `@OnchainLibrary` on it
 (`JulcAnnotationProcessor.collectSameProjectLibraries`). Every JOUST contract therefore carries two annotations:
 
 ```java
@@ -32,10 +35,25 @@ public @interface StateContract { ... }
 retention is `RUNTIME`, so the meta-annotation is visible on annotation types read from class files. But nothing in
 JuLC looks for it.
 
+Three facts of the current code shape the design:
+
+- **Rounds.** javac calls a processor only from the first round that holds one of the annotations it supports. After
+  that, it calls the processor in every later round. JuLC's processor supports the validator annotations and
+  `@OnchainLibrary`. A framework user's class carries only `@StateContract`, and the framework generates the validator
+  in a later round. So JuLC's processor never sees the round that entered the user's class. It also misses a round
+  whose annotations another processor claimed: javac stops offering a round once every annotation in it is claimed.
+- **The marker must compile with the library.** JuLC compiles the library's source with its own javac, which must
+  resolve the marker annotation. A same-package marker may be used without an import. The resolver follows imports
+  and `Class.member` references, not annotations.
+- **The pool is keyed by name.** The processor keys same-project libraries by javac's qualified name, while
+  `librarySourceFromSimpleName` reads the package from the source text. `LibrarySourceResolver.resolve` re-keys the
+  pool by the latter.
+
 ### 2. One unreadable library index hides every library source
 
 `LibrarySourceResolver.scanClasspathSources` reads `META-INF/plutus-sources/index.txt` from every entry of the
 processor's class loader. Two things go wrong:
+
 - The loop over index URLs sits inside a single `try`, and its `catch (IOException)` swallows the exception silently.
 - `URL.openStream()` uses the JDK's shared `JarFile` cache. In a long-lived Gradle daemon, a jar on the processor path
   that is rebuilt between builds leaves a stale cached `JarFile`, and reading from it throws.
@@ -44,70 +62,245 @@ JOUST hit this. The stale jar was its own API module, and it threw before julc-s
 then failed with `Undefined variable: OutputLib`, a misleading error on code that compiles fine on a cold daemon.
 The cause took a long time to find, because nothing was reported.
 
+## Goals and non-goals
+
+Goals:
+
+- A framework can make its annotation imply `@OnchainLibrary`, and its users write one annotation.
+- That holds for the framework case: the user's class in one round, the validator generated in a later one, whichever
+  processor runs first and whatever it claims.
+- A broken or stale jar costs only its own sources, and says so.
+- Nothing changes for a project that uses `@OnchainLibrary` directly.
+
+Non-goals:
+
+- Recursive meta-annotations (an annotation annotated with a marker).
+- Recognising markers in tools that read source text without a class path: the Gradle plugin's `bundleJulcSources`
+  and role check (`CompileJulcTask`), the testkit's `SourceDiscovery`, the CLI's `ProjectScanner`, julc-tools'
+  `JavacMetadataReading`, and `JavaLibraryProvider`'s export check (`JavacLibraryTypes.requireLibraries`). They
+  can't resolve an annotation's meta-annotations, or (the last) export a library only as `@OnchainLibrary` today.
+  A framework that ships its users' library sources in a jar bundles them itself, as JOUST does.
+- Widening JuLC's java.base subset so a marker may carry `@Documented`, `@Inherited` or `@Repeatable` (Q1).
+
+## Invariants
+
+- **I1. No change for direct users.** For a project in which no annotation interface carries `@OnchainLibrary`, the
+  processor and every resolver host give the compiler the same library sources, in the same order, as before. So
+  the validators' bytes, diagnostics and warnings are unchanged. The one exception is a direct library that the
+  processor has never collected, for example one found only on `-sourcepath`. It used to fail with `JULC0085`, and
+  now it compiles (D1).
+- **I2. The rule is one rule.** A class is an on-chain library if it carries `@OnchainLibrary`, or an annotation whose
+  annotation interface carries `@OnchainLibrary`. One level, no recursion. `JavacFacts.libraryMarker` implements it,
+  and the processor, the compiler's JULC0134 check and the nested-class check all call it.
+- **I3. Same bytes.** A library marked through a marker compiles to the same script as the same class marked
+  `@OnchainLibrary`.
+- **I4. Only libraries are added.** Nothing new reaches the compiler except:
+  - a top-level class that is a library by I2 and whose source is in this compilation;
+  - an annotation interface of the library pool.
+  A class that is merely named in a comment or a string is never added.
+- **I5. Locality.** What a validator is compiled with depends only on its own references and the libraries collected
+  in rounds, never on which other validators were compiled first.
+- **I6. Claims unchanged.** The processor supports and claims the same annotations as before. A framework's processor
+  receives its annotation whatever the processor order.
+- **I7. The scan isolates failures and never fails the build.** An index, source or directory listing that cannot be
+  read costs only itself and is reported as a note. The scan's result is otherwise as before, `putIfAbsent` order
+  included.
+
 ## Decision
 
 ### D1. Meta-annotated on-chain libraries
 
 A class is an on-chain library if it carries `@OnchainLibrary` **directly**, or carries an annotation whose
-annotation interface carries `@OnchainLibrary` (**one level** of meta-annotation, no recursion).
+annotation interface carries `@OnchainLibrary` (**one level** of meta-annotation, no recursion). `JavacFacts.libraryMarker(Element)`
+returns that annotation, preferring `@OnchainLibrary` itself. It reads annotation mirrors only, so the annotation
+processor (on the build's javac) and the compiler (on JuLC's javac) share it.
 
 Where it applies:
-- **Round collection.** `JulcAnnotationProcessor` collects same-project libraries from each round's root elements by
-  this rule.
-- **On-demand discovery.** javac invokes a processor only in rounds that hold one of its own annotations. A framework's
-  user class carries only the framework annotation, and the validator calling it is typically generated in a *later*
-  round. So JuLC's processor never sees the class as a root element. When compiling a validator, the processor
-  therefore also follows the validator's references (imports and same-package names) to classes of the current
-  compilation (`Elements.getTypeElement` plus `Trees.getPath`), admits those that are on-chain libraries by this rule,
-  and repeats for their references.
-- **Marker sources.** JuLC's own javac must resolve the marker annotation itself, which a same-package library may use
-  without an import. For each resolved library that is a library through a meta-annotation, the processor adds the
-  marker's source, from this compilation or from the class-path library sources. A framework whose marker lives in a
-  jar ships its source in `META-INF/plutus-sources`, like any on-chain library source. `LibrarySourceResolver`'s
-  reference rules are unchanged (ADR-068 gates).
-- **Unchanged.** Library sources from the class path (`META-INF/plutus-sources`) are bundled sources and need no
-  marker.
-- **Conflict check.** `JavacFacts.isOnchainLibrary(Element)` implements the rule once.
-  `JavacDiscovery.rejectRoleConflict` uses it, so a meta-annotated library that is also a validator is rejected
-  exactly like a directly annotated one (JULC0134).
-- **Nested classes.** The rule is unchanged: a meta-annotated nested class is rejected like `@OnchainLibrary` on a
-  nested class, and the message names the marker.
 
-Out of scope:
-- The Gradle plugin's `bundleJulcSources`, and `SourceDiscovery` in the testkit, still recognise `@OnchainLibrary`
-  by source text. They can't resolve an annotation's meta-annotations without a classpath. A framework that ships
-  library sources in a jar bundles them itself, as JOUST does.
+- **Round collection.** In each round it is called, `JulcAnnotationProcessor` collects the round's
+  `@OnchainLibrary` elements, as before, followed by the classes among the round's roots, nested ones included,
+  that are libraries by the rule.
+- **Admission by exact name (r2).** `LibrarySourceResolver.resolve(source, pool, classesOfTheCompilation)` asks the
+  host for a name the pool lacks. Only these names are asked:
+  - a qualified name;
+  - an import;
+  - the source's own package plus the simple name;
+  - each wildcard-imported package plus the simple name, when the pool has no wildcard match.
+  The pool-wide simple-name fallback never asks.
+
+  The processor answers with the class javac names, if it is a top-level library of this compilation (I2,
+  `Trees.getPath` non-null). The source is keyed by javac's qualified name, not the source's text. The class's nested
+  library classes are rejected, as in a round.
+
+  What the host admits is not added to the pool, so a validator's libraries never depend on another validator's (I5).
+  The resolver follows admitted sources like any other, so a library that reaches a marked library through another
+  library is found.
+
+  This is what makes the framework case work. javac never calls the processor in the round that entered the user's
+  class, but the validator that names it resolves it by exact name.
+- **Markers are references (r2).** The resolver treats every annotation a source uses as a reference, resolved by its
+  qualified name, an import, the source's package or a single wildcard match. It is added only if the pool entry
+  declares an annotation interface, never through the pool-wide fallback, and with no diagnostic. A pool holds
+  `@OnchainLibrary` classes plus the annotation interfaces that carry `@OnchainLibrary`, so only a marker can resolve
+  (I4). A same-project marker is collected like any `@OnchainLibrary` class, since it carries the annotation itself. A
+  class-path marker is a library source in its jar's `META-INF/plutus-sources`.
+
+  So the marker's source is compiled with each library and validator that uses it, imported or not. All of a class's
+  markers come along, and so do the libraries a marker's member defaults read.
+- **Conflict check.** `JavacDiscovery.rejectRoleConflict` uses the rule, so a meta-annotated library that is also a
+  validator is JULC0134. The message names the marker: "must not combine @StateLike (which implies @OnchainLibrary)
+  with validator annotation(s): @SpendingValidator". For `@OnchainLibrary` itself the text is unchanged.
+- **Nested classes.** A nested class that is a library by the rule is rejected, whether a round or an admission finds
+  it. For `@OnchainLibrary` the message is unchanged. For a marker it reads "@StateLike makes Inner an on-chain
+  library, and an on-chain library must be a top-level class. Move Inner into a file of its own."
+
+The **marker contract**: JuLC compiles the marker's source, so the marker must be code JuLC can compile.
+- Members: primitives, `String` or `Class<?>`, with constant defaults. A default may read a constant of an on-chain
+  library.
+- Its own annotations: only `@Retention`, `@Target` and `@OnchainLibrary`.
+- A marker in a jar ships its source in `META-INF/plutus-sources`.
+- Arrays, enum members, and `@Documented`, `@Inherited` or `@Repeatable` fail with the compiler's usual diagnostic.
+  The library developer guide states this contract.
 
 ### D2. The library-source scan reads each entry independently, and reports what it skips
 
 `scanClasspathSources` reads each `index.txt` and each indexed source independently:
-- A failure skips only that entry.
-- Each failure is reported through a new overload `scanClasspathSources(ClassLoader, Consumer<String> warnings)`. The
-  existing signature delegates with a no-op consumer.
-- Resources are opened with `URLConnection.setUseCaches(false)`, so a rebuilt jar is read from disk, not from a stale
-  cached `JarFile`.
 
-`JulcAnnotationProcessor` passes a consumer that prints each problem as a compiler **warning**, naming the URL and the
-cause. The scan stays lenient (a broken jar of someone else's should not fail the build) but no longer stays silent.
+- **Failures are isolated.** A failure skips only that entry. That covers `IOException`, and also
+  `IllegalArgumentException` from building an entry's URL (r2).
+- **Failures are reported.** Each failure goes to a new overload, `scanClasspathSources(ClassLoader, Consumer<String>
+  problems)`. That includes a directory that cannot be listed (r2). The existing signature delegates with a no-op
+  consumer.
+- **No URL cache.** Resources are opened with `URLConnection.setUseCaches(false)`, so a rebuilt jar is read from disk,
+  not from a stale cached `JarFile`. The connection closes the `JarFile` when the stream closes.
 
-## Consequences
+`JulcAnnotationProcessor` scans once, when the first validator needs it. It prints each problem as a compiler **note**
+naming the URL and the cause (r2). A note is printed like a warning, but `-Werror` does not turn it into an error. So
+a build that passed before still passes (I1), and the problem is still printed just above whatever error it causes.
 
-- Frameworks such as JOUST can make their annotation imply `@OnchainLibrary`. User classes carry one annotation.
-- A stale or broken library jar costs only its own sources, and shows up as a warning instead of an unrelated
-  "Undefined variable" error.
-- No change for code using `@OnchainLibrary` directly. No change to compilation output.
+## Alternatives considered
 
-## Tests
+- **Discover libraries from the validator's references by regex (r1).** Rejected in r2. It read imports and
+  `X.member` by pattern, unlike the resolver. So it missed wildcard imports, two imports on one line and qualified
+  references. It also stopped at a library already known, so a library reaching a marked library was missed. And it
+  added what it found to the pool, so a validator compiled or failed depending on other validators (review of r1, F2
+  and F3). Admission by exact name (D1) is that idea driven by the resolver's own reading.
+- **Support `"*"` so javac calls the processor in every round.** Rejected. javac stops offering a round to processors
+  once every annotation in it is claimed. So a framework that claims its own annotation and runs first still hides the
+  round. And claiming under `"*"` claims every annotation of a round, so the processor would have to stop claiming,
+  which changes what other processors receive and what `-Xlint:processing` reports (against I6).
+- **A processor option listing marker annotations** (`-Ajulc.libraryMarkers=...`). Rejected. Every user's build would
+  need configuring, and it still has the round problem.
+- **Give JuLC's javac the marker's class file instead of its source.** Not chosen now. It would lift the marker
+  contract, but it needs a class-path channel into JuLC's javac, which ADR-068 keeps to on-chain sources and the
+  digest-pinned platform blob. Recorded as Q1.
+- **Recursive meta-annotations.** Rejected. It is not needed, and it is harder to read.
+- **Report scan problems as warnings (r1).** Rejected in r2. A jar on the processor path with a broken index would
+  fail a `-Werror` build that passes today (review of r1, F8).
 
-- **Processor (`metaAnnotatedLibraryIsCompiledIntoTheValidator`):** a library marked through a same-compilation,
-  same-package marker is compiled into the validator calling it.
-- **Processor (`metaAnnotatedLibraryIsDiscoveredForAValidatorGeneratedInALaterRound`):** the framework case. The
-  marker comes from the class path, with its source shipped in `META-INF/plutus-sources`, and a second processor
-  generates the validator in round 2. JuLC's processor does not run in round 1.
-- **Processor (`rejectsNestedMetaAnnotatedLibrary`):** a meta-annotated nested class is rejected, naming the marker.
-- **Compiler (`aClassIsALibraryOrAValidatorEvenWhenMarkedThroughAMetaAnnotation`):** a meta-annotated library that is
-  also a validator is JULC0134.
-- **Scan (`scanClasspathSources_skipsAnUnreadableEntryWithAWarningAndReadsTheRest`):** an index listing a missing
-  source costs only that source, is reported, and the other jar is still read.
-- **Scan (`scanClasspathSources_readsAJarRewrittenAfterAnEarlierScan`):** a jar rewritten after an earlier scan is read
-  from disk. This test fails with the URL cache enabled (checked).
+## Affected stages and modules
+
+- **julc-annotation-processor** (`JulcAnnotationProcessor`): round collection, admission by exact name, the nested
+  check, the lazy scan and notes.
+- **julc-compiler:**
+  - `LibrarySourceResolver`: annotation references, the admission hook, the scan, and
+    `librarySourceFromQualifiedName`;
+  - `JavacFacts.libraryMarker`;
+  - `JavacDiscovery` (JULC0134);
+  - `DiagnosticCodes` (the JULC0134 template takes the marker as `{2}`).
+- **Docs:** the library developer guide (a framework's own annotation), and troubleshooting (the skipped-source note).
+- Lowering, PIR, UPLC and every pass are untouched.
+
+## Compatibility
+
+- **Direct `@OnchainLibrary` projects: no change (I1).** Checked on:
+  - the external julc-examples (identical `META-INF/plutus`, diagnostics and warnings);
+  - the processor test suite;
+  - the full build.
+- **Annotation references in the resolver** reach the CLI, testkit and tools hosts too. They only ever add an
+  annotation interface of the pool, that is a marker, and only where JuLC's javac would otherwise have failed to
+  resolve it.
+- **JULC0134** keeps its text for `@OnchainLibrary`. The template now has a third argument, which only
+  `JavacDiscovery` fills.
+- **The scan** reports through notes. `-Werror` builds behave as before.
+
+## Risks
+
+- **Admission asks javac for names** (`Elements.getTypeElement`). With `-sourcepath`, that can parse a source javac
+  would otherwise not have entered. javac then prints its usual "implicitly compiled files were not subject to
+  annotation processing" note. Such a library used to fail with `JULC0085`; now it compiles.
+- **The marker contract** constrains framework authors (Q1). A marker JuLC cannot compile fails every library that
+  uses it, with the compiler's usual diagnostic at the marker.
+- **Tools that read source text** still see only `@OnchainLibrary` (non-goals). A testkit test in which one marked class
+  calls another needs `@OnchainLibrary` on the callee, or a source list given explicitly.
+
+## Implementation milestones
+
+- **M1 (r1, `566ea845`):** D1 with regex discovery, and D2 with warnings.
+- **M2 (r2):** admission by exact name through the resolver, replacing regex discovery; markers as references;
+  `JavacFacts.libraryMarker` as the one rule; the JULC0134 and nested-class messages; scan notes,
+  `IllegalArgumentException` isolation and directory-listing reports; docs.
+  - Exit: the tests below are green, the full build is green, the julc-examples outputs match the merge base, and
+    JOUST builds against it.
+
+## Verification
+
+Processor tests (`JulcAnnotationProcessorTest`). The framework cases use a stand-in framework processor and a
+class-path marker whose source ships in `META-INF/plutus-sources`.
+
+| Test | What it checks |
+|---|---|
+| `metaAnnotatedLibraryIsCompiledIntoTheValidator` | the same-compilation, same-package marker |
+| `metaAnnotatedLibraryIsDiscoveredForAValidatorGeneratedInALaterRound` | the framework case, with the framework claiming its annotation and running first |
+| `aGeneratedValidatorReachesAMetaAnnotatedLibraryThroughAWildcardImport` | |
+| `aGeneratedLibraryReachesAMetaAnnotatedLibraryOfAnEarlierRound` | transitive, through a direct library |
+| `aRoundWithAFrameworkAnnotationIsLeftToTheFramework` | JuLC runs first, and the framework still receives its annotation (I6) |
+| `aNestedMetaAnnotatedLibraryIsRejectedWhenTheValidatorIsGeneratedInALaterRound` | |
+| `rejectsNestedMetaAnnotatedLibrary` | |
+| `aNestedDirectLibraryKeepsItsMessage` | I1 |
+| `aLibraryWithTwoMarkersCompilesWithBoth` | |
+| `aMarkerDefaultThatReadsALibraryConstantCompiles` | |
+| `aValidatorMarkedThroughASamePackageMarkerIsJulc0134` | |
+| `aMetaAnnotatedLibraryCompilesToTheSameScriptAsADirectOne` | I3 |
+| `librariesWhosePackageLineHasASpaceStillResolve` | the r1 regression (`package q ;`) |
+| `aLibraryOnlyCompilationClaimsItsAnnotationsAsBefore` | `-Xlint:processing -Werror`, I6 |
+
+Resolver tests (`LibrarySourceResolverTest`):
+
+| Test | What it checks |
+|---|---|
+| `resolve_followsAMarkerAnnotationOfTheLibrarysOwnPackage` | |
+| `resolve_annotationReferencesNameOnlyAnnotationInterfacesAndNeverFallBack` | I4 |
+| `scanClasspathSources_skipsAnUnreadableEntryWithAWarningAndReadsTheRest` | |
+| `scanClasspathSources_readsAJarRewrittenAfterAnEarlierScan` | fails with the URL cache on |
+
+Compiler test (`DiagnosticTextTest.aClassIsALibraryOrAValidatorEvenWhenMarkedThroughAMetaAnnotation`): JULC0134 and
+the marker in its text.
+
+Regression evidence:
+- The external julc-examples compiled with the processor at the merge base and at the head, then compared (I1).
+- The full build.
+- JOUST built against the head (`-PuseLocalJulc`).
+
+## Open questions
+
+- **Q1. The marker contract.** Should JuLC's javac see the marker's class file instead of its source? That would
+  allow any member type and any meta-annotation. Lean: only if a framework needs it; it touches ADR-068's class-path
+  gate.
+- **Q2. Tools that read source text.** Should `bundleJulcSources`, `SourceDiscovery` and `ProjectScanner` learn the
+  marker rule (for example from a list of marker names)? Lean: when a framework asks; JOUST bundles its own sources.
+
+## Revision history
+
+- **r1** (2026-11-07): D1 (collection and regex discovery), D2 (warnings). PR #311 at `566ea845`.
+- **r2** (2026-11-07, responds to the review of `566ea845` by Codex, a design reviewer and a regression reviewer):
+  - **Regex discovery** is replaced by admission by exact name through the resolver (F2, F3, F6).
+  - **Markers are annotation references** (F4, F5, F7). The processor keeps `resolve` and its pool re-keying, which
+    removes the `package q ;` regression (F1).
+  - **The rule lives in `JavacFacts.libraryMarker`** (F10). The nested message is unchanged for `@OnchainLibrary`
+    (F11), and JULC0134 names the marker (F7).
+  - **The scan** reports through notes rather than warnings (F8). It isolates `IllegalArgumentException` (F12) and
+    reports unlistable directories (F13).
+  - **The ADR** gains goals, invariants, alternatives, affected modules, compatibility, risks, milestones and open
+    questions, and lists the source-text tools as non-goals (F8, F9).
+  - Style (F14). Tests for each finding (F15).

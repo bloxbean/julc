@@ -8,9 +8,9 @@ import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.ArrayList;
 import java.util.Set;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
@@ -338,6 +338,58 @@ class LibrarySourceResolverTest {
             assertTrue(result.get("com.example.FirstLib").source().contains("class FirstLib"));
             assertTrue(result.get("com.example.SecondLib").source().contains("class SecondLib"));
         }
+    }
+
+    @Test
+    void resolve_followsAMarkerAnnotationOfTheLibrarysOwnPackage() {
+        // ADR-071 D1: an annotation is a reference; a marker used without an import comes with the library using it.
+        var mark = LibrarySourceResolver.librarySourceFromSimpleName("Mark", """
+                package lib;
+                import org.julclang.stdlib.annotation.OnchainLibrary;
+                @OnchainLibrary
+                public @interface Mark {}
+                """);
+        var library = LibrarySourceResolver.librarySourceFromSimpleName("Lib", """
+                package lib;
+                @Mark
+                public class Lib { public static boolean ok() { return true; } }
+                """);
+        var validator = """
+                package app;
+                import lib.Lib;
+                class V { static boolean f() { return Lib.ok(); } }
+                """;
+
+        var resolved = LibrarySourceResolver.resolve(validator, Map.of("lib.Lib", library, "lib.Mark", mark));
+
+        assertEquals(List.of(library.source(), mark.source()), resolved);
+    }
+
+    @Test
+    void resolve_annotationReferencesNameOnlyAnnotationInterfacesAndNeverFallBack() {
+        // An annotation resolves by import, package or a single wildcard match, and only to an @interface: a class of
+        // the same simple name, or an annotation of another package the source does not import, is never added.
+        var otherPackage = LibrarySourceResolver.librarySourceFromSimpleName("Param", """
+                package other;
+                import org.julclang.stdlib.annotation.OnchainLibrary;
+                @OnchainLibrary
+                public @interface Param {}
+                """);
+        var aClass = LibrarySourceResolver.librarySourceFromSimpleName("Entrypoint", """
+                package app;
+                import org.julclang.stdlib.annotation.OnchainLibrary;
+                @OnchainLibrary
+                public class Entrypoint { public static boolean ok() { return true; } }
+                """);
+        var validator = """
+                package app;
+                import org.julclang.stdlib.annotation.Param;
+                class V { @Entrypoint static boolean f(@Param int x) { return true; } }
+                """;
+
+        var resolved = LibrarySourceResolver.resolve(validator, Map.of("other.Param", otherPackage, "app.Entrypoint", aClass));
+
+        assertEquals(List.of(), resolved);
     }
 
     @Test

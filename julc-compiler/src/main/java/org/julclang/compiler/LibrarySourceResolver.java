@@ -3,6 +3,7 @@ package org.julclang.compiler;
 import org.julclang.compiler.error.DiagnosticCollector;
 import org.julclang.compiler.frontend.javac.ExpressionRoles;
 import org.julclang.compiler.frontend.javac.JavacSyntax;
+import com.sun.source.tree.AnnotationTree;
 import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.ImportTree;
 import com.sun.source.tree.MemberSelectTree;
@@ -12,6 +13,7 @@ import org.julclang.compiler.frontend.javac.SourceOrderScanner;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.net.URL;
 import java.net.URLEncoder;
@@ -35,6 +37,7 @@ import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -158,6 +161,12 @@ public final class LibrarySourceResolver {
         return librarySourceFromSimpleName(null, source);
     }
 
+    /** A library source whose class javac names {@code fqcn}: the name, not the source's text, gives its package. */
+    public static LibrarySource librarySourceFromQualifiedName(String fqcn, String source) {
+        Objects.requireNonNull(source, "source");
+        return librarySourceFromPath(fqcn, fqcn.replace('.', '/') + ".java", source);
+    }
+
     public static LibrarySource librarySourceFromSimpleName(String simpleName, String source) {
         Objects.requireNonNull(source, "source");
         String packageName = extractPackageName(source);
@@ -234,9 +243,10 @@ public final class LibrarySourceResolver {
      * opened without the JDK's URL cache, so a jar rebuilt in a long-lived JVM (a Gradle daemon) is read from disk
      * instead of through a stale cached {@code JarFile}.
      *
-     * @param warnings receives one message per skipped index, source or directory
+     * @param problems receives one message per index, source or directory listing that could not be read (a resource
+     *                 the class loader lists but that does not exist is not a problem, and is passed over)
      */
-    public static Map<String, LibrarySource> scanClasspathSources(ClassLoader classLoader, Consumer<String> warnings) {
+    public static Map<String, LibrarySource> scanClasspathSources(ClassLoader classLoader, Consumer<String> problems) {
         var result = new LinkedHashMap<String, LibrarySource>();
         // JARs must ship index.txt for reliable discovery. Loose file-system
         // directories are also scanned to support IDE/dev/test classpaths.
@@ -244,35 +254,35 @@ public final class LibrarySourceResolver {
         try {
             indexes = classLoader.getResources(PLUTUS_SOURCES_INDEX);
         } catch (IOException e) {
-            warnings.accept("cannot list " + PLUTUS_SOURCES_INDEX + " resources: " + e);
+            problems.accept("cannot list " + PLUTUS_SOURCES_INDEX + " resources: " + e);
             indexes = Collections.emptyEnumeration();
         }
         while (indexes.hasMoreElements()) {
             URL index = indexes.nextElement();
             try {
-                scanIndexedSources(index, result, warnings);
-            } catch (IOException e) {
-                warnings.accept("cannot read " + index + ": " + e);
+                scanIndexedSources(index, result, problems);
+            } catch (IOException | IllegalArgumentException e) {
+                problems.accept("cannot read " + index + ": " + e);
             }
         }
         Enumeration<URL> resources;
         try {
             resources = classLoader.getResources(PLUTUS_SOURCES_DIR);
         } catch (IOException e) {
-            warnings.accept("cannot list " + PLUTUS_SOURCES_DIR + " resources: " + e);
+            problems.accept("cannot list " + PLUTUS_SOURCES_DIR + " resources: " + e);
             resources = Collections.emptyEnumeration();
         }
         while (resources.hasMoreElements()) {
             URL resourceUrl = resources.nextElement();
             if ("file".equals(resourceUrl.getProtocol())) {
                 File dir = new File(resourceUrl.getPath());
-                scanFileSystemSources(dir, dir, result, warnings);
+                scanFileSystemSources(dir, dir, result, problems);
             }
         }
         return result;
     }
 
-    private static void scanIndexedSources(URL indexUrl, Map<String, LibrarySource> result, Consumer<String> warnings)
+    private static void scanIndexedSources(URL indexUrl, Map<String, LibrarySource> result, Consumer<String> problems)
             throws IOException {
         String indexContent;
         try (var indexStream = openUncached(indexUrl)) {
@@ -289,15 +299,15 @@ public final class LibrarySourceResolver {
                     var fqcn = fqcnFromResourcePath(entry);
                     result.putIfAbsent(fqcn, librarySourceFromPath(fqcn, normalizeResourcePath(entry), source));
                 }
-            } catch (IOException e) {
-                warnings.accept("cannot read " + (sourceUrl != null ? sourceUrl : entry) + " listed in " + indexUrl
+            } catch (IOException | IllegalArgumentException e) {
+                problems.accept("cannot read " + (sourceUrl != null ? sourceUrl : entry) + " listed in " + indexUrl
                         + ": " + e);
             }
         }
     }
 
     /** Opens a resource bypassing the JDK's URL cache (a cached JarFile outlives a rebuilt jar). */
-    private static java.io.InputStream openUncached(URL url) throws IOException {
+    private static InputStream openUncached(URL url) throws IOException {
         var connection = url.openConnection();
         connection.setUseCaches(false);
         return connection.getInputStream();
@@ -320,15 +330,18 @@ public final class LibrarySourceResolver {
     }
 
     private static void scanFileSystemSources(File root, File dir, Map<String, LibrarySource> result,
-                                              Consumer<String> warnings) {
+                                              Consumer<String> problems) {
         if (!dir.exists() || !dir.isDirectory()) return;
         File[] files = dir.listFiles();
-        if (files == null) return;
+        if (files == null) {
+            problems.accept("cannot list " + dir);
+            return;
+        }
         // In name order: which of two sources of one name is kept must not depend on the file system (I4).
         Arrays.sort(files, Comparator.comparing(File::getName));
         for (File file : files) {
             if (file.isDirectory()) {
-                scanFileSystemSources(root, file, result, warnings);
+                scanFileSystemSources(root, file, result, problems);
             } else if (file.getName().endsWith(".java")) {
                 try {
                     String source = Files.readString(file.toPath());
@@ -336,7 +349,7 @@ public final class LibrarySourceResolver {
                     String fqcn = fqcnFromResourcePath(resourcePath);
                     result.putIfAbsent(fqcn, librarySourceFromPath(fqcn, resourcePath, source));
                 } catch (IOException e) {
-                    warnings.accept("cannot read " + file + ": " + e);
+                    problems.accept("cannot read " + file + ": " + e);
                 }
             }
         }
@@ -366,18 +379,45 @@ public final class LibrarySourceResolver {
                 .toList();
     }
 
+    /**
+     * {@link #resolve(String, Map)}, also asking {@code classesOfTheCompilation} for a name the pool lacks (ADR-071 D1):
+     * a host that compiles inside javac admits a library of its own compilation that it has not collected, such as a
+     * class that carries only a framework's marker and was entered in a round the host never saw. It is asked for exact
+     * names only (an import, the source's package, a qualified name, a wildcard package), never through the pool-wide
+     * simple-name fallback, and what it returns is never added to the pool, so one source's resolution does not depend
+     * on another's.
+     */
+    public static List<String> resolve(String source, Map<String, ?> availableLibraries,
+                                       Function<String, LibrarySource> classesOfTheCompilation) {
+        return resolveLibrarySources(source, normalizeLibrarySources(availableLibraries), classesOfTheCompilation).stream()
+                .map(LibrarySource::source)
+                .toList();
+    }
+
     public static List<LibrarySource> resolveLibrarySources(String source, Map<String, LibrarySource> availableLibraries) {
         if (availableLibraries.isEmpty()) {
             return List.of();
         }
+        return resolveLibrarySources(source, availableLibraries, fqcn -> null);
+    }
 
+    private static List<LibrarySource> resolveLibrarySources(String source, Map<String, LibrarySource> availableLibraries,
+                                                             Function<String, LibrarySource> classesOfTheCompilation) {
+        var asked = new HashMap<String, Optional<LibrarySource>>();
+        Function<String, LibrarySource> admitted = fqcn -> availableLibraries.containsKey(fqcn) ? null
+                : asked.computeIfAbsent(fqcn, name -> Optional.ofNullable(classesOfTheCompilation.apply(name))).orElse(null);
+        Function<String, LibrarySource> exact = fqcn -> {
+            var pooled = availableLibraries.get(fqcn);
+            return pooled != null ? pooled : admitted.apply(fqcn);
+        };
+        var lookup = new Lookup(exact, admitted);
         var bySimpleName = indexBySimpleName(availableLibraries.values());
         var diagnostics = new DiagnosticCollector("<source>");
         var resolved = new LinkedHashMap<String, LibrarySource>();
         var queued = new HashSet<String>();
         Queue<LibrarySource> toProcess = new ArrayDeque<>();
 
-        enqueueReferencedLibraries(source, extractPackageName(source), "<source>", availableLibraries,
+        enqueueReferencedLibraries(source, extractPackageName(source), "<source>", lookup,
                 bySimpleName, resolved, queued, toProcess, diagnostics);
         diagnostics.throwIfErrors();
 
@@ -388,7 +428,7 @@ public final class LibrarySourceResolver {
             }
             resolved.put(librarySource.fqcn(), librarySource);
             enqueueReferencedLibraries(librarySource.source(), librarySource.packageName(), librarySource.resourcePath(),
-                    availableLibraries, bySimpleName, resolved, queued, toProcess, diagnostics);
+                    lookup, bySimpleName, resolved, queued, toProcess, diagnostics);
             diagnostics.throwIfErrors();
         }
 
@@ -398,7 +438,7 @@ public final class LibrarySourceResolver {
     private static void enqueueReferencedLibraries(String source,
                                                    String packageName,
                                                    String fileName,
-                                                   Map<String, LibrarySource> availableLibraries,
+                                                   Lookup lookup,
                                                    Map<String, List<LibrarySource>> bySimpleName,
                                                    Map<String, LibrarySource> resolved,
                                                    Set<String> queued,
@@ -408,44 +448,84 @@ public final class LibrarySourceResolver {
         SourceContext context = parseSourceContext(source, packageName);
 
         for (String fqcn : context.importsBySimpleName().values()) {
-            enqueue(availableLibraries.get(fqcn), resolved, queued, toProcess);
+            enqueue(lookup.exact().apply(fqcn), resolved, queued, toProcess);
         }
 
         for (ClassReference reference : context.staticReferences()) {
             LibrarySource librarySource = resolveStaticReference(reference, context.packageName(),
                     context.importsBySimpleName(), context.wildcardPackages(),
-                    availableLibraries, bySimpleName, diagnostics);
+                    lookup, bySimpleName, diagnostics);
             enqueue(librarySource, resolved, queued, toProcess);
         }
+
+        for (ClassReference reference : context.annotationReferences()) {
+            enqueue(resolveAnnotationReference(reference, context.packageName(), context.importsBySimpleName(),
+                    context.wildcardPackages(), lookup, bySimpleName), resolved, queued, toProcess);
+        }
+    }
+
+    /**
+     * The library an annotation names, if it is an annotation interface of the pool (ADR-071 D1). Only a library marker
+     * can be one: a pool holds {@code @OnchainLibrary} classes and the annotation interfaces that carry it. A marker the
+     * source uses without an import, from its own package, is a reference like any other, so its source, and the
+     * libraries it refers to, are compiled with the source. Resolved by the qualified name, an import, the source's
+     * package, or a single wildcard match; never by the pool-wide simple-name fallback, and never with a diagnostic: an
+     * annotation that names no library is javac's to report.
+     */
+    private static LibrarySource resolveAnnotationReference(ClassReference reference,
+                                                            String packageName,
+                                                            Map<String, String> importsBySimpleName,
+                                                            Set<String> wildcardPackages,
+                                                            Lookup lookup,
+                                                            Map<String, List<LibrarySource>> bySimpleName) {
+        LibrarySource candidate;
+        if (reference.fqcn() != null) {
+            candidate = lookup.exact().apply(reference.fqcn());
+        } else if (importsBySimpleName.containsKey(reference.simpleName())) {
+            candidate = lookup.exact().apply(importsBySimpleName.get(reference.simpleName()));
+        } else {
+            candidate = lookup.exact().apply(packageName.isBlank()
+                    ? reference.simpleName()
+                    : packageName + "." + reference.simpleName());
+            if (candidate == null) {
+                var wildcard = wildcardCandidates(reference.simpleName(), wildcardPackages, lookup, bySimpleName);
+                candidate = wildcard.size() == 1 ? wildcard.getFirst() : null;
+            }
+        }
+        return candidate != null && declaresAnnotationInterface(candidate) ? candidate : null;
+    }
+
+    private static boolean declaresAnnotationInterface(LibrarySource librarySource) {
+        return Pattern.compile("@\\s*interface\\s+" + Pattern.quote(librarySource.simpleName()) + "\\b")
+                .matcher(librarySource.source()).find();
     }
 
     private static LibrarySource resolveStaticReference(ClassReference reference,
                                                         String packageName,
                                                         Map<String, String> importsBySimpleName,
                                                         Set<String> wildcardPackages,
-                                                        Map<String, LibrarySource> availableLibraries,
+                                                        Lookup lookup,
                                                         Map<String, List<LibrarySource>> bySimpleName,
                                                         DiagnosticCollector diagnostics) {
         if (reference.fqcn() != null) {
-            return availableLibraries.get(reference.fqcn());
+            return lookup.exact().apply(reference.fqcn());
         }
 
         String importedFqcn = importsBySimpleName.get(reference.simpleName());
         if (importedFqcn != null) {
-            return availableLibraries.get(importedFqcn);
+            return lookup.exact().apply(importedFqcn);
         }
 
         String samePackageFqcn = packageName.isBlank()
                 ? reference.simpleName()
                 : packageName + "." + reference.simpleName();
-        LibrarySource samePackageSource = availableLibraries.get(samePackageFqcn);
+        LibrarySource samePackageSource = lookup.exact().apply(samePackageFqcn);
         if (samePackageSource != null) {
             return samePackageSource;
         }
 
-        List<LibrarySource> wildcardCandidates = bySimpleName.getOrDefault(reference.simpleName(), List.of()).stream()
-                .filter(librarySource -> wildcardPackages.contains(librarySource.packageName()))
-                .toList();
+        List<LibrarySource> wildcardCandidates = wildcardCandidates(reference.simpleName(), wildcardPackages, lookup,
+                bySimpleName);
         if (wildcardCandidates.size() == 1) {
             return wildcardCandidates.get(0);
         }
@@ -474,6 +554,29 @@ public final class LibrarySourceResolver {
         return null;
     }
 
+    /**
+     * The pool's libraries named {@code simpleName} in a wildcard-imported package; when the pool has none, those the
+     * compilation admits under the same names (ADR-071 D1).
+     */
+    private static List<LibrarySource> wildcardCandidates(String simpleName, Set<String> wildcardPackages, Lookup lookup,
+                                                          Map<String, List<LibrarySource>> bySimpleName) {
+        var pooled = bySimpleName.getOrDefault(simpleName, List.of()).stream()
+                .filter(librarySource -> wildcardPackages.contains(librarySource.packageName()))
+                .toList();
+        if (!pooled.isEmpty()) return pooled;
+        return wildcardPackages.stream()
+                .map(wildcardPackage -> lookup.admitted().apply(wildcardPackage + "." + simpleName))
+                .filter(Objects::nonNull)
+                .toList();
+    }
+
+    /**
+     * How a resolution finds a library by name: {@code exact} looks in the pool, then among the classes the compilation
+     * admits; {@code admitted} only among the latter.
+     */
+    private record Lookup(Function<String, LibrarySource> exact, Function<String, LibrarySource> admitted) {
+    }
+
     private static void enqueue(LibrarySource librarySource,
                                 Map<String, LibrarySource> resolved,
                                 Set<String> queued,
@@ -494,7 +597,7 @@ public final class LibrarySourceResolver {
         var fallbackPackageName = packageName == null ? extractPackageName(source) : packageName;
         var staticReferences = extractFallbackClassReferences(source);
         return new SourceContext(fallbackPackageName, extractImportPaths(source),
-                extractWildcardImportPackages(source), staticReferences);
+                extractWildcardImportPackages(source), staticReferences, List.of());
     }
 
     /**
@@ -521,6 +624,7 @@ public final class LibrarySourceResolver {
         var staticReferences = new ArrayList<ClassReference>();
         var calls = new ArrayList<Tree>();
         var fieldAccesses = new ArrayList<Tree>();
+        var annotations = new ArrayList<Tree>();
         new SourceOrderScanner<Void, Void>() {
             @Override
             public Void visitMethodInvocation(MethodInvocationTree call, Void unused) {
@@ -533,10 +637,19 @@ public final class LibrarySourceResolver {
                 if (ExpressionRoles.isFieldAccess(getCurrentPath())) fieldAccesses.add(select.getExpression());
                 return super.visitMemberSelect(select, unused);
             }
+
+            @Override
+            public Void visitAnnotation(AnnotationTree annotation, Void unused) {
+                annotations.add(annotation.getAnnotationType());
+                return super.visitAnnotation(annotation, unused);
+            }
         }.scan(unit, null);
         for (Tree scope : calls) javacReference(syntax, scope).ifPresent(staticReferences::add);
         for (Tree scope : fieldAccesses) javacReference(syntax, scope).ifPresent(staticReferences::add);
-        return new SourceContext(resolvedPackageName, importsBySimpleName, wildcardPackages, staticReferences);
+        var annotationReferences = new ArrayList<ClassReference>();
+        for (Tree type : annotations) javacReference(syntax, type).ifPresent(annotationReferences::add);
+        return new SourceContext(resolvedPackageName, importsBySimpleName, wildcardPackages, staticReferences,
+                annotationReferences);
     }
 
     private static Optional<ClassReference> javacReference(JavacSyntax syntax, Tree scope) {
@@ -553,8 +666,10 @@ public final class LibrarySourceResolver {
         var references = context.staticReferences().stream()
                 .filter(reference -> javax.lang.model.SourceVersion.isIdentifier(reference.simpleName()))
                 .toList();
-        return new SourceContext(context.packageName(), context.importsBySimpleName(), context.wildcardPackages(),
-                references).toString();
+        // The four readings the ADR-068 baseline froze, printed as that record printed them.
+        return "SourceContext[packageName=" + context.packageName() + ", importsBySimpleName="
+                + context.importsBySimpleName() + ", wildcardPackages=" + context.wildcardPackages()
+                + ", staticReferences=" + references + "]";
     }
 
     private static Map<String, LibrarySource> normalizeLibrarySources(Map<String, ?> availableLibraries) {
@@ -661,7 +776,8 @@ public final class LibrarySourceResolver {
     private record SourceContext(String packageName,
                                  Map<String, String> importsBySimpleName,
                                  Set<String> wildcardPackages,
-                                 List<ClassReference> staticReferences) {
+                                 List<ClassReference> staticReferences,
+                                 List<ClassReference> annotationReferences) {
     }
 
     /** A class a source names as a call's or a field access's qualifier, and where (0, 0 when unknown). */

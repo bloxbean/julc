@@ -46,6 +46,38 @@ public @interface OnchainLibrary {
 
 **Source:** `julc-stdlib/src/main/java/org/julclang/onchain/annotation/OnchainLibrary.java`
 
+#### A framework's own annotation
+
+A framework that generates validators from its users' classes can make its own annotation imply `@OnchainLibrary`, so
+that its users write one annotation instead of two. Annotate the framework's annotation with `@OnchainLibrary`:
+
+```java
+@OnchainLibrary
+@Retention(RetentionPolicy.CLASS)
+@Target(ElementType.TYPE)
+public @interface StateContract {
+    long maxDatumBytes() default 0;
+}
+```
+
+Every class annotated `@StateContract` is then an on-chain library, exactly as if it carried `@OnchainLibrary`. It
+compiles to the same script, and a validator finds it through the same imports and same-package names. Only one level
+counts: an annotation annotated with `@StateContract` does not make a library.
+
+JuLC compiles the marker annotation's source together with the libraries that carry it, so the marker must itself be
+code JuLC can compile:
+
+- Its members may be primitives, `String` or `Class<?>`, with constant defaults. Arrays and enum members are not
+  supported. A default may read a constant of an on-chain library.
+- Its own annotations may be `@Retention`, `@Target` and `@OnchainLibrary`. `@Documented`, `@Inherited` and
+  `@Repeatable` are not available to JuLC.
+- A marker in a jar must ship its source in the jar's `META-INF/plutus-sources/`, like any on-chain library
+  ([3.2](#32-the-indextxt-manifest-format)). The Gradle plugin's `bundleJulcSources` task bundles a class only if it
+  carries `@OnchainLibrary` itself, so a framework bundles its users' sources itself.
+
+The annotation processor follows the marker; the Gradle plugin's `bundleJulcSources`, the testkit's `SourceDiscovery`
+and the CLI's project scan read source text and still recognise only `@OnchainLibrary` written on the class.
+
 ### 2.2 Basic Structure
 
 A library class must:

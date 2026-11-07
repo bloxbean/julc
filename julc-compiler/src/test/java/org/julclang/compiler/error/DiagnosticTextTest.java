@@ -301,8 +301,10 @@ class DiagnosticTextTest {
                 """;
         var error = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions())
                 .compile(VALIDATOR_IMPORTS + "import lib.Marked;\n@Marked @SpendingValidator\nclass V { @Entrypoint static boolean m" + ENTRY + " }",
-                        java.util.List.of(marker)));
+                        List.of(marker)));
         assertEquals("JULC0134", error.diagnostics().getFirst().code(), error.diagnostics().toString());
+        assertEquals("Class V must not combine @Marked (which implies @OnchainLibrary) with validator annotation(s): "
+                + "@SpendingValidator", error.diagnostics().getFirst().message());
     }
 
     @Test

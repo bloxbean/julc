@@ -177,7 +177,7 @@ final class JavacDiscovery {
         if (facts.isOnchainLibrary(element) && !validators.isEmpty()) {   // directly or meta-annotated (ADR-071 D1)
             var annotations = String.join(", ", validators.stream().map(simple -> "@" + simple).toList());
             throw validationError(ONCHAIN_LIBRARY_WITH_VALIDATOR, ONCHAIN_LIBRARY_WITH_VALIDATOR.fix(), type,
-                    facts.identity((TypeElement) element), annotations);
+                    facts.identity((TypeElement) element), annotations, JavacFacts.describeLibraryMarker(element));
         }
     }
 
