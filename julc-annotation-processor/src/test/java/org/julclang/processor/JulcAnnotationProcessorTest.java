@@ -515,6 +515,8 @@ class JulcAnnotationProcessorTest {
     // --- ADR-071 D1: on-chain libraries marked by a meta-annotated annotation ---
 
     static final String STATE_LIKE = """
+            package lib;
+
             import org.julclang.stdlib.annotation.OnchainLibrary;
             import java.lang.annotation.*;
 
@@ -525,6 +527,8 @@ class JulcAnnotationProcessorTest {
             """;
 
     static final String META_LIBRARY = """
+            package lib;
+
             import java.math.BigInteger;
 
             @StateLike
@@ -536,9 +540,12 @@ class JulcAnnotationProcessorTest {
             """;
 
     static final String USES_META = """
+            package app;
+
             import org.julclang.stdlib.annotation.*;
             import java.math.BigInteger;
             import org.julclang.core.PlutusData;
+            import lib.MetaMath;
 
             @SpendingValidator
             public class UsesMeta {
@@ -551,8 +558,8 @@ class JulcAnnotationProcessorTest {
 
     @Test
     void metaAnnotatedLibraryIsCompiledIntoTheValidator() throws Exception {
-        var result = compileWithProcessorSources(Map.of("StateLike", STATE_LIKE, "MetaMath", META_LIBRARY,
-                "UsesMeta", USES_META), List.of());
+        var result = compileWithProcessorSources(Map.of("lib/StateLike", STATE_LIKE, "lib/MetaMath", META_LIBRARY,
+                "app/UsesMeta", USES_META), List.of());
         assertTrue(result.success(), "Expected success, got: " + result.diagnostics());
         assertTrue(Files.exists(tempDir.resolve("META-INF/plutus/UsesMeta.plutus.json")));
     }
@@ -588,6 +595,7 @@ class JulcAnnotationProcessorTest {
                 import org.julclang.stdlib.annotation.*;
                 import java.math.BigInteger;
                 import org.julclang.core.PlutusData;
+                import app.Counter;
 
                 @SpendingValidator
                 public class UsesMeta {
@@ -601,8 +609,9 @@ class JulcAnnotationProcessorTest {
         assertTrue(Files.exists(tempDir.resolve("META-INF/plutus/UsesMeta.plutus.json")));
     }
 
+    /** A framework's generated validator imports the marked classes it calls; a wildcard import is not enough. */
     @Test
-    void aGeneratedValidatorReachesAMetaAnnotatedLibraryThroughAWildcardImport() throws Exception {
+    void aWildcardImportDoesNotFindAMarkedClass() throws Exception {
         var result = compileWithFramework(Map.of("app/Counter", MARKED_COUNTER), Map.of("v.UsesMeta", """
                 package v;
 
@@ -619,7 +628,8 @@ class JulcAnnotationProcessorTest {
                     }
                 }
                 """), true);
-        assertTrue(result.success(), "Expected success, got: " + result.diagnostics());
+        // ADR-071 D1: a marked class is reached through a single-type import; a wildcard import fails as before.
+        assertFalse(result.success(), "A wildcard import must not find a marked class");
     }
 
     @Test
@@ -630,6 +640,7 @@ class JulcAnnotationProcessorTest {
 
                         import org.julclang.stdlib.annotation.OnchainLibrary;
                         import java.math.BigInteger;
+                        import app.Counter;
 
                         @OnchainLibrary
                         public class Helper {
@@ -665,6 +676,7 @@ class JulcAnnotationProcessorTest {
                 import org.julclang.stdlib.annotation.*;
                 import java.math.BigInteger;
                 import org.julclang.core.PlutusData;
+                import app.Counter;
 
                 @SpendingValidator
                 public class UsesMeta {
@@ -707,6 +719,7 @@ class JulcAnnotationProcessorTest {
                 import org.julclang.stdlib.annotation.*;
                 import java.math.BigInteger;
                 import org.julclang.core.PlutusData;
+                import app.Holder;
 
                 @SpendingValidator
                 public class UsesHolder {
@@ -725,6 +738,8 @@ class JulcAnnotationProcessorTest {
     @Test
     void rejectsNestedMetaAnnotatedLibrary() throws Exception {
         var nested = """
+                package lib;
+
                 public class Holder {
                     public static boolean ok() {
                         return true;
@@ -739,9 +754,12 @@ class JulcAnnotationProcessorTest {
                 }
                 """;
         var validator = """
+                package app;
+
                 import org.julclang.stdlib.annotation.*;
                 import java.math.BigInteger;
                 import org.julclang.core.PlutusData;
+                import lib.Holder;
 
                 @SpendingValidator
                 public class UsesHolder {
@@ -751,8 +769,8 @@ class JulcAnnotationProcessorTest {
                     }
                 }
                 """;
-        var result = compileWithProcessorSources(Map.of("StateLike", STATE_LIKE, "Holder", nested,
-                "UsesHolder", validator), List.of());
+        var result = compileWithProcessorSources(Map.of("lib/StateLike", STATE_LIKE, "lib/Holder", nested,
+                "app/UsesHolder", validator), List.of());
         assertFalse(result.success(), "A nested meta-annotated library should be rejected");
         assertTrue(result.diagnostics().stream().anyMatch(d -> d.getMessage(null).contains("@StateLike makes Inner")
                         && d.getMessage(null).contains("top-level class")), "Got: " + result.diagnostics());
@@ -783,14 +801,16 @@ class JulcAnnotationProcessorTest {
     void aLibraryWithTwoMarkersCompilesWithBoth() throws Exception {
         String other = STATE_LIKE.replace("StateLike", "OtherLike");
         String library = META_LIBRARY.replace("@StateLike", "@StateLike @OtherLike");
-        var result = compileWithProcessorSources(Map.of("StateLike", STATE_LIKE, "OtherLike", other,
-                "MetaMath", library, "UsesMeta", USES_META), List.of());
+        var result = compileWithProcessorSources(Map.of("lib/StateLike", STATE_LIKE, "lib/OtherLike", other,
+                "lib/MetaMath", library, "app/UsesMeta", USES_META), List.of());
         assertTrue(result.success(), "Expected success, got: " + result.diagnostics());
     }
 
     @Test
     void aMarkerDefaultThatReadsALibraryConstantCompiles() throws Exception {
         String scaled = """
+                package lib;
+
                 import org.julclang.stdlib.annotation.OnchainLibrary;
                 import java.lang.annotation.*;
 
@@ -802,6 +822,8 @@ class JulcAnnotationProcessorTest {
                 }
                 """;
         String limits = """
+                package lib;
+
                 import org.julclang.stdlib.annotation.OnchainLibrary;
 
                 @OnchainLibrary
@@ -809,14 +831,16 @@ class JulcAnnotationProcessorTest {
                     public static final int N = 2;
                 }
                 """;
-        var result = compileWithProcessorSources(Map.of("StateLike", scaled, "Limits", limits,
-                "MetaMath", META_LIBRARY, "UsesMeta", USES_META), List.of());
+        var result = compileWithProcessorSources(Map.of("lib/StateLike", scaled, "lib/Limits", limits,
+                "lib/MetaMath", META_LIBRARY, "app/UsesMeta", USES_META), List.of());
         assertTrue(result.success(), "Expected success, got: " + result.diagnostics());
     }
 
     @Test
     void aValidatorMarkedThroughASamePackageMarkerIsJulc0134() throws Exception {
         var both = """
+                package lib;
+
                 import org.julclang.stdlib.annotation.*;
                 import java.math.BigInteger;
                 import org.julclang.core.PlutusData;
@@ -830,7 +854,7 @@ class JulcAnnotationProcessorTest {
                     }
                 }
                 """;
-        var result = compileWithProcessorSources(Map.of("StateLike", STATE_LIKE, "Both", both), List.of());
+        var result = compileWithProcessorSources(Map.of("lib/StateLike", STATE_LIKE, "lib/Both", both), List.of());
         assertFalse(result.success());
         assertTrue(result.diagnostics().stream().anyMatch(d -> d.getMessage(null).contains(
                 "must not combine @StateLike (which implies @OnchainLibrary) with validator annotation(s): @SpendingValidator")),
@@ -839,15 +863,14 @@ class JulcAnnotationProcessorTest {
 
     @Test
     void aMetaAnnotatedLibraryCompilesToTheSameScriptAsADirectOne() throws Exception {
-        var meta = compileWithProcessorSources(Map.of("StateLike", STATE_LIKE, "MetaMath", META_LIBRARY,
-                "UsesMeta", USES_META), List.of());
+        var meta = compileWithProcessorSources(Map.of("lib/StateLike", STATE_LIKE, "lib/MetaMath", META_LIBRARY,
+                "app/UsesMeta", USES_META), List.of());
         assertTrue(meta.success(), "Expected success, got: " + meta.diagnostics());
         String metaScript = ValidatorOutput.fromJson(Files.readString(
                 tempDir.resolve("META-INF/plutus/UsesMeta.plutus.json"))).cborHex();
 
-        String direct = "import org.julclang.stdlib.annotation.OnchainLibrary;\n"
-                + META_LIBRARY.replace("@StateLike", "@OnchainLibrary");
-        var plain = compileWithProcessorSources(Map.of("MetaMath", direct, "UsesMeta", USES_META), List.of());
+        String direct = META_LIBRARY.replace("@StateLike", "@org.julclang.stdlib.annotation.OnchainLibrary");
+        var plain = compileWithProcessorSources(Map.of("lib/MetaMath", direct, "app/UsesMeta", USES_META), List.of());
         assertTrue(plain.success(), "Expected success, got: " + plain.diagnostics());
         assertEquals(ValidatorOutput.fromJson(Files.readString(
                 tempDir.resolve("META-INF/plutus/UsesMeta.plutus.json"))).cborHex(), metaScript);
@@ -860,6 +883,8 @@ class JulcAnnotationProcessorTest {
     @Test
     void aMarkedLibraryKeepsItsPlaceInTheLibraryOrder() throws Exception {
         String other = """
+                package lib;
+
                 import org.julclang.stdlib.annotation.OnchainLibrary;
                 import java.math.BigInteger;
 
@@ -871,9 +896,13 @@ class JulcAnnotationProcessorTest {
                 }
                 """;
         String validator = """
+                package app;
+
                 import org.julclang.stdlib.annotation.*;
                 import java.math.BigInteger;
                 import org.julclang.core.PlutusData;
+                import lib.MetaMath;
+                import lib.Other;
 
                 @SpendingValidator
                 public class UsesBoth {
@@ -883,14 +912,13 @@ class JulcAnnotationProcessorTest {
                     }
                 }
                 """;
-        String direct = "import org.julclang.stdlib.annotation.OnchainLibrary;\n"
-                + META_LIBRARY.replace("@StateLike", "@OnchainLibrary");
+        String direct = META_LIBRARY.replace("@StateLike", "@org.julclang.stdlib.annotation.OnchainLibrary");
         for (var options : List.of(List.of("-Ajulc.optimization=none"), List.of("-Ajulc.sourceMap=true"))) {
-            var marked = compileWithProcessorSources(Map.of("StateLike", STATE_LIKE, "MetaMath", META_LIBRARY,
-                    "Other", other, "UsesBoth", validator), options);
+            var marked = compileWithProcessorSources(Map.of("lib/StateLike", STATE_LIKE, "lib/MetaMath", META_LIBRARY,
+                    "lib/Other", other, "app/UsesBoth", validator), options);
             assertTrue(marked.success(), "Expected success, got: " + marked.diagnostics());
             String markedScript = script("UsesBoth");
-            var plain = compileWithProcessorSources(Map.of("MetaMath", direct, "Other", other, "UsesBoth", validator),
+            var plain = compileWithProcessorSources(Map.of("lib/MetaMath", direct, "lib/Other", other, "app/UsesBoth", validator),
                     options);
             assertTrue(plain.success(), "Expected success, got: " + plain.diagnostics());
             assertEquals(script("UsesBoth"), markedScript, options.toString());
@@ -940,9 +968,8 @@ class JulcAnnotationProcessorTest {
     /** A compilation of libraries alone: JuLC still claims its annotations, so -Xlint:processing has nothing to say. */
     @Test
     void aLibraryOnlyCompilationClaimsItsAnnotationsAsBefore() throws Exception {
-        String direct = "import org.julclang.stdlib.annotation.OnchainLibrary;\n"
-                + META_LIBRARY.replace("@StateLike", "@OnchainLibrary");
-        var result = compileWithProcessorSources(Map.of("MetaMath", direct), List.of("-Xlint:processing", "-Werror"));
+        String direct = META_LIBRARY.replace("@StateLike", "@org.julclang.stdlib.annotation.OnchainLibrary");
+        var result = compileWithProcessorSources(Map.of("lib/MetaMath", direct), List.of("-Xlint:processing", "-Werror"));
         assertTrue(result.success(), "Expected success, got: " + result.diagnostics());
     }
 
@@ -971,6 +998,7 @@ class JulcAnnotationProcessorTest {
                 import org.julclang.stdlib.annotation.*;
                 import java.math.BigInteger;
                 import org.julclang.core.PlutusData;
+                import org.julclang.processor.testshadow.Shadowed;
 
                 @SpendingValidator
                 public class UsesShadowed {
@@ -1013,6 +1041,8 @@ class JulcAnnotationProcessorTest {
                 public @interface NoSrc {}
                 """), markerClasses);
         var library = """
+                package lib;
+
                 import java.math.BigInteger;
                 import fw.NoSrc;
 
@@ -1023,7 +1053,7 @@ class JulcAnnotationProcessorTest {
                     }
                 }
                 """;
-        var result = compileWithProcessors(Map.of("MetaMath", library, "UsesMeta", USES_META),
+        var result = compileWithProcessors(Map.of("lib/MetaMath", library, "app/UsesMeta", USES_META),
                 List.of("-classpath", markerClasses + File.pathSeparator + System.getProperty("java.class.path")),
                 List.of(new JulcAnnotationProcessor()));
         assertFalse(result.success());
@@ -1079,7 +1109,7 @@ class JulcAnnotationProcessorTest {
                 import org.julclang.stdlib.annotation.*;
                 import java.math.BigInteger;
                 import org.julclang.core.PlutusData;
-                import app.*;
+                import app.Counter;
 
                 @SpendingValidator
                 public class Wild {
@@ -1119,7 +1149,7 @@ class JulcAnnotationProcessorTest {
     void aLowercaseMarkerIsFollowed() throws Exception {
         String marker = STATE_LIKE.replace("StateLike", "stateLike");
         String library = META_LIBRARY.replace("@StateLike", "@stateLike");
-        var result = compileWithProcessorSources(Map.of("stateLike", marker, "MetaMath", library, "UsesMeta", USES_META),
+        var result = compileWithProcessorSources(Map.of("lib/stateLike", marker, "lib/MetaMath", library, "app/UsesMeta", USES_META),
                 List.of());
         assertTrue(result.success(), "Expected success, got: " + result.diagnostics());
     }
@@ -1281,6 +1311,7 @@ class JulcAnnotationProcessorTest {
                 import org.julclang.stdlib.annotation.*;
                 import java.math.BigInteger;
                 import org.julclang.core.PlutusData;
+                import app.Outer;
 
                 @SpendingValidator
                 public class UsesOuter {
@@ -1307,6 +1338,7 @@ class JulcAnnotationProcessorTest {
                 import org.julclang.stdlib.annotation.*;
                 import java.math.BigInteger;
                 import org.julclang.core.PlutusData;
+                import app.Counter;
 
                 @SpendingValidator
                 public class UsesCounter {
@@ -1337,9 +1369,8 @@ class JulcAnnotationProcessorTest {
         Files.createDirectories(sourcePath.resolve("org/julclang/processor/testshadow"));
         Files.writeString(sourcePath.resolve("org/julclang/processor/testshadow/Shadowed.java"),
                 "package org.julclang.processor.testshadow;\npublic class Shadowed {}\n");
-        var direct = "import org.julclang.stdlib.annotation.OnchainLibrary;\n"
-                + META_LIBRARY.replace("@StateLike", "@OnchainLibrary");
-        var result = compileWithProcessorSources(Map.of("MetaMath", direct, "UsesMeta", USES_META),
+        var direct = META_LIBRARY.replace("@StateLike", "@org.julclang.stdlib.annotation.OnchainLibrary");
+        var result = compileWithProcessorSources(Map.of("lib/MetaMath", direct, "app/UsesMeta", USES_META),
                 List.of("-sourcepath", sourcePath.toString(), "-Werror"));
         assertTrue(result.success(), "Expected success, got: " + result.diagnostics());
     }
@@ -1347,6 +1378,8 @@ class JulcAnnotationProcessorTest {
     @Test
     void aMarkedClassNestedInADirectLibraryIsRejected() throws Exception {
         var outer = """
+                package lib;
+
                 import org.julclang.stdlib.annotation.OnchainLibrary;
                 import java.math.BigInteger;
 
@@ -1364,7 +1397,7 @@ class JulcAnnotationProcessorTest {
                     }
                 }
                 """;
-        var result = compileWithProcessorSources(Map.of("StateLike", STATE_LIKE, "MetaMath", outer, "UsesMeta", USES_META),
+        var result = compileWithProcessorSources(Map.of("lib/StateLike", STATE_LIKE, "lib/MetaMath", outer, "app/UsesMeta", USES_META),
                 List.of());
         assertFalse(result.success());
         assertTrue(result.diagnostics().stream().anyMatch(d -> d.getMessage(null).contains("@StateLike makes Inner")),
@@ -1387,6 +1420,8 @@ class JulcAnnotationProcessorTest {
                 public @interface NoSrc {}
                 """), markerClasses);
         var library = """
+                package lib;
+
                 import org.julclang.stdlib.annotation.OnchainLibrary;
                 import java.math.BigInteger;
                 import fw.NoSrc;
@@ -1399,7 +1434,7 @@ class JulcAnnotationProcessorTest {
                     }
                 }
                 """;
-        var result = compileWithProcessors(Map.of("MetaMath", library, "UsesMeta", USES_META),
+        var result = compileWithProcessors(Map.of("lib/MetaMath", library, "app/UsesMeta", USES_META),
                 List.of("-classpath", markerClasses + File.pathSeparator + System.getProperty("java.class.path")),
                 List.of(new JulcAnnotationProcessor()));
         assertFalse(result.success());

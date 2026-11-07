@@ -79,10 +79,29 @@ a top-level annotation interface that JuLC can compile:
 
 The marker must be top-level, and so must the classes it marks.
 
-A framework that generates the validator in a later annotation-processing round is supported: JuLC finds the marked
-class by the name the validator uses, through an import, the validator's own package, or a wildcard import. A class
-uses its marker through a single-type import (`import fw.StateContract;`), a qualified name, or from the marker's own
-package; JuLC does not follow a marker through a wildcard import (`import fw.*;`).
+A validator reaches a marked class through a **single-type import**, even from the same package:
+
+```java
+package app;
+
+import app.Counter;            // needed for a class marked @StateContract, even in the same package
+
+@SpendingValidator
+public class CounterValidator {
+    @Entrypoint
+    static boolean validate(BigInteger redeemer, PlutusData ctx) {
+        return Counter.step(redeemer);
+    }
+}
+```
+
+This is what a framework that generates validators in a later annotation-processing round writes. A bare
+same-package name or a wildcard import (`import app.*;`) does not find a marked class. JuLC's processor never sees the
+round that entered it, and only an imported name is certainly a class before javac attributes the code. Classes
+marked `@OnchainLibrary` directly, the stdlib and library jars are found every way, as before.
+
+A class uses its marker through a single-type import (`import fw.StateContract;`), a qualified name, or from the
+marker's own package. JuLC does not follow a marker through a wildcard import (`import fw.*;`).
 
 The annotation processor follows the marker. Tools that read source text recognise only `@OnchainLibrary` written on
 the class: the Gradle plugin's `bundleJulcSources`, and the testkit's `SourceDiscovery`. So `bundleJulcSources` does

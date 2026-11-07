@@ -1,7 +1,7 @@
 # ADR-071: On-chain library meta-annotations and a robust library-source scan
 
-**Status:** Proposed (r9)
-**Date:** 2026-11-07 (r2–r9: 2026-11-07)
+**Status:** Proposed (r11)
+**Date:** 2026-11-07 (r2–r11: 2026-11-07)
 **Label:** `joust`
 **Risk class:** medium. It changes which sources the annotation processor and the library resolver hand to the
 compiler. A wrong rule could compile a class into a validator that should not be on-chain, or miss one and fail the
@@ -86,27 +86,25 @@ Non-goals:
 
 - **I1. No change for direct users.** For a project in which no annotation interface carries `@OnchainLibrary`, the
   processor and every resolver host give the compiler the same library sources, in the same order, as before. So
-  the validators' bytes, diagnostics and warnings are unchanged, in the default Gradle and Maven setups. The Risks
-  section covers an explicit `-sourcepath` that holds unrelated sources. There are two exceptions, each a build
-  that used to fail and now compiles:
-  - A direct library that the processor never collected, such as one found only on `-sourcepath`. It used to fail
-    with `JULC0085` (D1).
+  the validators' bytes, diagnostics and warnings are unchanged. There are two exceptions, each a build that used to
+  fail and now compiles:
+  - A direct library that the processor never collected, such as one found only on `-sourcepath`, when a validator
+    imports it. It used to fail with `JULC0085` (D1).
   - A library whose package line JuLC's text reading misreads (`package q ;`) and that a validator imports
     explicitly (D1). The source javac checked is the one compiled.
 - **I2. The rule is one rule.** A class is an on-chain library if it carries `@OnchainLibrary`, or an annotation whose
   annotation interface carries `@OnchainLibrary`. One level, no recursion. `JavacFacts.libraryMarker` implements it.
   The processor, the compiler's JULC0134 check, the nested-class check and `CallTargets`' library-call check all call
   it.
-- **I3. Same bytes.** A library marked through a marker compiles to the same script as the same class marked
-  `@OnchainLibrary`. That includes a class-path source of the same name: the compilation's class wins in both cases
-  (r3).
+- **I3. Same bytes.** A library marked through a marker, and imported, compiles to the same script as the same class
+  marked `@OnchainLibrary`, at every optimization level and with source maps: it takes the same place in the library
+  order (r10). That includes a class-path source of the same name: the compilation's class wins in both cases (r3).
 - **I4. Only libraries are added.** Nothing new reaches the compiler except:
   - a top-level class that is a library by I2 and whose source is in this compilation;
   - a marker of the library pool: javac's class of that name is an annotation interface carrying `@OnchainLibrary`
     (the processor only, r8).
-  A class that is merely named in a comment or a string is never added. javac is never asked about a field named
-  through its class (`BigInteger.ZERO`, r4). It may be asked about a bare name that turns out to be a variable
-  (r6). A class found that way is handed to JuLC's javac, which binds the variable and never uses the class.
+  A class that is merely named in a comment or a string is never added. javac is asked only about names it has
+  already resolved as classes: imports, a pool entry's exact name, and annotation names (r11).
 - **I5. Locality.** What a validator is compiled with depends only on its own references, the `@OnchainLibrary`
   classes collected in rounds and the class path's sources. It never depends on which other validators are in the
   compilation, or on which were compiled first.
@@ -133,62 +131,53 @@ Where it applies:
   JuLC's processor saw the class's round:
   - whether an unreferenced nested marked class was rejected;
   - whether a class-path source of the same name won (review of r2, design P2-1, P3-1).
-- **Admission by exact name (r2).** `LibrarySourceResolver.resolve(source, pool, classesOfTheCompilation)` asks the
-  host for a name the pool lacks. Only these names are asked:
-  - a qualified name;
-  - an import;
-  - the source's own package plus the simple name;
-  - each wildcard-imported package plus the simple name, when the pool has no wildcard match.
-  The pool-wide simple-name fallback never asks.
-
-  A name built from the source's package or a wildcard package is asked about only when the source writes it as a
-  bare qualifier, as in `Counter.ok()` (r6). That is the only spelling that can name a top-level class there.
-  - A dotted qualifier such as `BigInteger.ZERO` names a field or a nested class, so `app.ZERO` is never asked about.
-  - A bare name is asked about even where a variable of that name is in scope. javac decides the binding: if it
-    binds a variable, the class that was asked about is never used.
-  - r4 and r5 tried to skip names that looked like variables, by text. Every approximation of Java's scoping could
-    make JuLC compile a different class from the one javac binds (review R3-1, R4-2, R4-3). Asking too often costs
-    a warning, or a syntax error from a malformed unrelated source on an explicit `-sourcepath` (Risks). Asking too
-    rarely can compile the wrong code.
-  - When the compilation holds several classes of that name in wildcard-imported packages, all of them are handed to
-    JuLC's javac, with no ambiguity reported by the resolver (r7). javac ignores them for a variable, and reports
-    the ambiguity itself for a class.
-  - Every source the compilation supplies, and what it reaches, is resolved after the pool's libraries, in a
-    speculative pass (r8, r9). That covers a class the compilation admits, however many candidates there are, and a
-    replacement of a jar entry. The pass reports nothing and turns an ambiguity into every candidate, for javac to
-    settle. javac then reports any real problem in those sources itself.
-  - The pool's part of a resolution, with its errors, is exactly what it was without them. The resolver's own
-    ambiguity error stays for pool entries, as before.
+- **Admission by import (r2, r11).** `LibrarySourceResolver.resolve(source, pool, host)` asks the host about a name
+  the source **imports** (a single-type import) when the pool lacks it. Nothing else is asked about. A bare name
+  (`Counter.ok()`), the source's own package, and a wildcard import (`import app.*`) resolve in the pool only, exactly
+  as before this ADR.
+  - **Why imports only (r11).** javac resolves every single-type import while entering the sources, before any
+    processor runs. So an imported name is certainly a class, and asking about it reads nothing new.
+  - **Why not bare names or wildcards.** r2–r10 also asked about bare names and wildcard packages. Whether a bare name
+    is a class or a variable is decided only by javac's attribution, which comes after the processor. Every
+    approximation found a new case that changed the libraries compiled, their order, or whether a valid build
+    passed. That held whether the approximation worked by text, or by deferring and relaxing the resolution
+    (reviews R3-1 to R9-1). Guessing is withdrawn.
+  - **The cost.** A validator reaches a framework-marked class through a single-type import, even from its own
+    package (`import app.Counter;`, legal Java). A framework that generates validators writes that import. A
+    directly annotated `@OnchainLibrary` class, the stdlib and library jars are unaffected: they are in the pool,
+    and every form resolves them as before.
 
   The processor answers with the class javac names, if it is a top-level library of this compilation (I2,
-  `Trees.getPath` non-null). The source is keyed by javac's qualified name, not the source's text. The host is asked
-  only for names that are Java names.
+  `Trees.getPath` non-null). The source is keyed by javac's qualified name, not the source's text.
 
   For any class of this compilation it is asked about, library or not, the processor rejects the nested library
-  classes of every top-level class in that class's file (r3, r4). That includes a nested class asked about by its
-  own name (`import app.Holder.Inner`).
+  classes of every top-level class in that class's file (r3, r4). That includes a nested class imported by its own
+  name (`import app.Holder.Inner`).
 
   A library whose marker has no source JuLC can read is reported, at the library, with the remedy (r3, see the
   marker contract). This covers a marker that is neither in this compilation nor in a jar's
   `META-INF/plutus-sources`.
 
   What the host admits is not added to the pool, so a validator's libraries never depend on another validator's (I5).
+  The resolver follows admitted sources like any other, in the same single pass and in first-named order. So a
+  library that imports a marked library is found, and the library order is what it would be if the class were a
+  pool entry (I3).
+
   A library of this compilation also wins over a class-path source of the same name, as a collected one does (r3).
-  However a resolution reaches a class-path entry (import, qualified name, package, wildcard or fallback), it asks
-  the host whether the compilation has a library of that name, and takes it if so. So a resolution holds one source
-  per name, and it is the class javac checked (r6). Entries the source does not reach are never asked about (r5; r3
-  asked about every class-path entry up front, which could read unrelated sources).
-  The resolver follows admitted sources like any other, so a library that reaches a marked library through another
-  library is found.
+  However a resolution reaches a class-path entry, it asks the host whether the compilation has a library of that
+  exact name, and takes it if so (r6). So the script compiles the class javac checked. Entries the source does not
+  reach are never asked about (r5).
 
   This is what makes the framework case work. javac never calls the processor in the round that entered the user's
-  class, but the validator that names it resolves it by exact name.
+  class, but the validator that imports it resolves it.
 - **Markers are references (r2, r8).** The resolver treats every annotation a source uses as a reference, whatever its
   spelling (`@mark` too). It is resolved by its qualified name, a single-type import or the source's package, in
   Java's order. It is never resolved through a wildcard import (r9): a plain annotation of that name in the source's
   package, which the pool need not hold, would be the one javac binds. Nor is it resolved through the pool-wide
   fallback, and it gives no diagnostic. It is added only if the host says javac's
-  class of that name is a marker: an annotation interface carrying `@OnchainLibrary` (r8).
+  class of that name is a marker: an annotation interface carrying `@OnchainLibrary` (r8). An annotation whose
+  simple name the source declares as a type itself (a nested `@interface`, say) names that type and is not
+  followed (r10).
   - **The host decides by javac's model** (`Elements.getTypeElement`, `JavacFacts.libraryMarker`), not by reading the
     marker's source. r4–r7 read the annotation's identity from text (imports, qualified names, same-package
     shadowing), and each version missed a way Java binds a name.
@@ -248,6 +237,11 @@ a build that passed before still passes (I1), and the problem is still printed j
   references. It also stopped at a library already known, so a library reaching a marked library was missed. And it
   added what it found to the pool, so a validator compiled or failed depending on other validators (review of r1, F2
   and F3). Admission by exact name (D1) is that idea driven by the resolver's own reading.
+- **Find marked classes by bare names and wildcard imports too (r2–r10).** Rejected in r11. javac decides whether a
+  bare name is a class or a variable only when it attributes, after the processor. Each approximation made a valid
+  build fail, reordered libraries or picked a different class from javac's. That held whether it read the source's
+  scopes from text (r4, r5), or deferred and relaxed the resolution of guessed classes (r7–r10). Imports cost a
+  framework one line per generated validator.
 - **Support `"*"` so javac calls the processor in every round.** Rejected. javac stops offering a round to processors
   once every annotation in it is claimed. So a framework that claims its own annotation and runs first still hides the
   round. And claiming under `"*"` claims every annotation of a round, so the processor would have to stop claiming,
@@ -289,21 +283,13 @@ a build that passed before still passes (I1), and the problem is still printed j
 
 ## Risks
 
-- **Admission asks javac for names** (`Elements.getTypeElement`). javac may parse a source to answer: from
-  `-sourcepath`, or from the user class path when no source path is given, which is javac's default. It then prints
-  its usual "implicitly compiled files were not subject to annotation processing" **warning**, which fails a
-  `-Werror` build.
-  - This happens for a name the source writes as a bare qualifier. Usually that is a type, which javac would
-    resolve itself.
-  - When that class is a library, the build used to fail with `JULC0085`; now it compiles.
-  - A field named through its class (`BigInteger.ZERO`) is never asked about, and neither are class-path entries the
-    source does not reach (r4, r5).
-  - A bare name that is a variable may still be asked about (r6). If an unrelated source of that name sits on an
-    explicit source path, javac reads it and warns, or reports its syntax errors if it is malformed. Gradle's default
-    empty source path never reads such sources, and Maven's source roots are compiled anyway. This is the price of
-    never compiling a class javac did not bind.
-  - **Cost:** measured over 1,000 validators. About 29,000 lookups of 196 distinct names took 74 ms cold, and the
-    processor's total time did not grow.
+- **Admission asks javac for names** (`Elements.getTypeElement`), but only names javac has already resolved: imports,
+  a pool entry's exact name, and annotation names. It reads no source javac would not read.
+  - An annotation inside a method body (on a local variable) is resolved by javac only when it attributes. If its
+    name matches an unrelated source on an explicit `-sourcepath`, javac may read that source early and warn. Gradle's
+    default empty source path never reads such sources.
+- **A framework's generated validators must import the marked classes they call** (D1). A bare same-package name or a
+  wildcard import does not find one; the build fails with `JULC0085`, as before this ADR.
 - **The marker contract** constrains framework authors (Q1). A marker JuLC cannot compile fails every library that
   uses it, with the compiler's usual diagnostic at the marker.
 - **Tools that read source text** still see only `@OnchainLibrary` (non-goals). A testkit test in which one marked class
@@ -312,19 +298,15 @@ a build that passed before still passes (I1), and the problem is still printed j
 ## Implementation milestones
 
 - **M1 (r1, `566ea845`):** D1 with regex discovery, and D2 with warnings.
-- **M2 (r2–r9):**
-  - admission by exact name through the resolver, replacing regex discovery; round collection unchanged (r3);
-  - markers as references;
+- **M2 (r2–r11):**
+  - admission by import through the resolver (r2, imports only from r11), replacing regex discovery; round
+    collection unchanged (r3);
+  - markers as references, decided by javac in the processor only (r8), never through a wildcard import (r9), never
+    a type the source declares itself (r10);
   - `JavacFacts.libraryMarker` as the one rule;
   - the JULC0134 and nested-class messages;
-  - the compilation's class winning over a class-path source;
-  - the missing-marker message (r3);
-  - markers only, guessed names only for bare identifiers, nesting across the file (r4);
-  - precedence at resolution, JuLC's own `@OnchainLibrary`, every marker reported (r5);
-  - bare qualifiers asked without variable guessing, one source per name, import precedence (r6);
-  - admitted wildcard candidates left to javac (r7);
-  - the speculative pass, and markers decided by javac in the processor only (r8);
-  - every compilation-supplied source resolved speculatively, and annotations never followed through wildcards (r9);
+  - the compilation's class winning over a class-path source, however it is reached (r3, r6);
+  - the missing-marker message (r3, r5);
   - scan notes, `IllegalArgumentException` isolation and directory-listing reports;
   - docs.
   - Exit: the tests below are green, the full build is green, the julc-examples outputs match the merge base, and
@@ -339,7 +321,7 @@ class-path marker whose source ships in `META-INF/plutus-sources`.
 |---|---|
 | `metaAnnotatedLibraryIsCompiledIntoTheValidator` | the same-compilation, same-package marker |
 | `metaAnnotatedLibraryIsDiscoveredForAValidatorGeneratedInALaterRound` | the framework case, with the framework claiming its annotation and running first |
-| `aGeneratedValidatorReachesAMetaAnnotatedLibraryThroughAWildcardImport` | |
+| `aWildcardImportDoesNotFindAMarkedClass` | a framework validator must import, r11 |
 | `aGeneratedLibraryReachesAMetaAnnotatedLibraryOfAnEarlierRound` | transitive, through a direct library |
 | `aRoundWithAFrameworkAnnotationIsLeftToTheFramework` | JuLC runs first, and the framework still receives its annotation (I6) |
 | `aNestedMetaAnnotatedLibraryIsRejectedWhenTheValidatorIsGeneratedInALaterRound` | |
@@ -358,9 +340,10 @@ class-path marker whose source ships in `META-INF/plutus-sources`.
 | `aLowercaseMarkerIsFollowed` | r4 |
 | `aMarkerClassDefaultThatImportsALibraryCompiles` | the marker contract |
 | `aFieldQualifierNeverReadsTheSourcePath` | `-Werror`, r4 |
+| `aMarkedLibraryKeepsItsPlaceInTheLibraryOrder` | I3 at `none` and with source maps, r10 |
 | `aNestedLibraryImportedByItsOwnNameIsRejected` | r4 |
 | `aNestedLibraryInAnotherClassOfTheSameFileIsRejected` | r4 |
-| `aVariableInAnotherMethodDoesNotHideAMarkedClass` | a parameter and a block local, r5, r6 |
+| `aVariableInAnotherMethodDoesNotHideAMarkedClass` | an imported class, with a parameter and a block local of its name |
 | `anUnusedClassPathLibraryNeverReadsTheSourcePath` | `-Werror`, r5 |
 | `aMarkedClassNestedInADirectLibraryIsRejected` | r5 |
 | `everyMarkerWithoutASourceIsReported` | r5 |
@@ -373,14 +356,12 @@ Resolver tests (`LibrarySourceResolverTest`):
 |---|---|
 | `resolve_followsAMarkerAnnotationOfTheLibrarysOwnPackage` | |
 | `resolve_annotationReferencesNameOnlyAnnotationInterfacesAndNeverFallBack` | I4 |
-| `resolve_asksTheCompilationOnlyForExactNamesThePoolLacks` | the names asked; the fallback never asks; admitted sources are not pooled |
+| `resolve_asksTheCompilationOnlyAboutImportedNames` | only imports are asked about; admitted sources are not pooled, r11 |
 | `resolve_followsOnlyAnnotationsTheHostCallsMarkers` | the CLI's pool; lookalikes; other hosts follow none, r8 |
-| `resolve_asksOnlyBareQualifiersAsClassesAndAVariableDoesNotHideOne` | r6 |
 | `resolve_aJarSourceGivesWayHoweverItIsReached` | r6 |
-| `resolve_leavesSeveralAdmittedWildcardCandidatesToJavac` | r7 |
-| `resolve_anAmbiguityInsideASpeculativeCandidateIsLeftToJavac` | r8 |
-| `resolve_aSingleAdmittedCandidateIsResolvedLenientlyToo` | r9 |
 | `resolve_anAnnotationIsNeverFollowedThroughAWildcardImport` | r9 |
+| `resolve_keepsTheOrderTheSourceNamesLibrariesIn` | r10 |
+| `resolve_anAnnotationNamingTheSourcesOwnTypeIsNotFollowed` | r10 |
 | `resolve_aJarSourceGivesWayToTheCompilationsClassOfTheSameName` | r5 |
 | `scanClasspathSources_skipsAnUnreadableEntryReportsItAndReadsTheRest` | |
 | `scanClasspathSources_aMalformedEntryUrlCostsOnlyThatEntry` | |
@@ -476,3 +457,15 @@ Regression evidence:
     single guessed class, and a same-package one, too (R7-1).
   - **Annotations are never followed through a wildcard import,** so a plain same-package annotation keeps its Java
     precedence (R7-2).
+- **r10** (2026-11-07, responds to the regression reviewer's and Codex's reviews of r9, `c07548e7`):
+  - **Library order is kept.** One pass in first-named order. r9 reordered marked libraries, which changed the
+    script at `none` and with source maps (regression reviewer P2; Codex R8-1).
+  - **An annotation naming the source's own type** is not followed (R8-2).
+- **r11** (2026-11-07, after Codex's review of r10, `d2b99966`, found R9-1, and the maintainer's decision):
+  - **Admission by import only.** The host is asked only about a source's single-type imports. Bare names and
+    wildcard imports resolve in the pool as before this ADR, so a framework's generated validator imports the marked
+    classes it calls.
+  - **Removed:** the guessed-name machinery of r6–r10: bare-qualifier guessing, lenient and speculative resolution,
+    and per-source leniency. R5-1 to R9-1 do not arise, since nothing is guessed.
+  - **Kept:** the compilation's class over a jar entry on every path, javac's word on markers, and annotations never
+    followed through wildcards or to the source's own types.

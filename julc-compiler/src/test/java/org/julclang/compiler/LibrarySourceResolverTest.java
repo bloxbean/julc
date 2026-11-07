@@ -3,7 +3,6 @@ package org.julclang.compiler;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-import javax.lang.model.SourceVersion;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
@@ -408,9 +407,9 @@ class LibrarySourceResolverTest {
     }
 
     @Test
-    void resolve_asksTheCompilationOnlyForExactNamesThePoolLacks() {
-        // ADR-071 D1: the host is asked for an import, the source's package and a wildcard package, never through the
-        // pool-wide simple-name fallback, and only for Java names; what it admits is followed, not pooled.
+    void resolve_asksTheCompilationOnlyAboutImportedNames() {
+        // ADR-071 D1: the host is asked only about the source's single-type imports; what it admits is followed, not
+        // pooled.
         var pooled = LibrarySourceResolver.librarySourceFromSimpleName("Pooled", """
                 package other;
                 public class Pooled { public static boolean ok() { return true; } }
@@ -432,11 +431,10 @@ class LibrarySourceResolverTest {
             return name.equals("lib.Counter") ? admitted : null;
         }, Set.of()));
 
-        // Counter is admitted and followed; Pooled reaches it through the pool-wide fallback, which never asks.
+        // Counter, imported, is admitted and followed; Pooled reaches it through the pool-wide fallback. Bare names and
+        // wildcard packages (Local, Far) are never asked about: the resolver does not guess what is a class.
         assertEquals(List.of(admitted.source(), pooled.source()), resolved);
-        assertTrue(asked.containsAll(List.of("lib.Counter", "app.Local", "wild.Local", "app.Far", "wild.Far")), asked.toString());
-        assertTrue(asked.stream().allMatch(SourceVersion::isName), asked.toString());
-        assertFalse(asked.contains("other.Pooled"), asked.toString());
+        assertEquals(List.of("lib.Counter"), asked);
         // Nothing admitted stays behind: the same source resolved without the host finds only what the pool holds.
         assertEquals(List.of(), LibrarySourceResolver.resolve(validator, Map.of("other.Pooled", pooled)));
     }
@@ -488,35 +486,6 @@ class LibrarySourceResolverTest {
     }
 
     @Test
-    void resolve_asksOnlyBareQualifiersAsClassesAndAVariableDoesNotHideOne() {
-        // A dotted qualifier (BigInteger.ZERO) never names a top-level class, so it is never asked about. A bare one
-        // is, even where a variable or a static import of that name exists elsewhere: javac decides the binding, and a
-        // class asked about but bound to a variable is never used.
-        var validator = """
-                package app;
-                import java.math.BigInteger;
-                import static java.math.BigInteger.TEN;
-                import static app.Lib.*;
-                class V {
-                    static boolean g(BigInteger Counter) { return Counter.signum() > 0; }
-                    static boolean f() {
-                        if (true) { boolean Local = true; }
-                        return BigInteger.ZERO.signum() == 0 && Counter.ok() && Local.ok() && TEN.signum() > 0;
-                    }
-                }
-                """;
-        var asked = new ArrayList<String>();
-
-        LibrarySourceResolver.resolve(validator, Map.of(), host(Map.of(), name -> {
-            asked.add(name);
-            return null;
-        }, Set.of()));
-
-        assertTrue(asked.containsAll(List.of("app.Counter", "app.Local")), asked.toString());
-        assertFalse(asked.contains("app.ZERO"), asked.toString());
-    }
-
-    @Test
     void resolve_aJarSourceGivesWayHoweverItIsReached() {
         // One source per name: a static wildcard import, a fallback or a wildcard match never lets the jar's class
         // through once the compilation has its own.
@@ -537,83 +506,6 @@ class LibrarySourceResolverTest {
 
         assertEquals(List.of(own.source()), LibrarySourceResolver.resolve(validator, Map.of("other.Counter", jar),
                 host(Map.of("other.Counter", jar), name -> name.equals("other.Counter") ? own : null, Set.of())));
-    }
-
-    @Test
-    void resolve_leavesSeveralAdmittedWildcardCandidatesToJavac() {
-        // Counter is a local here; two wildcard packages hold a class of that name in the compilation. The resolver
-        // reports no ambiguity of its own: javac decides, and ignores both for a variable.
-        var a = LibrarySourceResolver.librarySourceFromQualifiedName("a.Counter", "package a; public class Counter {}");
-        var b = LibrarySourceResolver.librarySourceFromQualifiedName("b.Counter", "package b; public class Counter {}");
-        var validator = """
-                package app;
-                import a.*;
-                import b.*;
-                class V { static boolean f() { java.math.BigInteger Counter = null; return Counter.signum() == 0; } }
-                """;
-
-        var resolved = LibrarySourceResolver.resolve(validator, Map.of(),
-                host(Map.of(), name -> name.equals("a.Counter") ? a : name.equals("b.Counter") ? b : null, Set.of()));
-
-        assertEquals(List.of(a.source(), b.source()), resolved);
-    }
-
-    @Test
-    void resolve_anAmbiguityInsideASpeculativeCandidateIsLeftToJavac() {
-        // a.Counter, a candidate only because the validator names a variable Counter, refers to Clue, which two pooled
-        // wildcard libraries hold. javac never uses a.Counter, so its ambiguity must not fail the build.
-        var clueX = LibrarySourceResolver.librarySourceFromQualifiedName("x.Clue", "package x; public class Clue {}");
-        var clueY = LibrarySourceResolver.librarySourceFromQualifiedName("y.Clue", "package y; public class Clue {}");
-        var a = LibrarySourceResolver.librarySourceFromQualifiedName("a.Counter", """
-                package a;
-                import x.*;
-                import y.*;
-                public class Counter { static boolean ok() { return Clue.ok(); } }
-                """);
-        var b = LibrarySourceResolver.librarySourceFromQualifiedName("b.Counter", "package b; public class Counter {}");
-        var validator = """
-                package app;
-                import a.*;
-                import b.*;
-                class V { static boolean f() { java.math.BigInteger Counter = null; return Counter.signum() == 0; } }
-                """;
-
-        var resolved = LibrarySourceResolver.resolve(validator, Map.of("x.Clue", clueX, "y.Clue", clueY),
-                host(Map.of(), name -> name.equals("a.Counter") ? a : name.equals("b.Counter") ? b : null, Set.of()));
-
-        assertTrue(resolved.containsAll(List.of(a.source(), b.source())), resolved.toString());
-        // The same reference outside a speculative candidate is still the resolver's error, as before.
-        var direct = """
-                package app;
-                import x.*;
-                import y.*;
-                class V { static boolean f() { return Clue.ok(); } }
-                """;
-        assertThrows(CompilerException.class, () -> LibrarySourceResolver.resolve(direct,
-                Map.of("x.Clue", clueX, "y.Clue", clueY)));
-    }
-
-    @Test
-    void resolve_aSingleAdmittedCandidateIsResolvedLenientlyToo() {
-        // As above with one candidate: whatever the compilation admits (here a.Counter, maybe only a variable's name)
-        // is resolved after the pool's libraries, with its ambiguities left to javac.
-        var clueX = LibrarySourceResolver.librarySourceFromQualifiedName("x.Clue", "package x; public class Clue {}");
-        var clueY = LibrarySourceResolver.librarySourceFromQualifiedName("y.Clue", "package y; public class Clue {}");
-        var a = LibrarySourceResolver.librarySourceFromQualifiedName("app.Counter", """
-                package app;
-                import x.*;
-                import y.*;
-                public class Counter { static boolean ok() { return Clue.ok(); } }
-                """);
-        var validator = """
-                package app;
-                class V { static boolean f() { java.math.BigInteger Counter = null; return Counter.signum() == 0; } }
-                """;
-
-        var resolved = LibrarySourceResolver.resolve(validator, Map.of("x.Clue", clueX, "y.Clue", clueY),
-                host(Map.of(), name -> name.equals("app.Counter") ? a : null, Set.of()));
-
-        assertTrue(resolved.contains(a.source()), resolved.toString());
     }
 
     @Test
