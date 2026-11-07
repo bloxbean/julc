@@ -2135,18 +2135,18 @@ not bypass lookup or target-legality checks. See ADR-035 for the contract.</p>
 </thead>
 <tbody>
 <tr>
-<td><code dir="auto">any(predicate, list)</code></td>
-<td><code dir="auto">(T→Bool, List&lt;T&gt;) → Bool</code></td>
-<td>Left fold, short-circuit</td>
+<td><code dir="auto">any(list, predicate)</code></td>
+<td><code dir="auto">(List&lt;T&gt;, T→Bool) → Bool</code></td>
+<td>LetRec recursion, stops at the first true</td>
 </tr>
 <tr>
-<td><code dir="auto">all(predicate, list)</code></td>
-<td><code dir="auto">(T→Bool, List&lt;T&gt;) → Bool</code></td>
-<td>Left fold, short-circuit</td>
+<td><code dir="auto">all(list, predicate)</code></td>
+<td><code dir="auto">(List&lt;T&gt;, T→Bool) → Bool</code></td>
+<td>LetRec recursion, stops at the first false</td>
 </tr>
 <tr>
-<td><code dir="auto">find(predicate, list)</code></td>
-<td><code dir="auto">(T→Bool, List&lt;T&gt;) → Optional&lt;T&gt;</code></td>
+<td><code dir="auto">find(list, predicate)</code></td>
+<td><code dir="auto">(List&lt;T&gt;, T→Bool) → Optional&lt;T&gt;</code></td>
 <td>LetRec recursion</td>
 </tr>
 <tr>
@@ -2155,13 +2155,13 @@ not bypass lookup or target-legality checks. See ADR-035 for the contract.</p>
 <td>LetRec recursion</td>
 </tr>
 <tr>
-<td><code dir="auto">map(f, list)</code></td>
-<td><code dir="auto">(T→U, List&lt;T&gt;) → List&lt;U&gt;</code></td>
+<td><code dir="auto">map(list, f)</code></td>
+<td><code dir="auto">(List&lt;T&gt;, T→U) → List&lt;U&gt;</code></td>
 <td><code dir="auto">reverse(foldl(...))</code></td>
 </tr>
 <tr>
-<td><code dir="auto">filter(pred, list)</code></td>
-<td><code dir="auto">(T→Bool, List&lt;T&gt;) → List&lt;T&gt;</code></td>
+<td><code dir="auto">filter(list, pred)</code></td>
+<td><code dir="auto">(List&lt;T&gt;, T→Bool) → List&lt;T&gt;</code></td>
 <td><code dir="auto">reverse(foldl(...))</code></td>
 </tr>
 <tr>
