@@ -85,7 +85,8 @@ class by the name the validator uses, through an import, the validator's own pac
 The annotation processor follows the marker. Tools that read source text recognise only `@OnchainLibrary` written on
 the class: the Gradle plugin's `bundleJulcSources`, and the testkit's `SourceDiscovery`. So `bundleJulcSources` does
 not bundle a user's marked classes, and a framework that ships them in a jar bundles them itself. The CLI's project
-scan treats every non-validator file of the project as a library source, so marked classes work there as they are.
+scan treats every non-validator file of the project as a library source, so marked classes work there when they import
+their marker.
 
 ### 2.2 Basic Structure
 

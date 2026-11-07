@@ -1,7 +1,7 @@
 # ADR-071: On-chain library meta-annotations and a robust library-source scan
 
-**Status:** Proposed (r7)
-**Date:** 2026-11-07 (r2–r7: 2026-11-07)
+**Status:** Proposed (r8)
+**Date:** 2026-11-07 (r2–r8: 2026-11-07)
 **Label:** `joust`
 **Risk class:** medium. It changes which sources the annotation processor and the library resolver hand to the
 compiler. A wrong rule could compile a class into a validator that should not be on-chain, or miss one and fail the
@@ -102,7 +102,8 @@ Non-goals:
   (r3).
 - **I4. Only libraries are added.** Nothing new reaches the compiler except:
   - a top-level class that is a library by I2 and whose source is in this compilation;
-  - a marker of the library pool, that is an annotation interface carrying `@OnchainLibrary`.
+  - a marker of the library pool: javac's class of that name is an annotation interface carrying `@OnchainLibrary`
+    (the processor only, r8).
   A class that is merely named in a comment or a string is never added. javac is never asked about a field named
   through its class (`BigInteger.ZERO`, r4). It may be asked about a bare name that turns out to be a variable
   (r6). A class found that way is handed to JuLC's javac, which binds the variable and never uses the class.
@@ -151,7 +152,11 @@ Where it applies:
     rarely can compile the wrong code.
   - When the compilation holds several classes of that name in wildcard-imported packages, all of them are handed to
     JuLC's javac, with no ambiguity reported by the resolver (r7). javac ignores them for a variable, and reports
-    the ambiguity itself for a class. The resolver's own ambiguity error stays for pool entries, as before.
+    the ambiguity itself for a class.
+  - Those candidates, and what they reach, are resolved after everything else, in a speculative pass (r8). It reports
+    nothing and turns an ambiguity into every candidate, for javac to settle. A resolution's non-speculative part,
+    with its errors, is exactly what it was without them. The resolver's own ambiguity error stays for pool entries,
+    as before.
 
   The processor answers with the class javac names, if it is a top-level library of this compilation (I2,
   `Trees.getPath` non-null). The source is keyed by javac's qualified name, not the source's text. The host is asked
@@ -176,17 +181,17 @@ Where it applies:
 
   This is what makes the framework case work. javac never calls the processor in the round that entered the user's
   class, but the validator that names it resolves it by exact name.
-- **Markers are references (r2).** The resolver treats every annotation a source uses as a reference, whatever its
-  spelling (`@mark` too), resolved by its qualified name, an import, the source's package or a single wildcard match.
-  It is added only if the pool entry is a marker: an annotation interface that carries JuLC's
-  `org.julclang.stdlib.annotation.OnchainLibrary`, written qualified or imported, as javac's parser reads it (r4,
-  r5). A lookalike `@other.OnchainLibrary` does not count. The simple name `OnchainLibrary` is decided as in Java:
-  - a single-type import decides first (r6);
-  - a type of that name in the source's own package, if the pool holds it, shadows a wildcard import (r7). It never goes through the pool-wide fallback, and it gives no diagnostic.
-
-  A host's pool may hold other annotation interfaces. The CLI's `ProjectScanner` pools every non-validator file, and
-  a framework's own index lists what it ships. Those interfaces are never followed (I4). A same-project marker is collected like any `@OnchainLibrary` class, since it carries the annotation itself. A
-  class-path marker is a library source in its jar's `META-INF/plutus-sources`.
+- **Markers are references (r2, r8).** The resolver treats every annotation a source uses as a reference, whatever its
+  spelling (`@mark` too). It is resolved by its qualified name, an import, the source's package or a single wildcard
+  match, never through the pool-wide fallback, and with no diagnostic. It is added only if the host says javac's
+  class of that name is a marker: an annotation interface carrying `@OnchainLibrary` (r8).
+  - **The host decides by javac's model** (`Elements.getTypeElement`, `JavacFacts.libraryMarker`), not by reading the
+    marker's source. r4–r7 read the annotation's identity from text (imports, qualified names, same-package
+    shadowing), and each version missed a way Java binds a name.
+  - **Only the annotation processor answers.** For the CLI, testkit and tools hosts no annotation is followed, exactly
+    as before, so a plain annotation in the CLI's pool can never be pulled in (I1, non-goals).
+  - **Where markers come from:** a same-project marker is collected like any `@OnchainLibrary` class, since it carries
+    the annotation itself. A class-path marker is a library source in its jar's `META-INF/plutus-sources`.
 
   So the marker's source is compiled with each library and validator that uses it, imported or not. All of a class's
   markers come along, and so do the libraries a marker's member defaults read.
@@ -272,9 +277,8 @@ a build that passed before still passes (I1), and the problem is still printed j
   - the external julc-examples (identical `META-INF/plutus`, diagnostics and warnings);
   - the processor test suite;
   - the full build.
-- **Annotation references in the resolver** reach the CLI, testkit and tools hosts too. They only ever add a marker
-  of the pool, and only where JuLC's javac would otherwise have failed to resolve it. A plain project annotation in
-  the CLI's pool is not followed, as before (r4).
+- **Annotation references** are followed only for the annotation processor, which asks javac whether a name is a
+  marker (r8). The CLI, testkit and tools hosts resolve exactly as before.
 - **JULC0134** keeps its text for `@OnchainLibrary`. The template now has a third argument, which only
   `JavacDiscovery` fills.
 - **The scan** reports through notes. `-Werror` builds behave as before.
@@ -304,7 +308,7 @@ a build that passed before still passes (I1), and the problem is still printed j
 ## Implementation milestones
 
 - **M1 (r1, `566ea845`):** D1 with regex discovery, and D2 with warnings.
-- **M2 (r2–r7):**
+- **M2 (r2–r8):**
   - admission by exact name through the resolver, replacing regex discovery; round collection unchanged (r3);
   - markers as references;
   - `JavacFacts.libraryMarker` as the one rule;
@@ -314,7 +318,8 @@ a build that passed before still passes (I1), and the problem is still printed j
   - markers only, guessed names only for bare identifiers, nesting across the file (r4);
   - precedence at resolution, JuLC's own `@OnchainLibrary`, every marker reported (r5);
   - bare qualifiers asked without variable guessing, one source per name, import precedence (r6);
-  - admitted wildcard candidates left to javac, same-package shadowing of `OnchainLibrary` (r7);
+  - admitted wildcard candidates left to javac (r7);
+  - the speculative pass, and markers decided by javac in the processor only (r8);
   - scan notes, `IllegalArgumentException` isolation and directory-listing reports;
   - docs.
   - Exit: the tests below are green, the full build is green, the julc-examples outputs match the merge base, and
@@ -364,12 +369,11 @@ Resolver tests (`LibrarySourceResolverTest`):
 | `resolve_followsAMarkerAnnotationOfTheLibrarysOwnPackage` | |
 | `resolve_annotationReferencesNameOnlyAnnotationInterfacesAndNeverFallBack` | I4 |
 | `resolve_asksTheCompilationOnlyForExactNamesThePoolLacks` | the names asked; the fallback never asks; admitted sources are not pooled |
-| `resolve_followsOnlyAnnotationsThatAreMarkers` | the CLI's pool, r4 |
+| `resolve_followsOnlyAnnotationsTheHostCallsMarkers` | the CLI's pool; lookalikes; other hosts follow none, r8 |
 | `resolve_asksOnlyBareQualifiersAsClassesAndAVariableDoesNotHideOne` | r6 |
-| `resolve_followsOnlyJulcsOwnOnchainLibraryAnnotation` | the qualified and imported lookalikes, r5, r6 |
 | `resolve_aJarSourceGivesWayHoweverItIsReached` | r6 |
 | `resolve_leavesSeveralAdmittedWildcardCandidatesToJavac` | r7 |
-| `resolve_aSamePackageOnchainLibraryShadowsTheWildcardImport` | r7 |
+| `resolve_anAmbiguityInsideASpeculativeCandidateIsLeftToJavac` | r8 |
 | `resolve_aJarSourceGivesWayToTheCompilationsClassOfTheSameName` | r5 |
 | `scanClasspathSources_skipsAnUnreadableEntryReportsItAndReadsTheRest` | |
 | `scanClasspathSources_aMalformedEntryUrlCostsOnlyThatEntry` | |
@@ -453,3 +457,10 @@ Regression evidence:
   - **A pool type named `OnchainLibrary`** in the marker's package shadows a wildcard import of JuLC's annotations
     (R5-2).
   - **ADR wording:** I1, I4, D1, D2 and Risks.
+- **r8** (2026-11-07, responds to Codex's review of r7, `6b4817ea`, where the R4 fixes held and no wrong script was
+  found):
+  - **Markers are decided by javac.** Whether an annotation is a marker is the processor's answer from javac's model,
+    and no other host follows annotations. The textual identity check of r4–r7 is withdrawn, and with it R5-2's
+    testkit and secondary-type variants.
+  - **Speculative wildcard candidates** and what they reach are resolved in a separate, lenient pass, so an ambiguity
+    inside an unused candidate no longer fails the build (R6-1).

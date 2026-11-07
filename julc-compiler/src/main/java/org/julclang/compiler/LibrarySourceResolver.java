@@ -5,7 +5,6 @@ import org.julclang.compiler.frontend.javac.ExpressionRoles;
 import org.julclang.compiler.frontend.javac.JavacSyntax;
 import com.sun.source.tree.AnnotationTree;
 import com.sun.source.tree.ClassTree;
-import com.sun.source.tree.CompilationUnitTree;
 import com.sun.source.tree.IdentifierTree;
 import com.sun.source.tree.ImportTree;
 import com.sun.source.tree.MemberSelectTree;
@@ -385,28 +384,29 @@ public final class LibrarySourceResolver {
     }
 
     /**
-     * {@link #resolve(String, Map)}, also asking {@code classesOfTheCompilation} for a name the pool lacks (ADR-071 D1):
-     * a host that compiles inside javac admits a library of its own compilation that it has not collected, such as a
-     * class that carries only a framework's marker and was entered in a round the host never saw. It is asked for exact
-     * names only (an import, the source's package, a qualified name, a wildcard package), never through the pool-wide
-     * simple-name fallback, and what it returns is never added to the pool, so one source's resolution does not depend
-     * on another's.
+     * What a host that compiles inside javac (the annotation processor) adds to a resolution (ADR-071 D1).
+     *
+     * @param jarSources              the pool's class-path entries; a library of the compilation of the same name takes
+     *                                their place, so a resolution holds one source per name, the one javac checked
+     * @param classesOfTheCompilation the library javac names by an exact name the pool lacks, or null: a class that
+     *                                carries only a framework's marker, entered in a round the host never saw. It is
+     *                                asked for an import, the source's package, a qualified name or a wildcard package,
+     *                                never through the pool-wide simple-name fallback; what it returns is never pooled
+     * @param markers                 whether javac's class of that name is a library marker (an annotation interface
+     *                                carrying {@code @OnchainLibrary}): an annotation a source uses is followed only to
+     *                                one
      */
-    public static List<String> resolve(String source, Map<String, ?> availableLibraries,
-                                       Function<String, LibrarySource> classesOfTheCompilation) {
-        return resolve(source, availableLibraries, Map.of(), classesOfTheCompilation);
+    public record CompilationHost(Map<String, LibrarySource> jarSources,
+                                  Function<String, LibrarySource> classesOfTheCompilation,
+                                  Predicate<String> markers) {
+
+        /** A host that adds nothing: {@link #resolve(String, Map)}. */
+        static final CompilationHost NONE = new CompilationHost(Map.of(), fqcn -> null, fqcn -> false);
     }
 
-    /**
-     * {@link #resolve(String, Map, Function)}, where {@code jarSources} are the pool's class-path entries: a library of
-     * the compilation of the same name takes their place when a source names it exactly, as a collected library takes
-     * a jar source's place in the pool (ADR-071 D1). The compilation's class is the one javac checked.
-     */
-    public static List<String> resolve(String source, Map<String, ?> availableLibraries,
-                                       Map<String, LibrarySource> jarSources,
-                                       Function<String, LibrarySource> classesOfTheCompilation) {
-        return resolveLibrarySources(source, normalizeLibrarySources(availableLibraries),
-                pooled -> jarSources.get(pooled.fqcn()) == pooled, classesOfTheCompilation).stream()
+    /** {@link #resolve(String, Map)}, with what {@code host} adds (ADR-071 D1). */
+    public static List<String> resolve(String source, Map<String, ?> availableLibraries, CompilationHost host) {
+        return resolveLibrarySources(source, normalizeLibrarySources(availableLibraries), host).stream()
                 .map(LibrarySource::source)
                 .toList();
     }
@@ -415,15 +415,16 @@ public final class LibrarySourceResolver {
         if (availableLibraries.isEmpty()) {
             return List.of();
         }
-        return resolveLibrarySources(source, availableLibraries, pooled -> false, fqcn -> null);
+        return resolveLibrarySources(source, availableLibraries, CompilationHost.NONE);
     }
 
     private static List<LibrarySource> resolveLibrarySources(String source, Map<String, LibrarySource> availableLibraries,
-                                                             Predicate<LibrarySource> replaceable,
-                                                             Function<String, LibrarySource> classesOfTheCompilation) {
+                                                             CompilationHost host) {
+        Predicate<LibrarySource> replaceable = pooled -> host.jarSources().get(pooled.fqcn()) == pooled;
         var asked = new HashMap<String, Optional<LibrarySource>>();
         Function<String, LibrarySource> ask = fqcn -> !SourceVersion.isName(fqcn) ? null
-                : asked.computeIfAbsent(fqcn, name -> Optional.ofNullable(classesOfTheCompilation.apply(name))).orElse(null);
+                : asked.computeIfAbsent(fqcn, name -> Optional.ofNullable(host.classesOfTheCompilation().apply(name)))
+                        .orElse(null);
         // One source per name in a resolution: a jar entry, however it is reached, gives way to the compilation's class.
         Function<LibrarySource, LibrarySource> chosen = pooled -> {
             if (pooled == null || !replaceable.test(pooled)) return pooled;
@@ -434,66 +435,98 @@ public final class LibrarySourceResolver {
         Function<String, LibrarySource> exact = fqcn -> availableLibraries.containsKey(fqcn)
                 ? chosen.apply(availableLibraries.get(fqcn)) : ask.apply(fqcn);
         var lookup = new Lookup(exact, admitted, fqcn -> chosen.apply(availableLibraries.get(fqcn)), chosen,
-                availableLibraries::containsKey);
+                host.markers());
         var bySimpleName = indexBySimpleName(availableLibraries.values());
         var diagnostics = new DiagnosticCollector("<source>");
         var resolved = new LinkedHashMap<String, LibrarySource>();
         var queued = new HashSet<String>();
         Queue<LibrarySource> toProcess = new ArrayDeque<>();
 
-        enqueueReferencedLibraries(source, extractPackageName(source), "<source>", lookup,
-                bySimpleName, resolved, queued, toProcess, diagnostics);
-        diagnostics.throwIfErrors();
+        var deferred = new ArrayList<LibrarySource>();
+        var resolution = new Resolution(lookup, bySimpleName, resolved, queued, toProcess, deferred, false);
 
+        resolution.enqueueReferencedLibraries(source, extractPackageName(source), "<source>", diagnostics);
+        diagnostics.throwIfErrors();
         while (!toProcess.isEmpty()) {
             LibrarySource librarySource = toProcess.poll();
             if (resolved.containsKey(librarySource.fqcn())) {
                 continue;
             }
             resolved.put(librarySource.fqcn(), librarySource);
-            enqueueReferencedLibraries(librarySource.source(), librarySource.packageName(), librarySource.resourcePath(),
-                    lookup, bySimpleName, resolved, queued, toProcess, diagnostics);
+            resolution.enqueueReferencedLibraries(librarySource.source(), librarySource.packageName(),
+                    librarySource.resourcePath(), diagnostics);
             diagnostics.throwIfErrors();
+        }
+
+        // ADR-071 D1: wildcard candidates the compilation admits for a bare name that may be a variable. javac decides
+        // whether one is used, so they and what they reach are resolved after everything else, with no ambiguity
+        // reported by the resolver: an ambiguous name inside them takes every candidate, for javac to settle.
+        var speculative = new Resolution(lookup, bySimpleName, resolved, queued, toProcess, deferred, true);
+        deferred.forEach(candidate -> enqueue(candidate, resolved, queued, toProcess));
+        var ignored = new DiagnosticCollector("<speculative>");
+        while (!toProcess.isEmpty()) {
+            LibrarySource librarySource = toProcess.poll();
+            if (resolved.containsKey(librarySource.fqcn())) {
+                continue;
+            }
+            resolved.put(librarySource.fqcn(), librarySource);
+            speculative.enqueueReferencedLibraries(librarySource.source(), librarySource.packageName(),
+                    librarySource.resourcePath(), ignored);
         }
 
         return new ArrayList<>(resolved.values());
     }
 
-    private static void enqueueReferencedLibraries(String source,
-                                                   String packageName,
-                                                   String fileName,
-                                                   Lookup lookup,
-                                                   Map<String, List<LibrarySource>> bySimpleName,
-                                                   Map<String, LibrarySource> resolved,
-                                                   Set<String> queued,
-                                                   Queue<LibrarySource> toProcess,
-                                                   DiagnosticCollector diagnostics) {
-        diagnostics.setFileName(fileName);
-        SourceContext context = parseSourceContext(source, packageName);
+    /** One pass of a resolution: what it enqueues, and whether its ambiguities are left to javac. */
+    private record Resolution(Lookup lookup,
+                              Map<String, List<LibrarySource>> bySimpleName,
+                              Map<String, LibrarySource> resolved,
+                              Set<String> queued,
+                              Queue<LibrarySource> toProcess,
+                              List<LibrarySource> deferred,
+                              boolean speculative) {
 
-        for (String fqcn : context.importsBySimpleName().values()) {
-            enqueue(lookup.exact().apply(fqcn), resolved, queued, toProcess);
-        }
+        void enqueueReferencedLibraries(String source, String packageName, String fileName,
+                                        DiagnosticCollector diagnostics) {
+            diagnostics.setFileName(fileName);
+            SourceContext context = parseSourceContext(source, packageName);
 
-        for (ClassReference reference : context.staticReferences()) {
-            for (LibrarySource librarySource : resolveStaticReference(reference, context.packageName(),
-                    context.importsBySimpleName(), context.wildcardPackages(),
-                    lookup, bySimpleName, context.guessableNames().contains(reference.simpleName()), diagnostics)) {
-                enqueue(librarySource, resolved, queued, toProcess);
+            for (String fqcn : context.importsBySimpleName().values()) {
+                enqueue(lookup.exact().apply(fqcn), resolved, queued, toProcess);
+            }
+
+            for (ClassReference reference : context.staticReferences()) {
+                var named = resolveStaticReference(reference, context.packageName(), context.importsBySimpleName(),
+                        context.wildcardPackages(), lookup, bySimpleName,
+                        context.guessableNames().contains(reference.simpleName()), speculative, diagnostics);
+                if (named.admittedCandidates() && !speculative) {
+                    deferred.addAll(named.libraries());
+                } else {
+                    named.libraries().forEach(librarySource -> enqueue(librarySource, resolved, queued, toProcess));
+                }
+            }
+
+            for (ClassReference reference : context.annotationReferences()) {
+                enqueue(resolveAnnotationReference(reference, context.packageName(), context.importsBySimpleName(),
+                        context.wildcardPackages(), lookup, bySimpleName), resolved, queued, toProcess);
             }
         }
+    }
 
-        for (ClassReference reference : context.annotationReferences()) {
-            enqueue(resolveAnnotationReference(reference, context.packageName(), context.importsBySimpleName(),
-                    context.wildcardPackages(), lookup, bySimpleName), resolved, queued, toProcess);
+    /** The libraries a reference names, and whether they are the compilation's wildcard candidates for a bare name. */
+    private record Named(List<LibrarySource> libraries, boolean admittedCandidates) {
+        static final Named NONE = new Named(List.of(), false);
+
+        static Named of(LibrarySource librarySource) {
+            return librarySource == null ? NONE : new Named(List.of(librarySource), false);
         }
     }
 
     /**
-     * The library an annotation names, if it is an annotation interface of the pool (ADR-071 D1). Only a library marker
-     * can be one: a pool holds {@code @OnchainLibrary} classes and the annotation interfaces that carry it. A marker the
-     * source uses without an import, from its own package, is a reference like any other, so its source, and the
-     * libraries it refers to, are compiled with the source. Resolved by the qualified name, an import, the source's
+     * The library an annotation names, if the host says javac's class of that name is a library marker (ADR-071 D1). A
+     * marker the source uses without an import, from its own package, is a reference like any other, so its source,
+     * and the libraries it refers to, are compiled with the source. Only the annotation processor answers; for other
+     * hosts no annotation is followed, as before. Resolved by the qualified name, an import, the source's
      * package, or a single wildcard match; never by the pool-wide simple-name fallback, and never with a diagnostic: an
      * annotation that names no library is javac's to report.
      */
@@ -518,67 +551,30 @@ public final class LibrarySourceResolver {
                 candidate = wildcard.size() == 1 ? wildcard.getFirst() : null;
             }
         }
-        return candidate != null && isMarker(candidate, lookup) ? candidate : null;
+        return candidate != null && lookup.markers().test(candidate.fqcn()) ? candidate : null;
     }
 
     /**
-     * Whether the library's source declares its class as a library marker: an annotation interface that carries
-     * {@code @OnchainLibrary}, as javac's parser reads it. A host's pool may hold other annotation interfaces (the CLI
-     * pools every project source); they are never followed.
+     * The libraries a {@code Name.member} reference names: one, or none. Several when the compilation admits more than
+     * one wildcard candidate (ADR-071 D1): the bare name may be a variable, so javac, not the resolver, decides, and
+     * reports the ambiguity if it is a class. In a speculative pass an ambiguity takes every candidate, for javac too.
      */
-    private static boolean isMarker(LibrarySource librarySource, Lookup lookup) {
-        var syntax = JavacSyntax.read(librarySource.source());
-        if (syntax.hasErrors()) return false;
-        var unit = syntax.unit();
-        // A type named OnchainLibrary in the marker's own package, which the host knows, shadows a wildcard import.
-        String packageName = unit.getPackageName() == null ? "" : unit.getPackageName().toString();
-        boolean shadowed = lookup.known().test(packageName.isEmpty() ? "OnchainLibrary" : packageName + ".OnchainLibrary");
-        return unit.getTypeDecls().stream().anyMatch(type ->
-                type instanceof ClassTree declared && declared.getKind() == Tree.Kind.ANNOTATION_TYPE
-                        && declared.getSimpleName().contentEquals(librarySource.simpleName())
-                        && declared.getModifiers().getAnnotations().stream().anyMatch(annotation ->
-                        namesOnchainLibrary(unit, annotation.getAnnotationType().toString(), shadowed)));
-    }
-
-    /**
-     * Whether {@code name}, as written in {@code unit}, is JuLC's {@code @OnchainLibrary}: by a single-type import, the
-     * source's own package, or a wildcard import that no type of the source's package of that name shadows.
-     */
-    private static boolean namesOnchainLibrary(CompilationUnitTree unit, String name, boolean shadowedInPackage) {
-        String onchainLibrary = "org.julclang.stdlib.annotation.OnchainLibrary";
-        if (name.contains(".")) return name.equals(onchainLibrary);
-        if (!name.equals("OnchainLibrary")) return false;
-        String annotationPackage = "org.julclang.stdlib.annotation";
-        var imports = unit.getImports().stream().filter(importTree -> !importTree.isStatic())
-                .map(importTree -> importTree.getQualifiedIdentifier().toString()).toList();
-        // A single-type import decides, as in Java; then the source's own package; then a wildcard import.
-        for (String imported : imports) {
-            if (imported.endsWith(".OnchainLibrary")) return imported.equals(onchainLibrary);
-        }
-        if (unit.getPackageName() != null && unit.getPackageName().toString().equals(annotationPackage)) return true;
-        return !shadowedInPackage && imports.contains(annotationPackage + ".*");
-    }
-
-    /**
-     * The libraries a {@code Name.member} reference names: one, or none. Several only when the compilation admits more
-     * than one wildcard candidate (ADR-071 D1): the bare name may be a variable, so javac, not the resolver, decides,
-     * and reports the ambiguity if it is a class.
-     */
-    private static List<LibrarySource> resolveStaticReference(ClassReference reference,
+    private static Named resolveStaticReference(ClassReference reference,
                                                         String packageName,
                                                         Map<String, String> importsBySimpleName,
                                                         Set<String> wildcardPackages,
                                                         Lookup lookup,
                                                         Map<String, List<LibrarySource>> bySimpleName,
                                                         boolean guessable,
+                                                        boolean speculative,
                                                         DiagnosticCollector diagnostics) {
         if (reference.fqcn() != null) {
-            return single(lookup.exact().apply(reference.fqcn()));
+            return Named.of(lookup.exact().apply(reference.fqcn()));
         }
 
         String importedFqcn = importsBySimpleName.get(reference.simpleName());
         if (importedFqcn != null) {
-            return single(lookup.exact().apply(importedFqcn));
+            return Named.of(lookup.exact().apply(importedFqcn));
         }
 
         String samePackageFqcn = packageName.isBlank()
@@ -586,17 +582,21 @@ public final class LibrarySourceResolver {
                 : packageName + "." + reference.simpleName();
         LibrarySource samePackageSource = lookup.guessed(samePackageFqcn, guessable);
         if (samePackageSource != null) {
-            return List.of(samePackageSource);
+            return Named.of(samePackageSource);
         }
 
         List<LibrarySource> wildcardCandidates = pooledWildcardCandidates(reference.simpleName(), wildcardPackages,
                 lookup, bySimpleName);
         if (wildcardCandidates.isEmpty() && guessable) {
             var admitted = admittedWildcardCandidates(reference.simpleName(), wildcardPackages, lookup);
-            if (!admitted.isEmpty()) return admitted;
+            if (admitted.size() == 1) return Named.of(admitted.getFirst());
+            if (!admitted.isEmpty()) return new Named(admitted, true);
         }
         if (wildcardCandidates.size() == 1) {
-            return wildcardCandidates;
+            return Named.of(wildcardCandidates.getFirst());
+        }
+        if (wildcardCandidates.size() > 1 && speculative) {
+            return new Named(wildcardCandidates, false);
         }
         if (wildcardCandidates.size() > 1) {
             diagnostics.error(reference.line(), reference.column(),
@@ -605,12 +605,15 @@ public final class LibrarySourceResolver {
                             .map(LibrarySource::fqcn)
                             .sorted()
                             .toList());
-            return List.of();
+            return Named.NONE;
         }
 
         List<LibrarySource> candidates = bySimpleName.getOrDefault(reference.simpleName(), List.of());
         if (candidates.size() == 1) {
-            return single(lookup.chosen().apply(candidates.get(0)));
+            return Named.of(lookup.chosen().apply(candidates.get(0)));
+        }
+        if (candidates.size() > 1 && speculative) {
+            return new Named(candidates.stream().map(lookup.chosen()).toList(), false);
         }
         if (candidates.size() > 1) {
             diagnostics.error(reference.line(), reference.column(),
@@ -620,11 +623,7 @@ public final class LibrarySourceResolver {
                             .sorted()
                             .toList());
         }
-        return List.of();
-    }
-
-    private static List<LibrarySource> single(LibrarySource librarySource) {
-        return librarySource == null ? List.of() : List.of(librarySource);
+        return Named.NONE;
     }
 
     /** The pool's libraries named {@code simpleName} in a wildcard-imported package, each as {@code chosen} gives it. */
@@ -649,12 +648,12 @@ public final class LibrarySourceResolver {
     /**
      * How a resolution finds a library by name: {@code exact} looks in the pool, then among the classes the compilation
      * admits; {@code admitted} only among the latter; {@code pooled} only in the pool. Every pool entry passes through
-     * {@code chosen}, which replaces a jar entry with the compilation's class of the same name. {@code known} says
-     * whether the pool holds a name.
+     * {@code chosen}, which replaces a jar entry with the compilation's class of the same name. {@code markers} is the
+     * host's word on whether a name is a library marker.
      */
     private record Lookup(Function<String, LibrarySource> exact, Function<String, LibrarySource> admitted,
                           Function<String, LibrarySource> pooled, Function<LibrarySource, LibrarySource> chosen,
-                          Predicate<String> known) {
+                          Predicate<String> markers) {
 
         /**
          * A name built from the source's package or a wildcard package: asked of the compilation only when the source

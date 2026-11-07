@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
 
@@ -341,6 +342,13 @@ class LibrarySourceResolverTest {
         }
     }
 
+    /** A host that admits {@code admitted} by name and treats {@code markers} as library markers. */
+    private static LibrarySourceResolver.CompilationHost host(Map<String, LibrarySource> jarSources,
+                                                             Function<String, LibrarySource> admitted,
+                                                             Set<String> markers) {
+        return new LibrarySourceResolver.CompilationHost(jarSources, admitted, markers::contains);
+    }
+
     @Test
     void resolve_followsAMarkerAnnotationOfTheLibrarysOwnPackage() {
         // ADR-071 D1: an annotation is a reference; a marker used without an import comes with the library using it.
@@ -361,15 +369,20 @@ class LibrarySourceResolverTest {
                 class V { static boolean f() { return Lib.ok(); } }
                 """;
 
-        var resolved = LibrarySourceResolver.resolve(validator, Map.of("lib.Lib", library, "lib.Mark", mark));
+        var resolved = LibrarySourceResolver.resolve(validator, Map.of("lib.Lib", library, "lib.Mark", mark),
+                host(Map.of(), name -> null, Set.of("lib.Mark")));
 
         assertEquals(List.of(library.source(), mark.source()), resolved);
+        // A host that answers no marker (the CLI, the testkit, the tools) follows no annotation, as before.
+        assertEquals(List.of(library.source()), LibrarySourceResolver.resolve(validator,
+                Map.of("lib.Lib", library, "lib.Mark", mark)));
     }
 
     @Test
     void resolve_annotationReferencesNameOnlyAnnotationInterfacesAndNeverFallBack() {
-        // An annotation resolves by import, package or a single wildcard match, and only to an @interface: a class of
-        // the same simple name, or an annotation of another package the source does not import, is never added.
+        // An annotation resolves by import, package or a single wildcard match, and only to what the host calls a
+        // marker: a class of the same simple name, or a marker of another package the source does not import, is never
+        // added.
         var otherPackage = LibrarySourceResolver.librarySourceFromSimpleName("Param", """
                 package other;
                 import org.julclang.stdlib.annotation.OnchainLibrary;
@@ -388,7 +401,8 @@ class LibrarySourceResolverTest {
                 class V { @Entrypoint static boolean f(@Param int x) { return true; } }
                 """;
 
-        var resolved = LibrarySourceResolver.resolve(validator, Map.of("other.Param", otherPackage, "app.Entrypoint", aClass));
+        var resolved = LibrarySourceResolver.resolve(validator, Map.of("other.Param", otherPackage, "app.Entrypoint", aClass),
+                host(Map.of(), name -> null, Set.of("other.Param")));
 
         assertEquals(List.of(), resolved);
     }
@@ -413,10 +427,10 @@ class LibrarySourceResolverTest {
                 """;
         var asked = new ArrayList<String>();
 
-        var resolved = LibrarySourceResolver.resolve(validator, Map.of("other.Pooled", pooled), name -> {
+        var resolved = LibrarySourceResolver.resolve(validator, Map.of("other.Pooled", pooled), host(Map.of(), name -> {
             asked.add(name);
             return name.equals("lib.Counter") ? admitted : null;
-        });
+        }, Set.of()));
 
         // Counter is admitted and followed; Pooled reaches it through the pool-wide fallback, which never asks.
         assertEquals(List.of(admitted.source(), pooled.source()), resolved);
@@ -446,21 +460,31 @@ class LibrarySourceResolverTest {
     }
 
     @Test
-    void resolve_followsOnlyAnnotationsThatAreMarkers() {
-        // A host may pool any project source (the CLI does): an annotation interface without @OnchainLibrary is never
-        // followed, so a build that compiled without its source still does.
+    void resolve_followsOnlyAnnotationsTheHostCallsMarkers() {
+        // A host may pool any project source (the CLI does). An annotation is followed only if the host, which asks
+        // javac, calls it a marker; a lookalike @OnchainLibrary of whatever spelling or shadowing never decides it.
         var plain = LibrarySourceResolver.librarySourceFromSimpleName("Audit", """
                 package app;
+                import org.julclang.stdlib.annotation.*;
+                @OnchainLibrary
                 @java.lang.annotation.Documented
                 public @interface Audit { String[] value(); }
                 """);
+        var real = LibrarySourceResolver.librarySourceFromSimpleName("Mark", """
+                package app;
+                import org.julclang.stdlib.annotation.*;
+                @OnchainLibrary
+                public @interface Mark {}
+                """);
         var validator = """
                 package app;
-                @Audit({"x"})
+                @Audit({"x"}) @Mark
                 class V { static boolean f() { return true; } }
                 """;
 
-        assertEquals(List.of(), LibrarySourceResolver.resolve(validator, Map.of("app.Audit", plain)));
+        assertEquals(List.of(real.source()), LibrarySourceResolver.resolve(validator,
+                Map.of("app.Audit", plain, "app.Mark", real), host(Map.of(), name -> null, Set.of("app.Mark"))));
+        assertEquals(List.of(), LibrarySourceResolver.resolve(validator, Map.of("app.Audit", plain, "app.Mark", real)));
     }
 
     @Test
@@ -483,52 +507,13 @@ class LibrarySourceResolverTest {
                 """;
         var asked = new ArrayList<String>();
 
-        LibrarySourceResolver.resolve(validator, Map.of(), name -> {
+        LibrarySourceResolver.resolve(validator, Map.of(), host(Map.of(), name -> {
             asked.add(name);
             return null;
-        });
+        }, Set.of()));
 
         assertTrue(asked.containsAll(List.of("app.Counter", "app.Local")), asked.toString());
         assertFalse(asked.contains("app.ZERO"), asked.toString());
-    }
-
-    @Test
-    void resolve_followsOnlyJulcsOwnOnchainLibraryAnnotation() {
-        // A lookalike @OnchainLibrary from another package does not make a marker.
-        var qualified = LibrarySourceResolver.librarySourceFromSimpleName("Audit", """
-                package app;
-                @other.OnchainLibrary
-                public @interface Audit {}
-                """);
-        var imported = LibrarySourceResolver.librarySourceFromSimpleName("Trace", """
-                package app;
-                import other.OnchainLibrary;
-                @OnchainLibrary
-                public @interface Trace {}
-                """);
-        var shadowedByImport = LibrarySourceResolver.librarySourceFromSimpleName("Note", """
-                package app;
-                import other.OnchainLibrary;
-                import org.julclang.stdlib.annotation.*;
-                @OnchainLibrary
-                public @interface Note {}
-                """);
-        var real = LibrarySourceResolver.librarySourceFromSimpleName("Mark", """
-                package app;
-                import org.julclang.stdlib.annotation.*;
-                @OnchainLibrary
-                public @interface Mark {}
-                """);
-        var validator = """
-                package app;
-                @Audit @Trace @Note @Mark
-                class V { static boolean f() { return true; } }
-                """;
-
-        var resolved = LibrarySourceResolver.resolve(validator,
-                Map.of("app.Audit", qualified, "app.Trace", imported, "app.Note", shadowedByImport, "app.Mark", real));
-
-        assertEquals(List.of(real.source()), resolved);
     }
 
     @Test
@@ -551,7 +536,7 @@ class LibrarySourceResolverTest {
                 """;
 
         assertEquals(List.of(own.source()), LibrarySourceResolver.resolve(validator, Map.of("other.Counter", jar),
-                Map.of("other.Counter", jar), name -> name.equals("other.Counter") ? own : null));
+                host(Map.of("other.Counter", jar), name -> name.equals("other.Counter") ? own : null, Set.of())));
     }
 
     @Test
@@ -568,31 +553,44 @@ class LibrarySourceResolverTest {
                 """;
 
         var resolved = LibrarySourceResolver.resolve(validator, Map.of(),
-                name -> name.equals("a.Counter") ? a : name.equals("b.Counter") ? b : null);
+                host(Map.of(), name -> name.equals("a.Counter") ? a : name.equals("b.Counter") ? b : null, Set.of()));
 
         assertEquals(List.of(a.source(), b.source()), resolved);
     }
 
     @Test
-    void resolve_aSamePackageOnchainLibraryShadowsTheWildcardImport() {
-        var own = LibrarySourceResolver.librarySourceFromSimpleName("OnchainLibrary", """
-                package app;
-                public @interface OnchainLibrary {}
+    void resolve_anAmbiguityInsideASpeculativeCandidateIsLeftToJavac() {
+        // a.Counter, a candidate only because the validator names a variable Counter, refers to Clue, which two pooled
+        // wildcard libraries hold. javac never uses a.Counter, so its ambiguity must not fail the build.
+        var clueX = LibrarySourceResolver.librarySourceFromQualifiedName("x.Clue", "package x; public class Clue {}");
+        var clueY = LibrarySourceResolver.librarySourceFromQualifiedName("y.Clue", "package y; public class Clue {}");
+        var a = LibrarySourceResolver.librarySourceFromQualifiedName("a.Counter", """
+                package a;
+                import x.*;
+                import y.*;
+                public class Counter { static boolean ok() { return Clue.ok(); } }
                 """);
-        var annotation = LibrarySourceResolver.librarySourceFromSimpleName("Note", """
-                package app;
-                import org.julclang.stdlib.annotation.*;
-                @OnchainLibrary
-                public @interface Note {}
-                """);
+        var b = LibrarySourceResolver.librarySourceFromQualifiedName("b.Counter", "package b; public class Counter {}");
         var validator = """
                 package app;
-                @Note
-                class V { static boolean f() { return true; } }
+                import a.*;
+                import b.*;
+                class V { static boolean f() { java.math.BigInteger Counter = null; return Counter.signum() == 0; } }
                 """;
 
-        assertEquals(List.of(), LibrarySourceResolver.resolve(validator,
-                Map.of("app.OnchainLibrary", own, "app.Note", annotation)));
+        var resolved = LibrarySourceResolver.resolve(validator, Map.of("x.Clue", clueX, "y.Clue", clueY),
+                host(Map.of(), name -> name.equals("a.Counter") ? a : name.equals("b.Counter") ? b : null, Set.of()));
+
+        assertTrue(resolved.containsAll(List.of(a.source(), b.source())), resolved.toString());
+        // The same reference outside a speculative candidate is still the resolver's error, as before.
+        var direct = """
+                package app;
+                import x.*;
+                import y.*;
+                class V { static boolean f() { return Clue.ok(); } }
+                """;
+        assertThrows(CompilerException.class, () -> LibrarySourceResolver.resolve(direct,
+                Map.of("x.Clue", clueX, "y.Clue", clueY)));
     }
 
     @Test
@@ -612,10 +610,10 @@ class LibrarySourceResolverTest {
                 """;
 
         assertEquals(List.of(own.source()), LibrarySourceResolver.resolve(validator, Map.of("lib.Counter", jar),
-                Map.of("lib.Counter", jar), name -> name.equals("lib.Counter") ? own : null));
+                host(Map.of("lib.Counter", jar), name -> name.equals("lib.Counter") ? own : null, Set.of())));
         // Without the jar map the pooled entry is a project source and stays.
         assertEquals(List.of(jar.source()), LibrarySourceResolver.resolve(validator, Map.of("lib.Counter", jar),
-                name -> name.equals("lib.Counter") ? own : null));
+                host(Map.of(), name -> name.equals("lib.Counter") ? own : null, Set.of())));
     }
 
     @Test

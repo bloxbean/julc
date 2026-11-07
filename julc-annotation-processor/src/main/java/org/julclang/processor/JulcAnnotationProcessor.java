@@ -25,6 +25,7 @@ import com.sun.source.util.Trees;
 import javax.annotation.processing.*;
 import javax.lang.model.SourceVersion;
 import javax.lang.model.element.Element;
+import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.NestingKind;
 import javax.lang.model.element.TypeElement;
 import javax.tools.Diagnostic;
@@ -377,7 +378,20 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
 
         // A library of this compilation that was not collected, such as one marked through a framework's annotation,
         // also takes a class-path source's place when the validator names it exactly (ADR-071 D1).
-        return LibrarySourceResolver.resolve(validatorSource, pool, classpathLibraries, this::libraryOfThisCompilation);
+        return LibrarySourceResolver.resolve(validatorSource, pool, new LibrarySourceResolver.CompilationHost(
+                classpathLibraries, this::libraryOfThisCompilation, this::isLibraryMarker));
+    }
+
+    /** Whether javac's class {@code fqcn} is a library marker: an annotation interface carrying {@code @OnchainLibrary}. */
+    private boolean isLibraryMarker(String fqcn) {
+        TypeElement type;
+        try {
+            type = processingEnv.getElementUtils().getTypeElement(fqcn);
+        } catch (RuntimeException e) {
+            return false;
+        }
+        return type != null && type.getKind() == ElementKind.ANNOTATION_TYPE && JavacFacts.libraryMarker(type)
+                .filter(marker -> marker.getQualifiedName().contentEquals(ONCHAIN_LIBRARY)).isPresent();
     }
 
     /**
