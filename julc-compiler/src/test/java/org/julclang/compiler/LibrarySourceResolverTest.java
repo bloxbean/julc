@@ -464,14 +464,20 @@ class LibrarySourceResolverTest {
     }
 
     @Test
-    void resolve_asksNothingForAFieldOrAVariableThatLooksLikeAClass() {
+    void resolve_asksOnlyBareQualifiersAsClassesAndAVariableDoesNotHideOne() {
+        // A dotted qualifier (BigInteger.ZERO) never names a top-level class, so it is never asked about. A bare one
+        // is, even where a variable or a static import of that name exists elsewhere: javac decides the binding, and a
+        // class asked about but bound to a variable is never used.
         var validator = """
                 package app;
                 import java.math.BigInteger;
                 import static java.math.BigInteger.TEN;
+                import static app.Lib.*;
                 class V {
-                    static boolean f(BigInteger Counter) {
-                        return BigInteger.ZERO.signum() == 0 && Counter.signum() > 0 && TEN.signum() > 0 && Local.ok();
+                    static boolean g(BigInteger Counter) { return Counter.signum() > 0; }
+                    static boolean f() {
+                        if (true) { boolean Local = true; }
+                        return BigInteger.ZERO.signum() == 0 && Counter.ok() && Local.ok() && TEN.signum() > 0;
                     }
                 }
                 """;
@@ -482,27 +488,8 @@ class LibrarySourceResolverTest {
             return null;
         });
 
-        assertTrue(asked.contains("app.Local"), asked.toString());
-        assertFalse(asked.contains("app.ZERO") || asked.contains("app.Counter") || asked.contains("app.TEN"),
-                asked.toString());
-    }
-
-    @Test
-    void resolve_asksNoBareNameUnderAStaticWildcardImport() {
-        // import static X.* may bring any field into scope, so no bare name is asked of the compilation.
-        var validator = """
-                package app;
-                import static app.Lib.*;
-                class V { static boolean f() { return TEXT.length() == 0; } }
-                """;
-        var asked = new ArrayList<String>();
-
-        LibrarySourceResolver.resolve(validator, Map.of(), name -> {
-            asked.add(name);
-            return null;
-        });
-
-        assertFalse(asked.contains("app.TEXT"), asked.toString());
+        assertTrue(asked.containsAll(List.of("app.Counter", "app.Local")), asked.toString());
+        assertFalse(asked.contains("app.ZERO"), asked.toString());
     }
 
     @Test
@@ -519,6 +506,13 @@ class LibrarySourceResolverTest {
                 @OnchainLibrary
                 public @interface Trace {}
                 """);
+        var shadowedByImport = LibrarySourceResolver.librarySourceFromSimpleName("Note", """
+                package app;
+                import other.OnchainLibrary;
+                import org.julclang.stdlib.annotation.*;
+                @OnchainLibrary
+                public @interface Note {}
+                """);
         var real = LibrarySourceResolver.librarySourceFromSimpleName("Mark", """
                 package app;
                 import org.julclang.stdlib.annotation.*;
@@ -527,14 +521,37 @@ class LibrarySourceResolverTest {
                 """);
         var validator = """
                 package app;
-                @Audit @Trace @Mark
+                @Audit @Trace @Note @Mark
                 class V { static boolean f() { return true; } }
                 """;
 
         var resolved = LibrarySourceResolver.resolve(validator,
-                Map.of("app.Audit", qualified, "app.Trace", imported, "app.Mark", real));
+                Map.of("app.Audit", qualified, "app.Trace", imported, "app.Note", shadowedByImport, "app.Mark", real));
 
         assertEquals(List.of(real.source()), resolved);
+    }
+
+    @Test
+    void resolve_aJarSourceGivesWayHoweverItIsReached() {
+        // One source per name: a static wildcard import, a fallback or a wildcard match never lets the jar's class
+        // through once the compilation has its own.
+        var jar = LibrarySourceResolver.librarySourceFromQualifiedName("other.Counter", """
+                package other;
+                public class Counter { public static boolean ok() { return false; } }
+                """);
+        var own = LibrarySourceResolver.librarySourceFromQualifiedName("other.Counter", """
+                package other;
+                public class Counter { public static boolean ok() { return true; } }
+                """);
+        var validator = """
+                package app;
+                import other.*;
+                import static other.Anchor.*;
+                class V { static boolean f() { return Counter.ok(); } }
+                """;
+
+        assertEquals(List.of(own.source()), LibrarySourceResolver.resolve(validator, Map.of("other.Counter", jar),
+                Map.of("other.Counter", jar), name -> name.equals("other.Counter") ? own : null));
     }
 
     @Test

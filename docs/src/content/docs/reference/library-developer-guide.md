@@ -79,6 +79,9 @@ a top-level annotation interface that JuLC can compile:
 
 The marker must be top-level, and so must the classes it marks.
 
+A framework that generates the validator in a later annotation-processing round is supported: JuLC finds the marked
+class by the name the validator uses, through an import, the validator's own package, or a wildcard import.
+
 The annotation processor follows the marker. Tools that read source text recognise only `@OnchainLibrary` written on
 the class: the Gradle plugin's `bundleJulcSources`, and the testkit's `SourceDiscovery`. So `bundleJulcSources` does
 not bundle a user's marked classes, and a framework that ships them in a jar bundles them itself. The CLI's project

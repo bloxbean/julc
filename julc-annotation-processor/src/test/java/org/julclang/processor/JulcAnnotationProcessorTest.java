@@ -930,6 +930,10 @@ class JulcAnnotationProcessorTest {
 
                 @SpendingValidator
                 public class UsesShadowed {
+                    static boolean positive(BigInteger Shadowed) {
+                        return Shadowed.signum() > 0;
+                    }
+
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         return Shadowed.twice(redeemer).compareTo(BigInteger.TEN) == 0;
@@ -1137,15 +1141,14 @@ class JulcAnnotationProcessorTest {
     }
 
     /**
-     * A field or a local variable that looks like a class is not asked of javac, so an unrelated source on the source
-     * path is never read, and a -Werror build passes as before.
+     * A field named through its class ({@code BigInteger.ZERO}) is never asked of javac as a class, so an unrelated
+     * source on the source path is never read, and a -Werror build passes as before.
      */
     @Test
-    void namesThatAreNotTypesNeverReadTheSourcePath() throws Exception {
+    void aFieldQualifierNeverReadsTheSourcePath() throws Exception {
         Path sourcePath = tempDir.resolve("sourcepath");
         Files.createDirectories(sourcePath.resolve("app"));
         Files.writeString(sourcePath.resolve("app/ZERO.java"), "package app;\npublic class ZERO {}\n");
-        Files.writeString(sourcePath.resolve("app/Counter.java"), "package app;\npublic class Counter {}\n");
         var validator = """
                 package app;
 
@@ -1157,8 +1160,7 @@ class JulcAnnotationProcessorTest {
                 public class V {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, PlutusData ctx) {
-                        BigInteger Counter = redeemer.add(BigInteger.ONE);
-                        return BigInteger.ZERO.signum() == 0 && Counter.signum() > 0;
+                        return BigInteger.ZERO.signum() == 0 && redeemer.signum() > 0;
                     }
                 }
                 """;
@@ -1249,7 +1251,10 @@ class JulcAnnotationProcessorTest {
                 "Got: " + result.diagnostics());
     }
 
-    /** A parameter named like the class in another method does not hide the class where the entrypoint names it. */
+    /**
+     * A variable named like the class (a parameter of another method, a local of an inner block) does not hide the
+     * class where the entrypoint names it.
+     */
     @Test
     void aVariableInAnotherMethodDoesNotHideAMarkedClass() throws Exception {
         var result = compileWithFramework(Map.of("app/Counter", MARKED_COUNTER), Map.of("app.UsesCounter", """
@@ -1263,6 +1268,10 @@ class JulcAnnotationProcessorTest {
                 public class UsesCounter {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, PlutusData ctx) {
+                        if (redeemer.signum() < 0) {
+                            BigInteger Counter = redeemer;
+                            return Counter.signum() > 0;
+                        }
                         return Counter.twice(redeemer).compareTo(BigInteger.TEN) == 0;
                     }
 

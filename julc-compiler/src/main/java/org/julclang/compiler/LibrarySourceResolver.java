@@ -10,11 +10,8 @@ import com.sun.source.tree.IdentifierTree;
 import com.sun.source.tree.ImportTree;
 import com.sun.source.tree.MemberSelectTree;
 import com.sun.source.tree.MethodInvocationTree;
-import com.sun.source.tree.MethodTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.tree.VariableTree;
-import com.sun.source.util.TreePath;
-import com.sun.source.util.TreePathScanner;
 import org.julclang.compiler.frontend.javac.SourceOrderScanner;
 
 import javax.lang.model.SourceVersion;
@@ -35,7 +32,6 @@ import java.util.Comparator;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -428,15 +424,16 @@ public final class LibrarySourceResolver {
         var asked = new HashMap<String, Optional<LibrarySource>>();
         Function<String, LibrarySource> ask = fqcn -> !SourceVersion.isName(fqcn) ? null
                 : asked.computeIfAbsent(fqcn, name -> Optional.ofNullable(classesOfTheCompilation.apply(name))).orElse(null);
-        Function<String, LibrarySource> admitted = fqcn -> availableLibraries.containsKey(fqcn) ? null : ask.apply(fqcn);
-        Function<String, LibrarySource> exact = fqcn -> {
-            var pooled = availableLibraries.get(fqcn);
-            if (pooled == null) return ask.apply(fqcn);
-            if (!replaceable.test(pooled)) return pooled;
-            var own = ask.apply(fqcn);
+        // One source per name in a resolution: a jar entry, however it is reached, gives way to the compilation's class.
+        Function<LibrarySource, LibrarySource> chosen = pooled -> {
+            if (pooled == null || !replaceable.test(pooled)) return pooled;
+            var own = ask.apply(pooled.fqcn());
             return own != null ? own : pooled;
         };
-        var lookup = new Lookup(exact, admitted, availableLibraries::get);
+        Function<String, LibrarySource> admitted = fqcn -> availableLibraries.containsKey(fqcn) ? null : ask.apply(fqcn);
+        Function<String, LibrarySource> exact = fqcn -> availableLibraries.containsKey(fqcn)
+                ? chosen.apply(availableLibraries.get(fqcn)) : ask.apply(fqcn);
+        var lookup = new Lookup(exact, admitted, fqcn -> chosen.apply(availableLibraries.get(fqcn)), chosen);
         var bySimpleName = indexBySimpleName(availableLibraries.values());
         var diagnostics = new DiagnosticCollector("<source>");
         var resolved = new LinkedHashMap<String, LibrarySource>();
@@ -543,10 +540,14 @@ public final class LibrarySourceResolver {
         if (name.contains(".")) return name.equals(onchainLibrary);
         if (!name.equals("OnchainLibrary")) return false;
         String annotationPackage = "org.julclang.stdlib.annotation";
+        var imports = unit.getImports().stream().filter(importTree -> !importTree.isStatic())
+                .map(importTree -> importTree.getQualifiedIdentifier().toString()).toList();
+        // A single-type import decides, as in Java; then the source's own package; then a wildcard import.
+        for (String imported : imports) {
+            if (imported.endsWith(".OnchainLibrary")) return imported.equals(onchainLibrary);
+        }
         if (unit.getPackageName() != null && unit.getPackageName().toString().equals(annotationPackage)) return true;
-        return unit.getImports().stream().filter(importTree -> !importTree.isStatic())
-                .map(importTree -> importTree.getQualifiedIdentifier().toString())
-                .anyMatch(imported -> imported.equals(onchainLibrary) || imported.equals(annotationPackage + ".*"));
+        return imports.contains(annotationPackage + ".*");
     }
 
     private static LibrarySource resolveStaticReference(ClassReference reference,
@@ -591,7 +592,7 @@ public final class LibrarySourceResolver {
 
         List<LibrarySource> candidates = bySimpleName.getOrDefault(reference.simpleName(), List.of());
         if (candidates.size() == 1) {
-            return candidates.get(0);
+            return lookup.chosen().apply(candidates.get(0));
         }
         if (candidates.size() > 1) {
             diagnostics.error(reference.line(), reference.column(),
@@ -615,8 +616,7 @@ public final class LibrarySourceResolver {
         var pooled = bySimpleName.getOrDefault(simpleName, List.of()).stream()
                 .filter(librarySource -> wildcardPackages.contains(librarySource.packageName()))
                 .toList();
-        if (!guessable) return pooled;
-        if (!pooled.isEmpty()) return pooled.stream().map(librarySource -> lookup.exact().apply(librarySource.fqcn())).toList();
+        if (!pooled.isEmpty() || !guessable) return pooled.stream().map(lookup.chosen()).toList();
         return wildcardPackages.stream()
                 .map(wildcardPackage -> lookup.admitted().apply(wildcardPackage + "." + simpleName))
                 .filter(Objects::nonNull)
@@ -625,16 +625,16 @@ public final class LibrarySourceResolver {
 
     /**
      * How a resolution finds a library by name: {@code exact} looks in the pool, then among the classes the compilation
-     * admits; {@code admitted} only among the latter; {@code pooled} only in the pool.
+     * admits; {@code admitted} only among the latter; {@code pooled} only in the pool. Every pool entry passes through
+     * {@code chosen}, which replaces a jar entry with the compilation's class of the same name.
      */
     private record Lookup(Function<String, LibrarySource> exact, Function<String, LibrarySource> admitted,
-                          Function<String, LibrarySource> pooled) {
+                          Function<String, LibrarySource> pooled, Function<LibrarySource, LibrarySource> chosen) {
 
         /**
          * A name built from the source's package or a wildcard package: asked of the compilation only when the source
-         * names it as a bare identifier it does not declare as a variable, since javac resolves only such a name to a
-         * type there. Asking for another (the field in {@code BigInteger.ZERO.signum()}) could make javac read an
-         * unrelated source.
+         * writes it as a bare qualifier, the only spelling that can name a top-level class there. The field in
+         * {@code BigInteger.ZERO.signum()} is never asked about: that could make javac read an unrelated source.
          */
         LibrarySource guessed(String fqcn, boolean guessable) {
             return guessable ? exact.apply(fqcn) : pooled.apply(fqcn);
@@ -689,14 +689,13 @@ public final class LibrarySourceResolver {
         var calls = new ArrayList<Tree>();
         var fieldAccesses = new ArrayList<Tree>();
         var annotations = new ArrayList<Tree>();
-        var declared = variablesByOwner(unit);
         var typeNames = new HashSet<String>();
         new SourceOrderScanner<Void, Void>() {
             @Override
             public Void visitMethodInvocation(MethodInvocationTree call, Void unused) {
                 if (call.getMethodSelect() instanceof MemberSelectTree select) {
                     calls.add(select.getExpression());
-                    noteTypeName(select.getExpression(), getCurrentPath());
+                    noteTypeName(select.getExpression());
                 }
                 return super.visitMethodInvocation(call, unused);
             }
@@ -705,19 +704,17 @@ public final class LibrarySourceResolver {
             public Void visitMemberSelect(MemberSelectTree select, Void unused) {
                 if (ExpressionRoles.isFieldAccess(getCurrentPath())) {
                     fieldAccesses.add(select.getExpression());
-                    noteTypeName(select.getExpression(), getCurrentPath());
+                    noteTypeName(select.getExpression());
                 }
                 return super.visitMemberSelect(select, unused);
             }
 
-            /** A bare qualifier that no variable in scope declares: javac resolves it as a type at this site. */
-            private void noteTypeName(Tree qualifier, TreePath site) {
-                if (!(qualifier instanceof IdentifierTree identifier)) return;
-                String name = identifier.getName().toString();
-                for (TreePath path = site; path != null; path = path.getParentPath()) {
-                    if (declared.getOrDefault(path.getLeaf(), Set.of()).contains(name)) return;
-                }
-                typeNames.add(name);
+            /**
+             * A bare qualifier ({@code Counter.ok()}) may name a top-level class; a dotted one ({@code BigInteger.ZERO})
+             * names a field or a nested class, never a top-level class of the source's package.
+             */
+            private void noteTypeName(Tree qualifier) {
+                if (qualifier instanceof IdentifierTree identifier) typeNames.add(identifier.getName().toString());
             }
 
             @Override
@@ -735,42 +732,8 @@ public final class LibrarySourceResolver {
             annotationReferences.add(new ClassReference(simpleName(text), text.contains(".") ? text : null,
                     syntax.line(type), syntax.column(type)));
         }
-        // A static import can bring a field of any name into scope: a single one hides that name; an on-demand one
-        // (import static X.*) could hide any, so then no bare name is guessed (ADR-071 D1).
-        for (ImportTree importTree : unit.getImports()) {
-            if (!importTree.isStatic()) continue;
-            String member = ((MemberSelectTree) importTree.getQualifiedIdentifier()).getIdentifier().toString();
-            if (member.equals("*")) {
-                typeNames.clear();
-                break;
-            }
-            typeNames.remove(member);
-        }
         return new SourceContext(resolvedPackageName, importsBySimpleName, wildcardPackages, staticReferences,
                 annotationReferences, typeNames);
-    }
-
-    /**
-     * The variable names each method and class of {@code unit} declares: a method's parameters and locals (its lambdas'
-     * included), and a class's fields and initializer locals. A bare name is a variable at a site if a method or class
-     * enclosing the site declares it. Fields a class inherits are not known here, so such a name may still be asked of
-     * the compilation; javac then binds it to the field, and the class asked about is never used.
-     */
-    private static Map<Tree, Set<String>> variablesByOwner(CompilationUnitTree unit) {
-        var declared = new IdentityHashMap<Tree, Set<String>>();
-        new TreePathScanner<Void, Void>() {
-            @Override
-            public Void visitVariable(VariableTree variable, Void unused) {
-                for (TreePath path = getCurrentPath().getParentPath(); path != null; path = path.getParentPath()) {
-                    if (path.getLeaf() instanceof MethodTree || path.getLeaf() instanceof ClassTree) {
-                        declared.computeIfAbsent(path.getLeaf(), owner -> new HashSet<>()).add(variable.getName().toString());
-                        break;
-                    }
-                }
-                return super.visitVariable(variable, unused);
-            }
-        }.scan(unit, null);
-        return declared;
     }
 
     private static Optional<ClassReference> javacReference(JavacSyntax syntax, Tree scope) {
