@@ -498,7 +498,7 @@ The HOF methods (`any`, `all`, `find`, `map`, `filter`) accept lambda expression
 > intrinsics with no Java declaration, so javac rejects them (`JULC0085`). Use the `JulcList`
 > instance methods `any`, `all`, `filter` and `map`, and write a fold as an accumulator loop. Avoid
 > `list.find(...)` for now: the compiled result is an optional value, not the element.
-> Compiled `any` and `all` evaluate the predicate for every element. See
+> `any` and `all` stop at the element that decides the answer, as on the JVM. See
 > [Value-Oriented Contract Code](/best-practices/value-oriented-code/#use-list-operations-where-they-read-better).
 
 ```java

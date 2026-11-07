@@ -18,12 +18,14 @@ import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacNames;
 import org.julclang.compiler.frontend.javac.SwitchResults;
 import org.julclang.compiler.pir.NarrowingElisionPass;
+import org.julclang.compiler.pir.PirHelpers;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.core.Constant;
 import org.julclang.core.DefaultFun;
 
 import javax.lang.model.element.Element;
+import javax.lang.model.element.TypeElement;
 import javax.lang.model.element.VariableElement;
 import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
@@ -36,9 +38,12 @@ import java.util.Set;
 /**
  * Casts: {@code (T) x} and {@code PlutusData.cast(x, T.class)}.
  * <ul>
- *   <li>A cast to a reference type is a view of the value, as the reference has it: the term is the operand's, except that a
- *       view as a map decodes what is not a map yet, since a map variable holds a pair list. Java checks such a cast at run
- *       time and the script does not (#288), as with {@code PlutusData.cast}, which D6 names an unchecked view.</li>
+ *   <li>A downcast to a record variant of a {@code Constr}-encoded sealed interface, from an operand of that interface, tests
+ *       the variant's tag and fails on another, as Java throws {@code ClassCastException} (ADR-070, #288).</li>
+ *   <li>Any other cast to a reference type is a view of the value, as the reference has it: the term is the operand's,
+ *       except that a view as a map decodes what is not a map yet, since a map variable holds a pair list. Upcasts and
+ *       same-type casts need no check; {@code (V)(Object) x}, {@code PlutusData}'s own variants and {@code PlutusData.cast}
+ *       are unchecked views, as ADR-062 T9 and ADR-068 D6 record.</li>
  *   <li>A cast between {@code int} and {@code long} has Java's value: {@code (int)} of a {@code long} keeps its low 32 bits,
  *       as two's complement; widening and a cast to the same type are the operand. The reference erases the narrowing, which
  *       differs from Java only out of range (D4's cap, the follow-ups' "Closed by M5"). Where the operand's value is shown to
@@ -52,15 +57,19 @@ import java.util.Set;
 final class Casts {
 
     private final JavacFacts facts;
+    private final Terms terms;
     private final Typing typing;
     private final CallTargets targets;
+    private final TypeTests typeTests;
     private final Lowering lowering;
 
-    Casts(JavacFacts facts, Typing typing, CallTargets targets, Lowering lowering) {
+    Casts(JavacFacts facts, Terms terms, Typing typing, CallTargets targets, TypeTests typeTests, Lowering lowering) {
         this.facts = facts;
+        this.terms = terms;
         this.typing = typing;
         this.lowering = lowering;
         this.targets = targets;
+        this.typeTests = typeTests;
     }
 
     /** {@code (T) x}. */
@@ -70,7 +79,27 @@ final class Casts {
         requireNativeView("Cast to " + tree.getType(), tree, operand, frame);
         if (target.getKind().isPrimitive()) return primitive(tree, target, operand, frame);
         var inner = lowering.expr(operand, frame);
+        var checked = checked(tree, target, operand, inner);
+        if (checked != null) return checked;
         return toMap(tree) && !isMap(operand, inner) ? new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnMapData), inner) : inner;
+    }
+
+    /**
+     * ADR-070 D1: a downcast to a record variant V of a {@code Constr}-encoded sum P, from an operand of P's family that is
+     * not statically V, tests the tag and fails on another variant, as Java throws {@code ClassCastException}:
+     * {@code if tag(#operand) == k then #operand else Error}, the operand bound once. Decided from javac's types and the
+     * erasure of the cast's type, as the JVM checks it (JLS 5.1.6.3). Null for any other cast, which stays the view it was.
+     */
+    private PirTerm checked(TypeCastTree tree, TypeMirror target, ExpressionTree operand, PirTerm inner) {
+        if (!(facts.types().asElement(facts.types().erasure(target)) instanceof TypeElement variant)) return null;
+        var found = typeTests.constructorOf(variant).orElse(null);
+        if (found == null) return null;
+        var operandType = facts.type(operand);
+        if (typeTests.isOfThroughBounds(operandType, variant)) return null; // the same type: nothing to check
+        if (!typeTests.isOfThroughBounds(operandType, found.parent())) return null; // not of V's family: a view
+        var checked = PirHelpers.readOnce(inner, typing.ofTerm(inner), value -> new PirTerm.IfThenElse(
+                TypeTests.tagTest(value, found.constructor()), value, terms.at(tree, new PirTerm.Error(typing.ofTerm(value)))));
+        return terms.at(tree, checked);
     }
 
     private PirTerm primitive(TypeCastTree tree, TypeMirror target, ExpressionTree operand, Frame frame) {

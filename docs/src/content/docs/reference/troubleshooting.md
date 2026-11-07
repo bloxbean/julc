@@ -2395,6 +2395,22 @@ static boolean mint(PlutusData redeemer, ScriptContext ctx) { ... }
 static boolean spend(Optional<PlutusData> datum, PlutusData redeemer, ScriptContext ctx) { ... }
 ```
 
+### Q: Why does my validator fail at a cast to a variant?
+
+A cast from a sealed interface to one of its record variants, such as
+`(ScriptInfo.MintingScript) ctx.scriptInfo()` or `(Withdraw) redeemer`, tests the variant on-chain
+and fails the script on any other, as Java throws `ClassCastException`
+([#288](https://github.com/bloxbean/julc/issues/288)). Before this check the cast read the other
+variant's fields and carried on. If the value can legitimately be another variant, branch instead:
+
+```java
+if (redeemer instanceof Withdraw w) { ... }        // or: switch (redeemer) { case Withdraw w -> ...; }
+```
+
+A cast from a type JuLC cannot relate to the sealed interface remains an unchecked view, as before:
+`(V)(Object) x`, `PlutusData.cast(x, V.class)`, casts to `PlutusData`'s own variants, and an operand of
+an unbounded type variable or an open super-interface.
+
 ### Q: Why do my Java tests fail with `VerifyError: Inconsistent stackmap frames`?
 
 This is a known javac bug, not a JuLC one: javac in JDK 21 to 25.0.2 can emit a class the JVM

@@ -3,6 +3,50 @@ title: "Release Notes"
 description: "JuLC release notes and migration guidance"
 ---
 
+
+## Upcoming preview: `JulcList.any` and `all` stop at the deciding element (#312)
+
+The compiled `any` and `all` used to test every element of the list, where the JVM's stop at
+the element that decides the answer: `any` at the first that passes, `all` at the first that
+fails. A predicate that failed or traced on a later element made the script disagree with its
+Java tests: `parts.any(p -> 100 / p > 10)` over `[5, 0]` returned true on the JVM and failed
+on-chain ([#312](https://github.com/bloxbean/julc/issues/312), ADR-070 D5). Both now stop where
+the JVM stops, at every optimisation level.
+
+- A predicate no longer needs an `&&` guard for the elements after the answer.
+- A conditional choosing the function, `xs.map(c ? x -> … : x -> …)`, evaluates its condition once,
+  after the list and before the first element, as Java does, for `map`, `filter`, `find`, `any`
+  and `all`. It used to run once per element tested, and not at all on an empty list.
+- Cost: less at every level. Each tested element costs a little less, and the elements after the
+  answer cost nothing; a 10-element `any` whose first element passes costs about a tenth of what
+  it did. Scripts are about 5 bytes smaller per `any` or `all` (10 at `NONE`).
+- Blueprint hashes of validators that call `any` or `all` change.
+
+## Upcoming preview: a cast to a sealed-interface variant is checked (#288, #309)
+
+A downcast from a sealed interface to one of its record variants used to lower to its operand,
+with no check. Where Java throws `ClassCastException`, the script read the other variant's
+fields through the target's layout and carried on: `A a = (A) s;` on a `B(10, 4)` returned 10
+([#288](https://github.com/bloxbean/julc/issues/288), [#309](https://github.com/bloxbean/julc/issues/309), ADR-070). It now
+tests the variant's tag and fails the script on another variant, as the JVM throws:
+
+```java
+ScriptInfo.MintingScript mint = (ScriptInfo.MintingScript) ctx.scriptInfo();  // fails unless minting
+Withdraw w = (Withdraw) redeemer;                                              // fails on any other action
+```
+
+- Every optimisation level, the operand evaluated once. Casts that need no check keep their
+  bytes: upcasts and same-type casts.
+- A cast from a type JuLC cannot relate to the sealed interface stays an unchecked view, as
+  before: `(V)(Object) x`, `PlutusData.cast(x, V.class)`, casts to `PlutusData`'s own variants,
+  and an operand of an unbounded type variable or an open super-interface. `instanceof` does not
+  accept those operands either: obtain a value typed as the sealed interface first (a typed
+  datum, redeemer or record component), then cast or branch on it.
+- Cost: 14 to 19 bytes of script per checked cast (measured on 13 example validators, which grow
+  by 0.3% to 3%), and a tag test at run time. Blueprint hashes of validators that downcast change.
+- A cast inside a `JulcList.any` or `all` predicate runs on the elements the JVM tests, and no
+  further (see the section above).
+
 ## Upcoming preview: `instanceof` pattern variables wherever Java has them in scope (#204)
 
 JuLC used to bind an `instanceof` pattern variable only when `x instanceof T v` was the whole

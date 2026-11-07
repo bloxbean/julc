@@ -72,7 +72,7 @@ are never renumbered.
 | T4 | `==` on records, sealed types and Data | Reference comparison | `EqualsData`, structural (`PirGenerator.generateEquality`) | Verified | S5 |
 | T5 | `==` on `byte[]`, and `equals` of user records with `byte[]` components | Reference comparison; a record's generated `equals` compares array components by reference | `EqualsByteString` and `EqualsData`, structural. Ledger types such as `PubKeyHash` override `equals` with `Arrays.equals`, so they agree | Reproduced (both forms) | S5 |
 | T6 | `int` and `long` | 32- and 64-bit two's-complement overflow | Unbounded integers (`TypeResolver` maps `INT`, `LONG` to `IntegerType`) | Reproduced | S5 |
-| T7 | `any` and `all` short-circuiting | `JulcArrayList.any` returns at the first match | `PirHofBuilders.any` is a `foldl` over the whole list, so the predicate runs on every element. A later element that fails or traces makes the results differ, not just the cost | Reproduced (JVM true, UPLC fails) | S5 |
+| T7 | `any` and `all` short-circuiting | `JulcArrayList.any` returns at the first match | `PirHofBuilders.any` is a `foldl` over the whole list, so the predicate runs on every element. A later element that fails or traces makes the results differ, not just the cost | Fixed: ADR-070 D5 (#312): `any` and `all` stop at the deciding element at every level, and a conditional function argument of any list method is evaluated once | S5 / ADR-070 |
 | T8 | Builtins missing off-chain | 40 builtin methods in `Builtins.java` throw `UnsupportedOperationException`: BLS12-381 (including MSM and the native point and scalar lists), the array builtins (`dropList`, `listToArray`, `lengthOfArray`, `indexArray`, `multiIndexArray`) and the native Value builtins (`insertCoin` … `lovelaceValue`) | Implemented by the VM | Verified | S2 |
 | T9 | On-chain-only casts | `(byte[])(Object) pk.hash()` in `AddressLib.credentialHash` throws `ClassCastException`, because `hash()` is a `PubKeyHash` record. The same `(T)(Object)` pattern appears in `ContextsLib`, `MapLib` and `ValuesLib` | A no-op: both are the same representation | Reproduced (AddressLib); to confirm (others) | S2 |
 | T10 | Off-chain map key equality | `JulcAssocMap` looks keys up with `Objects.equals`, so `byte[]` keys, or records with `byte[]` components, are not found | `EqualsData`, structural. The class comment claims it matches `EqualsData`; it does not for these keys | Reproduced (records with `byte[]` components; `JULC0087` in ADR-068 M3). The `byte[]`-key form is fixed by ADR-068 M1: JuLC's JVM collections compare `byte[]` elements, keys and values by content, and `diverge-t10-map-byte-array-key` expects `AGREE` | S2 |
@@ -181,6 +181,8 @@ Adopt a six-step programme. Every step has its own ADR, its own acceptance gate,
    rejection one release later, with a quick fix to `.equals`.
 2. **Should `any`, `all` and `find` short-circuit on-chain (T7)?** That changes costs and hashes, and usually
    lowers costs. Lean: yes, behind an optimization level first.
+   *Resolved by ADR-070 D5 (2026-11-07): yes, at every level and by default, not behind a level, as the maintainer
+   confirmed; `find` already stopped early.*
 3. **Should `int` and `long` stay accepted (T6)?** Rejecting them breaks the `JulcEval` proxy style that uses
    `long` parameters. Lean: accept them only as boundary conversions in test APIs, and reject arithmetic on
    them in contract code.

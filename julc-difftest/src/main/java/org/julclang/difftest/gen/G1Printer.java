@@ -166,6 +166,7 @@ final class G1Printer {
             case G1Ast.TypeTest t -> expression(t.subject(), indent) + " instanceof " + t.variant().name;
             case G1Ast.PatternTest t -> expression(t.subject(), indent) + " instanceof " + t.variant().name + " " + t.binding();
             case G1Ast.Paren p -> "(" + expression(p.operand(), indent) + ")";
+            case G1Ast.Cast c -> "(" + c.target().name + ") " + expression(c.operand(), indent);
             case G1Ast.Lambda l -> "xs." + l.method() + "(" + l.parameter() + " -> " + expression(l.body(), indent) + ")";
             case G1Ast.LambdaBlock l -> "xs." + l.method() + "(" + l.parameter() + " -> { " + inline(l.body()) + "})";
         };

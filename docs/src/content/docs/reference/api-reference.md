@@ -216,8 +216,9 @@ if (action instanceof Deposit d) {
 
 The pattern variable can be used wherever Java has it in scope ([#204](https://github.com/bloxbean/julc/issues/204)), except where a
 `while` loop's condition would carry it into the body or past the loop (`JULC0139`) or a
-`switch` guard declares it (`JULC0074`). It may not be reassigned (`JULC0140`) and may not
-reuse the name of a field or `@Param` (`JULC0059`).
+`switch` guard declares it (`JULC0074`). It may not be reassigned (`JULC0140`), except that a
+loop may still update the variable of an `if` whose whole condition is its test, outside a loop
+with accumulators, as before #204. It may not reuse the name of a field or `@Param` (`JULC0059`).
 
 ### For-Each Loop
 ```java

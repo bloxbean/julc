@@ -80,7 +80,7 @@ public final class Lowering {
         this.statements = new Statements(facts, terms, typing, this, targets, typeTests, context, fieldUpdates);
         this.operators = new Operators(facts, typing, targets, this);
         this.lambdas = new Lambdas(facts, terms, typing, targets, this);
-        this.casts = new Casts(facts, typing, targets, this);
+        this.casts = new Casts(facts, terms, typing, targets, typeTests, this);
         this.calls = new Calls(facts, terms, typing, targets, lambdas, casts, this, context, stdlib, typeMethods);
         this.records = new Records(facts, typing, targets, this, names);
         this.switches = new Switches(facts, terms, typing, this, statements, targets, typeTests, typeMethods);

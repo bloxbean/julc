@@ -197,9 +197,18 @@ public final class PirHelpers {
      * {@code body} runs the receiver first, then the argument, as Java does, so the receiver is bound ahead of the argument.
      */
     public static PirTerm readOnce(PirTerm receiver, PirTerm argument, PirType type, BinaryOperator<PirTerm> body) {
+        return readOnce(receiver, type, argument, type, body);
+    }
+
+    /**
+     * {@code body} of a receiver and an argument of different types, each bound once if it is not a variable or a constant,
+     * the receiver first, as {@link #readOnce(PirTerm, PirTerm, PirType, BinaryOperator)}.
+     */
+    public static PirTerm readOnce(PirTerm receiver, PirType receiverType, PirTerm argument, PirType argumentType,
+                                   BinaryOperator<PirTerm> body) {
         var avoid = freeVariables(receiver, argument);
-        return boundOnce("#receiver", !isTrivialOperand(receiver), receiver, type, avoid, receiverRead ->
-                boundOnce("#argument", !isTrivialOperand(argument), argument, type, avoid,
+        return boundOnce("#receiver", !isTrivialOperand(receiver), receiver, receiverType, avoid, receiverRead ->
+                boundOnce("#argument", !isTrivialOperand(argument), argument, argumentType, avoid,
                         argumentRead -> body.apply(receiverRead, argumentRead)));
     }
 

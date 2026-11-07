@@ -79,6 +79,10 @@ class Adr060ByteSnapshotTest {
             EXPLAINED.put(id + "-PV11_SAFE-false", condition);
             EXPLAINED.put(id + "-PV11_COSTED-false", condition);
         }
+        // ADR-070 D5: these programs call JulcList.any or all, which stop at the deciding element. Their other rows moved
+        // earlier for the reasons above; BASELINE without source maps had kept its bytes until now.
+        for (int hygiene : List.of(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 21))
+            EXPLAINED.put("hygiene-" + hygiene + "-BASELINE-false", "ADR-070 D5: any and all stop at the deciding element");
     }
 
     private static void delayed(String id) {

@@ -30,7 +30,8 @@ class Adr068LambdasPropertyTest {
             new TagTable.Entry("Case$S$D", "Case$S", 1)));
     private static final List<String> SHAPES = List.of("filter", "map", "any", "all", "find", "nested", "capture a parameter", "capture a local",
             "capture a static", "capture a boolean", "capture a pattern variable", "written type", "block", "branches", "trace", "failing", "a record",
-            "a record element", "a variant", "a variant element", "a boolean element", "a list", "a list element", "a text element");
+            "a record element", "a variant", "a variant element", "a boolean element", "a list", "a list element", "a text element", "a traced test",
+            "a failing test", "an effect in the last test");
 
     private static List<DiffConfig> configs() {
         var configs = new ArrayList<>(DiffConfig.allLevels());

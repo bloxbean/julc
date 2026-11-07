@@ -131,6 +131,10 @@ class StdlibLibraryProviderTest {
                 DATA, group));
         assertEquals(new Term.Const(Constant.bool(true)), value(apply(ref(group, any), ints(1, 3, 4), even), BOOL, group));
         assertEquals(new Term.Const(Constant.bool(false)), value(apply(ref(group, all), ints(1, -3), positive), BOOL, group));
+        // ADR-070 D5: any and all stop at the deciding element, so 10 / 0 past it never runs.
+        var tenOverPositive = lam("n", INT, call(DefaultFun.LessThanInteger, integer(0), call(DefaultFun.DivideInteger, integer(10), x)));
+        assertEquals(new Term.Const(Constant.bool(true)), value(apply(ref(group, any), ints(1, 0), tenOverPositive), BOOL, group));
+        assertEquals(new Term.Const(Constant.bool(false)), value(apply(ref(group, all), ints(-1, 0), tenOverPositive), BOOL, group));
         assertEquals(data(PlutusData.constr(0, PlutusData.integer(4))),
                 value(apply(ref(group, find), ints(1, 3, 4, 6), even), DATA, group));
         assertEquals(data(PlutusData.constr(1)), value(apply(ref(group, find), ints(1, 3), even), DATA, group));

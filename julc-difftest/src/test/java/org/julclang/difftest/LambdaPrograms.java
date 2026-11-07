@@ -17,8 +17,8 @@ import java.util.function.Function;
  * small, so values collide: a list holds what {@code ys} holds and what {@code k} is.
  * <p>
  * A plan is a list of choices, so jqwik shrinks it and Jazzer drives it, and past its end every choice is 0, so any list is a
- * valid Java program. {@code any} and {@code all} take only a body with no effect: past the answer they run where Java does
- * not (T7), and {@code Adr068LambdasHarnessTest} pins that.
+ * valid Java program. The test that {@code any}, {@code all} and {@code find} end with may trace or fail: each stops at the
+ * element that decides its answer, on the JVM and on-chain (ADR-070 D5, T7), and so does the model.
  */
 final class LambdaPrograms {
 
@@ -157,6 +157,19 @@ final class LambdaPrograms {
                 fn("x -> ys.filter(y -> y.compareTo(x) < 0)", ints(x -> run.ys.stream().filter(y -> y.compareTo(x) < 0).toList()), Kind.LIST, true, "a list"));
     }
 
+    /**
+     * Tests that trace or fail, offered only as the test a pipeline ends with, so that the steps before it are drawn as they
+     * were: whether the test runs on an element past the answer shows in the traces and the failure (D5).
+     */
+    private static List<Fn> effectfulTests(Run run) {
+        return List.of(
+                fn("x -> said(\"t\", x).signum() > 0", ints(x -> run.said("t", x).signum() > 0), Kind.BOOL, false, "a traced test"),
+                fn("x -> BigInteger.TEN.divide(x).signum() > 0", ints(x -> {
+                    if (x.signum() == 0) throw new Failed();
+                    return BigInteger.TEN.divide(x).signum() > 0;
+                }), Kind.BOOL, false, "a failing test"));
+    }
+
     private static List<Fn> from(Kind kind, Run run) {
         var k = run.k;
         return switch (kind) {
@@ -183,6 +196,21 @@ final class LambdaPrograms {
                     fn("l -> l.map(y -> y.add(k))", value -> ((List<?>) value).stream().map(y -> ((BigInteger) y).add(k)).toList(), Kind.LIST, true, "a list element"),
                     fn("l -> l.isEmpty()", value -> ((List<?>) value).isEmpty(), Kind.BOOL, true, "a list element"));
         };
+    }
+
+    /**
+     * {@code JulcArrayList.any} ({@code stopOn} true) or {@code all} ({@code stopOn} false), written out: the elements from
+     * the first, up to the first whose test gives {@code stopOn}. Null when a test fails.
+     */
+    private static Object stopAt(List<Object> values, Fn test, boolean stopOn) {
+        try {
+            for (var value : values) {
+                if ((Boolean) test.model().apply(value) == stopOn) return stopOn;
+            }
+            return !stopOn;
+        } catch (Failed e) {
+            return null;
+        }
     }
 
     private static PlutusData data(Object value) {
@@ -259,12 +287,18 @@ final class LambdaPrograms {
             current = name;
         }
         var options = from(kind, run);
-        var pure = options.stream().filter(option -> option.result() == Kind.BOOL && option.pure()).toList();
+        // Over integers, an effectful test half the time, so that stopping at the answer is seen often (D5).
+        var tests = kind == Kind.INT && plan.next(2) == 0 ? effectfulTests(run)
+                : options.stream().filter(option -> option.result() == Kind.BOOL).toList();
         String returned;
         Object value = null;
-        var predicate = pure.get(plan.next(pure.size()));
+        var predicate = tests.get(plan.next(tests.size()));
         int terminal = kind == Kind.SUM ? plan.next(2) : plan.next(5);
         if (predicate.shape().equals("written type")) referenceAgrees = false;
+        if (!predicate.pure() && terminal != 2 && terminal != 4) {
+            shapes.add("an effect in the last test");
+            shapes.add(predicate.shape());
+        }
         if (kind == Kind.INT && terminal == 3) {
             // A find's element, read: null fails at the read, as the script fails at the field.
             body.append("        BigInteger found = ").append(current).append(".find(").append(predicate.text()).append(");\n");
@@ -273,9 +307,19 @@ final class LambdaPrograms {
             shapes.add("find");
             referenceAgrees = false;
             if (!failed) {
-                var match = values.stream().filter(element -> (Boolean) predicate.model().apply(element)).findFirst();
-                if (match.isEmpty()) failed = true;
-                else value = ((BigInteger) match.get()).add(k);
+                try {
+                    BigInteger match = null;
+                    for (var element : values) {
+                        if ((Boolean) predicate.model().apply(element)) {
+                            match = (BigInteger) element;
+                            break;
+                        }
+                    }
+                    if (match == null) failed = true;
+                    else value = match.add(k);
+                } catch (Failed e) {
+                    failed = true;
+                }
             }
         } else {
             switch (terminal) {
@@ -284,14 +328,14 @@ final class LambdaPrograms {
                     body.append("        return ").append(current).append(".any(").append(predicate.text()).append(");\n");
                     shapes.add("any");
                     if (kind == Kind.LIST) referenceAgrees = false;
-                    if (!failed) value = values.stream().anyMatch(element -> (Boolean) predicate.model().apply(element));
+                    if (!failed) value = stopAt(values, predicate, true);
                 }
                 case 1 -> {
                     returned = "boolean";
                     body.append("        return ").append(current).append(".all(").append(predicate.text()).append(");\n");
                     shapes.add("all");
                     if (kind == Kind.LIST) referenceAgrees = false;
-                    if (!failed) value = values.stream().allMatch(element -> (Boolean) predicate.model().apply(element));
+                    if (!failed) value = stopAt(values, predicate, false);
                 }
                 case 2 -> {
                     returned = "long";

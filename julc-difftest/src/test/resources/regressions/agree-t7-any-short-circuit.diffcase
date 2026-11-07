@@ -1,12 +1,11 @@
 format: 2
-name: any stops at the first match on the JVM only (T7)
+name: any stops at the first match on both sides (T7, fixed)
 class: Probe
 method: m
 arg: 820500
-expect: DIVERGE T7 Value/Failure
-jvm: Value d87a80 []
-uplc: Failure []
-note: The JVM returns true at 5; UPLC also evaluates 10 / 0 and fails.
+expect: AGREE
+note: The JVM returns true at 5 without dividing by 0; since ADR-070 D5 the script stops there too. Until then it also
+note: evaluated 10 / 0 and failed (DIVERGE T7 Value/Failure).
 ---
 import java.math.BigInteger;
 import org.julclang.core.types.JulcList;

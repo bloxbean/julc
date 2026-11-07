@@ -29,10 +29,10 @@ import javax.lang.model.type.TypeMirror;
  * <p>
  * <b>Evaluation order.</b> Java evaluates the receiver, then makes the lambda, which evaluates nothing, then calls it once
  * per element, from the first. A term here is a {@code Lam}, so its body runs at each application and not where it stands,
- * and what it captures is the value bound around it, which javac has shown to be effectively final. {@code map} and
- * {@code filter} apply it to every element, as Java does. {@code find} stops at the first match, as Java does. {@code any}
- * and {@code all} are folds over the whole list and do not stop, where Java does: a later element that fails or traces
- * shows, and only there (T7). {@code Adr068LambdasHarnessTest} pins it.
+ * and what it captures is the value bound around it, which javac has shown to be effectively final. A conditional of
+ * lambdas is not a value: {@link Calls} evaluates it once, after the receiver. {@code map} and {@code filter} apply it to
+ * every element, as Java does. {@code find}, {@code any} and {@code all} stop at the element that decides their answer, as
+ * Java does (ADR-070 D5 for {@code any} and {@code all}, T7). {@code Adr068LambdasHarnessTest} checks it.
  * <p>
  * The parameter is bound twice when it decodes, by a {@code Lam} that holds Data and a {@code let} that holds the value,
  * under one name, as the reference does: the {@code let} reads the {@code Lam}. What the body sees of the parameter is the

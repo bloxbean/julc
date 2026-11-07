@@ -215,24 +215,127 @@ class Adr068LambdasHarnessTest {
         assertAgree("public static " + BIG_LIST + " m(" + BIG_LIST + " xs) { return xs.filter(x -> BigInteger.TEN.divide(said(\"f\", x)).compareTo(BigInteger.ZERO) > 0); }", integers(2, 0, 5));
     }
 
-    // --- T7: what any and all do past the answer ---
+    // --- T7 (ADR-070 D5): any and all stop at the element that decides the answer, as the JVM does ---
 
     @Test
-    void anyDoesNotStopAtTheFirstMatch() {
+    void anyStopsAtTheFirstMatch() {
         String any = "public static boolean m(" + BIG_LIST + " xs) { return xs.any(x -> BigInteger.TEN.divide(x).signum() > 0); }";
         assertAgree(any, integers(1, 2));
         assertAgree(any, integers(0, 1));
-        assertBothDivergeAlike(any, integers(1, 0));
-        assertBothDivergeAlike("public static boolean m(" + BIG_LIST + " xs) { return xs.any(x -> said(\"t\", x).compareTo(BigInteger.ZERO) > 0); }", integers(1, 2));
+        assertAgree(any, integers(1, 0));
+        assertAgree(any, integers(-1, 1, 0));
+        assertAgree(any, integers(-1, -2, 0));
+        String traced = "public static boolean m(" + BIG_LIST + " xs) { return xs.any(x -> said(\"t\", x).compareTo(BigInteger.ZERO) > 0); }";
+        for (var xs : List.of(integers(), integers(1), integers(1, 2), integers(-1, 2, 3), integers(-1, -2, 3), integers(-1, -2)))
+            assertAgree(traced, xs);
     }
 
     @Test
-    void allDoesNotStopAtTheFirstRefusal() {
-        String all = "public static boolean m(" + BIG_LIST + " xs) { return xs.all(x -> BigInteger.TEN.divide(x.add(BigInteger.ONE)).signum() > 0); }";
+    void allStopsAtTheFirstRefusal() {
+        String all = "public static boolean m(" + BIG_LIST + " xs) { return xs.all(x -> BigInteger.TEN.divide(x).signum() > 0); }";
+        assertAgree(all, integers(1, 2));
         assertAgree(all, integers(0, 1));
-        assertAgree(all, integers(-1, 1));
-        assertBothDivergeAlike("public static boolean m(" + BIG_LIST + " xs) { return xs.all(x -> BigInteger.TEN.divide(x).signum() < 0); }", integers(1, 0));
-        assertBothDivergeAlike("public static boolean m(" + BIG_LIST + " xs) { return xs.all(x -> said(\"t\", x).compareTo(BigInteger.ZERO) < 0); }", integers(1, 2));
+        assertAgree(all, integers(-1, 0));
+        assertAgree(all, integers(1, -1, 0));
+        assertAgree(all, integers(1, 2, 0));
+        String traced = "public static boolean m(" + BIG_LIST + " xs) { return xs.all(x -> said(\"t\", x).compareTo(BigInteger.ZERO) > 0); }";
+        for (var xs : List.of(integers(), integers(-1), integers(1, 2), integers(1, -2, 3), integers(1, 2, -3), integers(-1, -2)))
+            assertAgree(traced, xs);
+    }
+
+    /** The list is evaluated once, before the first test; then the tests run in order up to the answer (I5). */
+    @Test
+    void theListRunsOnceBeforeTheTests() {
+        assertAgree("public static boolean m(BigInteger a, BigInteger b) { return JulcList.of(said(\"a\", a), said(\"b\", b))"
+                + ".any(x -> said(\"t\", x).signum() > 0); }", integer(1), integer(-1));
+        assertAgree("public static boolean m(BigInteger a, BigInteger b) { return JulcList.of(said(\"a\", a), said(\"b\", b))"
+                + ".all(x -> said(\"t\", x).signum() > 0); }", integer(-1), integer(1));
+        assertAgree("public static boolean m(" + BIG_LIST + " xs) { return xs.filter(x -> said(\"f\", x).signum() != 0)"
+                + ".any(x -> said(\"t\", x).signum() > 0); }", integers(0, 2, 0, 3));
+    }
+
+    /** Nested, in a loop, in another lambda, capturing locals and a pattern variable: each stops where Java stops. */
+    @Test
+    void nestedAndCapturedAnyAndAllStopEarly() {
+        var xs = integers(1, 2, 3);
+        var ys = integers(2, 0, 5);
+        String yList = BIG_LIST + " ys";
+        assertAgree("public static boolean m(" + BIG_LIST + " xs, " + yList + ") { return xs.all(x -> ys.any(y -> said(\"y\", y).equals(x))); }", xs, ys);
+        assertAgree("public static boolean m(" + BIG_LIST + " xs, " + yList + ") { return xs.any(x -> ys.all(y -> said(\"y\", y).compareTo(x) > 0)); }", xs, ys);
+        assertAgree("public static long m(" + BIG_LIST + " xs, " + yList + ") { long n = 0; for (BigInteger x : xs) { "
+                + "if (ys.any(y -> BigInteger.TEN.divide(y).equals(BigInteger.TEN.divide(x)))) { n = n + 1; } } return n; }", integers(5, 1), integers(2, 0));
+        assertAgree("public static long m(" + BIG_LIST + " xs, " + yList + ") { return xs.filter(x -> ys.any(y -> said(\"y\", y).equals(x))).size(); }", xs, ys);
+        assertAgree("public static boolean m(" + BIG_LIST + " xs, BigInteger go) { BigInteger lst = go.add(BigInteger.ONE); "
+                + "return xs.any(acc -> said(\"t\", acc).equals(lst) || acc.equals(go)); }", integers(4, 3, 9), integer(2));
+        for (var s : List.of(a(5), b(2, 3), constr(2)))
+            assertAgree("public static boolean m(" + BIG_LIST + " xs, S s) { if (s instanceof S.B q) { "
+                    + "return xs.any(x -> said(\"t\", x).equals(q.w())); } return xs.all(x -> said(\"u\", x).signum() > 0); }", integers(3, 2, 0), s);
+    }
+
+    /**
+     * A conditional of lambdas is a function Java evaluates once, after the receiver and before the method runs, on an empty
+     * list too. Each list method applies the one it chose (ADR-070 D5, review F9/S13): the condition's trace shows once, after
+     * the receiver's, and its failure fails an empty list's call.
+     */
+    @Test
+    void aConditionalFunctionRunsOnceAfterTheReceiver() {
+        // The receiver traces as it is built; a mapped list is read through a typed local, as the subset requires.
+        String receiver = "ys";
+        String test = "check(\"c\", c) ? x -> said(\"t\", x).signum() > 0 : x -> x.signum() < 0";
+        String params = BIG_LIST + " xs, boolean c";
+        String mapped = BIG_LIST + " ys = xs.map(x -> said(\"r\", x)); ";
+        var programs = List.of(
+                "public static boolean m(" + params + ") { " + mapped + "return " + receiver + ".any(" + test + "); }",
+                "public static boolean m(" + params + ") { " + mapped + "return " + receiver + ".all(" + test + "); }",
+                "public static long m(" + params + ") { " + mapped + "return " + receiver + ".filter(" + test + ").size(); }",
+                "public static long m(" + params + ") { " + mapped + "return " + receiver + ".map(check(\"c\", c) ? x -> x.add(K) : x -> x).size(); }",
+                "public static BigInteger m(" + params + ") { " + mapped + "BigInteger r = " + receiver + ".find(" + test + "); return r.add(BigInteger.ONE); }");
+        for (String program : programs)
+            for (var xs : List.of(integers(), integers(1), integers(-1, 2, 3), integers(2, -1)))
+                for (boolean c : new boolean[]{true, false}) assertAgree(program, xs, bool(c));
+        String failing = "BigInteger.TEN.divide(z).signum() > 0 ? x -> x.signum() > 0 : x -> false";
+        String failingMap = "BigInteger.TEN.divide(z).signum() > 0 ? x -> x.add(K) : x -> x";
+        for (var xs : List.of(integers(), integers(1, 2)))
+            for (long z : new long[]{0, 1}) {
+                for (String method : List.of("any", "all"))
+                    assertAgree("public static boolean m(" + BIG_LIST + " xs, BigInteger z) { return xs." + method + "(" + failing + "); }", xs, integer(z));
+                assertAgree("public static long m(" + BIG_LIST + " xs, BigInteger z) { return xs.filter(" + failing + ").size(); }", xs, integer(z));
+                assertAgree("public static long m(" + BIG_LIST + " xs, BigInteger z) { return xs.map(" + failingMap + ").size(); }", xs, integer(z));
+                assertAgree("public static BigInteger m(" + BIG_LIST + " xs, BigInteger z) { BigInteger r = xs.find(" + failing + "); return r.add(BigInteger.ONE); }",
+                        xs, integer(z));
+            }
+    }
+
+    /**
+     * A receiver written at the call is bound before the chosen function (review F12, S21, C22): its traces come first, and
+     * a receiver that fails runs no condition.
+     */
+    @Test
+    void aReceiverAtTheCallRunsBeforeTheChosenFunction() {
+        String test = "check(\"c\", c) ? x -> said(\"t\", x).signum() > 0 : x -> x.signum() < 0";
+        String params = "BigInteger a, BigInteger b, boolean c";
+        // A typed helper builds the list, so the lambdas read its elements; the call to it is not a variable, so it is bound.
+        String helpers = "static " + BIG_LIST + " two(BigInteger a, BigInteger b) { return JulcList.of(said(\"a\", a), said(\"b\", b)); } "
+                + "static " + BIG_LIST + " failing(BigInteger a, BigInteger b) { return JulcList.of(said(\"a\", a), BigInteger.TEN.divide(b)); } ";
+        for (String list : List.of("two(a, b)", "failing(a, b)")) {
+            var programs = List.of(
+                    helpers + "public static boolean m(" + params + ") { return " + list + ".any(" + test + "); }",
+                    helpers + "public static boolean m(" + params + ") { return " + list + ".all(" + test + "); }",
+                    helpers + "public static long m(" + params + ") { return " + list + ".filter(" + test + ").size(); }",
+                    helpers + "public static long m(" + params + ") { return " + list + ".map(check(\"c\", c) ? x -> x.add(K) : x -> x).size(); }",
+                    helpers + "public static BigInteger m(" + params + ") { BigInteger r = " + list + ".find(" + test + "); return r.add(BigInteger.ONE); }");
+            for (String program : programs)
+                for (long b : new long[]{0, 2, -1})
+                    for (boolean c : new boolean[]{true, false}) assertAgree(program, integer(1), integer(b), bool(c));
+        }
+    }
+
+    /** An any or all result as a condition, which the safe levels may lower differently now that it is proven boolean. */
+    @Test
+    void anyAndAllAsConditions() {
+        for (var xs : List.of(integers(), integers(1), integers(-1, 2), integers(1, 2)))
+            assertAgree("public static long m(" + BIG_LIST + " xs) { if (xs.any(x -> x.signum() > 0) && !xs.all(x -> x.signum() > 0)) { return 1; } "
+                    + "return xs.all(x -> x.signum() > 0) ? 2 : 3; }", xs);
     }
 
     @Test

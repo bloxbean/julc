@@ -20,10 +20,12 @@ import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.type.IntersectionType;
 import javax.lang.model.type.TypeMirror;
+import javax.lang.model.type.TypeVariable;
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Supplier;
 
@@ -65,11 +67,52 @@ final class TypeTests {
     PirTerm instanceOf(InstanceOfTree tree, Frame frame, Supplier<PirTerm> operand) {
         if (frame.inGuard()) return totalDispatch(tree, operand);
         var scrutinee = operand.get();
-        var constructor = constructor(tree, variantOf(tree));
+        return tagTest(scrutinee, constructor(tree, variantOf(tree)));
+    }
+
+    /** {@code FstPair(UnConstrData(scrutinee)) == tag}: the test of a value's constructor, shared by {@code instanceof} and a cast. */
+    static PirTerm tagTest(PirTerm scrutinee, PirType.Constructor constructor) {
         var tag = new PirTerm.App(new PirTerm.Builtin(DefaultFun.FstPair),
                 new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnConstrData), scrutinee));
         return PirHelpers.builtinApp2(DefaultFun.EqualsInteger, tag,
                 new PirTerm.Const(Constant.integer(BigInteger.valueOf(constructor.tag()))));
+    }
+
+    /**
+     * ADR-070: {@code variant}'s constructor in the one {@code Constr}-encoded sum it belongs to, or empty: a plain record that
+     * is no {@code @NewType}, with exactly one sealed parent the registry holds as a {@code SumType}, at its index among the
+     * parent's permitted types. Never a rejection, so a cast it does not cover stays the view it was. {@code PlutusData}'s
+     * variants have no such parent.
+     */
+    Optional<Variant> constructorOf(TypeElement variant) {
+        var parents = facts.sealedParents(variant);
+        if (parents.size() != 1 || variant.getKind() != ElementKind.RECORD || facts.hasAnnotation(variant, JavacNames.NEW_TYPE)) {
+            return Optional.empty();
+        }
+        var parent = parents.getFirst();
+        if (!(facts.registry().lookupNominal(facts.identity(parent)).orElse(null) instanceof PirType.SumType sum)) return Optional.empty();
+        // A permitted type that is no record (a nested sealed interface, which the subset rejects as JULC0109) would share a
+        // tag with a variant of its own: no tag would tell them apart, so nothing is checked (review M1-S1).
+        if (facts.permitted(parent).stream().anyMatch(permitted -> permitted.getKind() != ElementKind.RECORD)) return Optional.empty();
+        int index = facts.permitted(parent).indexOf(variant);
+        return index < 0 || index >= sum.constructors().size() ? Optional.empty() : Optional.of(new Variant(parent, sum.constructors().get(index)));
+    }
+
+    /** A record variant's sealed parent and its constructor there. */
+    record Variant(TypeElement parent, PirType.Constructor constructor) {
+    }
+
+    /**
+     * ADR-070: whether a value of javac's {@code type} is a value of {@code element}'s type, reading a type variable or a
+     * captured wildcard through its upper bound (JLS 5.1.6.1), as well as an intersection through its bounds. A cast's rule;
+     * {@code instanceof} keeps {@link #isOf}.
+     */
+    boolean isOfThroughBounds(TypeMirror type, TypeElement element) {
+        if (type instanceof TypeVariable variable) return isOfThroughBounds(variable.getUpperBound(), element);
+        if (type instanceof IntersectionType intersection) {
+            return intersection.getBounds().stream().anyMatch(bound -> isOfThroughBounds(bound, element));
+        }
+        return element.equals(facts.types().asElement(type));
     }
 
     /**

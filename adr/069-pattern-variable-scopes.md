@@ -840,6 +840,9 @@ of the class:
 
 Round 3 (of `ea9c4bef`): F19 RESOLVED; **APPROVED**, no new findings. CI is green on `ea9c4bef` (build, verify, docs).
 
+External review (reviewer1, of `b0e10589`): **APPROVED**, no P0–P2. F20 (P3): the AI starter pack and API reference
+now state the same `JULC0140` exception the other docs carry (docs only).
+
 The local toolchain moved off javac 25.0.2. Gradle runs on Liberica 25.0.4: GraalVM 25.3.4 as the Gradle JDK breaks
 every test that runs the Truffle VM, because its built-in Truffle clashes with the project's. That move showed that
 `JvmExecutorTest`'s guard ("javac before 25.0.5 emits the unverifiable class") was a guessed version bound. The guard now

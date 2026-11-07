@@ -328,6 +328,10 @@ final class Calls {
     /**
      * A list method that takes a function: the receiver, then the lambda, which the handler applies to each element.
      * {@link Lambdas} states the order. The reference reads the receiver as it reads a registry method's.
+     * <p>
+     * The handlers apply the function inside their loop, so it must be a value there. A lambda is one. Any other function,
+     * a conditional choosing between lambdas, is evaluated once before the loop, after the receiver, as Java evaluates the
+     * argument once before the method runs, even on an empty list (ADR-070 D5, review F9).
      */
     private PirTerm hof(CallTarget.Hof target, MethodInvocationTree tree, Frame frame) {
         var receiver = receiver(tree);
@@ -337,12 +341,34 @@ final class Calls {
             throw CompilerTypeDiagnostics.unresolvedMember(target.method(), facts.location(tree));
         }
         var function = lambdas.function(tree, seen, target.method().equals("map"), frame);
-        var arguments = new Arguments(List.of(function), List.of(typing.ofTerm(function)));
-        var dispatched = dispatch(CallTarget.Hof.KEY, target.method(), scope, type, arguments, tree);
-        var result = target.method().equals("find") && lambdas.readsElement(tree)
-                ? PirHelpers.fieldExtraction(dispatched, 0, typing.of(tree)) : dispatched;
+        var functionType = typing.ofTerm(function);
+        var result = function instanceof PirTerm.Lam
+                ? applied(target, tree, scope, type, function, functionType)
+                : PirHelpers.readOnce(scope, type, function, chosenType(function, target.method().equals("map")),
+                        (list, value) -> applied(target, tree, list, type, value, functionType));
         typeMethods.resolveReturnType(seen, target.method()).ifPresent(declared -> typing.recordRead(result, declared));
         return result;
+    }
+
+    /**
+     * The type of the variable that holds a chosen function (review F11): the function type of the lambda a conditional
+     * chooses, from Data to what the handler expects back, a boolean or, for {@code map}, an encoded element.
+     * {@code typing.ofTerm} has no rule for a lambda, and the handler's arguments keep the type they always carried.
+     */
+    private static PirType chosenType(PirTerm function, boolean map) {
+        var chosen = function;
+        while (chosen instanceof PirTerm.IfThenElse choice) chosen = choice.thenBranch();
+        var parameter = chosen instanceof PirTerm.Lam lambda ? lambda.paramType() : new PirType.DataType();
+        return new PirType.FunType(parameter, map ? new PirType.DataType() : new PirType.BoolType());
+    }
+
+    /** The handler of {@code target} over {@code list}, applying {@code function}, a value. */
+    private PirTerm applied(CallTarget.Hof target, MethodInvocationTree tree, PirTerm list, PirType type, PirTerm function,
+                            PirType functionType) {
+        var arguments = new Arguments(List.of(function), List.of(functionType));
+        var dispatched = dispatch(CallTarget.Hof.KEY, target.method(), list, type, arguments, tree);
+        return target.method().equals("find") && lambdas.readsElement(tree)
+                ? PirHelpers.fieldExtraction(dispatched, 0, typing.of(tree)) : dispatched;
     }
 
     /**

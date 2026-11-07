@@ -25,7 +25,7 @@ import static org.julclang.difftest.gen.G1Ast.BOOL;
 import static org.julclang.difftest.gen.G1Ast.UNREADABLE;
 
 /**
- * The second program grammar (ADR-066 D2, G1 r12): user records and sealed interfaces with record variants,
+ * The second program grammar (ADR-066 D2, G1 r13): user records and sealed interfaces with record variants,
  * {@code static final} fields, helpers, method-level {@code if} and {@code instanceof} patterns, G0's loops
  * with accumulators of any generated type, record and sealed arguments and results, traces and failures, and
  * {@code switch} expressions with type patterns, {@code default}, {@code yield} blocks, loops in arms and nesting
@@ -60,7 +60,7 @@ public final class G1 {
      * The decoding's version, saved with every case (ADR-066 G1-I5). Change it whenever a plan, an input sequence or
      * a profile would decode to something different.
      */
-    public static final String VERSION = "G1 r12";
+    public static final String VERSION = "G1 r13";
 
     /**
      * The switches of a generation profile (ADR-066 D6), each gating a construct whose defect is open; once the fix is
@@ -139,7 +139,14 @@ public final class G1 {
          * which compile, and those must agree or be rejected with a code ({@code Adr069JavacFilteredPropertyTest}).
          * Never in the default profile: many of its programs are not Java.
          */
-        PATTERN_SCOPE_PROBES;
+        PATTERN_SCOPE_PROBES,
+        /**
+         * ADR-070 (#288, #309), since G1 r13: {@code V v = (V) s;} downcasts to a variant over values of a sealed
+         * interface's type, in method bodies, loop bodies and switch-arm blocks, followed by a read of {@code v} or not
+         * read at all; a wrong variant fails as the JVM's ClassCastException does. Fixed by ADR-070 M1, so on in the
+         * default profile since G1 r13.
+         */
+        DOWNCASTS;
 
         /** The switches G1 defines but does not implement yet: they wait for ADR-067 (M3, part 2). */
         public static final Set<Gate> INERT =
@@ -180,7 +187,13 @@ public final class G1 {
          * PATTERN_CONDITIONS on, a third of the conditions, ternaries and while loops and half of the conditional updates
          * are pattern conditions, three levels deep.
          */
-        ISSUE_204(Gate.PATTERN_LOOPS);
+        ISSUE_204(Gate.PATTERN_LOOPS),
+        /**
+         * ADR-070's downcasts (#309): a family always, a quarter of the statements of method bodies, loop bodies and
+         * every switch-arm block preceded by a downcast, half of them of a local holding a known variant, cast to another
+         * variant three times in four.
+         */
+        ISSUE_309(Gate.DOWNCASTS);
 
         final Gate gate;
 
@@ -204,10 +217,10 @@ public final class G1 {
          * "After a fix"): {@link Gate#DEFAULT_BLOCK_SCOPE} since #291's fix (G1 r8), and
          * {@link Gate#SHADOW_IN_LOOP_BRANCH} and {@link Gate#LOOP_BREAK_SHAPES} since the loop-break continuation fix
          * (#209, #254, #255; G1 r9); and ADR-069's {@link Gate#PATTERN_LOOPS}, {@link Gate#PATTERN_CONDITIONS} and
-         * {@link Gate#PATTERN_EXIT} since its M3 (G1 r12).
+         * {@link Gate#PATTERN_EXIT} since its M3 (G1 r12); and ADR-070's {@link Gate#DOWNCASTS} since its M1 (G1 r13).
          */
         public static final Profile DEFAULT = new Profile(EnumSet.of(Gate.SHADOW_IN_LOOP_BRANCH, Gate.LOOP_BREAK_SHAPES,
-                Gate.DEFAULT_BLOCK_SCOPE, Gate.PATTERN_LOOPS, Gate.PATTERN_CONDITIONS, Gate.PATTERN_EXIT));
+                Gate.DEFAULT_BLOCK_SCOPE, Gate.PATTERN_LOOPS, Gate.PATTERN_CONDITIONS, Gate.PATTERN_EXIT, Gate.DOWNCASTS));
         /** The historical profile that rediscovers #209 (ADR-066 D10.1). */
         public static final Profile REDISCOVER_209 = DEFAULT.with(Gate.SHADOW_IN_LOOP_BRANCH).steered(Steer.ISSUE_209);
         /** The historical profile that rediscovers #280 (ADR-066 D10.1). */
@@ -234,6 +247,8 @@ public final class G1 {
          * {@link Gate#PATTERN_SCOPE_PROBES} ({@code Adr069JavacFilteredPropertyTest}).
          */
         public static final Profile JAVAC_FILTERED_204 = PATTERN_FLOW_204.with(Gate.PATTERN_SCOPE_PROBES);
+        /** ADR-070's campaign (#309): the default profile steered to downcasts of the wrong variant; every program agrees. */
+        public static final Profile DOWNCASTS_309 = DEFAULT.steered(Steer.ISSUE_309);
 
         public Profile {
             var gates = EnumSet.noneOf(Gate.class);
@@ -388,7 +403,11 @@ public final class G1 {
         /** A read of a pattern variable declared earlier, wherever it is (PATTERN_SCOPE_PROBES). */
         PROBE_STALE_READ,
         /** {@code if (!(x instanceof V v) || true) { return …; } else { … v … }} (PATTERN_SCOPE_PROBES). */
-        PROBE_CONSTANT_ELSE;
+        PROBE_CONSTANT_ELSE,
+        /** {@code V v = (V) s;} followed by a read of {@code v} (DOWNCASTS, ADR-070 D1). */
+        DOWNCAST,
+        /** {@code V v = (V) s;} whose result is never read (DOWNCASTS, ADR-070 verification 2). */
+        DOWNCAST_UNUSED;
 
         /**
          * The features with a quota: D8's list without the features of the gated constructs (guards, record patterns,
@@ -402,7 +421,7 @@ public final class G1 {
                         TRACE_IN_COMPARISON, ASSIGN_PATTERN_BINDING, DEFAULT_BLOCK_SHADOW,
                         DEFAULT_BLOCK_AFTER_LOOP, BARE_TYPE_TEST, LOOP_PATTERN_IF, LOOP_PATTERN_ELSE_IF, PATTERN_CONDITION,
                         PATTERN_IN_WHILE_CONDITION, PATTERN_IN_LAMBDA, EXIT_GUARD, EXIT_BREAK, EXIT_YIELD, EXIT_LAMBDA,
-                        PROBE_STALE_READ, PROBE_CONSTANT_ELSE));
+                        PROBE_STALE_READ, PROBE_CONSTANT_ELSE, DOWNCAST, DOWNCAST_UNUSED));
     }
 
     /** A decoded program: its source, its tag table, its features, its profile and its entry parameters. */
@@ -628,7 +647,8 @@ public final class G1 {
             }
         }
         // Steered to #291, a family of two or three variants to switch on with a default arm; steered to #204, to test.
-        if ((profile.steers(Steer.ISSUE_291) || profile.steers(Steer.ISSUE_291_LOOPS) || profile.steers(Steer.ISSUE_204))
+        if ((profile.steers(Steer.ISSUE_291) || profile.steers(Steer.ISSUE_291_LOOPS) || profile.steers(Steer.ISSUE_204)
+                || profile.steers(Steer.ISSUE_309))
                 && families == 0) {
             declareFamily(families++, 2 + choices.below(2));
         }
@@ -884,6 +904,8 @@ public final class G1 {
             // Under PATTERN_EXIT an eighth of the statements follow guards whose variables the rest reads; steered,
             // half. A guard adds to the statement, so that the distribution of the others stays (G1GatesTest).
             if (exits(2, 8)) scope = methodGuards(scope, body, result);
+            // Under DOWNCASTS an eighth of the statements follow a downcast; steered, half. It adds to the statement.
+            if (downcasts(2, 8)) scope = downcast(scope, body, ctx(scope));
             switch (kind) {
                 case 0 -> scope = declaration(scope, body, true, null);
                 case 1, 2, 3 -> {
@@ -1146,6 +1168,8 @@ public final class G1 {
                 kind = 9;
             }
             if (probes() && choices.oneIn(4)) staleRead(scope, into);
+            // Under DOWNCASTS an eighth of the loop-body statements follow a downcast; steered, half.
+            if (downcasts(2, 8)) scope = downcast(scope, into, ctx(scope));
             switch (kind) {
                 case 9 -> {
                     var introduced = exitGuard(ctx(scope), into, new Exit(Exit.BREAK, BIG), assigned);
@@ -1403,6 +1427,80 @@ public final class G1 {
             otherwise = List.of(patternIf(scope, assigned, breakAware, nesting, subject, type, chain + 1));
         }
         return new G1Ast.PatternIf(subject, variant, binding, choices.oneIn(4), then, otherwise);
+    }
+
+    // ---------------------------------------------------------------- downcasts (DOWNCASTS, ADR-070)
+
+    /** Whether DOWNCASTS is on and a production chosen one time in {@code steered} or {@code plain}. */
+    private boolean downcasts(int steered, int plain) {
+        return profile.has(Gate.DOWNCASTS) && flows == 0
+                && choices.oneIn(profile.steers(Steer.ISSUE_309) ? steered : plain);
+    }
+
+    /**
+     * {@code V v = (V) s;} (ADR-070 D1): {@code s} a variable or a record component of a sealed interface's type, or a
+     * call of a helper returning one, or a local first declared of the family holding a known variant, which the steer
+     * casts to another variant three times in four. Then a read of a component of {@code v} (or of {@code v}), or, a
+     * quarter of the time, nothing: the cast's result is never read and the cast must still fail on the wrong variant
+     * (ADR-070 verification 2). Never {@code ((V) s).f()} (JULC0055), a cast in a guard (JULC0072) or in an
+     * {@code any}/{@code all} predicate (ADR-070 Q6): it is a statement, and G1's lambdas are all predicates. Returns the
+     * scope after it.
+     */
+    private Scope downcast(Scope scope, List<Stmt> into, Ctx ctx) {
+        var families = types.stream().filter(t -> t.kind == Kind.SEALED).toList();
+        if (families.isEmpty()) return scope;
+        var subjects = new ArrayList<Tested>();
+        for (Var var : readable(ctx)) {
+            if (var.type().kind == Kind.SEALED) subjects.add(new Tested(var, List.of(), null, var.type()));
+            if (var.type().kind != Kind.RECORD) continue;
+            for (Component component : var.type().components) {
+                if (component.type().kind == Kind.SEALED) subjects.add(new Tested(var, List.of(component.name()), null, component.type()));
+            }
+        }
+        for (Helper helper : ctx.helpers()) {
+            if (helper.result().kind == Kind.SEALED && !(ctx.traceFree() && helper.traces())) {
+                subjects.add(new Tested(null, List.of(), helper, helper.result()));
+            }
+        }
+        boolean steered = profile.steers(Steer.ISSUE_309);
+        Expr subject;
+        Type variant;
+        if (subjects.isEmpty() || steered && choices.oneIn(2)) {
+            Type family = families.get(choices.below(families.size()));
+            Type held = family.variants.get(choices.below(family.variants.size()));
+            String name = freshName(true);
+            into.add(new G1Ast.Declare(family, name, construct(held, ctx(declaring(scope, name)), 1)));
+            Var local = new Var(name, family, false, false, true, false);
+            scope = scope.with(local);
+            subject = new G1Ast.Read(local);
+            var others = family.variants.stream().filter(v -> v != held).toList();
+            variant = steered && !others.isEmpty() && !choices.oneIn(4) ? others.get(choices.below(others.size()))
+                    : family.variants.get(choices.below(family.variants.size()));
+        } else {
+            Tested tested = subjects.get(choices.below(subjects.size()));
+            subject = testedExpression(tested, ctx, 1);
+            variant = tested.type().variants.get(choices.below(tested.type().variants.size()));
+        }
+        String name = freshName(true);
+        into.add(new G1Ast.Declare(variant, name, new G1Ast.Cast(variant, subject)));
+        if (choices.oneIn(4)) {
+            features.add(Feature.DOWNCAST_UNUSED);
+            return scope;
+        }
+        features.add(Feature.DOWNCAST);
+        // The variable is read here only, not left in scope: a later equals could otherwise compare it with another
+        // variant's value, which JuLC rejects by design (JULC0078, ADR-068 D6).
+        Var cast = new Var(name, variant, false, false, true, false);
+        Expr read = new G1Ast.Read(cast);
+        Type type = variant;
+        if (!variant.components.isEmpty() && !choices.oneIn(4)) {
+            Component component = variant.components.get(choices.below(variant.components.size()));
+            read = new G1Ast.Access(cast, List.of(component.name()));
+            type = component.type();
+            features.add(Feature.COMPONENT_ACCESS);
+        }
+        into.add(new G1Ast.Declare(type, freshName(true), read));
+        return scope;
     }
 
     // ---------------------------------------------------------------- exit guards (PATTERN_EXIT, ADR-069 M3)
@@ -2038,11 +2136,11 @@ public final class G1 {
         if (!familial.isEmpty() && !choices.oneIn(4)) receivers = familial;
         Var receiver = receivers.get(choices.below(receivers.size()));
         Type type = receiver.type().family != null && !choices.oneIn(4) ? receiver.type().family : receiver.type();
-        // Steered to #204, whose campaign requires agreement, no argument that JuLC rejects by design (ADR-068 D6): a
+        // Steered to #204 or #309, whose campaigns require agreement, no argument JuLC rejects by design (ADR-068 D6): a
         // variant is compared with its own type only, since against its family the argument may be another variant
         // (JULC0078); and the argument is a variable, a component read or a constructor, since equals's Object
         // parameter gives a conditional or a switch over two variants no target type (JULC0012).
-        if (profile.steers(Steer.ISSUE_204)) {
+        if (profile.steers(Steer.ISSUE_204) || profile.steers(Steer.ISSUE_309)) {
             type = receiver.type();
             features.add(Feature.RECORD_EQUALS);
             if (type.kind == Kind.SEALED) features.add(Feature.FAMILY_EQUALS);
@@ -2234,6 +2332,10 @@ public final class G1 {
                     && read.var().name().equals(binding) && updated.contains(local.name())) {
                 features.add(Feature.BINDING_ACCUMULATOR);
             }
+        }
+        // Under DOWNCASTS a quarter of the blocks end in a downcast; steered, every one.
+        if (!restricted && yielded == null && downcasts(1, 4)) {
+            owned = downcast(owned, body, new Ctx(owned, ctx.helpers(), true, false, null, false));
         }
         // Under PATTERN_EXIT a quarter of the blocks end in a guard that yields; steered, every one.
         if (!restricted && yielded == null && exits(1, 4)) {

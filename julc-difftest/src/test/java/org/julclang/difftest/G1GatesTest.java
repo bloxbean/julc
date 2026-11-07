@@ -33,17 +33,24 @@ class G1GatesTest {
      * The markers of the gates that are on in the default profile, because their defect is fixed below (D6, "After a
      * fix"): #291's two symptoms ({@code DEFAULT_BLOCK_SCOPE}, G1 r8), #209's branch local and #254/#255's loop
      * bodies ({@code SHADOW_IN_LOOP_BRANCH} and {@code LOOP_BREAK_SHAPES}, G1 r9), and ADR-069's pattern constructs
-     * ({@code PATTERN_LOOPS}, {@code PATTERN_CONDITIONS}, {@code PATTERN_EXIT}, G1 r12).
+     * ({@code PATTERN_LOOPS}, {@code PATTERN_CONDITIONS}, {@code PATTERN_EXIT}, G1 r12), and ADR-070's downcasts
+     * ({@code DOWNCASTS}, G1 r13).
      */
     static final Set<G1.Feature> OPEN_IN_DEFAULT = Set.copyOf(EnumSet.of(G1.Feature.DEFAULT_BLOCK_SHADOW,
             G1.Feature.DEFAULT_BLOCK_AFTER_LOOP, G1.Feature.SHADOW_IN_LOOP_BRANCH, G1.Feature.LOOP_BREAK_SHAPE,
             G1.Feature.BARE_TYPE_TEST, G1.Feature.LOOP_PATTERN_IF, G1.Feature.LOOP_PATTERN_ELSE_IF,
             G1.Feature.PATTERN_CONDITION, G1.Feature.PATTERN_IN_WHILE_CONDITION, G1.Feature.PATTERN_IN_LAMBDA,
-            G1.Feature.EXIT_GUARD, G1.Feature.EXIT_BREAK, G1.Feature.EXIT_YIELD, G1.Feature.EXIT_LAMBDA));
+            G1.Feature.EXIT_GUARD, G1.Feature.EXIT_BREAK, G1.Feature.EXIT_YIELD, G1.Feature.EXIT_LAMBDA,
+            G1.Feature.DOWNCAST, G1.Feature.DOWNCAST_UNUSED));
 
     /** The default profile before ADR-069 M3 turned its three gates on (G1 r11's). */
     static final G1.Profile BEFORE_PATTERNS = new G1.Profile(EnumSet.of(G1.Gate.SHADOW_IN_LOOP_BRANCH,
             G1.Gate.LOOP_BREAK_SHAPES, G1.Gate.DEFAULT_BLOCK_SCOPE));
+
+    /** The default profile before ADR-070 turned {@code DOWNCASTS} on (G1 r12's). */
+    static final G1.Profile BEFORE_DOWNCASTS = new G1.Profile(EnumSet.of(G1.Gate.SHADOW_IN_LOOP_BRANCH,
+            G1.Gate.LOOP_BREAK_SHAPES, G1.Gate.DEFAULT_BLOCK_SCOPE, G1.Gate.PATTERN_LOOPS, G1.Gate.PATTERN_CONDITIONS,
+            G1.Gate.PATTERN_EXIT));
 
     /** Every gate off: the default profile before any gated defect was fixed (G1 r7's). */
     static final G1.Profile ALL_GATES_OFF = new G1.Profile(EnumSet.noneOf(G1.Gate.class));
@@ -57,7 +64,7 @@ class G1GatesTest {
     @Test
     void theDefaultProfileGeneratesNoGatedConstruct() {
         assertEquals(EnumSet.of(G1.Gate.SHADOW_IN_LOOP_BRANCH, G1.Gate.LOOP_BREAK_SHAPES, G1.Gate.DEFAULT_BLOCK_SCOPE,
-                        G1.Gate.PATTERN_LOOPS, G1.Gate.PATTERN_CONDITIONS, G1.Gate.PATTERN_EXIT),
+                        G1.Gate.PATTERN_LOOPS, G1.Gate.PATTERN_CONDITIONS, G1.Gate.PATTERN_EXIT, G1.Gate.DOWNCASTS),
                 G1.Profile.DEFAULT.on(), "the gates open in the default profile");
         var closed = EnumSet.copyOf(G1.Feature.GATED);
         closed.removeAll(OPEN_IN_DEFAULT);
@@ -93,7 +100,9 @@ class G1GatesTest {
                 Map.entry(BEFORE_PATTERNS.with(G1.Gate.PATTERN_LOOPS), G1.Feature.BARE_TYPE_TEST),
                 Map.entry(BEFORE_PATTERNS.with(G1.Gate.PATTERN_CONDITIONS), G1.Feature.PATTERN_CONDITION),
                 Map.entry(BEFORE_PATTERNS.with(G1.Gate.PATTERN_EXIT), G1.Feature.EXIT_GUARD),
-                Map.entry(G1.Profile.JAVAC_FILTERED_204, G1.Feature.PROBE_CONSTANT_ELSE));
+                Map.entry(G1.Profile.JAVAC_FILTERED_204, G1.Feature.PROBE_CONSTANT_ELSE),
+                Map.entry(G1.Profile.DOWNCASTS_309, G1.Feature.DOWNCAST),
+                Map.entry(BEFORE_PATTERNS.with(G1.Gate.DOWNCASTS), G1.Feature.DOWNCAST_UNUSED));
         cases.forEach((profile, marker) -> {
             var random = new Random(20261031);
             int marked = 0, seen = 0;
@@ -200,11 +209,15 @@ class G1GatesTest {
         // them: the loop share falls by about two points (0.461 to 0.441 at G1 r12), and three are allowed for them.
         double[] closed = shares(ALL_GATES_OFF);
         double[] before = shares(BEFORE_PATTERNS);
+        // ADR-070's DOWNCASTS (since r13) adds a statement before an eighth of the others: two points again.
+        double[] beforeDowncasts = shares(BEFORE_DOWNCASTS);
         for (int k = 0; k < names.length; k++) {
             assertTrue(Math.abs(closed[k] - before[k]) < 0.02, "the open gates move the share of " + names[k] + " from "
                     + closed[k] + " to " + before[k]);
-            assertTrue(Math.abs(before[k] - plain[k]) < 0.03, "ADR-069's gates move the share of " + names[k] + " from "
-                    + before[k] + " to " + plain[k]);
+            assertTrue(Math.abs(before[k] - beforeDowncasts[k]) < 0.03, "ADR-069's gates move the share of " + names[k]
+                    + " from " + before[k] + " to " + beforeDowncasts[k]);
+            assertTrue(Math.abs(beforeDowncasts[k] - plain[k]) < 0.02, "DOWNCASTS moves the share of " + names[k] + " from "
+                    + beforeDowncasts[k] + " to " + plain[k]);
         }
         for (G1.Gate gate : List.of(G1.Gate.ZERO_ARG_HELPERS, G1.Gate.TRACE_IN_COMPARISON, G1.Gate.ASSIGN_PATTERN_BINDING)) {
             double[] gated = shares(G1.Profile.DEFAULT.with(gate));
@@ -245,25 +258,29 @@ class G1GatesTest {
 
     @Test
     void profilesRoundTripAsText() {
-        assertEquals("G1 r12 -GUARDS -RECORD_PATTERNS -CROSS_TYPE_EQUALS -SHARED_VARIANT -ASSIGN_PATTERN_BINDING "
+        assertEquals("G1 r13 -GUARDS -RECORD_PATTERNS -CROSS_TYPE_EQUALS -SHARED_VARIANT -ASSIGN_PATTERN_BINDING "
                 + "-ZERO_ARG_HELPERS +SHADOW_IN_LOOP_BRANCH +LOOP_BREAK_SHAPES -TRACE_IN_COMPARISON +DEFAULT_BLOCK_SCOPE "
-                + "+PATTERN_LOOPS +PATTERN_CONDITIONS +PATTERN_EXIT -PATTERN_SCOPE_PROBES", G1.Profile.DEFAULT.text());
-        assertTrue(G1.Profile.PATTERN_FLOW_204.text().endsWith("+PATTERN_EXIT -PATTERN_SCOPE_PROBES steer=204"),
+                + "+PATTERN_LOOPS +PATTERN_CONDITIONS +PATTERN_EXIT -PATTERN_SCOPE_PROBES +DOWNCASTS", G1.Profile.DEFAULT.text());
+        assertTrue(G1.Profile.DOWNCASTS_309.text().endsWith("+DOWNCASTS steer=309"), G1.Profile.DOWNCASTS_309.text());
+        assertTrue(G1.Profile.PATTERN_FLOW_204.text().endsWith("+PATTERN_EXIT -PATTERN_SCOPE_PROBES +DOWNCASTS steer=204"),
                 G1.Profile.PATTERN_FLOW_204.text());
         for (var profile : List.of(G1.Profile.DEFAULT, G1.Profile.REDISCOVER_209, G1.Profile.REDISCOVER_280, G1.Profile.REDISCOVER_162,
                 G1.Profile.REDISCOVER_291, G1.Profile.REDISCOVER_291_LOOPS, G1.Profile.PATTERN_FLOW_204, G1.Profile.JAVAC_FILTERED_204,
+                G1.Profile.DOWNCASTS_309,
                 G1.Profile.REDISCOVER_146, ALL_GATES_OFF, new G1.Profile(EnumSet.allOf(G1.Gate.class)))) {
             assertEquals(profile, G1.Profile.parse(profile.text()));
         }
         String text = G1.Profile.DEFAULT.text();
         assertTrue(G1.Profile.REDISCOVER_209.text().endsWith("+SHADOW_IN_LOOP_BRANCH +LOOP_BREAK_SHAPES -TRACE_IN_COMPARISON "
-                        + "+DEFAULT_BLOCK_SCOPE +PATTERN_LOOPS +PATTERN_CONDITIONS +PATTERN_EXIT -PATTERN_SCOPE_PROBES steer=209"),
+                        + "+DEFAULT_BLOCK_SCOPE +PATTERN_LOOPS +PATTERN_CONDITIONS +PATTERN_EXIT -PATTERN_SCOPE_PROBES +DOWNCASTS steer=209"),
                 G1.Profile.REDISCOVER_209.text());
         // A steer needs its gate: ZERO_ARG_HELPERS is off in the default profile.
         assertThrows(HarnessException.class, () -> G1.Profile.DEFAULT.steered(G1.Steer.ISSUE_280));
         assertThrows(HarnessException.class, () -> BEFORE_PATTERNS.steered(G1.Steer.ISSUE_204));
-        // An older profile names fewer gates: saved records of older versions stay history, not replayable under r12.
-        for (String bad : List.of("G0 r2 -GUARDS", text.replace("G1 r12", "G1 r11"), text.replace(" +PATTERN_LOOPS", ""),
+        assertThrows(HarnessException.class, () -> BEFORE_DOWNCASTS.steered(G1.Steer.ISSUE_309));
+        // An older profile names fewer gates: saved records of older versions stay history, not replayable under r13.
+        for (String bad : List.of("G0 r2 -GUARDS", text.replace("G1 r13", "G1 r12"), text.replace(" +DOWNCASTS", ""),
+                text.replace(" +PATTERN_LOOPS", ""),
                 text.replace(" +PATTERN_CONDITIONS", ""), text.replace(" +PATTERN_EXIT", ""),
                 text.replace(" -PATTERN_SCOPE_PROBES", ""),
                 text + " steer=999", text + " steer=280", text.replace("-GUARDS ", ""), text + " -GUARDS",
@@ -286,6 +303,7 @@ class G1GatesTest {
         private static final Pattern BLOCK_ARM = Pattern.compile("^( *)case \\w+ (\\w+) -> \\{$");
         private static final Pattern DEFAULT_BLOCK = Pattern.compile("^( *)default -> \\{$");
         private static final Pattern DECLARATION = Pattern.compile("^\\w+ (\\w+) = ");
+        private static final Pattern DOWNCAST = Pattern.compile("(?m)^ *(\\w+) (\\w+) = \\(\\1\\) ");
         private static final Pattern CONSTANT_ELSE = Pattern.compile("instanceof \\w+ \\w+\\) \\|\\| true\\)");
 
         static Set<G1.Feature> in(String source) {
@@ -303,6 +321,12 @@ class G1GatesTest {
             }
             // ADR-069's pattern constructs need the syntax tree: which test is a whole if condition, in a loop, in a lambda.
             if (source.contains(" instanceof ")) found.addAll(G1Source.patterns(source));
+            // ADR-070's downcasts: V v = (V) s; and whether v is read anywhere after (names are unique in a method).
+            Matcher cast = DOWNCAST.matcher(source);
+            while (cast.find()) {
+                boolean read = Pattern.compile("\\b" + cast.group(2) + "\\b").matcher(source).region(cast.end(), source.length()).find();
+                found.add(read ? G1.Feature.DOWNCAST : G1.Feature.DOWNCAST_UNUSED);
+            }
             // PATTERN_SCOPE_PROBES' constant condition, whose else branch reads the variable.
             if (CONSTANT_ELSE.matcher(source).find()) found.add(G1.Feature.PROBE_CONSTANT_ELSE);
             for (int i = 0; i < lines.length; i++) {
