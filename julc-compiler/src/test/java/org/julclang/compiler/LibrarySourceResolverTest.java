@@ -486,9 +486,8 @@ class LibrarySourceResolverTest {
     }
 
     @Test
-    void resolve_aJarSourceGivesWayHoweverItIsReached() {
-        // One source per name: a static wildcard import, a fallback or a wildcard match never lets the jar's class
-        // through once the compilation has its own.
+    void resolve_aJarSourceGivesWayOnlyToAnImportedName() {
+        // A wildcard or bare name may be a variable's, so it is not asked about: the jar's class stays, as before.
         var jar = LibrarySourceResolver.librarySourceFromQualifiedName("other.Counter", """
                 package other;
                 public class Counter { public static boolean ok() { return false; } }
@@ -497,15 +496,58 @@ class LibrarySourceResolverTest {
                 package other;
                 public class Counter { public static boolean ok() { return true; } }
                 """);
-        var validator = """
+        var wildcard = """
                 package app;
                 import other.*;
-                import static other.Anchor.*;
                 class V { static boolean f() { return Counter.ok(); } }
                 """;
+        var asked = new ArrayList<String>();
 
-        assertEquals(List.of(own.source()), LibrarySourceResolver.resolve(validator, Map.of("other.Counter", jar),
-                host(Map.of("other.Counter", jar), name -> name.equals("other.Counter") ? own : null, Set.of())));
+        assertEquals(List.of(jar.source()), LibrarySourceResolver.resolve(wildcard, Map.of("other.Counter", jar),
+                host(Map.of("other.Counter", jar), name -> {
+                    asked.add(name);
+                    return own;
+                }, Set.of())));
+        assertEquals(List.of(), asked);
+    }
+
+    @Test
+    void resolve_aMarkersDependenciesNeverReorderTheLibraries() {
+        // ADR-071 I3: Counter, marked by fw.Mark whose Class<?> default imports Leaf, resolves its libraries in the order
+        // the direct Counter does; the marker comes after them.
+        var tail = LibrarySourceResolver.librarySourceFromQualifiedName("app.Tail",
+                "package app; public class Tail { static boolean ok() { return Bridge.ok() && Leaf.ok(); } }");
+        var bridge = LibrarySourceResolver.librarySourceFromQualifiedName("app.Bridge",
+                "package app; public class Bridge { static boolean ok() { return true; } }");
+        var leaf = LibrarySourceResolver.librarySourceFromQualifiedName("app.Leaf",
+                "package app; public class Leaf { static boolean ok() { return true; } }");
+        var mark = LibrarySourceResolver.librarySourceFromQualifiedName("fw.Mark", """
+                package fw;
+                import app.Leaf;
+                public @interface Mark { Class<?> value() default Leaf.class; }
+                """);
+        var marked = LibrarySourceResolver.librarySourceFromQualifiedName("app.Counter", """
+                package app;
+                import fw.Mark;
+                @Mark
+                public class Counter { static boolean ok() { return Tail.ok(); } }
+                """);
+        var direct = LibrarySourceResolver.librarySourceFromQualifiedName("app.Counter",
+                "package app; public class Counter { static boolean ok() { return Tail.ok(); } }");
+        var validator = """
+                package app;
+                import app.Counter;
+                class V { static boolean f() { return Counter.ok(); } }
+                """;
+        Map<String, LibrarySource> pool = Map.of("app.Tail", tail, "app.Bridge", bridge, "app.Leaf", leaf, "fw.Mark", mark);
+
+        var withMarker = LibrarySourceResolver.resolve(validator, pool,
+                host(Map.of(), name -> name.equals("app.Counter") ? marked : null, Set.of("fw.Mark")));
+        var withoutMarker = LibrarySourceResolver.resolve(validator, pool,
+                host(Map.of(), name -> name.equals("app.Counter") ? direct : null, Set.of("fw.Mark")));
+
+        assertEquals(List.of(marked.source(), tail.source(), bridge.source(), leaf.source(), mark.source()), withMarker);
+        assertEquals(List.of(direct.source(), tail.source(), bridge.source(), leaf.source()), withoutMarker);
     }
 
     @Test

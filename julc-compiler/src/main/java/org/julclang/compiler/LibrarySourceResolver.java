@@ -21,6 +21,7 @@ import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.util.AbstractQueue;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -30,6 +31,7 @@ import java.util.Comparator;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -421,49 +423,90 @@ public final class LibrarySourceResolver {
     private static List<LibrarySource> resolveLibrarySources(String source, Map<String, LibrarySource> availableLibraries,
                                                              CompilationHost host) {
         var asked = new HashMap<String, Optional<LibrarySource>>();
-        // ADR-071 D1: an exact name (an import) is the pool's library, or else asked of the compilation.
+        // ADR-071 D1: an imported name is the pool's library, or else asked of the compilation. Nothing else is asked.
         Function<String, LibrarySource> ask = fqcn -> !SourceVersion.isName(fqcn) ? null : asked.computeIfAbsent(fqcn,
                 name -> Optional.ofNullable(host.classesOfTheCompilation().apply(name))).orElse(null);
-        // A jar entry, however a source reaches it, gives way to the compilation's library of the same name.
-        Function<LibrarySource, LibrarySource> chosen = pooled -> {
-            if (pooled == null || host.jarSources().get(pooled.fqcn()) != pooled) return pooled;
-            var own = ask.apply(pooled.fqcn());
+        // An imported jar entry gives way to the compilation's library of the same name, the class javac checked.
+        Function<String, LibrarySource> exact = fqcn -> {
+            var pooled = availableLibraries.get(fqcn);
+            if (pooled != null && host.jarSources().get(fqcn) != pooled) return pooled;
+            var own = ask.apply(fqcn);
             return own != null ? own : pooled;
         };
-        Function<String, LibrarySource> exact = fqcn -> availableLibraries.containsKey(fqcn)
-                ? chosen.apply(availableLibraries.get(fqcn)) : ask.apply(fqcn);
-        var references = new References(availableLibraries, exact, chosen, host.markers(),
+        var references = new References(availableLibraries, exact, host.markers(),
                 indexBySimpleName(availableLibraries.values()));
         var diagnostics = new DiagnosticCollector("<source>");
         var resolved = new LinkedHashMap<String, LibrarySource>();
         var queued = new HashSet<String>();
         Queue<LibrarySource> toProcess = new ArrayDeque<>();
 
+        // Library markers wait until the libraries are resolved, so what a marker reaches (a Class<?> default, say) never
+        // moves a library ahead of where its callers place it (ADR-071 I3). Only the annotation processor names markers.
+        Queue<LibrarySource> markers = new ArrayDeque<>();
+        Queue<LibrarySource> queue = new MarkersLast(toProcess, markers, references.markers());
+
         enqueueReferencedLibraries(source, extractPackageName(source), "<source>", references,
-                resolved, queued, toProcess, diagnostics);
+                resolved, queued, queue, diagnostics);
         diagnostics.throwIfErrors();
 
-        while (!toProcess.isEmpty()) {
-            LibrarySource librarySource = toProcess.poll();
+        while (!toProcess.isEmpty() || !markers.isEmpty()) {
+            LibrarySource librarySource = toProcess.isEmpty() ? markers.poll() : toProcess.poll();
             if (resolved.containsKey(librarySource.fqcn())) {
                 continue;
             }
             resolved.put(librarySource.fqcn(), librarySource);
             enqueueReferencedLibraries(librarySource.source(), librarySource.packageName(), librarySource.resourcePath(),
-                    references, resolved, queued, toProcess, diagnostics);
+                    references, resolved, queued, queue, diagnostics);
             diagnostics.throwIfErrors();
         }
 
         return new ArrayList<>(resolved.values());
     }
 
+    /** A queue that sends library markers to a queue of their own, served after the libraries (ADR-071 I3). */
+    private static final class MarkersLast extends AbstractQueue<LibrarySource> {
+        private final Queue<LibrarySource> libraries;
+        private final Queue<LibrarySource> markers;
+        private final Predicate<String> isMarker;
+
+        MarkersLast(Queue<LibrarySource> libraries, Queue<LibrarySource> markers, Predicate<String> isMarker) {
+            this.libraries = libraries;
+            this.markers = markers;
+            this.isMarker = isMarker;
+        }
+
+        @Override
+        public boolean offer(LibrarySource librarySource) {
+            return (isMarker.test(librarySource.fqcn()) ? markers : libraries).offer(librarySource);
+        }
+
+        @Override
+        public LibrarySource poll() {
+            return libraries.isEmpty() ? markers.poll() : libraries.poll();
+        }
+
+        @Override
+        public LibrarySource peek() {
+            return libraries.isEmpty() ? markers.peek() : libraries.peek();
+        }
+
+        @Override
+        public Iterator<LibrarySource> iterator() {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public int size() {
+            return libraries.size() + markers.size();
+        }
+    }
+
     /**
      * What a resolution looks names up in: the pool, its entries by simple name, the exact-name lookup that may ask the
-     * host, the choice of the compilation's class over a jar entry of the same name, and the host's word on markers.
+     * host (imports only), and the host's word on markers.
      */
     private record References(Map<String, LibrarySource> pool,
                               Function<String, LibrarySource> exact,
-                              Function<LibrarySource, LibrarySource> chosen,
                               Predicate<String> markers,
                               Map<String, List<LibrarySource>> bySimpleName) {
     }
@@ -531,7 +574,7 @@ public final class LibrarySourceResolver {
         var availableLibraries = references.pool();
         var bySimpleName = references.bySimpleName();
         if (reference.fqcn() != null) {
-            return references.chosen().apply(availableLibraries.get(reference.fqcn()));
+            return availableLibraries.get(reference.fqcn());
         }
 
         String importedFqcn = importsBySimpleName.get(reference.simpleName());
@@ -544,14 +587,14 @@ public final class LibrarySourceResolver {
                 : packageName + "." + reference.simpleName();
         LibrarySource samePackageSource = availableLibraries.get(samePackageFqcn);
         if (samePackageSource != null) {
-            return references.chosen().apply(samePackageSource);
+            return samePackageSource;
         }
 
         List<LibrarySource> wildcardCandidates = bySimpleName.getOrDefault(reference.simpleName(), List.of()).stream()
                 .filter(librarySource -> wildcardPackages.contains(librarySource.packageName()))
                 .toList();
         if (wildcardCandidates.size() == 1) {
-            return references.chosen().apply(wildcardCandidates.get(0));
+            return wildcardCandidates.get(0);
         }
         if (wildcardCandidates.size() > 1) {
             diagnostics.error(reference.line(), reference.column(),
@@ -565,7 +608,7 @@ public final class LibrarySourceResolver {
 
         List<LibrarySource> candidates = bySimpleName.getOrDefault(reference.simpleName(), List.of());
         if (candidates.size() == 1) {
-            return references.chosen().apply(candidates.get(0));
+            return candidates.get(0);
         }
         if (candidates.size() > 1) {
             diagnostics.error(reference.line(), reference.column(),

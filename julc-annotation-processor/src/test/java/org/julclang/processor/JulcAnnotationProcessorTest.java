@@ -925,6 +925,121 @@ class JulcAnnotationProcessorTest {
         }
     }
 
+    /** ADR-071 D1: a marked class is found only through a single-type import, even from its own package. */
+    @Test
+    void aBareSamePackageCallToAMarkedClassFailsWithTheImportToAdd() throws Exception {
+        String validator = """
+                package lib;
+
+                import org.julclang.stdlib.annotation.*;
+                import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+
+                @SpendingValidator
+                public class UsesBare {
+                    @Entrypoint
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
+                        return MetaMath.twice(redeemer).compareTo(BigInteger.TEN) == 0;
+                    }
+                }
+                """;
+        var bare = compileWithProcessorSources(Map.of("lib/StateLike", STATE_LIKE, "lib/MetaMath", META_LIBRARY,
+                "lib/UsesBare", validator), List.of());
+        assertFalse(bare.success());
+        assertTrue(bare.diagnostics().stream().anyMatch(d -> d.getMessage(null).contains(
+                "MetaMath is an on-chain library through @StateLike; JuLC finds such a class only through a"
+                        + " single-type import, even from its own package: add `import lib.MetaMath;`.")),
+                "Got: " + bare.diagnostics());
+
+        var imported = compileWithProcessorSources(Map.of("lib/StateLike", STATE_LIKE, "lib/MetaMath", META_LIBRARY,
+                "lib/UsesBare", validator.replace("import org.julclang.core.PlutusData;",
+                        "import org.julclang.core.PlutusData;\nimport lib.MetaMath;")), List.of());
+        assertTrue(imported.success(), "Expected success, got: " + imported.diagnostics());
+    }
+
+    /** A library that calls a marked library needs the import too. */
+    @Test
+    void aLibraryCallingAMarkedLibraryImportsIt() throws Exception {
+        String helper = """
+                package lib;
+
+                import org.julclang.stdlib.annotation.OnchainLibrary;
+                import java.math.BigInteger;
+
+                @OnchainLibrary
+                public class Helper {
+                    public static BigInteger four(BigInteger x) {
+                        return MetaMath.twice(MetaMath.twice(x));
+                    }
+                }
+                """;
+        String validator = """
+                package app;
+
+                import org.julclang.stdlib.annotation.*;
+                import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+                import lib.Helper;
+
+                @SpendingValidator
+                public class UsesHelper {
+                    @Entrypoint
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
+                        return Helper.four(redeemer).compareTo(BigInteger.TEN) == 0;
+                    }
+                }
+                """;
+        var bare = compileWithProcessorSources(Map.of("lib/StateLike", STATE_LIKE, "lib/MetaMath", META_LIBRARY,
+                "lib/Helper", helper, "app/UsesHelper", validator), List.of());
+        assertFalse(bare.success());
+        assertTrue(bare.diagnostics().stream().anyMatch(d -> d.getMessage(null).contains("add `import lib.MetaMath;`")),
+                "Got: " + bare.diagnostics());
+
+        var imported = compileWithProcessorSources(Map.of("lib/StateLike", STATE_LIKE, "lib/MetaMath", META_LIBRARY,
+                "lib/Helper", helper.replace("import java.math.BigInteger;", "import java.math.BigInteger;\nimport lib.MetaMath;"),
+                "app/UsesHelper", validator), List.of());
+        assertTrue(imported.success(), "Expected success, got: " + imported.diagnostics());
+    }
+
+    /** A marker is not followed through a wildcard import; the failure names the import to add. */
+    @Test
+    void aMarkerReachedThroughAWildcardImportFailsWithTheImportToAdd() throws Exception {
+        String library = """
+                package lib2;
+
+                import java.math.BigInteger;
+                import lib.*;
+
+                @StateLike
+                public class Wild {
+                    public static BigInteger twice(BigInteger x) {
+                        return x.add(x);
+                    }
+                }
+                """;
+        String validator = """
+                package app;
+
+                import org.julclang.stdlib.annotation.*;
+                import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+                import lib2.Wild;
+
+                @SpendingValidator
+                public class UsesWild {
+                    @Entrypoint
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
+                        return Wild.twice(redeemer).compareTo(BigInteger.TEN) == 0;
+                    }
+                }
+                """;
+        var result = compileWithProcessorSources(Map.of("lib/StateLike", STATE_LIKE, "lib2/Wild", library,
+                "app/UsesWild", validator), List.of());
+        assertFalse(result.success());
+        assertTrue(result.diagnostics().stream().anyMatch(d -> d.getMessage(null).contains("add `import lib.StateLike;`")),
+                "Got: " + result.diagnostics());
+    }
+
     /** Regression: a package line read by javac and by JuLC's pattern alike, with a space before the semicolon. */
     @Test
     void librariesWhosePackageLineHasASpaceStillResolve() throws Exception {

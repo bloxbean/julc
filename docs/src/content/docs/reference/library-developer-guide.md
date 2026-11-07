@@ -79,7 +79,7 @@ a top-level annotation interface that JuLC can compile:
 
 The marker must be top-level, and so must the classes it marks.
 
-A validator reaches a marked class through a **single-type import**, even from the same package:
+A validator or a library reaches a marked class through a **single-type import**, even from the same package:
 
 ```java
 package app;
@@ -99,6 +99,10 @@ This is what a framework that generates validators in a later annotation-process
 same-package name or a wildcard import (`import app.*;`) does not find a marked class. JuLC's processor never sees the
 round that entered it, and only an imported name is certainly a class before javac attributes the code. Classes
 marked `@OnchainLibrary` directly, the stdlib and library jars are found every way, as before.
+
+If the import is missing, the build fails with `cannot find symbol` and JuLC names the import to add. An IDE's
+"optimize imports" may remove a same-package import as unnecessary; keep it. A marked class in the default package
+cannot be imported, so put marked classes in a package.
 
 A class uses its marker through a single-type import (`import fw.StateContract;`), a qualified name, or from the
 marker's own package. JuLC does not follow a marker through a wildcard import (`import fw.*;`).

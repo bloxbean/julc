@@ -33,6 +33,8 @@ import javax.tools.StandardLocation;
 import java.io.IOException;
 import java.io.Writer;
 import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -235,6 +237,8 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
 
     private void processElement(Element element, TypeElement annotation) {
         String className = element.getSimpleName().toString();
+        String source = "";
+        List<String> librarySources = List.of();
         try {
             // 1. Read source file via Trees API
             var path = trees.getPath(element);
@@ -243,11 +247,11 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
                         "Cannot find source for " + className, element);
                 return;
             }
-            String source = path.getCompilationUnit().getSourceFile().getCharContent(true).toString();
+            source = path.getCompilationUnit().getSourceFile().getCharContent(true).toString();
 
             // 2. Resolve library sources needed by this validator
             scanClasspathLibraries();
-            List<String> librarySources = resolveLibrarySources(source);
+            librarySources = resolveLibrarySources(source);
 
             // 3. Compile with JulcCompiler (multi-file if libraries found)
             var options = new CompilerOptions()
@@ -271,8 +275,9 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
 
             if (result.hasErrors()) {
                 processingFailed = true;
+                String failure = String.valueOf(result.diagnostics());
                 processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
-                        "Plutus compilation failed for " + className + ": " + result.diagnostics(),
+                        "Plutus compilation failed for " + className + ": " + failure + importHint(failure, source, librarySources),
                         element);
                 return;
             }
@@ -346,8 +351,9 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
 
         } catch (CompilerException e) {
             processingFailed = true;
+            String failure = e.describe();
             processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
-                    "Plutus compilation error: " + e.describe(), element);
+                    "Plutus compilation error: " + failure + importHint(failure, source, librarySources), element);
         } catch (IOException e) {
             processingFailed = true;
             processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
@@ -380,6 +386,56 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
         // also takes a class-path source's place when the validator names it exactly (ADR-071 D1).
         return LibrarySourceResolver.resolve(validatorSource, pool, new LibrarySourceResolver.CompilationHost(
                 classpathLibraries, this::libraryOfThisCompilation, this::isLibraryMarker));
+    }
+
+    private static final Pattern MISSING_SYMBOL = Pattern.compile("symbol:\\s+(?:variable|class)\\s+(\\w+)");
+    private static final Pattern MISSING_LOCATION = Pattern.compile("location:\\s+class\\s+([\\w.]+)");
+
+    /**
+     * After JuLC's compilation of a validator failed: for each name it could not find that is a class of this
+     * compilation marked through a framework's annotation, or a marker, in the package of a source of the compilation or
+     * a package one imports with a wildcard, the import that makes JuLC find it (ADR-071 D1). Such classes are found
+     * only through a single-type import. Runs only for a failed compilation, so asking javac costs a passing build
+     * nothing.
+     */
+    private String importHint(String failure, String validatorSource, List<String> librarySources) {
+        var packages = new LinkedHashSet<String>();
+        Matcher location = MISSING_LOCATION.matcher(failure);
+        while (location.find()) {
+            String owner = location.group(1);
+            packages.add(owner.contains(".") ? owner.substring(0, owner.lastIndexOf('.')) : "");
+        }
+        var sources = new ArrayList<String>(librarySources);
+        sources.add(validatorSource);
+        for (String compiled : sources) {
+            packages.add(LibrarySourceResolver.extractPackageName(compiled));
+            packages.addAll(LibrarySourceResolver.extractWildcardImportPackages(compiled));
+        }
+        var hints = new LinkedHashSet<String>();
+        Matcher symbol = MISSING_SYMBOL.matcher(failure);
+        while (symbol.find()) {
+            for (String pkg : packages) {
+                if (pkg.isEmpty()) continue;   // a class of the default package cannot be imported
+                String fqcn = pkg + "." + symbol.group(1);
+                TypeElement type;
+                try {
+                    type = processingEnv.getElementUtils().getTypeElement(fqcn);
+                } catch (RuntimeException e) {
+                    continue;
+                }
+                if (type == null || trees.getPath(type) == null && !isLibraryMarker(fqcn)) continue;
+                var marker = JavacFacts.libraryMarker(type);
+                if (isLibraryMarker(fqcn)) {
+                    hints.add("@" + type.getSimpleName() + " is a library marker; JuLC follows a marker only through a"
+                            + " single-type import, a qualified name or its own package: add `import " + fqcn + ";`.");
+                } else if (marker.isPresent() && !marker.get().getQualifiedName().contentEquals(ONCHAIN_LIBRARY)) {
+                    hints.add(type.getSimpleName() + " is an on-chain library through @" + marker.get().getSimpleName()
+                            + "; JuLC finds such a class only through a single-type import, even from its own"
+                            + " package: add `import " + fqcn + ";`.");
+                }
+            }
+        }
+        return hints.isEmpty() ? "" : "\n" + String.join("\n", hints);
     }
 
     /** Whether javac's class {@code fqcn} is a library marker: an annotation interface carrying {@code @OnchainLibrary}. */
