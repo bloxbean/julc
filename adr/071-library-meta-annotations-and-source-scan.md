@@ -1,7 +1,7 @@
 # ADR-071: On-chain library meta-annotations and a robust library-source scan
 
-**Status:** Proposed (r12)
-**Date:** 2026-11-07 (r2–r12: 2026-11-07)
+**Status:** Proposed (r13)
+**Date:** 2026-11-07 (r2–r13: 2026-11-07)
 **Label:** `joust`
 **Risk class:** medium. It changes which sources the annotation processor and the library resolver hand to the
 compiler. A wrong rule could compile a class into a validator that should not be on-chain, or miss one and fail the
@@ -172,7 +172,10 @@ Where it applies:
   A library of this compilation also wins over a class-path source of the same name, as a collected one does (r3):
   when a source imports a class-path entry, the resolver asks the host whether the compilation has a library of that
   exact name, and takes it if so. So the script compiles the class javac checked. Only imported names are asked about
-  (r12). A class-path entry reached by a bare name or a wildcard import stays the jar's, as before this ADR, because
+  (r12). An import's choice holds for the whole resolution (r13). The resolution runs again with the compilation's
+  class in the pool, as a collected library would be, so no other path reaches the jar's class first.
+
+  A class-path entry reached only by a bare name or a wildcard import stays the jar's, as before this ADR, because
   the name may be a variable's.
 
   This is what makes the framework case work. javac never calls the processor in the round that entered the user's
@@ -298,7 +301,11 @@ a build that passed before still passes (I1), and the problem is still printed j
     name matches an unrelated source on an explicit `-sourcepath`, javac may read that source early and warn. Gradle's
     default empty source path never reads such sources.
 - **A framework's generated validators must import the marked classes they call** (D1). A bare same-package name or a
-  wildcard import does not find one; the build fails with `JULC0085`, as before this ADR.
+  wildcard import does not find one. The outcome is the same as before this ADR:
+  - usually the build fails with `JULC0085`, and the processor names the import to add;
+  - if a library of the same simple name is in the pool (a wildcard-imported one, or a jar's copy of the class), that
+    library compiles instead, silently.
+  The import avoids both.
 - **The marker contract** constrains framework authors (Q1). A marker JuLC cannot compile fails every library that
   uses it, with the compiler's usual diagnostic at the marker.
 - **Tools that read source text** still see only `@OnchainLibrary` (non-goals). A testkit test in which one marked class
@@ -316,6 +323,7 @@ a build that passed before still passes (I1), and the problem is still printed j
   - the JULC0134 and nested-class messages;
   - the compilation's class winning over an imported class-path source (r3, r12);
   - markers resolved after the libraries, and the import hint (r12);
+  - an import's choice of the compilation's class held for the whole resolution (r13);
   - the missing-marker message (r3, r5);
   - scan notes, `IllegalArgumentException` isolation and directory-listing reports;
   - docs.
@@ -373,6 +381,7 @@ Resolver tests (`LibrarySourceResolverTest`):
 | `resolve_followsOnlyAnnotationsTheHostCallsMarkers` | the CLI's pool; lookalikes; other hosts follow none, r8 |
 | `resolve_aJarSourceGivesWayOnlyToAnImportedName` | a bare or wildcard name is not asked about, r12 |
 | `resolve_aMarkersDependenciesNeverReorderTheLibraries` | I3 with a marker's `Class<?>` default, r12 |
+| `resolve_anImportsChoiceHoldsForTheWholeResolution` | a jar copy reached first by a variable's name, r13 |
 | `resolve_anAnnotationIsNeverFollowedThroughAWildcardImport` | r9 |
 | `resolve_keepsTheOrderTheSourceNamesLibrariesIn` | r10 |
 | `resolve_anAnnotationNamingTheSourcesOwnTypeIsNotFollowed` | r10 |
@@ -491,3 +500,11 @@ Regression evidence:
     reorders the libraries (R10-2).
   - **A failed compilation names the import to add** for a marked class or marker of the compilation. The guide says
     libraries import too, and that the default package cannot be imported from (design reviewer P2, P3).
+- **r13** (2026-11-07, responds to Codex's review of r12, `9a412caa`, R10-1 and R10-2 resolved, and the design and
+  regression reviewers' approvals of r12):
+  - **An import's choice holds for the whole resolution.** When an import finds the compilation's class in place of a
+    jar entry, the resolution runs again with that class in the pool. A jar copy reached earlier by a variable's name
+    no longer wins (R11-1).
+  - **The marker hint is given only for a wildcard-imported package,** not for the marker's own package (design P3-1).
+  - **Risks state that an unimported marked class can silently compile a same-named pool library,** as before this ADR
+    (design P3-2, Codex P2).

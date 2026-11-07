@@ -405,12 +405,14 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
             String owner = location.group(1);
             packages.add(owner.contains(".") ? owner.substring(0, owner.lastIndexOf('.')) : "");
         }
+        var wildcards = new LinkedHashSet<String>();
         var sources = new ArrayList<String>(librarySources);
         sources.add(validatorSource);
         for (String compiled : sources) {
             packages.add(LibrarySourceResolver.extractPackageName(compiled));
-            packages.addAll(LibrarySourceResolver.extractWildcardImportPackages(compiled));
+            wildcards.addAll(LibrarySourceResolver.extractWildcardImportPackages(compiled));
         }
+        packages.addAll(wildcards);
         var hints = new LinkedHashSet<String>();
         Matcher symbol = MISSING_SYMBOL.matcher(failure);
         while (symbol.find()) {
@@ -426,6 +428,8 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
                 if (type == null || trees.getPath(type) == null && !isLibraryMarker(fqcn)) continue;
                 var marker = JavacFacts.libraryMarker(type);
                 if (isLibraryMarker(fqcn)) {
+                    // A marker is followed from its own package already; only a wildcard import needs replacing.
+                    if (!wildcards.contains(pkg)) continue;
                     hints.add("@" + type.getSimpleName() + " is a library marker; JuLC follows a marker only through a"
                             + " single-type import, a qualified name or its own package: add `import " + fqcn + ";`.");
                 } else if (marker.isPresent() && !marker.get().getQualifiedName().contentEquals(ONCHAIN_LIBRARY)) {

@@ -512,6 +512,37 @@ class LibrarySourceResolverTest {
     }
 
     @Test
+    void resolve_anImportsChoiceHoldsForTheWholeResolution() {
+        // V's unused parameter Counter reaches the jar's app.Counter first; Helper then imports app.Counter, which the
+        // compilation supplies. The compilation's class is the one compiled, everywhere, and the list is the one the
+        // resolution gives when that class is an ordinary pool entry.
+        var jar = LibrarySourceResolver.librarySourceFromQualifiedName("app.Counter",
+                "package app; public class Counter { public static boolean ok() { return false; } }");
+        var own = LibrarySourceResolver.librarySourceFromQualifiedName("app.Counter",
+                "package app; public class Counter { public static boolean ok() { return true; } }");
+        var helper = LibrarySourceResolver.librarySourceFromQualifiedName("app.Helper", """
+                package app;
+                import app.Counter;
+                public class Helper { public static boolean ok() { return Counter.ok(); } }
+                """);
+        var validator = """
+                package app;
+                import app.Helper;
+                class V {
+                    static boolean unused(java.math.BigInteger Counter) { return Counter.signum() > 0; }
+                    static boolean f() { return Helper.ok(); }
+                }
+                """;
+
+        var resolved = LibrarySourceResolver.resolve(validator, Map.of("app.Counter", jar, "app.Helper", helper),
+                host(Map.of("app.Counter", jar), name -> name.equals("app.Counter") ? own : null, Set.of()));
+        var asPool = LibrarySourceResolver.resolve(validator, Map.of("app.Counter", own, "app.Helper", helper));
+
+        assertFalse(resolved.contains(jar.source()), resolved.toString());
+        assertEquals(asPool, resolved);
+    }
+
+    @Test
     void resolve_aMarkersDependenciesNeverReorderTheLibraries() {
         // ADR-071 I3: Counter, marked by fw.Mark whose Class<?> default imports Leaf, resolves its libraries in the order
         // the direct Counter does; the marker comes after them.

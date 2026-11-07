@@ -422,6 +422,22 @@ public final class LibrarySourceResolver {
 
     private static List<LibrarySource> resolveLibrarySources(String source, Map<String, LibrarySource> availableLibraries,
                                                              CompilationHost host) {
+        // ADR-071 D1: an import that finds the compilation's own library in place of a jar entry makes it the pool's
+        // entry for the whole resolution, as a collected library would be: the resolution is run again with it, so no
+        // path reaches the jar's class first. Each round only adds replacements, so it ends.
+        var pool = availableLibraries;
+        while (true) {
+            var replacements = new LinkedHashMap<String, LibrarySource>();
+            var result = resolveOnce(source, pool, host, replacements);
+            if (replacements.isEmpty()) return result;
+            var replaced = new LinkedHashMap<>(pool);
+            replaced.putAll(replacements);
+            pool = replaced;
+        }
+    }
+
+    private static List<LibrarySource> resolveOnce(String source, Map<String, LibrarySource> availableLibraries,
+                                                   CompilationHost host, Map<String, LibrarySource> replacements) {
         var asked = new HashMap<String, Optional<LibrarySource>>();
         // ADR-071 D1: an imported name is the pool's library, or else asked of the compilation. Nothing else is asked.
         Function<String, LibrarySource> ask = fqcn -> !SourceVersion.isName(fqcn) ? null : asked.computeIfAbsent(fqcn,
@@ -431,6 +447,7 @@ public final class LibrarySourceResolver {
             var pooled = availableLibraries.get(fqcn);
             if (pooled != null && host.jarSources().get(fqcn) != pooled) return pooled;
             var own = ask.apply(fqcn);
+            if (own != null && pooled != null) replacements.put(fqcn, own);
             return own != null ? own : pooled;
         };
         var references = new References(availableLibraries, exact, host.markers(),
