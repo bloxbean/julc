@@ -555,6 +555,47 @@ class LibrarySourceResolverTest {
     }
 
     @Test
+    void resolve_leavesSeveralAdmittedWildcardCandidatesToJavac() {
+        // Counter is a local here; two wildcard packages hold a class of that name in the compilation. The resolver
+        // reports no ambiguity of its own: javac decides, and ignores both for a variable.
+        var a = LibrarySourceResolver.librarySourceFromQualifiedName("a.Counter", "package a; public class Counter {}");
+        var b = LibrarySourceResolver.librarySourceFromQualifiedName("b.Counter", "package b; public class Counter {}");
+        var validator = """
+                package app;
+                import a.*;
+                import b.*;
+                class V { static boolean f() { java.math.BigInteger Counter = null; return Counter.signum() == 0; } }
+                """;
+
+        var resolved = LibrarySourceResolver.resolve(validator, Map.of(),
+                name -> name.equals("a.Counter") ? a : name.equals("b.Counter") ? b : null);
+
+        assertEquals(List.of(a.source(), b.source()), resolved);
+    }
+
+    @Test
+    void resolve_aSamePackageOnchainLibraryShadowsTheWildcardImport() {
+        var own = LibrarySourceResolver.librarySourceFromSimpleName("OnchainLibrary", """
+                package app;
+                public @interface OnchainLibrary {}
+                """);
+        var annotation = LibrarySourceResolver.librarySourceFromSimpleName("Note", """
+                package app;
+                import org.julclang.stdlib.annotation.*;
+                @OnchainLibrary
+                public @interface Note {}
+                """);
+        var validator = """
+                package app;
+                @Note
+                class V { static boolean f() { return true; } }
+                """;
+
+        assertEquals(List.of(), LibrarySourceResolver.resolve(validator,
+                Map.of("app.OnchainLibrary", own, "app.Note", annotation)));
+    }
+
+    @Test
     void resolve_aJarSourceGivesWayToTheCompilationsClassOfTheSameName() {
         var jar = LibrarySourceResolver.librarySourceFromQualifiedName("lib.Counter", """
                 package lib;

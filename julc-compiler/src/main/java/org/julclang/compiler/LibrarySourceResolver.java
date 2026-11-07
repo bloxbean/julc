@@ -433,7 +433,8 @@ public final class LibrarySourceResolver {
         Function<String, LibrarySource> admitted = fqcn -> availableLibraries.containsKey(fqcn) ? null : ask.apply(fqcn);
         Function<String, LibrarySource> exact = fqcn -> availableLibraries.containsKey(fqcn)
                 ? chosen.apply(availableLibraries.get(fqcn)) : ask.apply(fqcn);
-        var lookup = new Lookup(exact, admitted, fqcn -> chosen.apply(availableLibraries.get(fqcn)), chosen);
+        var lookup = new Lookup(exact, admitted, fqcn -> chosen.apply(availableLibraries.get(fqcn)), chosen,
+                availableLibraries::containsKey);
         var bySimpleName = indexBySimpleName(availableLibraries.values());
         var diagnostics = new DiagnosticCollector("<source>");
         var resolved = new LinkedHashMap<String, LibrarySource>();
@@ -475,10 +476,11 @@ public final class LibrarySourceResolver {
         }
 
         for (ClassReference reference : context.staticReferences()) {
-            LibrarySource librarySource = resolveStaticReference(reference, context.packageName(),
+            for (LibrarySource librarySource : resolveStaticReference(reference, context.packageName(),
                     context.importsBySimpleName(), context.wildcardPackages(),
-                    lookup, bySimpleName, context.guessableNames().contains(reference.simpleName()), diagnostics);
-            enqueue(librarySource, resolved, queued, toProcess);
+                    lookup, bySimpleName, context.guessableNames().contains(reference.simpleName()), diagnostics)) {
+                enqueue(librarySource, resolved, queued, toProcess);
+            }
         }
 
         for (ClassReference reference : context.annotationReferences()) {
@@ -511,11 +513,12 @@ public final class LibrarySourceResolver {
                     ? reference.simpleName()
                     : packageName + "." + reference.simpleName());
             if (candidate == null) {
-                var wildcard = wildcardCandidates(reference.simpleName(), wildcardPackages, lookup, bySimpleName, true);
+                var wildcard = pooledWildcardCandidates(reference.simpleName(), wildcardPackages, lookup, bySimpleName);
+                if (wildcard.isEmpty()) wildcard = admittedWildcardCandidates(reference.simpleName(), wildcardPackages, lookup);
                 candidate = wildcard.size() == 1 ? wildcard.getFirst() : null;
             }
         }
-        return candidate != null && isMarker(candidate) ? candidate : null;
+        return candidate != null && isMarker(candidate, lookup) ? candidate : null;
     }
 
     /**
@@ -523,19 +526,25 @@ public final class LibrarySourceResolver {
      * {@code @OnchainLibrary}, as javac's parser reads it. A host's pool may hold other annotation interfaces (the CLI
      * pools every project source); they are never followed.
      */
-    private static boolean isMarker(LibrarySource librarySource) {
+    private static boolean isMarker(LibrarySource librarySource, Lookup lookup) {
         var syntax = JavacSyntax.read(librarySource.source());
         if (syntax.hasErrors()) return false;
         var unit = syntax.unit();
+        // A type named OnchainLibrary in the marker's own package, which the host knows, shadows a wildcard import.
+        String packageName = unit.getPackageName() == null ? "" : unit.getPackageName().toString();
+        boolean shadowed = lookup.known().test(packageName.isEmpty() ? "OnchainLibrary" : packageName + ".OnchainLibrary");
         return unit.getTypeDecls().stream().anyMatch(type ->
                 type instanceof ClassTree declared && declared.getKind() == Tree.Kind.ANNOTATION_TYPE
                         && declared.getSimpleName().contentEquals(librarySource.simpleName())
                         && declared.getModifiers().getAnnotations().stream().anyMatch(annotation ->
-                        namesOnchainLibrary(unit, annotation.getAnnotationType().toString())));
+                        namesOnchainLibrary(unit, annotation.getAnnotationType().toString(), shadowed)));
     }
 
-    /** Whether {@code name}, as written in {@code unit}, is JuLC's {@code @OnchainLibrary}, by its imports. */
-    private static boolean namesOnchainLibrary(CompilationUnitTree unit, String name) {
+    /**
+     * Whether {@code name}, as written in {@code unit}, is JuLC's {@code @OnchainLibrary}: by a single-type import, the
+     * source's own package, or a wildcard import that no type of the source's package of that name shadows.
+     */
+    private static boolean namesOnchainLibrary(CompilationUnitTree unit, String name, boolean shadowedInPackage) {
         String onchainLibrary = "org.julclang.stdlib.annotation.OnchainLibrary";
         if (name.contains(".")) return name.equals(onchainLibrary);
         if (!name.equals("OnchainLibrary")) return false;
@@ -547,10 +556,15 @@ public final class LibrarySourceResolver {
             if (imported.endsWith(".OnchainLibrary")) return imported.equals(onchainLibrary);
         }
         if (unit.getPackageName() != null && unit.getPackageName().toString().equals(annotationPackage)) return true;
-        return imports.contains(annotationPackage + ".*");
+        return !shadowedInPackage && imports.contains(annotationPackage + ".*");
     }
 
-    private static LibrarySource resolveStaticReference(ClassReference reference,
+    /**
+     * The libraries a {@code Name.member} reference names: one, or none. Several only when the compilation admits more
+     * than one wildcard candidate (ADR-071 D1): the bare name may be a variable, so javac, not the resolver, decides,
+     * and reports the ambiguity if it is a class.
+     */
+    private static List<LibrarySource> resolveStaticReference(ClassReference reference,
                                                         String packageName,
                                                         Map<String, String> importsBySimpleName,
                                                         Set<String> wildcardPackages,
@@ -559,12 +573,12 @@ public final class LibrarySourceResolver {
                                                         boolean guessable,
                                                         DiagnosticCollector diagnostics) {
         if (reference.fqcn() != null) {
-            return lookup.exact().apply(reference.fqcn());
+            return single(lookup.exact().apply(reference.fqcn()));
         }
 
         String importedFqcn = importsBySimpleName.get(reference.simpleName());
         if (importedFqcn != null) {
-            return lookup.exact().apply(importedFqcn);
+            return single(lookup.exact().apply(importedFqcn));
         }
 
         String samePackageFqcn = packageName.isBlank()
@@ -572,13 +586,17 @@ public final class LibrarySourceResolver {
                 : packageName + "." + reference.simpleName();
         LibrarySource samePackageSource = lookup.guessed(samePackageFqcn, guessable);
         if (samePackageSource != null) {
-            return samePackageSource;
+            return List.of(samePackageSource);
         }
 
-        List<LibrarySource> wildcardCandidates = wildcardCandidates(reference.simpleName(), wildcardPackages, lookup,
-                bySimpleName, guessable);
+        List<LibrarySource> wildcardCandidates = pooledWildcardCandidates(reference.simpleName(), wildcardPackages,
+                lookup, bySimpleName);
+        if (wildcardCandidates.isEmpty() && guessable) {
+            var admitted = admittedWildcardCandidates(reference.simpleName(), wildcardPackages, lookup);
+            if (!admitted.isEmpty()) return admitted;
+        }
         if (wildcardCandidates.size() == 1) {
-            return wildcardCandidates.get(0);
+            return wildcardCandidates;
         }
         if (wildcardCandidates.size() > 1) {
             diagnostics.error(reference.line(), reference.column(),
@@ -587,12 +605,12 @@ public final class LibrarySourceResolver {
                             .map(LibrarySource::fqcn)
                             .sorted()
                             .toList());
-            return null;
+            return List.of();
         }
 
         List<LibrarySource> candidates = bySimpleName.getOrDefault(reference.simpleName(), List.of());
         if (candidates.size() == 1) {
-            return lookup.chosen().apply(candidates.get(0));
+            return single(lookup.chosen().apply(candidates.get(0)));
         }
         if (candidates.size() > 1) {
             diagnostics.error(reference.line(), reference.column(),
@@ -602,21 +620,26 @@ public final class LibrarySourceResolver {
                             .sorted()
                             .toList());
         }
-        return null;
+        return List.of();
     }
 
-    /**
-     * The pool's libraries named {@code simpleName} in a wildcard-imported package, each replaced by the compilation's
-     * class of that name if it is a jar source; when the pool has none, those the compilation admits under the same
-     * names (ADR-071 D1). A name that is not guessable is looked up in the pool only.
-     */
-    private static List<LibrarySource> wildcardCandidates(String simpleName, Set<String> wildcardPackages, Lookup lookup,
-                                                          Map<String, List<LibrarySource>> bySimpleName,
-                                                          boolean guessable) {
-        var pooled = bySimpleName.getOrDefault(simpleName, List.of()).stream()
+    private static List<LibrarySource> single(LibrarySource librarySource) {
+        return librarySource == null ? List.of() : List.of(librarySource);
+    }
+
+    /** The pool's libraries named {@code simpleName} in a wildcard-imported package, each as {@code chosen} gives it. */
+    private static List<LibrarySource> pooledWildcardCandidates(String simpleName, Set<String> wildcardPackages,
+                                                                Lookup lookup,
+                                                                Map<String, List<LibrarySource>> bySimpleName) {
+        return bySimpleName.getOrDefault(simpleName, List.of()).stream()
                 .filter(librarySource -> wildcardPackages.contains(librarySource.packageName()))
+                .map(lookup.chosen())
                 .toList();
-        if (!pooled.isEmpty() || !guessable) return pooled.stream().map(lookup.chosen()).toList();
+    }
+
+    /** The compilation's libraries named {@code simpleName} in a wildcard-imported package (ADR-071 D1). */
+    private static List<LibrarySource> admittedWildcardCandidates(String simpleName, Set<String> wildcardPackages,
+                                                                  Lookup lookup) {
         return wildcardPackages.stream()
                 .map(wildcardPackage -> lookup.admitted().apply(wildcardPackage + "." + simpleName))
                 .filter(Objects::nonNull)
@@ -626,10 +649,12 @@ public final class LibrarySourceResolver {
     /**
      * How a resolution finds a library by name: {@code exact} looks in the pool, then among the classes the compilation
      * admits; {@code admitted} only among the latter; {@code pooled} only in the pool. Every pool entry passes through
-     * {@code chosen}, which replaces a jar entry with the compilation's class of the same name.
+     * {@code chosen}, which replaces a jar entry with the compilation's class of the same name. {@code known} says
+     * whether the pool holds a name.
      */
     private record Lookup(Function<String, LibrarySource> exact, Function<String, LibrarySource> admitted,
-                          Function<String, LibrarySource> pooled, Function<LibrarySource, LibrarySource> chosen) {
+                          Function<String, LibrarySource> pooled, Function<LibrarySource, LibrarySource> chosen,
+                          Predicate<String> known) {
 
         /**
          * A name built from the source's package or a wildcard package: asked of the compilation only when the source
