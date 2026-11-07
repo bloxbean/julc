@@ -1,7 +1,7 @@
 # ADR-071: On-chain library meta-annotations and a robust library-source scan
 
-**Status:** Proposed (r4)
-**Date:** 2026-11-07 (r2–r4: 2026-11-07)
+**Status:** Proposed (r5)
+**Date:** 2026-11-07 (r2–r5: 2026-11-07)
 **Label:** `joust`
 **Risk class:** medium. It changes which sources the annotation processor and the library resolver hand to the
 compiler. A wrong rule could compile a class into a validator that should not be on-chain, or miss one and fail the
@@ -138,10 +138,20 @@ Where it applies:
   - each wildcard-imported package plus the simple name, when the pool has no wildcard match.
   The pool-wide simple-name fallback never asks.
 
-  A name built from the source's package or a wildcard package is asked about only when the source writes it as a
-  bare identifier that it does not declare as a variable or import statically (r4). In `BigInteger.ZERO.signum()`,
-  `ZERO` is a field, so `app.ZERO` is never asked about: the lookup could make javac read an unrelated source, which
-  warns under `-Werror`. The same goes for a local variable named `Counter`.
+  A name built from the source's package or a wildcard package is asked about only where javac would resolve it as
+  a type (r4, r5). That means the source writes it as a bare identifier, and no variable of that name is in scope at
+  that site.
+  - Scope means a parameter or local of an enclosing method (its lambdas included), a field of an enclosing class,
+    or a single static import.
+  - In `BigInteger.ZERO.signum()`, `ZERO` is a field, so `app.ZERO` is never asked about. The lookup could make
+    javac read an unrelated source, which warns under `-Werror`.
+  - A local or parameter named `Counter` hides the class only where it is in scope. A parameter in another method
+    does not hide `Counter.ok()` in the entrypoint (r5). If it did, a wildcard library of the same simple name could
+    be compiled in place of the class javac binds.
+  - A source with a static on-demand import (`import static X.*`) may have any field in scope, so no bare name of it
+    is asked about (r5). Such a source still resolves through its imports and the pool, as before.
+  - Fields a class inherits are not known to the reading. Such a name may still be asked about; javac then binds the
+    field, and the class asked about is not used.
 
   The processor answers with the class javac names, if it is a top-level library of this compilation (I2,
   `Trees.getPath` non-null). The source is keyed by javac's qualified name, not the source's text. The host is asked
@@ -156,9 +166,12 @@ Where it applies:
   `META-INF/plutus-sources`.
 
   What the host admits is not added to the pool, so a validator's libraries never depend on another validator's (I5).
-  A library of this compilation also wins over a class-path source of the same name, as a collected one does: when
-  the processor builds the pool, it replaces such a class-path entry with the compilation's class (r3). The script
-  then always compiles the class javac checked.
+  A library of this compilation also wins over a class-path source of the same name, as a collected one does (r3).
+  When a source names a class-path entry exactly, the resolver asks the host whether the compilation has a library
+  of that name, and takes it if so. Exactly means by import, by qualified name, or by a same-package or wildcard
+  name where javac resolves a type. The script then always compiles the class javac checked. Entries the source does
+  not name are never asked about (r5; r3 asked about every class-path entry up front, which could read unrelated
+  sources).
   The resolver follows admitted sources like any other, so a library that reaches a marked library through another
   library is found.
 
@@ -166,8 +179,9 @@ Where it applies:
   class, but the validator that names it resolves it by exact name.
 - **Markers are references (r2).** The resolver treats every annotation a source uses as a reference, whatever its
   spelling (`@mark` too), resolved by its qualified name, an import, the source's package or a single wildcard match.
-  It is added only if the pool entry is a marker: an annotation interface that carries `@OnchainLibrary`, as
-  javac's parser reads it (r4). It never goes through the pool-wide fallback, and it gives no diagnostic.
+  It is added only if the pool entry is a marker: an annotation interface that carries JuLC's
+  `org.julclang.stdlib.annotation.OnchainLibrary`, written qualified or imported, as javac's parser reads it (r4,
+  r5). A lookalike `@other.OnchainLibrary` does not count. It never goes through the pool-wide fallback, and it gives no diagnostic.
 
   A host's pool may hold other annotation interfaces. The CLI's `ProjectScanner` pools every non-validator file, and
   a framework's own index lists what it ships. Those interfaces are never followed (I4). A same-project marker is collected like any `@OnchainLibrary` class, since it carries the annotation itself. A
@@ -179,7 +193,10 @@ Where it applies:
   validator is JULC0134. The message names the marker: "must not combine @StateLike (which implies @OnchainLibrary)
   with validator annotation(s): @SpendingValidator". For `@OnchainLibrary` itself the text is unchanged.
 - **Nested classes.** A nested `@OnchainLibrary` class is rejected by round collection, as before. A nested class
-  that is a library through a marker is rejected when a validator's resolution asks about its top-level class. For
+  that is a library through a marker is rejected in two cases:
+  - when a validator's resolution asks about any class of its file;
+  - when round collection collects a library of its file (r5), for example a marked class nested in a direct
+    library. For
   `@OnchainLibrary` the message is unchanged. For a marker it reads "@StateLike makes Inner an on-chain
   library, and an on-chain library must be a top-level class. Move Inner into a file of its own."
 
@@ -191,7 +208,8 @@ that JuLC can compile.
     package. The resolver follows imports and member accesses, not class literals.
 - Its own annotations: only `@Retention`, `@Target` and `@OnchainLibrary`.
 - A marker in a jar ships its source in `META-INF/plutus-sources`. The marker carries `@OnchainLibrary` itself, so
-  the Gradle plugin's `bundleJulcSources` bundles it. When the source is missing, the processor says so (r3).
+  the Gradle plugin's `bundleJulcSources` bundles it. When the source is missing, the processor says so for every
+  marker on the class, on both the admission and the collection path (r3, r5).
 - Arrays, enum members, and `@Documented`, `@Inherited` or `@Repeatable` fail with the compiler's usual diagnostic.
   The library developer guide states this contract.
 
@@ -266,7 +284,10 @@ a build that passed before still passes (I1), and the problem is still printed j
   `-Werror` build.
   - This happens only for a name the source uses as a type, so javac would resolve the same class itself.
   - When that class is a library, the build used to fail with `JULC0085`; now it compiles.
-  - Names that are fields or variables are never asked about (r4).
+  - Names that are variables in scope at the site are never asked about, and neither are class-path entries the
+    source does not name (r4, r5).
+  - A field inherited from a superclass is the remaining gap. Gradle's default empty source path never reads such
+    sources; Maven's source roots are compiled anyway.
   - **Cost:** measured over 1,000 validators. About 29,000 lookups of 196 distinct names took 74 ms cold, and the
     processor's total time did not grow.
 - **The marker contract** constrains framework authors (Q1). A marker JuLC cannot compile fails every library that
@@ -277,7 +298,7 @@ a build that passed before still passes (I1), and the problem is still printed j
 ## Implementation milestones
 
 - **M1 (r1, `566ea845`):** D1 with regex discovery, and D2 with warnings.
-- **M2 (r2–r4):**
+- **M2 (r2–r5):**
   - admission by exact name through the resolver, replacing regex discovery; round collection unchanged (r3);
   - markers as references;
   - `JavacFacts.libraryMarker` as the one rule;
@@ -285,6 +306,7 @@ a build that passed before still passes (I1), and the problem is still printed j
   - the compilation's class winning over a class-path source;
   - the missing-marker message (r3);
   - markers only, guessed names only for bare identifiers, nesting across the file (r4);
+  - scope-aware guessing, precedence at resolution, JuLC's own `@OnchainLibrary`, every marker reported (r5);
   - scan notes, `IllegalArgumentException` isolation and directory-listing reports;
   - docs.
   - Exit: the tests below are green, the full build is green, the julc-examples outputs match the merge base, and
@@ -320,6 +342,10 @@ class-path marker whose source ships in `META-INF/plutus-sources`.
 | `namesThatAreNotTypesNeverReadTheSourcePath` | `-Werror`, r4 |
 | `aNestedLibraryImportedByItsOwnNameIsRejected` | r4 |
 | `aNestedLibraryInAnotherClassOfTheSameFileIsRejected` | r4 |
+| `aVariableInAnotherMethodDoesNotHideAMarkedClass` | r5 |
+| `anUnusedClassPathLibraryNeverReadsTheSourcePath` | `-Werror`, r5 |
+| `aMarkedClassNestedInADirectLibraryIsRejected` | r5 |
+| `everyMarkerWithoutASourceIsReported` | r5 |
 
 `rejectsNestedMetaAnnotatedLibrary` covers an unmarked outer class that a validator names (r3).
 
@@ -332,6 +358,9 @@ Resolver tests (`LibrarySourceResolverTest`):
 | `resolve_asksTheCompilationOnlyForExactNamesThePoolLacks` | the names asked; the fallback never asks; admitted sources are not pooled |
 | `resolve_followsOnlyAnnotationsThatAreMarkers` | the CLI's pool, r4 |
 | `resolve_asksNothingForAFieldOrAVariableThatLooksLikeAClass` | r4 |
+| `resolve_asksNoBareNameUnderAStaticWildcardImport` | r5 |
+| `resolve_followsOnlyJulcsOwnOnchainLibraryAnnotation` | r5 |
+| `resolve_aJarSourceGivesWayToTheCompilationsClassOfTheSameName` | r5 |
 | `scanClasspathSources_skipsAnUnreadableEntryReportsItAndReadsTheRest` | |
 | `scanClasspathSources_aMalformedEntryUrlCostsOnlyThatEntry` | |
 | `scanClasspathSources_readsAJarRewrittenAfterAnEarlierScan` | fails with the URL cache on |
@@ -392,3 +421,12 @@ Regression evidence:
   - **An annotation of any spelling** is a reference (R2-6).
   - **`Class<?>` defaults** must import the library they name; the marker contract says so (R2-7).
   - **Risks** call the implicit-compilation message a warning (Codex's ADR notes).
+- **r5** (2026-11-07, responds to Codex's review of r4, `1a2d4a96`; the design and regression reviewers approved r4):
+  - **Guessing is scope-aware.** A variable hides a bare name only where it is in scope, so a parameter in another
+    method no longer selects a wrong library (R3-1).
+  - **Static on-demand imports:** no bare name is guessed under one (R3-3).
+  - **The compilation's class beats a class-path entry** only when the source names that entry exactly; unnamed
+    entries are never looked up (R3-2).
+  - **A marker** must carry JuLC's own `@OnchainLibrary` (R3-4).
+  - **Round collection rejects marked nested classes** in a direct library's file (R3-5).
+  - **Every marker without a source** is reported, on both paths (design P3-A).

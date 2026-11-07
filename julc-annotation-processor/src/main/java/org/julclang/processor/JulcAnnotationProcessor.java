@@ -180,6 +180,11 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
             if (sameProjectLibraries.containsKey(fqcn)) {
                 continue;
             }
+            var libraryPath = trees.getPath(element);
+            if (libraryPath != null) {
+                rejectNestedLibrariesInFile(libraryPath, true);   // ADR-071 D1: marked classes nested in this file
+            }
+            requireMarkerSources(typeElement);
             try {
                 var path = trees.getPath(element);
                 if (path != null) {
@@ -355,19 +360,10 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
         }
     }
 
-    /**
-     * Same-project and class-path libraries, merged by primary name (same-project takes precedence). A library of this
-     * compilation that was not collected, such as one marked through a framework's annotation, takes precedence over a
-     * class-path source of the same name too (ADR-071 D1): the compilation's class is the one javac checked.
-     */
+    /** Same-project and class-path libraries, merged by primary name (same-project takes precedence). */
     private Map<String, LibrarySource> libraryPool() {
         var pool = new LinkedHashMap<>(classpathLibraries);
         pool.putAll(sameProjectLibraries);
-        for (String fqcn : classpathLibraries.keySet()) {
-            if (sameProjectLibraries.containsKey(fqcn)) continue;
-            var own = libraryOfThisCompilation(fqcn);
-            if (own != null) pool.put(fqcn, own);
-        }
         return pool;
     }
 
@@ -379,7 +375,9 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
     private List<String> resolveLibrarySources(String validatorSource) {
         var pool = libraryPool();
 
-        return LibrarySourceResolver.resolve(validatorSource, pool, this::libraryOfThisCompilation);
+        // A library of this compilation that was not collected, such as one marked through a framework's annotation,
+        // also takes a class-path source's place when the validator names it exactly (ADR-071 D1).
+        return LibrarySourceResolver.resolve(validatorSource, pool, classpathLibraries, this::libraryOfThisCompilation);
     }
 
     /**
@@ -406,20 +404,14 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
         if (path == null) {
             return null;   // a class-path class: its source comes from META-INF/plutus-sources, if anywhere
         }
-        // Every top-level class of the file has its nested library classes rejected, the asked one's included.
-        for (var declaration : path.getCompilationUnit().getTypeDecls()) {
-            if (trees.getElement(TreePath.getPath(path.getCompilationUnit(), declaration)) instanceof TypeElement top) {
-                rejectNestedLibraries(top);
-            }
-        }
+        rejectNestedLibrariesInFile(path, false);
         if (type.getNestingKind() != NestingKind.TOP_LEVEL) {
             return null;
         }
-        var marker = JavacFacts.libraryMarker(type);
-        if (marker.isEmpty()) {
+        if (JavacFacts.libraryMarker(type).isEmpty()) {
             return null;
         }
-        requireMarkerSource(type, marker.get());
+        requireMarkerSources(type);
         try {
             return LibrarySourceResolver.librarySourceFromQualifiedName(fqcn,
                     path.getCompilationUnit().getSourceFile().getCharContent(true).toString());
@@ -430,10 +422,26 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
         }
     }
 
-    private void rejectNestedLibraries(TypeElement type) {
+    /**
+     * Every top-level class of the file has its nested library classes rejected. Round collection reports a nested
+     * {@code @OnchainLibrary} itself, so from there only those marked through a marker are reported here.
+     */
+    private void rejectNestedLibrariesInFile(TreePath path, boolean markedOnly) {
+        for (var declaration : path.getCompilationUnit().getTypeDecls()) {
+            if (trees.getElement(TreePath.getPath(path.getCompilationUnit(), declaration)) instanceof TypeElement top) {
+                rejectNestedLibraries(top, markedOnly);
+            }
+        }
+    }
+
+    private void rejectNestedLibraries(TypeElement type, boolean markedOnly) {
         var nested = new LinkedHashSet<Element>();
         for (Element member : type.getEnclosedElements()) collectLibraries(member, nested);
         for (Element element : nested) {
+            if (markedOnly && JavacFacts.libraryMarker(element).orElseThrow().getQualifiedName()
+                    .contentEquals(ONCHAIN_LIBRARY)) {
+                continue;
+            }
             if (reportedNestedLibraries.add(element)) {
                 processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
                         nestedLibraryMessage((TypeElement) element), element);
@@ -446,8 +454,21 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
      * whose jar ships its source in {@code META-INF/plutus-sources}, has one; for any other, JuLC's own compilation could
      * only report that it cannot find the annotation, so say why here.
      */
+    private void requireMarkerSources(TypeElement library) {
+        for (var mirror : library.getAnnotationMirrors()) {
+            var annotation = (TypeElement) mirror.getAnnotationType().asElement();
+            if (JavacFacts.libraryMarker(annotation).filter(meta -> meta.getQualifiedName().contentEquals(ONCHAIN_LIBRARY))
+                    .isPresent()) {
+                requireMarkerSource(library, annotation);
+            }
+        }
+    }
+
     private void requireMarkerSource(TypeElement library, TypeElement marker) {
         String markerName = marker.getQualifiedName().toString();
+        if (!markerName.equals(ONCHAIN_LIBRARY) && trees.getPath(marker) == null) {
+            scanClasspathLibraries();
+        }
         if (markerName.equals(ONCHAIN_LIBRARY) || sameProjectLibraries.containsKey(markerName)
                 || classpathLibraries.containsKey(markerName) || trees.getPath(marker) != null
                 || !reportedMarkers.add(markerName)) {

@@ -1249,6 +1249,112 @@ class JulcAnnotationProcessorTest {
                 "Got: " + result.diagnostics());
     }
 
+    /** A parameter named like the class in another method does not hide the class where the entrypoint names it. */
+    @Test
+    void aVariableInAnotherMethodDoesNotHideAMarkedClass() throws Exception {
+        var result = compileWithFramework(Map.of("app/Counter", MARKED_COUNTER), Map.of("app.UsesCounter", """
+                package app;
+
+                import org.julclang.stdlib.annotation.*;
+                import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+
+                @SpendingValidator
+                public class UsesCounter {
+                    @Entrypoint
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
+                        return Counter.twice(redeemer).compareTo(BigInteger.TEN) == 0;
+                    }
+
+                    static boolean positive(BigInteger Counter) {
+                        return Counter.signum() > 0;
+                    }
+                }
+                """), true);
+        assertTrue(result.success(), "Expected success, got: " + result.diagnostics());
+    }
+
+    /**
+     * A direct-only project whose pool holds an unused class-path library (the test resources' {@code Shadowed}): an
+     * unrelated source of that name on the source path is never read, so -Werror passes as before.
+     */
+    @Test
+    void anUnusedClassPathLibraryNeverReadsTheSourcePath() throws Exception {
+        Path sourcePath = tempDir.resolve("sourcepath");
+        Files.createDirectories(sourcePath.resolve("org/julclang/processor/testshadow"));
+        Files.writeString(sourcePath.resolve("org/julclang/processor/testshadow/Shadowed.java"),
+                "package org.julclang.processor.testshadow;\npublic class Shadowed {}\n");
+        var direct = "import org.julclang.stdlib.annotation.OnchainLibrary;\n"
+                + META_LIBRARY.replace("@StateLike", "@OnchainLibrary");
+        var result = compileWithProcessorSources(Map.of("MetaMath", direct, "UsesMeta", USES_META),
+                List.of("-sourcepath", sourcePath.toString(), "-Werror"));
+        assertTrue(result.success(), "Expected success, got: " + result.diagnostics());
+    }
+
+    @Test
+    void aMarkedClassNestedInADirectLibraryIsRejected() throws Exception {
+        var outer = """
+                import org.julclang.stdlib.annotation.OnchainLibrary;
+                import java.math.BigInteger;
+
+                @OnchainLibrary
+                public class MetaMath {
+                    public static BigInteger twice(BigInteger x) {
+                        return x.add(x);
+                    }
+
+                    @StateLike
+                    public static class Inner {
+                        public static boolean ok() {
+                            return true;
+                        }
+                    }
+                }
+                """;
+        var result = compileWithProcessorSources(Map.of("StateLike", STATE_LIKE, "MetaMath", outer, "UsesMeta", USES_META),
+                List.of());
+        assertFalse(result.success());
+        assertTrue(result.diagnostics().stream().anyMatch(d -> d.getMessage(null).contains("@StateLike makes Inner")),
+                "Got: " + result.diagnostics());
+    }
+
+    @Test
+    void everyMarkerWithoutASourceIsReported() throws Exception {
+        Path markerClasses = tempDir.resolve("nosrc-classes");
+        Files.createDirectories(markerClasses);
+        compileClasses(Map.of("fw/NoSrc", """
+                package fw;
+
+                import org.julclang.stdlib.annotation.OnchainLibrary;
+                import java.lang.annotation.*;
+
+                @OnchainLibrary
+                @Retention(RetentionPolicy.CLASS)
+                @Target(ElementType.TYPE)
+                public @interface NoSrc {}
+                """), markerClasses);
+        var library = """
+                import org.julclang.stdlib.annotation.OnchainLibrary;
+                import java.math.BigInteger;
+                import fw.NoSrc;
+
+                @OnchainLibrary
+                @NoSrc
+                public class MetaMath {
+                    public static BigInteger twice(BigInteger x) {
+                        return x.add(x);
+                    }
+                }
+                """;
+        var result = compileWithProcessors(Map.of("MetaMath", library, "UsesMeta", USES_META),
+                List.of("-classpath", markerClasses + File.pathSeparator + System.getProperty("java.class.path")),
+                List.of(new JulcAnnotationProcessor()));
+        assertFalse(result.success());
+        assertTrue(result.diagnostics().stream().anyMatch(d -> d.getMessage(null).contains(
+                "@NoSrc makes MetaMath an on-chain library, but JuLC has no source for fw.NoSrc")),
+                "Got: " + result.diagnostics());
+    }
+
     private String script(String validator) throws IOException {
         return ValidatorOutput.fromJson(Files.readString(
                 tempDir.resolve("META-INF/plutus/" + validator + ".plutus.json"))).cborHex();

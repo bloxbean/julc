@@ -488,6 +488,79 @@ class LibrarySourceResolverTest {
     }
 
     @Test
+    void resolve_asksNoBareNameUnderAStaticWildcardImport() {
+        // import static X.* may bring any field into scope, so no bare name is asked of the compilation.
+        var validator = """
+                package app;
+                import static app.Lib.*;
+                class V { static boolean f() { return TEXT.length() == 0; } }
+                """;
+        var asked = new ArrayList<String>();
+
+        LibrarySourceResolver.resolve(validator, Map.of(), name -> {
+            asked.add(name);
+            return null;
+        });
+
+        assertFalse(asked.contains("app.TEXT"), asked.toString());
+    }
+
+    @Test
+    void resolve_followsOnlyJulcsOwnOnchainLibraryAnnotation() {
+        // A lookalike @OnchainLibrary from another package does not make a marker.
+        var qualified = LibrarySourceResolver.librarySourceFromSimpleName("Audit", """
+                package app;
+                @other.OnchainLibrary
+                public @interface Audit {}
+                """);
+        var imported = LibrarySourceResolver.librarySourceFromSimpleName("Trace", """
+                package app;
+                import other.OnchainLibrary;
+                @OnchainLibrary
+                public @interface Trace {}
+                """);
+        var real = LibrarySourceResolver.librarySourceFromSimpleName("Mark", """
+                package app;
+                import org.julclang.stdlib.annotation.*;
+                @OnchainLibrary
+                public @interface Mark {}
+                """);
+        var validator = """
+                package app;
+                @Audit @Trace @Mark
+                class V { static boolean f() { return true; } }
+                """;
+
+        var resolved = LibrarySourceResolver.resolve(validator,
+                Map.of("app.Audit", qualified, "app.Trace", imported, "app.Mark", real));
+
+        assertEquals(List.of(real.source()), resolved);
+    }
+
+    @Test
+    void resolve_aJarSourceGivesWayToTheCompilationsClassOfTheSameName() {
+        var jar = LibrarySourceResolver.librarySourceFromQualifiedName("lib.Counter", """
+                package lib;
+                public class Counter { public static boolean ok() { return false; } }
+                """);
+        var own = LibrarySourceResolver.librarySourceFromQualifiedName("lib.Counter", """
+                package lib;
+                public class Counter { public static boolean ok() { return true; } }
+                """);
+        var validator = """
+                package app;
+                import lib.Counter;
+                class V { static boolean f() { return Counter.ok(); } }
+                """;
+
+        assertEquals(List.of(own.source()), LibrarySourceResolver.resolve(validator, Map.of("lib.Counter", jar),
+                Map.of("lib.Counter", jar), name -> name.equals("lib.Counter") ? own : null));
+        // Without the jar map the pooled entry is a project source and stays.
+        assertEquals(List.of(jar.source()), LibrarySourceResolver.resolve(validator, Map.of("lib.Counter", jar),
+                name -> name.equals("lib.Counter") ? own : null));
+    }
+
+    @Test
     void scanClasspathSources_skipsAnUnreadableEntryReportsItAndReadsTheRest(@TempDir Path tempDir) throws Exception {
         // ADR-071 D2: an index listing a source the jar does not hold costs that source only, and is reported.
         Path broken = tempDir.resolve("broken.jar");
