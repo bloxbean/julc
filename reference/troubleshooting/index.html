@@ -332,6 +332,10 @@ lowering when javac’s name has no value in the current scope.</p>
 undefined variable.</p>
 <p><code dir="auto">JulcMap.of(...)</code> used to be reported as <code dir="auto">Undefined variable: JulcMap</code>; it now
 reports <code dir="auto">JULC0062</code> (<a href="#123-julc0062-julcmapof-is-off-chain-only-and-has-no-on-chain-implementation">1.23</a>).</p>
+<p>If the undefined name is an on-chain library class, such as <code dir="auto">OutputLib</code>, look for a note earlier in the build output:
+<code dir="auto">JuLC skipped an on-chain library source on the processor path: ...</code>. It names a jar whose <code dir="auto">META-INF/plutus-sources</code>
+JuLC could not read, typically a jar rebuilt or deleted while a Gradle daemon kept it open. Rebuild that jar, or run
+the build again; JuLC reads the jars from disk each time.</p>
 <hr>
 <div class="sl-heading-wrapper level-h3"><h3 id="121-julc0003-return-is-not-supported-inside-while-loop-body">1.21 <code dir="auto">JULC0003</code> <code dir="auto">'return' is not supported inside while loop body</code></h3><a class="sl-anchor-link" href="#121-julc0003-return-is-not-supported-inside-while-loop-body"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “1.21 JULC0003 'return' is not supported inside while loop body”</span></a></div>
 <p><strong>Cause:</strong> A <code dir="auto">while</code> loop body cannot <code dir="auto">return</code> from the enclosing method. A <code dir="auto">while</code>

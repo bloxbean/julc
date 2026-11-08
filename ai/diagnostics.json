@@ -1612,7 +1612,7 @@
       "title": "A class is both a library and a validator",
       "category": "VALIDATOR",
       "severity": "error",
-      "template": "Class {0} must not combine @OnchainLibrary with validator annotation(s): {1}",
+      "template": "Class {0} must not combine {2} with validator annotation(s): {1}",
       "summary": "A class is either a library that other code calls or a validator that the ledger runs.",
       "fix": "Keep one role on the class, and move the other into a class of its own."
     },

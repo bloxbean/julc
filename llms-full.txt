@@ -3,7 +3,7 @@
 > Single-file dump of the JuLC docsite, suitable for AI agent ingestion.
 
 julcVersion: 0.1.0-pre20
-Generated: 2026-11-07T04:25:10.065Z
+Generated: 2026-11-08T13:21:40.042Z
 Site: https://julc.dev
 Repo: https://github.com/bloxbean/julc
 Examples: https://github.com/bloxbean/julc-examples
@@ -16573,7 +16573,15 @@ public @interface OnchainLibrary {
 }
 ```
 
-**Source:** `julc-stdlib/src/main/java/org/julclang/onchain/annotation/OnchainLibrary.java`
+**Source:** `julc-stdlib/src/main/java/org/julclang/stdlib/annotation/OnchainLibrary.java`
+
+**JOUST's `@StateContract`.** JuLC treats `org.julclang.state.api.StateContract`, the contract annotation of the JOUST
+framework, exactly like `@OnchainLibrary`. A top-level class carrying it is an on-chain library: it is found the same way
+(in the same project, or in a jar's `META-INF/plutus-sources`) and called the same way (by its simple name from the
+same package, or through an import). JuLC compiles the annotation's own source with the class, however the class names
+it (a single-type or wildcard import, or `@org.julclang.state.api.StateContract`), so that source must be in the library
+pool; JOUST's API jar ships it. No other annotation stands for `@OnchainLibrary`: an annotation of your own
+that carries `@OnchainLibrary` does not make the classes it marks libraries, so mark those classes `@OnchainLibrary`.
 
 ##### 2.2 Basic Structure
 
@@ -18254,6 +18262,11 @@ undefined variable.
 
 `JulcMap.of(...)` used to be reported as `Undefined variable: JulcMap`; it now
 reports `JULC0062` ([1.23](#123-julc0062-julcmapof-is-off-chain-only-and-has-no-on-chain-implementation)).
+
+If the undefined name is an on-chain library class, such as `OutputLib`, look for a note earlier in the build output:
+`JuLC skipped an on-chain library source on the processor path: ...`. It names a jar whose `META-INF/plutus-sources`
+JuLC could not read, typically a jar rebuilt or deleted while a Gradle daemon kept it open. Rebuild that jar, or run
+the build again; JuLC reads the jars from disk each time.
 
 ---
 

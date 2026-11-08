@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "julcVersion": "0.1.0-pre20",
-  "generatedAt": "2026-11-07T04:25:10.093Z",
+  "generatedAt": "2026-11-08T13:21:40.087Z",
   "counts": {
     "stdlibClasses": 15,
     "stdlibMethods": 186,
@@ -5827,7 +5827,7 @@
         "title": "A class is both a library and a validator",
         "category": "VALIDATOR",
         "severity": "error",
-        "template": "Class {0} must not combine @OnchainLibrary with validator annotation(s): {1}",
+        "template": "Class {0} must not combine {2} with validator annotation(s): {1}",
         "summary": "A class is either a library that other code calls or a validator that the ledger runs.",
         "fix": "Keep one role on the class, and move the other into a class of its own."
       },
