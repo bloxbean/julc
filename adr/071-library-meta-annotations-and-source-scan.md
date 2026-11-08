@@ -1,7 +1,7 @@
 # ADR-071: On-chain library meta-annotations and a robust library-source scan
 
-**Status:** Proposed (r15)
-**Date:** 2026-11-07 (r2–r13: 2026-11-07; r14, r15: 2026-11-08)
+**Status:** Proposed (r16)
+**Date:** 2026-11-07 (r2–r13: 2026-11-07; r14–r16: 2026-11-08)
 **Label:** `joust`
 **Risk class:** medium. It changes which sources the annotation processor and the library resolver hand to the
 compiler. A wrong rule could compile a class into a validator that should not be on-chain, or miss one and fail the
@@ -168,9 +168,8 @@ Where it applies:
   What the host admits is not added to the pool, so a validator's libraries never depend on another validator's (I5).
   The resolver follows admitted sources like any other, in the same single pass and in first-named order. So a
   library that imports a marked library is found, and the library order is what it would be if the class were a
-  pool entry (I3). Markers, and what only they reach (a `Class<?>` default's class, say), are resolved after the
-  libraries. So a marker never moves a library ahead of the place its callers give it (r12). What a marker refers to is
-  not followed at all (r15, the marker contract).
+  pool entry (I3). Markers are resolved after the libraries, so a marker never moves a library ahead of the place its
+  callers give it (r12). What a marker refers to is not followed at all (r15, the marker contract).
 
   **A class-path copy of a project library (r14).** Sometimes a jar on the processor path ships a source for a class
   that this compilation also declares as an on-chain library, typically a stale jar of the project's own module.
@@ -203,8 +202,8 @@ Where it applies:
     the annotation itself. A class-path marker is a library source in its jar's `META-INF/plutus-sources`.
 
   So the marker's source is compiled with each library and validator that uses it, by an import, a qualified name or
-  from its own package; never through a wildcard import. All of a class's
-  markers come along, and so do the libraries a marker's member defaults read.
+  from its own package; never through a wildcard import. All of a class's markers come along; nothing a marker refers
+  to does (r15).
 - **Conflict check.** `JavacDiscovery.rejectRoleConflict` uses the rule, so a meta-annotated library that is also a
   validator is JULC0134. The message names the marker: "must not combine @StateLike (which implies @OnchainLibrary)
   with validator annotation(s): @SpendingValidator". For `@OnchainLibrary` itself the text is unchanged.
@@ -219,13 +218,18 @@ Where it applies:
 
 The **marker contract**: JuLC compiles the marker's source, so the marker must be a top-level annotation interface
 that JuLC can compile.
-- Members: primitives, `String` or `Class<?>` of a JDK class, with constant defaults.
+- Members: `boolean`, `byte`, `short`, `int` or `long`, `String`, or `Class<?>` of a JDK class, with constant
+  defaults. `char` literals and floating-point members are outside JuLC's subset.
 - **A marker refers to no on-chain library** (r15): no default reads a library's constant, and no `Class<?>` default
   names a library class. JuLC compiles a marker for the annotation's sake only and does not follow what it refers
   to. So nothing a marker names joins the script, and a marked class compiles to the same script as a direct one
-  (I3). A marker that refers to a library fails to compile, with the compiler's usual diagnostic. r2–r14 followed a
-  marker's references; an unused library that only a marker named then changed the script at `none` and with source
-  maps (review R13-1).
+  (I3). JuLC does not check this rule. A marker that refers to a library fails to compile, with the compiler's usual
+  diagnostic, unless that library is compiled anyway for another reason. r2–r14 followed a marker's references; an
+  unused library that only a marker named then changed the script at `none` and with source maps (review R13-1).
+- **A marker's file declares the marker alone** (r16), with no other top-level type and no nested type. JuLC compiles
+  the marker's whole file with the libraries that use it, so another type's code would join the script (review
+  R14-1). The processor checks a marker of this compilation and reports any other type with the remedy: "Move Support
+  to a file of its own." A marker from a jar is not checked.
 - Its own annotations: only `@Retention`, `@Target` and `@OnchainLibrary`.
 - A marker in a jar ships its source in `META-INF/plutus-sources`. The marker carries `@OnchainLibrary` itself, so
   the Gradle plugin's `bundleJulcSources` bundles it. When the source is missing, the processor says so for every
@@ -333,7 +337,7 @@ a build that passed before still passes (I1), and the problem is still printed j
   - `JavacFacts.libraryMarker` as the one rule;
   - the JULC0134 and nested-class messages;
   - a note when a class-path copy of a project library is compiled (r14; r3–r13 replaced the copy);
-  - a marker's references not followed (r15);
+  - a marker's references not followed (r15), and a marker's file declaring the marker alone (r16);
   - markers resolved after the libraries, and the import hint (r12);
   - the missing-marker message (r3, r5);
   - scan notes, `IllegalArgumentException` isolation and directory-listing reports;
@@ -371,6 +375,7 @@ class-path marker whose source ships in `META-INF/plutus-sources`.
 | `aValidatorCompilesAloneAsItDoesWithOthers` | I5 |
 | `aLowercaseMarkerIsFollowed` | r4 |
 | `aMarkerClassDefaultNamingALibraryIsRejected` | the marker contract, r15 |
+| `aMarkerWhoseFileDeclaresAnotherTypeIsRejected` | the marker contract, r16 |
 | `aFieldQualifierNeverReadsTheSourcePath` | `-Werror`, r4 |
 | `aMarkedLibraryKeepsItsPlaceInTheLibraryOrder` | I3 at `none` and with source maps, r10 |
 | `aNestedLibraryImportedByItsOwnNameIsRejected` | r4 |
@@ -530,3 +535,9 @@ Regression evidence:
     a marker's `Class<?>` default no longer changes the script at `none` and with source maps (R13-1). JOUST's
     `@StateContract`, with primitive members only, is unaffected.
   - **Risks:** for a jar's copy, the remedy is removing the stale jar; an import does not avoid it.
+- **r16** (2026-11-08, responds to Codex's review of r15, `8d3bdd39`, where R13-1 and R10–R12 held and 140 marked/direct
+  comparisons of contract-following markers were byte-identical):
+  - **A marker's file declares the marker alone.** The processor reports a companion or nested type with the remedy,
+    so no other type's code joins the script (R14-1).
+  - **ADR accuracy:** the stale text about following a marker's dependencies is gone; the member types are stated
+    precisely; the "refers to no library" rule is documented as unchecked.

@@ -92,6 +92,9 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
     /** Marker annotations already reported as having no source. */
     private final Set<String> reportedMarkers = new HashSet<>();
 
+    /** Marker annotations whose file has already been checked. */
+    private final Set<String> reportedMarkerFiles = new HashSet<>();
+
     /** Project libraries already reported as compiled from a jar's copy. */
     private final Set<String> reportedJarCopies = new HashSet<>();
 
@@ -386,7 +389,7 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
         var pool = libraryPool();
 
         var resolved = LibrarySourceResolver.resolve(validatorSource, pool, new LibrarySourceResolver.CompilationHost(
-                this::libraryOfThisCompilation, this::isLibraryMarker));
+                this::libraryOfThisCompilation, this::isFollowedMarker));
         noteJarCopiesOfProjectLibraries(resolved);
         return resolved;
     }
@@ -470,6 +473,34 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
     }
 
     /** Whether javac's class {@code fqcn} is a library marker: an annotation interface carrying {@code @OnchainLibrary}. */
+    /**
+     * {@link #isLibraryMarker}, for a marker the resolver follows. JuLC compiles the marker's whole file with the
+     * libraries that use it, so a marker of this compilation whose file declares any other type, or which declares a
+     * nested type, would add that type's code to the script: it is reported, once (ADR-071, the marker contract).
+     */
+    private boolean isFollowedMarker(String fqcn) {
+        if (!isLibraryMarker(fqcn)) return false;
+        var marker = processingEnv.getElementUtils().getTypeElement(fqcn);
+        var path = trees.getPath(marker);
+        if (path == null || !reportedMarkerFiles.add(fqcn)) return true;
+        var others = new ArrayList<String>();
+        for (var declaration : path.getCompilationUnit().getTypeDecls()) {
+            if (trees.getElement(TreePath.getPath(path.getCompilationUnit(), declaration)) instanceof TypeElement type
+                    && !type.equals(marker)) {
+                others.add(type.getSimpleName().toString());
+            }
+        }
+        for (Element member : marker.getEnclosedElements()) {
+            if (member instanceof TypeElement nested) others.add(marker.getSimpleName() + "." + nested.getSimpleName());
+        }
+        if (!others.isEmpty()) {
+            processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR, "@" + marker.getSimpleName()
+                    + " is a library marker, and JuLC compiles its file with the libraries that use it, so the file must"
+                    + " declare the marker alone. Move " + String.join(", ", others) + " to a file of its own.", marker);
+        }
+        return true;
+    }
+
     private boolean isLibraryMarker(String fqcn) {
         TypeElement type;
         try {

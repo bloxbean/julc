@@ -1041,6 +1041,26 @@ class JulcAnnotationProcessorTest {
                 "Got: " + result.diagnostics());
     }
 
+    /** The marker contract: a marker's file declares the marker alone, so no other type's code joins the script. */
+    @Test
+    void aMarkerWhoseFileDeclaresAnotherTypeIsRejected() throws Exception {
+        String marker = STATE_LIKE + """
+
+                class Support {
+                    static boolean ok() {
+                        return false;
+                    }
+                }
+                """;
+        var result = compileWithProcessorSources(Map.of("lib/StateLike", marker, "lib/MetaMath", META_LIBRARY,
+                "app/UsesMeta", USES_META), List.of());
+        assertFalse(result.success());
+        assertTrue(result.diagnostics().stream().anyMatch(d -> d.getMessage(null).contains(
+                "@StateLike is a library marker, and JuLC compiles its file with the libraries that use it, so the file"
+                        + " must declare the marker alone. Move Support to a file of its own.")),
+                "Got: " + result.diagnostics());
+    }
+
     /** Regression: a package line read by javac and by JuLC's pattern alike, with a space before the semicolon. */
     @Test
     void librariesWhosePackageLineHasASpaceStillResolve() throws Exception {
