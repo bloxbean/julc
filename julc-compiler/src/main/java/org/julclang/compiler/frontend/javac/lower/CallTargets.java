@@ -155,7 +155,7 @@ final class CallTargets {
         // the pool as well included: a bundled source the host did not give has only what the stdlib lookup lowers (D8).
         // Only a class's methods are lowered: an interface's, a record's or an enum's static method has no binder.
         if (facts.inOfferedLibrary(owner) && owner.getKind() == ElementKind.CLASS) return library(identity, name, method);
-        if (facts.inLibraryUnit(owner) || facts.hasAnnotation(owner, JavacNames.ONCHAIN_LIBRARY)) {
+        if (facts.inLibraryUnit(owner) || facts.isOnchainLibrary(owner)) {
             return new CallTarget.Library(identity, name, method, false);
         }
         if (owner.equals(facts.element(facts.enclosing(tree, Tree.Kind.CLASS, Tree.Kind.RECORD, Tree.Kind.INTERFACE)))

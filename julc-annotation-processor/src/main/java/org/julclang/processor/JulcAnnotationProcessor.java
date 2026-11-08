@@ -14,6 +14,7 @@ import org.julclang.compiler.LibrarySourceResolver;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.ScriptPurposeMetadata;
 import org.julclang.compiler.OptimizationConfiguration;
+import org.julclang.compiler.frontend.javac.JavacNames;
 import org.julclang.compiler.OptimizationLevel;
 import org.julclang.core.source.SourceMapSerializer;
 import org.julclang.stdlib.StdlibRegistry;
@@ -41,7 +42,8 @@ import java.util.stream.Collectors;
  * <p>
  * Library discovery:
  * <ol>
- *   <li>Same-project: {@code @OnchainLibrary} classes discovered via {@code roundEnv}</li>
+ *   <li>Same-project: {@code @OnchainLibrary} classes discovered via {@code roundEnv}, and classes carrying an alias
+ *       of it, JOUST's {@code @StateContract} (ADR-071 D3)</li>
  *   <li>Classpath: Sources bundled in {@code META-INF/plutus-sources/} in dependency JARs</li>
  *   <li>Usage-based: Only libraries imported by the validator are included in compilation</li>
  *   <li>Transitive: Recursively resolves library imports until no new libraries are found</li>
@@ -127,28 +129,23 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
                 "org.julclang.stdlib.annotation.VotingValidator",
                 "org.julclang.stdlib.annotation.ProposingValidator",
                 "org.julclang.stdlib.annotation.MultiValidator",
-                "org.julclang.stdlib.annotation.OnchainLibrary"
+                "org.julclang.stdlib.annotation.OnchainLibrary",
+                JavacNames.STATE_CONTRACT
         );
     }
 
     @Override
     public boolean process(Set<? extends TypeElement> annotations, RoundEnvironment roundEnv) {
         if (processingFailed) {
-            return true;
+            return claims(annotations);
         }
-        // 1. Collect same-project @OnchainLibrary sources
-        collectSameProjectLibraries(roundEnv);
+        // 1. Collect same-project @OnchainLibrary sources, and those of its aliases
+        collectSameProjectLibraries(annotations, roundEnv);
 
-        // 2. Scan classpath for META-INF/plutus-sources/ (once)
-        if (!classpathScanned) {
-            scanClasspathLibraries();
-            classpathScanned = true;
-        }
-
-        // 3. Process validator elements
+        // 2. Process validator elements (the class path's library sources are read when the first one needs them)
         for (TypeElement annotation : annotations) {
             String annotationName = annotation.getQualifiedName().toString();
-            if (annotationName.endsWith("OnchainLibrary")) {
+            if (JavacNames.LIBRARY_ANNOTATIONS.contains(annotationName)) {
                 continue; // already collected above
             }
             for (Element element : roundEnv.getElementsAnnotatedWith(annotation)) {
@@ -156,26 +153,54 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
             }
         }
 
-        // 4. Generate CIP-57 blueprint on final round
+        // 3. Generate CIP-57 blueprint on final round
         if (roundEnv.processingOver() && blueprintEnabled && !processingFailed
                 && !roundEnv.errorRaised() && !compiledValidators.isEmpty()) {
             generateBlueprint();
         }
 
-        return true;
+        return claims(annotations);
     }
 
-    private void collectSameProjectLibraries(RoundEnvironment roundEnv) {
-        for (Element element : roundEnv.getElementsAnnotatedWith(
-                findTypeElement("org.julclang.stdlib.annotation.OnchainLibrary"))) {
+    /**
+     * Whether this processor claims the round's annotations: yes, as before ADR-071, unless the round holds an alias of
+     * {@code @OnchainLibrary}. That annotation belongs to its framework, whose own processor (JOUST's) must receive it
+     * whatever the processor order, so a round holding it is left unclaimed (ADR-071 D3).
+     */
+    private static boolean claims(Set<? extends TypeElement> annotations) {
+        return annotations.stream().noneMatch(annotation -> isAlias(annotation.getQualifiedName().toString()));
+    }
+
+    /** Whether {@code annotationName} is an alias of {@code @OnchainLibrary}, such as JOUST's {@code @StateContract}. */
+    private static boolean isAlias(String annotationName) {
+        return JavacNames.LIBRARY_ANNOTATIONS.contains(annotationName) && !annotationName.equals(JavacNames.ONCHAIN_LIBRARY);
+    }
+
+    /**
+     * The round's top-level {@code @OnchainLibrary} classes, and those carrying an alias of it (ADR-071 D3), joined to
+     * the library pool. An alias is taken from the round's annotations, so its name is never looked up.
+     */
+    private void collectSameProjectLibraries(Set<? extends TypeElement> annotations, RoundEnvironment roundEnv) {
+        // Absent when julc-stdlib is not on the compile class path: a module of @StateContract classes alone.
+        TypeElement onchainLibrary = findTypeElement(JavacNames.ONCHAIN_LIBRARY);
+        if (onchainLibrary != null) collectLibraries(roundEnv.getElementsAnnotatedWith(onchainLibrary), "OnchainLibrary");
+        for (TypeElement annotation : annotations) {
+            if (isAlias(annotation.getQualifiedName().toString())) {
+                collectLibraries(roundEnv.getElementsAnnotatedWith(annotation), annotation.getSimpleName().toString());
+            }
+        }
+    }
+
+    private void collectLibraries(Set<? extends Element> elements, String annotationName) {
+        for (Element element : elements) {
             if (!(element instanceof TypeElement typeElement)) {
                 continue;
             }
             String simpleName = typeElement.getSimpleName().toString();
             if (typeElement.getNestingKind() != NestingKind.TOP_LEVEL) {
                 processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
-                        "@OnchainLibrary must be declared on a top-level class. Nested on-chain libraries are not supported.",
-                        element);
+                        "@" + annotationName + " must be declared on a top-level class. Nested on-chain libraries are not"
+                                + " supported.", element);
                 continue;
             }
             String fqcn = typeElement.getQualifiedName().toString();
@@ -191,7 +216,7 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
                 }
             } catch (IOException e) {
                 processingEnv.getMessager().printMessage(Diagnostic.Kind.WARNING,
-                        "Could not read source for @OnchainLibrary class: " + simpleName, element);
+                        "Could not read source for @" + annotationName + " class: " + simpleName, element);
             }
         }
     }
@@ -200,9 +225,17 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
         return processingEnv.getElementUtils().getTypeElement(qualifiedName);
     }
 
+    /**
+     * Reads the class path's library sources once, when the first validator needs them. An index or source it cannot
+     * read costs only that entry, and is reported as a note (ADR-071 D2): a note, not a warning, so a build with
+     * {@code -Werror} behaves as before.
+     */
     private void scanClasspathLibraries() {
-        classpathLibraries.putAll(
-                LibrarySourceResolver.scanClasspathSources(getClass().getClassLoader()));
+        if (classpathScanned) return;
+        classpathScanned = true;
+        classpathLibraries.putAll(LibrarySourceResolver.scanClasspathSources(getClass().getClassLoader(),
+                problem -> processingEnv.getMessager().printMessage(Diagnostic.Kind.NOTE,
+                        "JuLC skipped an on-chain library source on the processor path: " + problem)));
     }
 
     private void processElement(Element element, TypeElement annotation) {
@@ -218,6 +251,7 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
             String source = path.getCompilationUnit().getSourceFile().getCharContent(true).toString();
 
             // 2. Resolve library sources needed by this validator
+            scanClasspathLibraries();
             List<String> librarySources = resolveLibrarySources(source);
 
             // 3. Compile with JulcCompiler (multi-file if libraries found)

@@ -57,6 +57,7 @@ import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -440,6 +441,19 @@ public final class JavacFacts {
             if (identity(mirror.getAnnotationType()).equals(annotation)) return true;
         }
         return false;
+    }
+
+    /**
+     * The library annotation {@code element} carries, one of {@link JavacNames#LIBRARY_ANNOTATIONS}: {@code @OnchainLibrary}
+     * or an alias of it (ADR-071 D3).
+     */
+    public Optional<String> libraryAnnotation(Element element) {
+        return JavacNames.LIBRARY_ANNOTATIONS.stream().filter(annotation -> hasAnnotation(element, annotation)).findFirst();
+    }
+
+    /** Whether {@code element} is an on-chain library: it carries {@code @OnchainLibrary} or an alias of it. */
+    public boolean isOnchainLibrary(Element element) {
+        return libraryAnnotation(element).isPresent();
     }
 
     /** The identity of a declared type: {@link #identity(TypeElement)} of its class. */

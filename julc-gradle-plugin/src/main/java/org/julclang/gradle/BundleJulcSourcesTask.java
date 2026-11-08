@@ -63,7 +63,7 @@ public abstract class BundleJulcSourcesTask extends DefaultTask {
             rejectRoleConflicts(sourceInfo);
             if (!sourceInfo.nestedOnchainLibraries().isEmpty()) {
                 var nested = sourceInfo.nestedOnchainLibraries().get(0);
-                throw new GradleException("@OnchainLibrary must be declared on a top-level class in "
+                throw new GradleException("@" + nested.annotationName() + " must be declared on a top-level class in "
                         + javaFile + ". Nested on-chain library " + nested.simpleName()
                         + " is not supported.");
             }

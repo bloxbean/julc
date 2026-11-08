@@ -290,6 +290,23 @@ class DiagnosticTextTest {
     }
 
     @Test
+    void aClassIsALibraryOrAValidatorEvenThroughAnAliasOfOnchainLibrary() {
+        // ADR-071 D3: JOUST's @StateContract is an alias of @OnchainLibrary, so with a validator annotation it is JULC0134.
+        String stateContract = """
+                package org.julclang.state.api;
+                import java.lang.annotation.*;
+                @Retention(RetentionPolicy.CLASS) @Target(ElementType.TYPE)
+                public @interface StateContract {}
+                """;
+        var error = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions())
+                .compile(VALIDATOR_IMPORTS + "import org.julclang.state.api.StateContract;\n@StateContract @SpendingValidator\n"
+                        + "class V { @Entrypoint static boolean m" + ENTRY + " }", List.of(stateContract)));
+        assertEquals("JULC0134", error.diagnostics().getFirst().code(), error.diagnostics().toString());
+        assertEquals("Class V must not combine @StateContract with validator annotation(s): @SpendingValidator",
+                error.diagnostics().getFirst().message());
+    }
+
+    @Test
     void aClassHasOneValidatorAnnotation() {
         var diagnostic = validatorError("@SpendingValidator @MintingValidator\nclass V { @Entrypoint static boolean m" + ENTRY + " }");
         reports(diagnostic, "JULC0135", "@SpendingValidator");

@@ -644,6 +644,11 @@ undefined variable.
 `JulcMap.of(...)` used to be reported as `Undefined variable: JulcMap`; it now
 reports `JULC0062` ([1.23](#123-julc0062-julcmapof-is-off-chain-only-and-has-no-on-chain-implementation)).
 
+If the undefined name is an on-chain library class, such as `OutputLib`, look for a note earlier in the build output:
+`JuLC skipped an on-chain library source on the processor path: ...`. It names a jar whose `META-INF/plutus-sources`
+JuLC could not read, typically a jar rebuilt or deleted while a Gradle daemon kept it open. Rebuild that jar, or run
+the build again; JuLC reads the jars from disk each time.
+
 ---
 
 ### 1.21 `JULC0003` `'return' is not supported inside while loop body`

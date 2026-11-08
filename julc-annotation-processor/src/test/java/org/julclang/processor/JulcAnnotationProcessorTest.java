@@ -5,8 +5,14 @@ import org.julclang.clientlib.ValidatorOutput;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import javax.annotation.processing.AbstractProcessor;
+import javax.annotation.processing.Processor;
+import javax.annotation.processing.RoundEnvironment;
+import javax.lang.model.SourceVersion;
+import javax.lang.model.element.TypeElement;
 import javax.tools.*;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -14,6 +20,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -503,6 +510,199 @@ class JulcAnnotationProcessorTest {
                 "Expected top-level diagnostic, got: " + result.diagnostics());
     }
 
+    // --- ADR-071 D3: JOUST's @StateContract is an alias of @OnchainLibrary ---
+
+    static final String COUNTER = """
+            package app;
+
+            import java.math.BigInteger;
+            import org.julclang.state.api.StateContract;
+
+            @StateContract
+            public class Counter {
+                public static BigInteger twice(BigInteger x) {
+                    return x.add(x);
+                }
+            }
+            """;
+
+    static final String USES_COUNTER = """
+            package app;
+
+            import org.julclang.stdlib.annotation.*;
+            import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+
+            @SpendingValidator
+            public class UsesCounter {
+                @Entrypoint
+                static boolean validate(BigInteger redeemer, PlutusData ctx) {
+                    return Counter.twice(redeemer).compareTo(BigInteger.TEN) == 0;
+                }
+            }
+            """;
+
+    /** The test resources' stand-in for JOUST's annotation, which its API jar ships in META-INF/plutus-sources. */
+    private String stateContractSource() throws Exception {
+        return Files.readString(Path.of(getClass().getResource(
+                "/META-INF/plutus-sources/org/julclang/state/api/StateContract.java").toURI()));
+    }
+
+    /**
+     * The ways a contract can name the alias: a single-type import, a wildcard import, the qualified name, and a wildcard
+     * import with the name spelled through a Unicode escape, which javac reads as {@code StateContract}.
+     */
+    static final List<String> COUNTERS = List.of(COUNTER,
+            COUNTER.replace("import org.julclang.state.api.StateContract;", "import org.julclang.state.api.*;"),
+            COUNTER.replace("import org.julclang.state.api.StateContract;\n", "")
+                    .replace("@StateContract", "@org.julclang.state.api.StateContract"),
+            COUNTER.replace("import org.julclang.state.api.StateContract;", "import org.julclang.state.api.*;")
+                    .replace("@StateContract", "@State\\u0043ontract"));
+
+    /**
+     * A @StateContract class is a library: a validator calls it by its bare name, with no import, as any library. The
+     * alias's source comes with it however the class names the alias.
+     */
+    @Test
+    void aStateContractClassIsALibrary() throws Exception {
+        for (String counter : COUNTERS) {
+            var result = compileWithProcessorSources(Map.of("org/julclang/state/api/StateContract",
+                    stateContractSource(), "app/Counter", counter, "app/UsesCounter", USES_COUNTER), List.of("-Werror"));
+            assertTrue(result.success(), "Expected success, got: " + result.diagnostics() + " for\n" + counter);
+            assertTrue(result.diagnostics().stream().anyMatch(d -> d.getMessage(null).contains("with 2 library file(s)")),
+                    "Expected Counter and StateContract, got: " + result.diagnostics());
+        }
+    }
+
+    /** A @StateContract class compiles to the same script as the same class marked @OnchainLibrary, in every form. */
+    @Test
+    void aStateContractClassCompilesToTheSameScriptAsAnOnchainLibraryOne() throws Exception {
+        String direct = COUNTER.replace("import org.julclang.state.api.StateContract;\n", "")
+                .replace("@StateContract", "@org.julclang.stdlib.annotation.OnchainLibrary");
+        for (var options : List.of(List.<String>of(), List.of("-Ajulc.optimization=none"),
+                List.of("-Ajulc.sourceMap=true"))) {
+            var plain = compileWithProcessorSources(Map.of("app/Counter", direct, "app/UsesCounter", USES_COUNTER),
+                    options);
+            assertTrue(plain.success(), "Expected success, got: " + plain.diagnostics());
+            String plainScript = script("UsesCounter");
+            for (String counter : COUNTERS) {
+                var marked = compileWithProcessorSources(Map.of("org/julclang/state/api/StateContract",
+                        stateContractSource(), "app/Counter", counter, "app/UsesCounter", USES_COUNTER), options);
+                assertTrue(marked.success(), "Expected success, got: " + marked.diagnostics());
+                assertEquals(plainScript, script("UsesCounter"), "options " + options + " for\n" + counter);
+            }
+        }
+    }
+
+    /**
+     * JOUST's processor generates the validator in a later round and must still receive @StateContract, whichever
+     * processor runs first: JuLC does not claim a round holding the alias.
+     */
+    @Test
+    void aFrameworkReceivesStateContractAndItsGeneratedValidatorCompiles() throws Exception {
+        for (boolean julcFirst : List.of(true, false)) {
+            var framework = new StateContractFramework(Map.of("app.UsesCounter", USES_COUNTER));
+            var julc = new JulcAnnotationProcessor();
+            var result = compileWithProcessors(Map.of("org/julclang/state/api/StateContract", stateContractSource(),
+                    "app/Counter", COUNTER), List.of(), julcFirst ? List.of(julc, framework) : List.of(framework, julc));
+            assertTrue(result.success(), "Expected success, got: " + result.diagnostics());
+            assertEquals(List.of("Counter"), framework.received, "julcFirst=" + julcFirst);
+            assertTrue(Files.exists(tempDir.resolve("META-INF/plutus/UsesCounter.plutus.json")), "julcFirst=" + julcFirst);
+        }
+    }
+
+    @Test
+    void aNestedStateContractClassIsRejected() throws Exception {
+        String nested = """
+                package app;
+
+                import java.math.BigInteger;
+                import org.julclang.state.api.StateContract;
+
+                public class Outer {
+                    @StateContract
+                    public static class Counter {
+                        public static BigInteger twice(BigInteger x) {
+                            return x.add(x);
+                        }
+                    }
+                }
+                """;
+        var result = compileWithProcessorSources(Map.of("org/julclang/state/api/StateContract", stateContractSource(),
+                "app/Outer", nested), List.of());
+        assertFalse(result.success(), "Expected failure, got: " + result.diagnostics());
+        assertTrue(result.diagnostics().stream().anyMatch(d -> d.getMessage(null).equals(
+                "@StateContract must be declared on a top-level class. Nested on-chain libraries are not supported.")),
+                "Expected the top-level diagnostic, got: " + result.diagnostics());
+    }
+
+    /**
+     * A module of @StateContract classes alone, without julc-stdlib on its compile class path: JuLC is called for the
+     * alias, and @OnchainLibrary, which it cannot find there, is simply absent.
+     */
+    @Test
+    void aStateContractModuleWithoutTheStdlibOnItsClassPathCompiles() throws Exception {
+        Path emptyClassPath = tempDir.resolve("empty-class-path");
+        Files.createDirectories(emptyClassPath);
+        var result = compileWithProcessors(Map.of("org/julclang/state/api/StateContract", stateContractSource(),
+                "app/Counter", COUNTER), List.of("-classpath", emptyClassPath.toString(), "-Werror"),
+                List.of(new JulcAnnotationProcessor()));
+        assertTrue(result.success(), "Expected success, got: " + result.diagnostics());
+    }
+
+    /** A compilation of libraries alone: JuLC still claims its annotations, so -Xlint:processing has nothing to say. */
+    @Test
+    void aLibraryOnlyCompilationClaimsItsAnnotationsAsBefore() throws Exception {
+        String direct = COUNTER.replace("import org.julclang.state.api.StateContract;\n", "")
+                .replace("@StateContract", "@org.julclang.stdlib.annotation.OnchainLibrary");
+        var result = compileWithProcessorSources(Map.of("app/Counter", direct), List.of("-Xlint:processing", "-Werror"));
+        assertTrue(result.success(), "Expected success, got: " + result.diagnostics());
+    }
+
+    /** A stand-in for JOUST's processor: it supports @StateContract, never claims it, and generates validators. */
+    private static final class StateContractFramework extends AbstractProcessor {
+        final List<String> received = new ArrayList<>();
+        private final Map<String, String> generated;
+        private boolean done;
+
+        StateContractFramework(Map<String, String> generated) {
+            this.generated = generated;
+        }
+
+        @Override
+        public Set<String> getSupportedAnnotationTypes() {
+            return Set.of("org.julclang.state.api.StateContract");
+        }
+
+        @Override
+        public SourceVersion getSupportedSourceVersion() {
+            return SourceVersion.latestSupported();
+        }
+
+        @Override
+        public boolean process(Set<? extends TypeElement> annotations, RoundEnvironment roundEnv) {
+            for (TypeElement annotation : annotations) {
+                roundEnv.getElementsAnnotatedWith(annotation).forEach(e -> received.add(e.getSimpleName().toString()));
+            }
+            if (!done && !annotations.isEmpty()) {
+                done = true;
+                generated.forEach((name, source) -> {
+                    try (var writer = processingEnv.getFiler().createSourceFile(name).openWriter()) {
+                        writer.write(source);
+                    } catch (IOException e) {
+                        throw new UncheckedIOException(e);
+                    }
+                });
+            }
+            return false;
+        }
+    }
+
+    private String script(String validator) throws IOException {
+        return ValidatorOutput.fromJson(Files.readString(
+                tempDir.resolve("META-INF/plutus/" + validator + ".plutus.json"))).cborHex();
+    }
+
     // --- Compilation infrastructure ---
 
     record CompileOutput(boolean success, List<Diagnostic<? extends JavaFileObject>> diagnostics) {}
@@ -514,6 +714,30 @@ class JulcAnnotationProcessorTest {
     private CompileOutput compileWithProcessorAndOptions(String source, String className,
                                                          List<String> extraOptions) throws IOException {
         return compileWithProcessorSources(Map.of(className, source), extraOptions);
+    }
+
+    private CompileOutput compileWithProcessors(Map<String, String> sources, List<String> extraOptions,
+                                                List<Processor> processors) throws IOException {
+        JavaCompiler javac = ToolProvider.getSystemJavaCompiler();
+        var diagnostics = new DiagnosticCollector<JavaFileObject>();
+        try (var fileManager = javac.getStandardFileManager(diagnostics, null, null)) {
+            fileManager.setLocation(StandardLocation.CLASS_OUTPUT, List.of(tempDir.toFile()));
+            Path generatedDir = tempDir.resolve("generated-sources");
+            Files.createDirectories(generatedDir);
+            fileManager.setLocation(StandardLocation.SOURCE_OUTPUT, List.of(generatedDir.toFile()));
+            var options = new ArrayList<>(List.of("--enable-preview", "--source", "25", "-proc:only"));
+            options.addAll(extraOptions);
+            var sourceFiles = sources.entrySet().stream().map(entry -> (JavaFileObject) new SimpleJavaFileObject(
+                    URI.create("string:///" + entry.getKey() + ".java"), JavaFileObject.Kind.SOURCE) {
+                @Override
+                public CharSequence getCharContent(boolean ignoreEncodingErrors) {
+                    return entry.getValue();
+                }
+            }).toList();
+            var task = javac.getTask(null, fileManager, diagnostics, options, null, sourceFiles);
+            task.setProcessors(processors);
+            return new CompileOutput(task.call(), diagnostics.getDiagnostics());
+        }
     }
 
     private CompileOutput compileWithProcessorSources(Map<String, String> sources,

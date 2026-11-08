@@ -2,7 +2,9 @@ package org.julclang.compiler;
 
 import org.julclang.compiler.error.DiagnosticCollector;
 import org.julclang.compiler.frontend.javac.ExpressionRoles;
+import org.julclang.compiler.frontend.javac.JavacNames;
 import org.julclang.compiler.frontend.javac.JavacSyntax;
+import com.sun.source.tree.AnnotationTree;
 import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.ImportTree;
 import com.sun.source.tree.MemberSelectTree;
@@ -12,6 +14,7 @@ import org.julclang.compiler.frontend.javac.SourceOrderScanner;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.net.URL;
 import java.net.URLEncoder;
@@ -34,6 +37,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -224,45 +228,83 @@ public final class LibrarySourceResolver {
      * @return map of FQCN to source metadata
      */
     public static Map<String, LibrarySource> scanClasspathSources(ClassLoader classLoader) {
+        return scanClasspathSources(classLoader, problem -> { });
+    }
+
+    /**
+     * {@link #scanClasspathSources(ClassLoader)}, reporting every entry it had to skip (ADR-071 D2). Each index and
+     * each indexed source is read independently, so one unreadable jar costs only its own sources; resources are
+     * opened without the JDK's URL cache, so a jar rebuilt in a long-lived JVM (a Gradle daemon) is read from disk
+     * instead of through a stale cached {@code JarFile}.
+     *
+     * @param problems receives one message per index, source or directory listing that could not be read (a resource
+     *                 the class loader lists but that does not exist is not a problem, and is passed over)
+     */
+    public static Map<String, LibrarySource> scanClasspathSources(ClassLoader classLoader, Consumer<String> problems) {
         var result = new LinkedHashMap<String, LibrarySource>();
         // JARs must ship index.txt for reliable discovery. Loose file-system
         // directories are also scanned to support IDE/dev/test classpaths.
+        Enumeration<URL> indexes;
         try {
-            Enumeration<URL> indexes = classLoader.getResources(PLUTUS_SOURCES_INDEX);
-            while (indexes.hasMoreElements()) {
-                scanIndexedSources(indexes.nextElement(), result);
-            }
+            indexes = classLoader.getResources(PLUTUS_SOURCES_INDEX);
         } catch (IOException e) {
-            // Fall through to directory scan
+            problems.accept("cannot list " + PLUTUS_SOURCES_INDEX + " resources: " + e);
+            indexes = Collections.emptyEnumeration();
         }
-        try {
-            Enumeration<URL> resources = classLoader.getResources(PLUTUS_SOURCES_DIR);
-            while (resources.hasMoreElements()) {
-                URL resourceUrl = resources.nextElement();
-                if ("file".equals(resourceUrl.getProtocol())) {
-                    File dir = new File(resourceUrl.getPath());
-                    scanFileSystemSources(dir, dir, result);
-                }
+        while (indexes.hasMoreElements()) {
+            URL index = indexes.nextElement();
+            try {
+                scanIndexedSources(index, result, problems);
+            } catch (IOException | IllegalArgumentException e) {
+                problems.accept("cannot read " + index + ": " + e);
             }
+        }
+        Enumeration<URL> resources;
+        try {
+            resources = classLoader.getResources(PLUTUS_SOURCES_DIR);
         } catch (IOException e) {
-            // Silently ignore
+            problems.accept("cannot list " + PLUTUS_SOURCES_DIR + " resources: " + e);
+            resources = Collections.emptyEnumeration();
+        }
+        while (resources.hasMoreElements()) {
+            URL resourceUrl = resources.nextElement();
+            if ("file".equals(resourceUrl.getProtocol())) {
+                File dir = new File(resourceUrl.getPath());
+                scanFileSystemSources(dir, dir, result, problems);
+            }
         }
         return result;
     }
 
-    private static void scanIndexedSources(URL indexUrl, Map<String, LibrarySource> result) throws IOException {
-        try (var indexStream = indexUrl.openStream()) {
-            var indexContent = new String(indexStream.readAllBytes(), StandardCharsets.UTF_8);
-            for (String rawEntry : indexContent.split("\n")) {
-                String entry = rawEntry.strip();
-                if (entry.isEmpty() || !entry.endsWith(".java")) continue;
-                try (var sourceStream = resolveIndexedSourceUrl(indexUrl, entry).openStream()) {
+    private static void scanIndexedSources(URL indexUrl, Map<String, LibrarySource> result, Consumer<String> problems)
+            throws IOException {
+        String indexContent;
+        try (var indexStream = openUncached(indexUrl)) {
+            indexContent = new String(indexStream.readAllBytes(), StandardCharsets.UTF_8);
+        }
+        for (String rawEntry : indexContent.split("\n")) {
+            String entry = rawEntry.strip();
+            if (entry.isEmpty() || !entry.endsWith(".java")) continue;
+            URL sourceUrl = null;
+            try {
+                sourceUrl = resolveIndexedSourceUrl(indexUrl, entry);
+                try (var sourceStream = openUncached(sourceUrl)) {
                     var source = new String(sourceStream.readAllBytes(), StandardCharsets.UTF_8);
                     var fqcn = fqcnFromResourcePath(entry);
                     result.putIfAbsent(fqcn, librarySourceFromPath(fqcn, normalizeResourcePath(entry), source));
                 }
+            } catch (IOException | IllegalArgumentException e) {
+                problems.accept("cannot read " + (sourceUrl != null ? sourceUrl : entry) + " listed in " + indexUrl
+                        + ": " + e);
             }
         }
+    }
+
+    /** Opens a resource bypassing the JDK's URL cache (a cached JarFile outlives a rebuilt jar). */
+    private static InputStream openUncached(URL url) throws IOException {
+        var connection = url.openConnection();
+        connection.setUseCaches(false);
+        return connection.getInputStream();
     }
 
     private static URL resolveIndexedSourceUrl(URL indexUrl, String entry) throws IOException {
@@ -281,15 +323,19 @@ public final class LibrarySourceResolver {
                 .orElse("");
     }
 
-    private static void scanFileSystemSources(File root, File dir, Map<String, LibrarySource> result) {
+    private static void scanFileSystemSources(File root, File dir, Map<String, LibrarySource> result,
+                                              Consumer<String> problems) {
         if (!dir.exists() || !dir.isDirectory()) return;
         File[] files = dir.listFiles();
-        if (files == null) return;
+        if (files == null) {
+            problems.accept("cannot list " + dir);
+            return;
+        }
         // In name order: which of two sources of one name is kept must not depend on the file system (I4).
         Arrays.sort(files, Comparator.comparing(File::getName));
         for (File file : files) {
             if (file.isDirectory()) {
-                scanFileSystemSources(root, file, result);
+                scanFileSystemSources(root, file, result, problems);
             } else if (file.getName().endsWith(".java")) {
                 try {
                     String source = Files.readString(file.toPath());
@@ -297,7 +343,7 @@ public final class LibrarySourceResolver {
                     String fqcn = fqcnFromResourcePath(resourcePath);
                     result.putIfAbsent(fqcn, librarySourceFromPath(fqcn, resourcePath, source));
                 } catch (IOException e) {
-                    // skip unreadable files
+                    problems.accept("cannot read " + file + ": " + e);
                 }
             }
         }
@@ -370,6 +416,12 @@ public final class LibrarySourceResolver {
 
         for (String fqcn : context.importsBySimpleName().values()) {
             enqueue(availableLibraries.get(fqcn), resolved, queued, toProcess);
+        }
+        // ADR-071 D3: a source marked with an alias of @OnchainLibrary needs the alias's own source, however it names
+        // it (a single-type or wildcard import, or its qualified name). The alias's name is fixed, so its pooled source
+        // is taken by that name.
+        for (String alias : aliasesNamedBy(source)) {
+            enqueue(availableLibraries.get(alias), resolved, queued, toProcess);
         }
 
         for (ClassReference reference : context.staticReferences()) {
@@ -502,6 +554,31 @@ public final class LibrarySourceResolver {
 
     private static Optional<ClassReference> javacReference(JavacSyntax syntax, Tree scope) {
         return classReferenceFromText(scope.toString(), syntax.line(scope), syntax.column(scope));
+    }
+
+    /**
+     * The aliases of {@code @OnchainLibrary} ({@link JavacNames#LIBRARY_ANNOTATIONS}) that a source's annotations name by
+     * their simple name, as javac's parser reads them; none when the source does not parse. The text check only skips a
+     * source that cannot name one: a Unicode escape may spell the name, so a source holding one is always parsed.
+     */
+    private static List<String> aliasesNamedBy(String source) {
+        boolean escaped = source.contains("\\u");
+        var aliases = JavacNames.LIBRARY_ANNOTATIONS.stream()
+                .filter(name -> !name.equals(JavacNames.ONCHAIN_LIBRARY) && (escaped || source.contains(simpleName(name))))
+                .toList();
+        if (aliases.isEmpty()) return List.of();
+        var syntax = JavacSyntax.read(source);
+        if (syntax.hasErrors()) return List.of();
+        var named = new LinkedHashSet<String>();
+        new SourceOrderScanner<Void, Void>() {
+            @Override
+            public Void visitAnnotation(AnnotationTree annotation, Void unused) {
+                String name = simpleName(annotation.getAnnotationType().toString());
+                aliases.stream().filter(alias -> simpleName(alias).equals(name)).forEach(named::add);
+                return super.visitAnnotation(annotation, unused);
+            }
+        }.scan(syntax.unit(), null);
+        return List.copyOf(named);
     }
 
     /**

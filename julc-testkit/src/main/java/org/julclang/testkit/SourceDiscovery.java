@@ -427,7 +427,7 @@ public final class SourceDiscovery {
 
         if (!sourceInfo.nestedOnchainLibraries().isEmpty()) {
             var nested = sourceInfo.nestedOnchainLibraries().get(0);
-            throw new AssertionError("@OnchainLibrary must be declared on a top-level class in "
+            throw new AssertionError("@" + nested.annotationName() + " must be declared on a top-level class in "
                     + sourceFile + ". Nested on-chain library " + nested.simpleName()
                     + " is not supported.");
         }

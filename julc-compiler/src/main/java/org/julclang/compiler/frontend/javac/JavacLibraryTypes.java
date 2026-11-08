@@ -94,7 +94,7 @@ public final class JavacLibraryTypes {
             public Void visitClass(ClassTree tree, Void unused) {
                 var element = (TypeElement) facts.element(tree);
                 if (tree.getKind() == Tree.Kind.CLASS && element.getNestingKind() != NestingKind.ANONYMOUS
-                        && !facts.hasAnnotation(element, JavacNames.ONCHAIN_LIBRARY)) {
+                        && !facts.isOnchainLibrary(element)) {
                     throw new IllegalArgumentException("Only @OnchainLibrary sources can be exported: "
                             + facts.identity(element));
                 }

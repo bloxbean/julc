@@ -173,14 +173,15 @@ final class JavacMetadataReading {
     private static Optional<JavaSourceIntrospector.RoleConflict> roleConflictOn(TreePath path) {
         var type = (ClassTree) path.getLeaf();
         var names = annotationSimpleNames(type.getModifiers());
-        if (!names.contains(JavaSourceIntrospector.ONCHAIN_LIBRARY_ANNOTATION)) return Optional.empty();
+        var library = names.stream().filter(JavaSourceIntrospector::isLibraryAnnotation).findFirst();
+        if (library.isEmpty()) return Optional.empty();
         var conflicting = new ArrayList<String>();
         names.stream().filter(JavaSourceIntrospector::isSupportedValidatorAnnotation).forEach(conflicting::add);
         names.stream().filter(JavaSourceIntrospector::isLegacyValidatorAnnotation).forEach(conflicting::add);
         if (conflicting.isEmpty()) return Optional.empty();
         String simpleName = type.getSimpleName().toString();
         return Optional.of(new JavaSourceIntrospector.RoleConflict(simpleName, qualifiedName(path),
-                List.copyOf(conflicting)));
+                List.copyOf(conflicting), library.get()));
     }
 
     /** JavaParser's fully qualified name ({@link JavacSyntax#qualifiedName}), else the simple name. */

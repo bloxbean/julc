@@ -8,6 +8,7 @@ import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -597,5 +598,98 @@ class LibrarySourceResolverTest {
             pool.put(librarySource.fqcn(), librarySource);
         }
         return pool;
+    }
+
+    @Test
+    void scanClasspathSources_skipsAnUnreadableEntryReportsItAndReadsTheRest(@TempDir Path tempDir) throws Exception {
+        // ADR-071 D2: an index listing a source the jar does not hold costs that source only, and is reported.
+        Path broken = tempDir.resolve("broken.jar");
+        try (var out = new JarOutputStream(Files.newOutputStream(broken))) {
+            addJarDirectory(out, "META-INF/");
+            addJarDirectory(out, "META-INF/plutus-sources/");
+            addJarEntry(out, "META-INF/plutus-sources/index.txt", "com/example/Missing.java\n");
+        }
+        Path good = createPlutusSourcesJar(tempDir.resolve("good.jar"), Map.of(
+                "com/example/GoodLib.java", "package com.example; class GoodLib {}"));
+        var warnings = new ArrayList<String>();
+        try (var classLoader = new URLClassLoader(new URL[]{broken.toUri().toURL(), good.toUri().toURL()}, null)) {
+            Map<String, LibrarySource> result = LibrarySourceResolver.scanClasspathSources(classLoader, warnings::add);
+
+            assertTrue(result.containsKey("com.example.GoodLib"), result.keySet().toString());
+            assertFalse(result.containsKey("com.example.Missing"));
+            assertEquals(1, warnings.size(), warnings.toString());
+            assertTrue(warnings.getFirst().contains("Missing.java"), warnings.toString());
+        }
+    }
+
+    @Test
+    void scanClasspathSources_aMalformedEntryUrlCostsOnlyThatEntry(@TempDir Path tempDir) throws Exception {
+        // ADR-071 D2: a jar under a directory with a space, named by an unencoded URL: building an entry's URL throws
+        // IllegalArgumentException, which costs that jar's entries only.
+        Path spaced = tempDir.resolve("with space");
+        Files.createDirectories(spaced);
+        Path broken = createPlutusSourcesJar(spaced.resolve("broken.jar"), Map.of(
+                "com/example/Broken.java", "package com.example; class Broken {}"));
+        Path good = createPlutusSourcesJar(tempDir.resolve("good.jar"), Map.of(
+                "com/example/GoodLib.java", "package com.example; class GoodLib {}"));
+        var problems = new ArrayList<String>();
+        try (var classLoader = new URLClassLoader(new URL[]{new URL("file:" + broken), good.toUri().toURL()}, null)) {
+            Map<String, LibrarySource> result = LibrarySourceResolver.scanClasspathSources(classLoader, problems::add);
+
+            assertTrue(result.containsKey("com.example.GoodLib"), result.keySet().toString());
+        }
+    }
+
+    @Test
+    void scanClasspathSources_readsAJarRewrittenAfterAnEarlierScan(@TempDir Path tempDir) throws Exception {
+        // ADR-071 D2: resources are opened without the JDK's URL cache, so a rebuilt jar (as in a Gradle daemon) is
+        // read from disk, not through a stale cached JarFile.
+        Path jar = tempDir.resolve("lib.jar");
+        createPlutusSourcesJar(jar, Map.of("com/example/V1.java", "package com.example; class V1 {}"));
+        try (var first = new URLClassLoader(new URL[]{jar.toUri().toURL()}, null)) {
+            assertTrue(LibrarySourceResolver.scanClasspathSources(first).containsKey("com.example.V1"));
+        }
+        Files.delete(jar);
+        createPlutusSourcesJar(jar, Map.of(
+                "com/example/V1.java", "package com.example; class V1 { /* rebuilt */ }",
+                "com/example/V2.java", "package com.example; class V2 {}"));
+        var warnings = new ArrayList<String>();
+        try (var second = new URLClassLoader(new URL[]{jar.toUri().toURL()}, null)) {
+            Map<String, LibrarySource> result = LibrarySourceResolver.scanClasspathSources(second, warnings::add);
+
+            assertEquals(List.of(), warnings);
+            assertTrue(result.get("com.example.V1").source().contains("rebuilt"));
+            assertTrue(result.containsKey("com.example.V2"));
+        }
+    }
+
+    @Test
+    void resolve_aSourceMarkedWithStateContractBringsItsPooledSourceHoweverItNamesIt() {
+        // ADR-071 D3: the alias's source comes with a class marked with it, by a single-type import, a wildcard import
+        // or the qualified name.
+        var stateContract = LibrarySourceResolver.librarySourceFromSimpleName("StateContract", """
+                package org.julclang.state.api;
+                public @interface StateContract {}
+                """);
+        var validator = """
+                package app;
+                class V { static boolean f() { return Counter.ok(); } }
+                """;
+        // The last spells the name with a Unicode escape, which javac reads as StateContract (reviewer1 F3).
+        for (String marking : List.of("import org.julclang.state.api.StateContract;\n@StateContract",
+                "import org.julclang.state.api.*;\n@StateContract", "@org.julclang.state.api.StateContract",
+                "import org.julclang.state.api.*;\n@State\\u0043ontract")) {
+            var counter = LibrarySourceResolver.librarySourceFromSimpleName("Counter", "package app;\n" + marking
+                    + "\npublic class Counter { public static boolean ok() { return true; } }\n");
+            assertEquals(List.of(counter.source(), stateContract.source()), LibrarySourceResolver.resolve(validator,
+                    Map.of("app.Counter", counter, "org.julclang.state.api.StateContract", stateContract)), marking);
+        }
+        // A class that does not carry the alias brings nothing more.
+        var plain = LibrarySourceResolver.librarySourceFromSimpleName("Counter", """
+                package app;
+                public class Counter { public static boolean ok() { return true; } }
+                """);
+        assertEquals(List.of(plain.source()), LibrarySourceResolver.resolve(validator,
+                Map.of("app.Counter", plain, "org.julclang.state.api.StateContract", stateContract)));
     }
 }

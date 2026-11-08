@@ -626,7 +626,7 @@ public final class DiagnosticCodes {
             "ONCHAIN_LIBRARY_WITH_VALIDATOR",
             CompilerDiagnostic.Level.ERROR,
             "VALIDATOR",
-            "Class {0} must not combine @OnchainLibrary with validator annotation(s): {1}",
+            "Class {0} must not combine {2} with validator annotation(s): {1}",
             "Keep one role on the class, and move the other into a class of its own.");
 
     public static final DiagnosticInfo OPERATOR_UNSUPPORTED = new DiagnosticInfo(

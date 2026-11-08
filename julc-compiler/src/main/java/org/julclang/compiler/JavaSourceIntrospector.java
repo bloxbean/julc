@@ -34,6 +34,12 @@ public final class JavaSourceIntrospector {
 
     public static final String ONCHAIN_LIBRARY_ANNOTATION = "OnchainLibrary";
 
+    /**
+     * The simple names of the annotations that make a class an on-chain library, as the text-reading tools match them:
+     * {@code @OnchainLibrary} and its aliases, JOUST's {@code @StateContract} (ADR-071 D3).
+     */
+    public static final List<String> LIBRARY_ANNOTATIONS = List.of(ONCHAIN_LIBRARY_ANNOTATION, "StateContract");
+
     private static final Set<String> SUPPORTED_VALIDATOR_SET = new LinkedHashSet<>(SUPPORTED_VALIDATOR_ANNOTATIONS);
     private static final Set<String> LEGACY_VALIDATOR_SET = new LinkedHashSet<>(LEGACY_VALIDATOR_ANNOTATIONS);
 
@@ -70,17 +76,23 @@ public final class JavaSourceIntrospector {
             boolean topLevel) {
     }
 
+    /** A class carrying a library annotation ({@code libraryAnnotation}, a simple name) and validator annotations. */
     public record RoleConflict(
             String simpleName,
             String fqcn,
-            List<String> conflictingAnnotations) {
+            List<String> conflictingAnnotations,
+            String libraryAnnotation) {
+
+        public RoleConflict(String simpleName, String fqcn, List<String> conflictingAnnotations) {
+            this(simpleName, fqcn, conflictingAnnotations, ONCHAIN_LIBRARY_ANNOTATION);
+        }
 
         public String message() {
             String annotations = String.join(", ", conflictingAnnotations.stream()
                     .map(annotation -> "@" + annotation)
                     .toList());
             return "Class " + fqcn
-                    + " must not combine @OnchainLibrary with validator annotation(s): "
+                    + " must not combine @" + libraryAnnotation + " with validator annotation(s): "
                     + annotations;
         }
     }
@@ -103,7 +115,12 @@ public final class JavaSourceIntrospector {
     }
 
     public static boolean mightContainOnchainLibraryAnnotation(String source) {
-        return mightContainAnnotation(source, ONCHAIN_LIBRARY_ANNOTATION);
+        return LIBRARY_ANNOTATIONS.stream().anyMatch(annotation -> mightContainAnnotation(source, annotation));
+    }
+
+    /** Whether {@code simpleName} is one of {@link #LIBRARY_ANNOTATIONS}. */
+    public static boolean isLibraryAnnotation(String simpleName) {
+        return LIBRARY_ANNOTATIONS.contains(simpleName);
     }
 
     public static boolean mightContainValidatorAnnotation(String source) {
