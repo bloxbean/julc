@@ -177,7 +177,7 @@ public final class JavacFrontend {
      * offered in its pool, in the host's order, a root whose text the host offered there too included, and the bundled
      * sources it did not offer left out (D8).
      */
-    record Attribution(JavacResult result, List<CompilationUnitTree> roots, List<CompilationUnitTree> libraries,
+    public record Attribution(JavacResult result, List<CompilationUnitTree> roots, List<CompilationUnitTree> libraries,
                        List<CompilationUnitTree> offered, Map<CompilationUnitTree, String> names, Trees trees,
                        Elements elements, Types types) {
 
@@ -198,8 +198,13 @@ public final class JavacFrontend {
         }
     }
 
-    /** {@link #analyze(List, List)}, keeping the attributed trees. */
-    Attribution attribute(List<Unit> roots, List<Unit> pool) {
+    /**
+     * {@link #analyze(List, List)}, keeping the attributed trees, {@link Elements} and {@link Types}. Public for
+     * embedders that generate code from the attributed model before compiling it (for example JOUST's toolchain image,
+     * which runs its annotation-processor generators over these elements: no processors run inside javac, which keeps
+     * {@code -proc:none}).
+     */
+    public Attribution attribute(List<Unit> roots, List<Unit> pool) {
         return analyze(roots, pool, null, true, null);
     }
 
