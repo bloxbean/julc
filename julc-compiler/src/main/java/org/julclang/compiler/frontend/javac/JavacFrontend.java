@@ -42,6 +42,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
@@ -177,9 +178,9 @@ public final class JavacFrontend {
      * offered in its pool, in the host's order, a root whose text the host offered there too included, and the bundled
      * sources it did not offer left out (D8).
      */
-    public record Attribution(JavacResult result, List<CompilationUnitTree> roots, List<CompilationUnitTree> libraries,
+    record Attribution(JavacResult result, List<CompilationUnitTree> roots, List<CompilationUnitTree> libraries,
                        List<CompilationUnitTree> offered, Map<CompilationUnitTree, String> names, Trees trees,
-                       Elements elements, Types types) {
+                       Elements elements, Types types) implements Attributed {
 
         static Attribution none(JavacResult result) {
             return new Attribution(result, List.of(), List.of(), List.of(), Map.of(), null, null, null);
@@ -198,14 +199,58 @@ public final class JavacFrontend {
         }
     }
 
-    /**
-     * {@link #analyze(List, List)}, keeping the attributed trees, {@link Elements} and {@link Types}. Public for
-     * embedders that generate code from the attributed model before compiling it (for example JOUST's toolchain image,
-     * which runs its annotation-processor generators over these elements: no processors run inside javac, which keeps
-     * {@code -proc:none}).
-     */
-    public Attribution attribute(List<Unit> roots, List<Unit> pool) {
+    /** {@link #analyze(List, List)}, keeping the attributed trees. */
+    Attribution attribute(List<Unit> roots, List<Unit> pool) {
         return analyze(roots, pool, null, true, null);
+    }
+
+    /**
+     * What an embedder's query reads of an attribution (ADR-068, the embedder attribution query): the result, the roots'
+     * attributed trees in order, and the task's {@link Trees}, {@link Elements} and {@link Types}.
+     */
+    public interface Attributed {
+        JavacResult result();
+
+        List<CompilationUnitTree> roots();
+
+        Trees trees();
+
+        Elements elements();
+
+        Types types();
+    }
+
+    /**
+     * Attributes {@code roots} with {@code pool} on the source path, as a JuLC compilation does, runs {@code query} over
+     * the attributed model, and returns what the query returns. For an embedder that generates code from the model
+     * before compiling it with {@link org.julclang.compiler.JulcCompiler}, as JOUST's toolchain image runs its
+     * annotation-processor generators. No processor runs inside javac, which keeps {@code -proc:none}.
+     * <p>
+     * The contract (experimental, for embedders, ADR-068's embedder attribution query; it may change before 1.0):
+     * <ul>
+     *   <li><b>One query, on the calling thread.</b> javac's model is not thread-safe: it completes classes lazily, so
+     *       even a call on an element obtained earlier reads and writes the task. Use the model only inside
+     *       {@code query}, on the thread that called this method, and keep no {@code Element}, {@code TypeMirror} or
+     *       {@code Tree} past its return; return values of your own, such as generated sources and diagnostics. Each
+     *       call has its own javac task, so calls on different threads are independent.</li>
+     *   <li><b>Read-only.</b> Nothing done to the model reaches JuLC: a compilation reads its sources afresh.</li>
+     *   <li><b>A rejected attribution.</b> {@code query} runs whatever the result, so check
+     *       {@code result().isAccepted()} first. When the roots are rejected before javac runs (a root declaring a type
+     *       of JuLC's on-chain API, a duplicate declaration, or javac unavailable), {@code trees()}, {@code elements()}
+     *       and {@code types()} are null; when javac reports an error, they hold its partial model. With no roots, the
+     *       result is accepted and they are null.</li>
+     *   <li><b>Diagnostics.</b> {@code result().diagnostics()} holds javac's errors, followed by JuLC's notes on
+     *       shadowed pool units; javac's warnings are not kept.</li>
+     *   <li><b>JuLC's javac, not the build's.</b> The model is that of JuLC's embedded javac (ADR-068 D3): the java.base
+     *       subset of its platform, and JuLC's on-chain API as signature-only stubs. A JDK class outside the platform is
+     *       not found, and string concatenations of constants are not folded in the trees
+     *       ({@code Elements.getConstantValue} still folds them).</li>
+     *   <li><b>Lookups during the query</b> may read further pool units or stubs; javac's errors in those are not
+     *       reported.</li>
+     * </ul>
+     */
+    public <T> T attribute(List<Unit> roots, List<Unit> pool, Function<Attributed, T> query) {
+        return query.apply(attribute(roots, pool));
     }
 
     /**

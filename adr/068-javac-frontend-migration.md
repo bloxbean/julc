@@ -1387,6 +1387,30 @@ line belongs in that repository, before the release that carries the gate.
 **What M1 does not establish.** 5,626 of the 7,596 cases the `compareTo` rule changed have no observation attached: they
 rest on the rule's own tests and on V146 showing it is the only byte change. DevKit end-to-end tests were not run.
 
+## Addendum: the embedder attribution query (2026-11-08)
+
+An embedder may need javac's attributed model itself, not only a compilation. JOUST's toolchain image (JOUST ADR-0015
+D2, an ADR-064 embedder) runs its annotation-processor generators over a contract's `Elements`, `Types` and `Trees`,
+then compiles the generated validators with `JulcCompiler`, in Node with no JDK.
+
+- **Decision.** `JavacFrontend.attribute(roots, pool, query)` is public: it attributes as a compilation does and runs
+  the embedder's query over a read-only view, `JavacFrontend.Attributed` (`result`, `roots`, `trees`, `elements`,
+  `types`), returning what the query returns. The `Attribution` record and the two-argument `attribute` stay
+  package-private, so the frontend's internal fields (`libraries`, `offered`, `names`) are not API.
+- **The F847 discipline holds.** The query is the one other way into the model besides `JavacProgram.read`: its own
+  javac task, confined to the query on the calling thread, with no `Element`, `TypeMirror` or `Tree` kept past its
+  return. The javadoc states the contract: one thread, read-only, null services when the roots are rejected before
+  javac runs (or there are none), errors-only diagnostics, the embedded platform's model, unreported errors in lookups
+  made during the query, and experimental status. F952's tightening of `JavacProgram` is unaffected.
+- **Alternatives.** Making `attribute()` and the record public as they were (#313 as first written) exposed the
+  record's constructor and internals and gave no confinement; concurrent readers of one model fail inside javac
+  (`ConcurrentModificationException`, reproduced in review). `JavacProgram.attribute(...).read(...)` is locked but has no
+  `Trees`, which JOUST needs for paths, source positions and its subset lint; widening `JavacFacts` for one embedder
+  was not preferred.
+- **Verification.** `AttributionQueryTest`, outside the frontend package: an accepted query reads elements, types and
+  trees, completes a stub type the roots never name, and generates a validator that `JulcCompiler` compiles; a javac
+  error and empty roots follow the contract; two queries' models are independent.
+
 ## Revision history
 
 - **r1** (2026-10-30): initial proposal, after the ADR-065 spike and consultation on the seam.
