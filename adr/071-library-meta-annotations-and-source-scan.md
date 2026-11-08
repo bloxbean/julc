@@ -114,7 +114,7 @@ library. It is one constant, so the processor, the embedder API and the tools ag
 - **The annotation's own source.** JuLC compiles the contract with the annotation's source, which JOUST ships in its
   API jar's `META-INF/plutus-sources` (and its npm toolchain adds to the pool). The resolver takes it from the pool by
   its fixed name whenever a source's annotations name the alias, however they name it: a single-type import, a
-  wildcard import or the qualified name (reviewer1 F3). Without it in the pool, JuLC reports "Annotation
+  wildcard import or the qualified name, as javac's parser reads them, Unicode escapes included (reviewer1 F3). Without it in the pool, JuLC reports "Annotation
   @StateContract is not available to JuLC".
 
 Nothing else changes: a validator reaches a contract as any library, by its simple name from the same package or
@@ -361,5 +361,5 @@ compared (I1); the full build; JOUST built against the head.
     path no longer fails in the processor; the text tools' role-conflict message names the annotation the class
     carries; Risks states the mixed-round `-Xlint:processing` case.
   - From reviewer1's rounds 2 and 3 at `feba2f51`: the alias's source comes with a class however it names the alias,
-    a wildcard import or the qualified name included (F3); the merge-base test claim distinguishes the compatibility
-    checks (F4).
+    a wildcard import or the qualified name included (F3), and a name spelled with a Unicode escape (F3, round 4); the
+    merge-base test claim distinguishes the compatibility checks (F4).

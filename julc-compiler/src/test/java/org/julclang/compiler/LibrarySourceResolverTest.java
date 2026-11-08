@@ -675,8 +675,10 @@ class LibrarySourceResolverTest {
                 package app;
                 class V { static boolean f() { return Counter.ok(); } }
                 """;
+        // The last spells the name with a Unicode escape, which javac reads as StateContract (reviewer1 F3).
         for (String marking : List.of("import org.julclang.state.api.StateContract;\n@StateContract",
-                "import org.julclang.state.api.*;\n@StateContract", "@org.julclang.state.api.StateContract")) {
+                "import org.julclang.state.api.*;\n@StateContract", "@org.julclang.state.api.StateContract",
+                "import org.julclang.state.api.*;\n@State\\u0043ontract")) {
             var counter = LibrarySourceResolver.librarySourceFromSimpleName("Counter", "package app;\n" + marking
                     + "\npublic class Counter { public static boolean ok() { return true; } }\n");
             assertEquals(List.of(counter.source(), stateContract.source()), LibrarySourceResolver.resolve(validator,

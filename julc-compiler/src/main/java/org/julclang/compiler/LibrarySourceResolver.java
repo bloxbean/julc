@@ -558,11 +558,13 @@ public final class LibrarySourceResolver {
 
     /**
      * The aliases of {@code @OnchainLibrary} ({@link JavacNames#LIBRARY_ANNOTATIONS}) that a source's annotations name by
-     * their simple name, as javac's parser reads them; none when the source does not parse.
+     * their simple name, as javac's parser reads them; none when the source does not parse. The text check only skips a
+     * source that cannot name one: a Unicode escape may spell the name, so a source holding one is always parsed.
      */
     private static List<String> aliasesNamedBy(String source) {
+        boolean escaped = source.contains("\\u");
         var aliases = JavacNames.LIBRARY_ANNOTATIONS.stream()
-                .filter(name -> !name.equals(JavacNames.ONCHAIN_LIBRARY) && source.contains(simpleName(name)))
+                .filter(name -> !name.equals(JavacNames.ONCHAIN_LIBRARY) && (escaped || source.contains(simpleName(name))))
                 .toList();
         if (aliases.isEmpty()) return List.of();
         var syntax = JavacSyntax.read(source);

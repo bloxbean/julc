@@ -548,11 +548,16 @@ class JulcAnnotationProcessorTest {
                 "/META-INF/plutus-sources/org/julclang/state/api/StateContract.java").toURI()));
     }
 
-    /** The three ways a contract can name the alias: a single-type import, a wildcard import, the qualified name. */
+    /**
+     * The ways a contract can name the alias: a single-type import, a wildcard import, the qualified name, and a wildcard
+     * import with the name spelled through a Unicode escape, which javac reads as {@code StateContract}.
+     */
     static final List<String> COUNTERS = List.of(COUNTER,
             COUNTER.replace("import org.julclang.state.api.StateContract;", "import org.julclang.state.api.*;"),
             COUNTER.replace("import org.julclang.state.api.StateContract;\n", "")
-                    .replace("@StateContract", "@org.julclang.state.api.StateContract"));
+                    .replace("@StateContract", "@org.julclang.state.api.StateContract"),
+            COUNTER.replace("import org.julclang.state.api.StateContract;", "import org.julclang.state.api.*;")
+                    .replace("@StateContract", "@State\\u0043ontract"));
 
     /**
      * A @StateContract class is a library: a validator calls it by its bare name, with no import, as any library. The
