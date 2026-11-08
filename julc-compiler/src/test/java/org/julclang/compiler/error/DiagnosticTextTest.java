@@ -290,21 +290,20 @@ class DiagnosticTextTest {
     }
 
     @Test
-    void aClassIsALibraryOrAValidatorEvenWhenMarkedThroughAMetaAnnotation() {
-        // ADR-071 D1: @Marked implies @OnchainLibrary, so combining it with a validator annotation is JULC0134 too.
-        String marker = """
-                package lib;
-                import org.julclang.stdlib.annotation.OnchainLibrary;
+    void aClassIsALibraryOrAValidatorEvenThroughAnAliasOfOnchainLibrary() {
+        // ADR-071 D3: JOUST's @StateContract is an alias of @OnchainLibrary, so with a validator annotation it is JULC0134.
+        String stateContract = """
+                package org.julclang.state.api;
                 import java.lang.annotation.*;
-                @OnchainLibrary @Retention(RetentionPolicy.CLASS) @Target(ElementType.TYPE)
-                public @interface Marked {}
+                @Retention(RetentionPolicy.CLASS) @Target(ElementType.TYPE)
+                public @interface StateContract {}
                 """;
         var error = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions())
-                .compile(VALIDATOR_IMPORTS + "import lib.Marked;\n@Marked @SpendingValidator\nclass V { @Entrypoint static boolean m" + ENTRY + " }",
-                        List.of(marker)));
+                .compile(VALIDATOR_IMPORTS + "import org.julclang.state.api.StateContract;\n@StateContract @SpendingValidator\n"
+                        + "class V { @Entrypoint static boolean m" + ENTRY + " }", List.of(stateContract)));
         assertEquals("JULC0134", error.diagnostics().getFirst().code(), error.diagnostics().toString());
-        assertEquals("Class V must not combine @Marked (which implies @OnchainLibrary) with validator annotation(s): "
-                + "@SpendingValidator", error.diagnostics().getFirst().message());
+        assertEquals("Class V must not combine @StateContract with validator annotation(s): @SpendingValidator",
+                error.diagnostics().getFirst().message());
     }
 
     @Test

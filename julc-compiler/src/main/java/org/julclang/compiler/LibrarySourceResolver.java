@@ -3,16 +3,13 @@ package org.julclang.compiler;
 import org.julclang.compiler.error.DiagnosticCollector;
 import org.julclang.compiler.frontend.javac.ExpressionRoles;
 import org.julclang.compiler.frontend.javac.JavacSyntax;
-import com.sun.source.tree.AnnotationTree;
 import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.ImportTree;
 import com.sun.source.tree.MemberSelectTree;
 import com.sun.source.tree.MethodInvocationTree;
 import com.sun.source.tree.Tree;
-import com.sun.source.tree.VariableTree;
 import org.julclang.compiler.frontend.javac.SourceOrderScanner;
 
-import javax.lang.model.SourceVersion;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -21,7 +18,6 @@ import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.util.AbstractQueue;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -31,7 +27,6 @@ import java.util.Comparator;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -41,8 +36,6 @@ import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
 import java.util.function.Consumer;
-import java.util.function.Function;
-import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -164,12 +157,6 @@ public final class LibrarySourceResolver {
 
     public static LibrarySource librarySource(String source) {
         return librarySourceFromSimpleName(null, source);
-    }
-
-    /** A library source whose class javac names {@code fqcn}: the name, not the source's text, gives its package. */
-    public static LibrarySource librarySourceFromQualifiedName(String fqcn, String source) {
-        Objects.requireNonNull(source, "source");
-        return librarySourceFromPath(fqcn, fqcn.replace('.', '/') + ".java", source);
     }
 
     public static LibrarySource librarySourceFromSimpleName(String simpleName, String source) {
@@ -384,134 +371,40 @@ public final class LibrarySourceResolver {
                 .toList();
     }
 
-    /**
-     * What a host that compiles inside javac (the annotation processor) adds to a resolution (ADR-071 D1). It is asked
-     * only about names the source states exactly, which javac resolved before any processor ran: a single-type import,
-     * and an annotation's qualified name, import or own-package name. A bare name or a wildcard import is never asked
-     * about, so the resolver never guesses whether a name is a class.
-     *
-     * @param classesOfTheCompilation the library javac names by an exact name, or null: a top-level class of this
-     *                                compilation that is an on-chain library, such as one marked through a framework's
-     *                                annotation in a round the host never saw. What it returns is never pooled
-     * @param markers                 whether javac's class of that name is a library marker (an annotation interface
-     *                                carrying {@code @OnchainLibrary}): an annotation is followed only to one
-     */
-    public record CompilationHost(Function<String, LibrarySource> classesOfTheCompilation,
-                                  Predicate<String> markers) {
-
-        /** A host that adds nothing: {@link #resolve(String, Map)}. */
-        static final CompilationHost NONE = new CompilationHost(fqcn -> null, fqcn -> false);
-    }
-
-    /** {@link #resolve(String, Map)}, with what {@code host} adds (ADR-071 D1). */
-    public static List<String> resolve(String source, Map<String, ?> availableLibraries, CompilationHost host) {
-        return resolveLibrarySources(source, normalizeLibrarySources(availableLibraries), host).stream()
-                .map(LibrarySource::source)
-                .toList();
-    }
-
     public static List<LibrarySource> resolveLibrarySources(String source, Map<String, LibrarySource> availableLibraries) {
         if (availableLibraries.isEmpty()) {
             return List.of();
         }
-        return resolveLibrarySources(source, availableLibraries, CompilationHost.NONE);
-    }
 
-    private static List<LibrarySource> resolveLibrarySources(String source, Map<String, LibrarySource> availableLibraries,
-                                                             CompilationHost host) {
-        var asked = new HashMap<String, Optional<LibrarySource>>();
-        // ADR-071 D1: an imported name is the pool's library, or else asked of the compilation. Nothing else is asked.
-        Function<String, LibrarySource> ask = fqcn -> !SourceVersion.isName(fqcn) ? null : asked.computeIfAbsent(fqcn,
-                name -> Optional.ofNullable(host.classesOfTheCompilation().apply(name))).orElse(null);
-        Function<String, LibrarySource> exact = fqcn -> {
-            var pooled = availableLibraries.get(fqcn);
-            return pooled != null ? pooled : ask.apply(fqcn);
-        };
-        var references = new References(availableLibraries, exact, host.markers(),
-                indexBySimpleName(availableLibraries.values()));
+        var bySimpleName = indexBySimpleName(availableLibraries.values());
         var diagnostics = new DiagnosticCollector("<source>");
         var resolved = new LinkedHashMap<String, LibrarySource>();
         var queued = new HashSet<String>();
         Queue<LibrarySource> toProcess = new ArrayDeque<>();
 
-        // Library markers wait until the libraries are resolved, so what a marker reaches (a Class<?> default, say) never
-        // moves a library ahead of where its callers place it (ADR-071 I3). Only the annotation processor names markers.
-        Queue<LibrarySource> markers = new ArrayDeque<>();
-        Queue<LibrarySource> queue = new MarkersLast(toProcess, markers, references.markers());
-
-        enqueueReferencedLibraries(source, extractPackageName(source), "<source>", references,
-                resolved, queued, queue, diagnostics);
+        enqueueReferencedLibraries(source, extractPackageName(source), "<source>", availableLibraries,
+                bySimpleName, resolved, queued, toProcess, diagnostics);
         diagnostics.throwIfErrors();
 
-        while (!toProcess.isEmpty() || !markers.isEmpty()) {
-            LibrarySource librarySource = toProcess.isEmpty() ? markers.poll() : toProcess.poll();
+        while (!toProcess.isEmpty()) {
+            LibrarySource librarySource = toProcess.poll();
             if (resolved.containsKey(librarySource.fqcn())) {
                 continue;
             }
             resolved.put(librarySource.fqcn(), librarySource);
-            // A marker is compiled for the annotation's sake only: what it refers to is not followed, so nothing a
-            // marker names becomes a library of the script (ADR-071, the marker contract).
-            if (references.markers().test(librarySource.fqcn())) continue;
             enqueueReferencedLibraries(librarySource.source(), librarySource.packageName(), librarySource.resourcePath(),
-                    references, resolved, queued, queue, diagnostics);
+                    availableLibraries, bySimpleName, resolved, queued, toProcess, diagnostics);
             diagnostics.throwIfErrors();
         }
 
         return new ArrayList<>(resolved.values());
     }
 
-    /** A queue that sends library markers to a queue of their own, served after the libraries (ADR-071 I3). */
-    private static final class MarkersLast extends AbstractQueue<LibrarySource> {
-        private final Queue<LibrarySource> libraries;
-        private final Queue<LibrarySource> markers;
-        private final Predicate<String> isMarker;
-
-        MarkersLast(Queue<LibrarySource> libraries, Queue<LibrarySource> markers, Predicate<String> isMarker) {
-            this.libraries = libraries;
-            this.markers = markers;
-            this.isMarker = isMarker;
-        }
-
-        @Override
-        public boolean offer(LibrarySource librarySource) {
-            return (isMarker.test(librarySource.fqcn()) ? markers : libraries).offer(librarySource);
-        }
-
-        @Override
-        public LibrarySource poll() {
-            return libraries.isEmpty() ? markers.poll() : libraries.poll();
-        }
-
-        @Override
-        public LibrarySource peek() {
-            return libraries.isEmpty() ? markers.peek() : libraries.peek();
-        }
-
-        @Override
-        public Iterator<LibrarySource> iterator() {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public int size() {
-            return libraries.size() + markers.size();
-        }
-    }
-
-    /**
-     * What a resolution looks names up in: the pool, its entries by simple name, the exact-name lookup that may ask the
-     * host (imports only), and the host's word on markers.
-     */
-    private record References(Map<String, LibrarySource> pool,
-                              Function<String, LibrarySource> exact,
-                              Predicate<String> markers,
-                              Map<String, List<LibrarySource>> bySimpleName) {
-    }
-
     private static void enqueueReferencedLibraries(String source,
                                                    String packageName,
                                                    String fileName,
-                                                   References references,
+                                                   Map<String, LibrarySource> availableLibraries,
+                                                   Map<String, List<LibrarySource>> bySimpleName,
                                                    Map<String, LibrarySource> resolved,
                                                    Set<String> queued,
                                                    Queue<LibrarySource> toProcess,
@@ -520,63 +413,31 @@ public final class LibrarySourceResolver {
         SourceContext context = parseSourceContext(source, packageName);
 
         for (String fqcn : context.importsBySimpleName().values()) {
-            enqueue(references.exact().apply(fqcn), resolved, queued, toProcess);
+            enqueue(availableLibraries.get(fqcn), resolved, queued, toProcess);
         }
 
         for (ClassReference reference : context.staticReferences()) {
             LibrarySource librarySource = resolveStaticReference(reference, context.packageName(),
-                    context.importsBySimpleName(), context.wildcardPackages(), references, diagnostics);
+                    context.importsBySimpleName(), context.wildcardPackages(),
+                    availableLibraries, bySimpleName, diagnostics);
             enqueue(librarySource, resolved, queued, toProcess);
         }
-
-        // An annotation naming a type the source declares itself (a nested one, say) is that type.
-        for (ClassReference reference : context.annotationReferences()) {
-            if (reference.fqcn() == null && context.declaredTypeNames().contains(reference.simpleName())) continue;
-            enqueue(resolveAnnotationReference(reference, context.packageName(), context.importsBySimpleName(),
-                    references), resolved, queued, toProcess);
-        }
-    }
-
-    /**
-     * The marker an annotation names (ADR-071 D1): resolved by its qualified name, a single-type import or the source's
-     * package, in Java's order, and taken only if the host says javac's class of that name is a library marker. So a
-     * marker the source uses without an import, from its own package, is compiled with the source, with the libraries
-     * it refers to. Never through a wildcard import, where a plain annotation of the same name in the source's package
-     * could be the one javac binds, nor through the pool-wide fallback; no diagnostic, since an annotation that names
-     * no library is javac's to report. Only the annotation processor answers about markers; for other hosts no
-     * annotation is followed, as before.
-     */
-    private static LibrarySource resolveAnnotationReference(ClassReference reference,
-                                                            String packageName,
-                                                            Map<String, String> importsBySimpleName,
-                                                            References references) {
-        String fqcn;
-        if (reference.fqcn() != null) {
-            fqcn = reference.fqcn();
-        } else if (importsBySimpleName.containsKey(reference.simpleName())) {
-            fqcn = importsBySimpleName.get(reference.simpleName());
-        } else {
-            fqcn = packageName.isBlank() ? reference.simpleName() : packageName + "." + reference.simpleName();
-        }
-        if (!references.markers().test(fqcn)) return null;
-        return references.exact().apply(fqcn);
     }
 
     private static LibrarySource resolveStaticReference(ClassReference reference,
                                                         String packageName,
                                                         Map<String, String> importsBySimpleName,
                                                         Set<String> wildcardPackages,
-                                                        References references,
+                                                        Map<String, LibrarySource> availableLibraries,
+                                                        Map<String, List<LibrarySource>> bySimpleName,
                                                         DiagnosticCollector diagnostics) {
-        var availableLibraries = references.pool();
-        var bySimpleName = references.bySimpleName();
         if (reference.fqcn() != null) {
             return availableLibraries.get(reference.fqcn());
         }
 
         String importedFqcn = importsBySimpleName.get(reference.simpleName());
         if (importedFqcn != null) {
-            return references.exact().apply(importedFqcn);
+            return availableLibraries.get(importedFqcn);
         }
 
         String samePackageFqcn = packageName.isBlank()
@@ -638,7 +499,7 @@ public final class LibrarySourceResolver {
         var fallbackPackageName = packageName == null ? extractPackageName(source) : packageName;
         var staticReferences = extractFallbackClassReferences(source);
         return new SourceContext(fallbackPackageName, extractImportPaths(source),
-                extractWildcardImportPackages(source), staticReferences, List.of(), Set.of());
+                extractWildcardImportPackages(source), staticReferences);
     }
 
     /**
@@ -665,15 +526,7 @@ public final class LibrarySourceResolver {
         var staticReferences = new ArrayList<ClassReference>();
         var calls = new ArrayList<Tree>();
         var fieldAccesses = new ArrayList<Tree>();
-        var annotations = new ArrayList<Tree>();
-        var declaredTypeNames = new HashSet<String>();
         new SourceOrderScanner<Void, Void>() {
-            @Override
-            public Void visitClass(ClassTree type, Void unused) {
-                declaredTypeNames.add(type.getSimpleName().toString());
-                return super.visitClass(type, unused);
-            }
-
             @Override
             public Void visitMethodInvocation(MethodInvocationTree call, Void unused) {
                 if (call.getMethodSelect() instanceof MemberSelectTree select) calls.add(select.getExpression());
@@ -685,24 +538,10 @@ public final class LibrarySourceResolver {
                 if (ExpressionRoles.isFieldAccess(getCurrentPath())) fieldAccesses.add(select.getExpression());
                 return super.visitMemberSelect(select, unused);
             }
-
-            @Override
-            public Void visitAnnotation(AnnotationTree annotation, Void unused) {
-                annotations.add(annotation.getAnnotationType());
-                return super.visitAnnotation(annotation, unused);
-            }
         }.scan(unit, null);
         for (Tree scope : calls) javacReference(syntax, scope).ifPresent(staticReferences::add);
         for (Tree scope : fieldAccesses) javacReference(syntax, scope).ifPresent(staticReferences::add);
-        // An annotation names a type, whatever its spelling: no class-name heuristic.
-        var annotationReferences = new ArrayList<ClassReference>();
-        for (Tree type : annotations) {
-            String text = type.toString();
-            annotationReferences.add(new ClassReference(simpleName(text), text.contains(".") ? text : null,
-                    syntax.line(type), syntax.column(type)));
-        }
-        return new SourceContext(resolvedPackageName, importsBySimpleName, wildcardPackages, staticReferences,
-                annotationReferences, declaredTypeNames);
+        return new SourceContext(resolvedPackageName, importsBySimpleName, wildcardPackages, staticReferences);
     }
 
     private static Optional<ClassReference> javacReference(JavacSyntax syntax, Tree scope) {
@@ -717,12 +556,10 @@ public final class LibrarySourceResolver {
     static String describeSourceContext(String source) {
         var context = parseSourceContext(source, null);
         var references = context.staticReferences().stream()
-                .filter(reference -> SourceVersion.isIdentifier(reference.simpleName()))
+                .filter(reference -> javax.lang.model.SourceVersion.isIdentifier(reference.simpleName()))
                 .toList();
-        // The four readings the ADR-068 baseline froze, printed as that record printed them.
-        return "SourceContext[packageName=" + context.packageName() + ", importsBySimpleName="
-                + context.importsBySimpleName() + ", wildcardPackages=" + context.wildcardPackages()
-                + ", staticReferences=" + references + "]";
+        return new SourceContext(context.packageName(), context.importsBySimpleName(), context.wildcardPackages(),
+                references).toString();
     }
 
     private static Map<String, LibrarySource> normalizeLibrarySources(Map<String, ?> availableLibraries) {
@@ -829,9 +666,7 @@ public final class LibrarySourceResolver {
     private record SourceContext(String packageName,
                                  Map<String, String> importsBySimpleName,
                                  Set<String> wildcardPackages,
-                                 List<ClassReference> staticReferences,
-                                 List<ClassReference> annotationReferences,
-                                 Set<String> declaredTypeNames) {
+                                 List<ClassReference> staticReferences) {
     }
 
     /** A class a source names as a call's or a field access's qualifier, and where (0, 0 when unknown). */

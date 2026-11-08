@@ -12,7 +12,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.Function;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
 
@@ -341,346 +340,6 @@ class LibrarySourceResolverTest {
         }
     }
 
-    /** A host that admits {@code admitted} by name and treats {@code markers} as library markers. */
-    private static LibrarySourceResolver.CompilationHost host(Function<String, LibrarySource> admitted, Set<String> markers) {
-        return new LibrarySourceResolver.CompilationHost(admitted, markers::contains);
-    }
-
-    @Test
-    void resolve_followsAMarkerAnnotationOfTheLibrarysOwnPackage() {
-        // ADR-071 D1: an annotation is a reference; a marker used without an import comes with the library using it.
-        var mark = LibrarySourceResolver.librarySourceFromSimpleName("Mark", """
-                package lib;
-                import org.julclang.stdlib.annotation.OnchainLibrary;
-                @OnchainLibrary
-                public @interface Mark {}
-                """);
-        var library = LibrarySourceResolver.librarySourceFromSimpleName("Lib", """
-                package lib;
-                @Mark
-                public class Lib { public static boolean ok() { return true; } }
-                """);
-        var validator = """
-                package app;
-                import lib.Lib;
-                class V { static boolean f() { return Lib.ok(); } }
-                """;
-
-        var resolved = LibrarySourceResolver.resolve(validator, Map.of("lib.Lib", library, "lib.Mark", mark),
-                host(name -> null, Set.of("lib.Mark")));
-
-        assertEquals(List.of(library.source(), mark.source()), resolved);
-        // A host that answers no marker (the CLI, the testkit, the tools) follows no annotation, as before.
-        assertEquals(List.of(library.source()), LibrarySourceResolver.resolve(validator,
-                Map.of("lib.Lib", library, "lib.Mark", mark)));
-    }
-
-    @Test
-    void resolve_annotationReferencesNameOnlyAnnotationInterfacesAndNeverFallBack() {
-        // An annotation resolves by import, package or a single wildcard match, and only to what the host calls a
-        // marker: a class of the same simple name, or a marker of another package the source does not import, is never
-        // added.
-        var otherPackage = LibrarySourceResolver.librarySourceFromSimpleName("Param", """
-                package other;
-                import org.julclang.stdlib.annotation.OnchainLibrary;
-                @OnchainLibrary
-                public @interface Param {}
-                """);
-        var aClass = LibrarySourceResolver.librarySourceFromSimpleName("Entrypoint", """
-                package app;
-                import org.julclang.stdlib.annotation.OnchainLibrary;
-                @OnchainLibrary
-                public class Entrypoint { public static boolean ok() { return true; } }
-                """);
-        var validator = """
-                package app;
-                import org.julclang.stdlib.annotation.Param;
-                class V { @Entrypoint static boolean f(@Param int x) { return true; } }
-                """;
-
-        var resolved = LibrarySourceResolver.resolve(validator, Map.of("other.Param", otherPackage, "app.Entrypoint", aClass),
-                host(name -> null, Set.of("other.Param")));
-
-        assertEquals(List.of(), resolved);
-    }
-
-    @Test
-    void resolve_asksTheCompilationOnlyAboutImportedNames() {
-        // ADR-071 D1: the host is asked only about the source's single-type imports; what it admits is followed, not
-        // pooled.
-        var pooled = LibrarySourceResolver.librarySourceFromSimpleName("Pooled", """
-                package other;
-                public class Pooled { public static boolean ok() { return true; } }
-                """);
-        var admitted = LibrarySourceResolver.librarySourceFromQualifiedName("lib.Counter", """
-                package lib;
-                public class Counter { public static boolean ok() { return Pooled.ok(); } }
-                """);
-        var validator = """
-                package app;
-                import lib.Counter;
-                import wild.*;
-                class V { static boolean f() { return Counter.ok() && Local.ok() && Far.ok() && f(1).g(); } }
-                """;
-        var asked = new ArrayList<String>();
-
-        var resolved = LibrarySourceResolver.resolve(validator, Map.of("other.Pooled", pooled), host(name -> {
-            asked.add(name);
-            return name.equals("lib.Counter") ? admitted : null;
-        }, Set.of()));
-
-        // Counter, imported, is admitted and followed; Pooled reaches it through the pool-wide fallback. Bare names and
-        // wildcard packages (Local, Far) are never asked about: the resolver does not guess what is a class.
-        assertEquals(List.of(admitted.source(), pooled.source()), resolved);
-        assertEquals(List.of("lib.Counter"), asked);
-        // Nothing admitted stays behind: the same source resolved without the host finds only what the pool holds.
-        assertEquals(List.of(), LibrarySourceResolver.resolve(validator, Map.of("other.Pooled", pooled)));
-    }
-
-    @Test
-    void scanClasspathSources_aMalformedEntryUrlCostsOnlyThatEntry(@TempDir Path tempDir) throws Exception {
-        // ADR-071 D2: a jar under a directory with a space, named by an unencoded URL: building an entry's URL throws
-        // IllegalArgumentException, which costs that jar's entries only.
-        Path spaced = tempDir.resolve("with space");
-        Files.createDirectories(spaced);
-        Path broken = createPlutusSourcesJar(spaced.resolve("broken.jar"), Map.of(
-                "com/example/Broken.java", "package com.example; class Broken {}"));
-        Path good = createPlutusSourcesJar(tempDir.resolve("good.jar"), Map.of(
-                "com/example/GoodLib.java", "package com.example; class GoodLib {}"));
-        var problems = new ArrayList<String>();
-        try (var classLoader = new URLClassLoader(new URL[]{new URL("file:" + broken), good.toUri().toURL()}, null)) {
-            Map<String, LibrarySource> result = LibrarySourceResolver.scanClasspathSources(classLoader, problems::add);
-
-            assertTrue(result.containsKey("com.example.GoodLib"), result.keySet().toString());
-        }
-    }
-
-    @Test
-    void resolve_followsOnlyAnnotationsTheHostCallsMarkers() {
-        // A host may pool any project source (the CLI does). An annotation is followed only if the host, which asks
-        // javac, calls it a marker; a lookalike @OnchainLibrary of whatever spelling or shadowing never decides it.
-        var plain = LibrarySourceResolver.librarySourceFromSimpleName("Audit", """
-                package app;
-                import org.julclang.stdlib.annotation.*;
-                @OnchainLibrary
-                @java.lang.annotation.Documented
-                public @interface Audit { String[] value(); }
-                """);
-        var real = LibrarySourceResolver.librarySourceFromSimpleName("Mark", """
-                package app;
-                import org.julclang.stdlib.annotation.*;
-                @OnchainLibrary
-                public @interface Mark {}
-                """);
-        var validator = """
-                package app;
-                @Audit({"x"}) @Mark
-                class V { static boolean f() { return true; } }
-                """;
-
-        assertEquals(List.of(real.source()), LibrarySourceResolver.resolve(validator,
-                Map.of("app.Audit", plain, "app.Mark", real), host(name -> null, Set.of("app.Mark"))));
-        assertEquals(List.of(), LibrarySourceResolver.resolve(validator, Map.of("app.Audit", plain, "app.Mark", real)));
-    }
-
-    @Test
-    void resolve_whatAMarkerNamesIsNeverALibrary() {
-        // A marker is compiled for the annotation only: Extra, named by the marker's Class<?> default and by nothing
-        // else, is not followed, so the script is the one a direct Counter gives.
-        var extra = LibrarySourceResolver.librarySourceFromQualifiedName("app.Extra",
-                "package app; public class Extra { public static boolean ok() { return false; } }");
-        var mark = LibrarySourceResolver.librarySourceFromQualifiedName("fw.Mark", """
-                package fw;
-                import app.Extra;
-                public @interface Mark { Class<?> value() default Extra.class; }
-                """);
-        var counter = LibrarySourceResolver.librarySourceFromQualifiedName("app.Counter", """
-                package app;
-                @fw.Mark
-                public class Counter { public static boolean ok() { return true; } }
-                """);
-        var validator = """
-                package v;
-                import app.Counter;
-                class V { static boolean f() { return Counter.ok(); } }
-                """;
-
-        assertEquals(List.of(counter.source(), mark.source()), LibrarySourceResolver.resolve(validator,
-                Map.of("app.Extra", extra, "fw.Mark", mark),
-                host(name -> name.equals("app.Counter") ? counter : null, Set.of("fw.Mark"))));
-    }
-
-    @Test
-    void resolve_aMarkersDependenciesNeverReorderTheLibraries() {
-        // ADR-071 I3: Counter, marked by fw.Mark whose Class<?> default imports Leaf, resolves its libraries in the order
-        // the direct Counter does; the marker comes after them.
-        var tail = LibrarySourceResolver.librarySourceFromQualifiedName("app.Tail",
-                "package app; public class Tail { static boolean ok() { return Bridge.ok() && Leaf.ok(); } }");
-        var bridge = LibrarySourceResolver.librarySourceFromQualifiedName("app.Bridge",
-                "package app; public class Bridge { static boolean ok() { return true; } }");
-        var leaf = LibrarySourceResolver.librarySourceFromQualifiedName("app.Leaf",
-                "package app; public class Leaf { static boolean ok() { return true; } }");
-        var mark = LibrarySourceResolver.librarySourceFromQualifiedName("fw.Mark", """
-                package fw;
-                import app.Leaf;
-                public @interface Mark { Class<?> value() default Leaf.class; }
-                """);
-        var marked = LibrarySourceResolver.librarySourceFromQualifiedName("app.Counter", """
-                package app;
-                import fw.Mark;
-                @Mark
-                public class Counter { static boolean ok() { return Tail.ok(); } }
-                """);
-        var direct = LibrarySourceResolver.librarySourceFromQualifiedName("app.Counter",
-                "package app; public class Counter { static boolean ok() { return Tail.ok(); } }");
-        var validator = """
-                package app;
-                import app.Counter;
-                class V { static boolean f() { return Counter.ok(); } }
-                """;
-        Map<String, LibrarySource> pool = Map.of("app.Tail", tail, "app.Bridge", bridge, "app.Leaf", leaf, "fw.Mark", mark);
-
-        var withMarker = LibrarySourceResolver.resolve(validator, pool,
-                host(name -> name.equals("app.Counter") ? marked : null, Set.of("fw.Mark")));
-        var withoutMarker = LibrarySourceResolver.resolve(validator, pool,
-                host(name -> name.equals("app.Counter") ? direct : null, Set.of("fw.Mark")));
-
-        assertEquals(List.of(marked.source(), tail.source(), bridge.source(), leaf.source(), mark.source()), withMarker);
-        assertEquals(List.of(direct.source(), tail.source(), bridge.source(), leaf.source()), withoutMarker);
-    }
-
-    @Test
-    void resolve_anAnnotationIsNeverFollowedThroughAWildcardImport() {
-        // javac binds @SuppressWarnings to the validator's own package's plain annotation, which the pool does not
-        // hold; a wildcard-imported marker of that name must not be taken instead.
-        var marker = LibrarySourceResolver.librarySourceFromQualifiedName("fw.SuppressWarnings", """
-                package fw;
-                import org.julclang.stdlib.annotation.OnchainLibrary;
-                @OnchainLibrary
-                public @interface SuppressWarnings { String[] value(); }
-                """);
-        var validator = """
-                package app;
-                import fw.*;
-                @SuppressWarnings({"unused"})
-                class V { static boolean f() { return true; } }
-                """;
-
-        assertEquals(List.of(), LibrarySourceResolver.resolve(validator, Map.of("fw.SuppressWarnings", marker),
-                host(name -> null, Set.of("fw.SuppressWarnings"))));
-    }
-
-    @Test
-    void resolve_keepsTheOrderTheSourceNamesLibrariesIn() {
-        // A class the compilation supplies keeps its place: the order is the compiler's input, and it shows in the
-        // script when the optimizer does not run.
-        var counter = LibrarySourceResolver.librarySourceFromQualifiedName("app.Counter",
-                "package app; public class Counter { public static boolean ok() { return true; } }");
-        var tail = LibrarySourceResolver.librarySourceFromQualifiedName("app.Tail",
-                "package app; public class Tail { public static boolean ok() { return true; } }");
-        var validator = """
-                package app;
-                import app.Counter;
-                import app.Tail;
-                class V { static boolean f() { return Counter.ok() && Tail.ok(); } }
-                """;
-
-        assertEquals(List.of(counter.source(), tail.source()), LibrarySourceResolver.resolve(validator,
-                Map.of("app.Tail", tail), host(name -> name.equals("app.Counter") ? counter : null, Set.of())));
-    }
-
-    @Test
-    void resolve_anAnnotationNamingTheSourcesOwnTypeIsNotFollowed() {
-        // V declares its own @interface Mark; javac binds @Mark to it, not to the package's unrelated marker app.Mark,
-        // whose ambiguous reference must not fail the build.
-        var clueX = LibrarySourceResolver.librarySourceFromQualifiedName("x.Clue", "package x; public class Clue {}");
-        var clueY = LibrarySourceResolver.librarySourceFromQualifiedName("y.Clue", "package y; public class Clue {}");
-        var mark = LibrarySourceResolver.librarySourceFromQualifiedName("app.Mark", """
-                package app;
-                import x.*;
-                import y.*;
-                public @interface Mark { int N = Clue.size(); }
-                """);
-        var validator = """
-                package app;
-                class V {
-                    public @interface Mark {}
-                    @Mark static boolean f() { return true; }
-                }
-                """;
-
-        assertEquals(List.of(), LibrarySourceResolver.resolve(validator,
-                Map.of("app.Mark", mark, "x.Clue", clueX, "y.Clue", clueY), host(name -> null, Set.of("app.Mark"))));
-    }
-
-    @Test
-    void resolve_aPooledNameIsNeverAskedAbout() {
-        // ADR-071 D1: an imported name the pool holds resolves to the pool's library, as before; the compilation is asked
-        // only about names the pool lacks.
-        var jar = LibrarySourceResolver.librarySourceFromQualifiedName("lib.Counter", """
-                package lib;
-                public class Counter { public static boolean ok() { return false; } }
-                """);
-        var validator = """
-                package app;
-                import lib.Counter;
-                class V { static boolean f() { return Counter.ok(); } }
-                """;
-        var asked = new ArrayList<String>();
-
-        assertEquals(List.of(jar.source()), LibrarySourceResolver.resolve(validator, Map.of("lib.Counter", jar),
-                host(name -> {
-                    asked.add(name);
-                    return null;
-                }, Set.of())));
-        assertEquals(List.of(), asked);
-    }
-
-    @Test
-    void scanClasspathSources_skipsAnUnreadableEntryReportsItAndReadsTheRest(@TempDir Path tempDir) throws Exception {
-        // ADR-071 D2: an index listing a source the jar does not hold costs that source only, and is reported.
-        Path broken = tempDir.resolve("broken.jar");
-        try (var out = new JarOutputStream(Files.newOutputStream(broken))) {
-            addJarDirectory(out, "META-INF/");
-            addJarDirectory(out, "META-INF/plutus-sources/");
-            addJarEntry(out, "META-INF/plutus-sources/index.txt", "com/example/Missing.java\n");
-        }
-        Path good = createPlutusSourcesJar(tempDir.resolve("good.jar"), Map.of(
-                "com/example/GoodLib.java", "package com.example; class GoodLib {}"));
-        var warnings = new ArrayList<String>();
-        try (var classLoader = new URLClassLoader(new URL[]{broken.toUri().toURL(), good.toUri().toURL()}, null)) {
-            Map<String, LibrarySource> result = LibrarySourceResolver.scanClasspathSources(classLoader, warnings::add);
-
-            assertTrue(result.containsKey("com.example.GoodLib"), result.keySet().toString());
-            assertFalse(result.containsKey("com.example.Missing"));
-            assertEquals(1, warnings.size(), warnings.toString());
-            assertTrue(warnings.getFirst().contains("Missing.java"), warnings.toString());
-        }
-    }
-
-    @Test
-    void scanClasspathSources_readsAJarRewrittenAfterAnEarlierScan(@TempDir Path tempDir) throws Exception {
-        // ADR-071 D2: resources are opened without the JDK's URL cache, so a rebuilt jar (as in a Gradle daemon) is
-        // read from disk, not through a stale cached JarFile.
-        Path jar = tempDir.resolve("lib.jar");
-        createPlutusSourcesJar(jar, Map.of("com/example/V1.java", "package com.example; class V1 {}"));
-        try (var first = new URLClassLoader(new URL[]{jar.toUri().toURL()}, null)) {
-            assertTrue(LibrarySourceResolver.scanClasspathSources(first).containsKey("com.example.V1"));
-        }
-        Files.delete(jar);
-        createPlutusSourcesJar(jar, Map.of(
-                "com/example/V1.java", "package com.example; class V1 { /* rebuilt */ }",
-                "com/example/V2.java", "package com.example; class V2 {}"));
-        var warnings = new ArrayList<String>();
-        try (var second = new URLClassLoader(new URL[]{jar.toUri().toURL()}, null)) {
-            Map<String, LibrarySource> result = LibrarySourceResolver.scanClasspathSources(second, warnings::add);
-
-            assertEquals(List.of(), warnings);
-            assertTrue(result.get("com.example.V1").source().contains("rebuilt"));
-            assertTrue(result.containsKey("com.example.V2"));
-        }
-    }
-
     @Test
     void scanClasspathSources_doesNotDiscoverJarSourcesWithoutIndex(@TempDir Path tempDir) throws Exception {
         Path jar = tempDir.resolve("source-only.jar");
@@ -939,5 +598,68 @@ class LibrarySourceResolverTest {
             pool.put(librarySource.fqcn(), librarySource);
         }
         return pool;
+    }
+
+    @Test
+    void scanClasspathSources_skipsAnUnreadableEntryReportsItAndReadsTheRest(@TempDir Path tempDir) throws Exception {
+        // ADR-071 D2: an index listing a source the jar does not hold costs that source only, and is reported.
+        Path broken = tempDir.resolve("broken.jar");
+        try (var out = new JarOutputStream(Files.newOutputStream(broken))) {
+            addJarDirectory(out, "META-INF/");
+            addJarDirectory(out, "META-INF/plutus-sources/");
+            addJarEntry(out, "META-INF/plutus-sources/index.txt", "com/example/Missing.java\n");
+        }
+        Path good = createPlutusSourcesJar(tempDir.resolve("good.jar"), Map.of(
+                "com/example/GoodLib.java", "package com.example; class GoodLib {}"));
+        var warnings = new ArrayList<String>();
+        try (var classLoader = new URLClassLoader(new URL[]{broken.toUri().toURL(), good.toUri().toURL()}, null)) {
+            Map<String, LibrarySource> result = LibrarySourceResolver.scanClasspathSources(classLoader, warnings::add);
+
+            assertTrue(result.containsKey("com.example.GoodLib"), result.keySet().toString());
+            assertFalse(result.containsKey("com.example.Missing"));
+            assertEquals(1, warnings.size(), warnings.toString());
+            assertTrue(warnings.getFirst().contains("Missing.java"), warnings.toString());
+        }
+    }
+
+    @Test
+    void scanClasspathSources_aMalformedEntryUrlCostsOnlyThatEntry(@TempDir Path tempDir) throws Exception {
+        // ADR-071 D2: a jar under a directory with a space, named by an unencoded URL: building an entry's URL throws
+        // IllegalArgumentException, which costs that jar's entries only.
+        Path spaced = tempDir.resolve("with space");
+        Files.createDirectories(spaced);
+        Path broken = createPlutusSourcesJar(spaced.resolve("broken.jar"), Map.of(
+                "com/example/Broken.java", "package com.example; class Broken {}"));
+        Path good = createPlutusSourcesJar(tempDir.resolve("good.jar"), Map.of(
+                "com/example/GoodLib.java", "package com.example; class GoodLib {}"));
+        var problems = new ArrayList<String>();
+        try (var classLoader = new URLClassLoader(new URL[]{new URL("file:" + broken), good.toUri().toURL()}, null)) {
+            Map<String, LibrarySource> result = LibrarySourceResolver.scanClasspathSources(classLoader, problems::add);
+
+            assertTrue(result.containsKey("com.example.GoodLib"), result.keySet().toString());
+        }
+    }
+
+    @Test
+    void scanClasspathSources_readsAJarRewrittenAfterAnEarlierScan(@TempDir Path tempDir) throws Exception {
+        // ADR-071 D2: resources are opened without the JDK's URL cache, so a rebuilt jar (as in a Gradle daemon) is
+        // read from disk, not through a stale cached JarFile.
+        Path jar = tempDir.resolve("lib.jar");
+        createPlutusSourcesJar(jar, Map.of("com/example/V1.java", "package com.example; class V1 {}"));
+        try (var first = new URLClassLoader(new URL[]{jar.toUri().toURL()}, null)) {
+            assertTrue(LibrarySourceResolver.scanClasspathSources(first).containsKey("com.example.V1"));
+        }
+        Files.delete(jar);
+        createPlutusSourcesJar(jar, Map.of(
+                "com/example/V1.java", "package com.example; class V1 { /* rebuilt */ }",
+                "com/example/V2.java", "package com.example; class V2 {}"));
+        var warnings = new ArrayList<String>();
+        try (var second = new URLClassLoader(new URL[]{jar.toUri().toURL()}, null)) {
+            Map<String, LibrarySource> result = LibrarySourceResolver.scanClasspathSources(second, warnings::add);
+
+            assertEquals(List.of(), warnings);
+            assertTrue(result.get("com.example.V1").source().contains("rebuilt"));
+            assertTrue(result.containsKey("com.example.V2"));
+        }
     }
 }

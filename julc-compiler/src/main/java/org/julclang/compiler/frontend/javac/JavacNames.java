@@ -40,6 +40,10 @@ public final class JavacNames {
     public static final String ENTRYPOINT = ANNOTATIONS + "Entrypoint";
     public static final String PARAM = ANNOTATIONS + "Param";
     public static final String ONCHAIN_LIBRARY = ANNOTATIONS + "OnchainLibrary";
+    /** JOUST's contract annotation: an alias of {@code @OnchainLibrary} (ADR-071 D3). */
+    public static final String STATE_CONTRACT = "org.julclang.state.api.StateContract";
+    /** The annotations that make a class an on-chain library: {@code @OnchainLibrary} and its aliases (ADR-071 D3). */
+    public static final List<String> LIBRARY_ANNOTATIONS = List.of(ONCHAIN_LIBRARY, STATE_CONTRACT);
     public static final String NEW_TYPE = ANNOTATIONS + "NewType";
 
     /** The validator annotations, in the reference's order. */

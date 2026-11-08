@@ -125,6 +125,28 @@ class JavaSourceIntrospectorTest {
     }
 
     @Test
+    void inspectTreatsStateContractAsAnOnchainLibrary() {
+        // ADR-071 D3: JOUST's @StateContract is an alias of @OnchainLibrary for the tools that read source text too.
+        var source = """
+                package app;
+                import org.julclang.state.api.StateContract;
+                @StateContract
+                public class Counter {
+                    @StateContract
+                    static class Inner {}
+                }
+                """;
+
+        var info = JavaSourceIntrospector.inspect(source);
+
+        assertTrue(JavaSourceIntrospector.mightContainOnchainLibraryAnnotation(source));
+        assertEquals("Counter", info.topLevelOnchainLibrary().orElseThrow().simpleName());
+        assertEquals("StateContract", info.topLevelOnchainLibrary().orElseThrow().annotationName());
+        assertEquals(1, info.nestedOnchainLibraries().size());
+        assertEquals("StateContract", info.nestedOnchainLibraries().get(0).annotationName());
+    }
+
+    @Test
     void inspectAllowsUnrelatedAnnotationsOnOnchainLibrary() {
         var source = """
                 package com.example;

@@ -43,19 +43,18 @@ final class JavacSourceIntrospection {
         var legacyValidatorType = firstAnnotated(all, topLevel, packageName,
                 JavaSourceIntrospector.LEGACY_VALIDATOR_ANNOTATIONS);
         var topLevelOnchainLibrary = firstAnnotated(all, topLevel, packageName,
-                List.of(JavaSourceIntrospector.ONCHAIN_LIBRARY_ANNOTATION));
+                JavaSourceIntrospector.LIBRARY_ANNOTATIONS);
 
         var nestedOnchainLibraries = new ArrayList<AnnotatedType>();
         var roleConflicts = new ArrayList<RoleConflict>();
         for (TreePath path : all) {
             var type = (ClassTree) path.getLeaf();
             var names = annotationNames(type);
-            boolean library = names.contains(JavaSourceIntrospector.ONCHAIN_LIBRARY_ANNOTATION);
-            if (!topLevel.contains(type) && library) {
-                nestedOnchainLibraries.add(annotatedType(path, packageName,
-                        JavaSourceIntrospector.ONCHAIN_LIBRARY_ANNOTATION, false));
+            var library = names.stream().filter(JavaSourceIntrospector::isLibraryAnnotation).findFirst();
+            if (!topLevel.contains(type) && library.isPresent()) {
+                nestedOnchainLibraries.add(annotatedType(path, packageName, library.get(), false));
             }
-            if (library) {
+            if (library.isPresent()) {
                 var conflicting = new ArrayList<String>();
                 names.stream().filter(JavaSourceIntrospector::isSupportedValidatorAnnotation).forEach(conflicting::add);
                 names.stream().filter(JavaSourceIntrospector::isLegacyValidatorAnnotation).forEach(conflicting::add);
@@ -81,7 +80,7 @@ final class JavacSourceIntrospection {
                 .flatMap(path -> annotationNames((ClassTree) path.getLeaf()).stream())
                 .noneMatch(name -> JavaSourceIntrospector.isSupportedValidatorAnnotation(name)
                         || JavaSourceIntrospector.isLegacyValidatorAnnotation(name)
-                        || JavaSourceIntrospector.ONCHAIN_LIBRARY_ANNOTATION.equals(name));
+                        || JavaSourceIntrospector.isLibraryAnnotation(name));
     }
 
 

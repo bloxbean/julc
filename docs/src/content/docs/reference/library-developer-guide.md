@@ -46,77 +46,12 @@ public @interface OnchainLibrary {
 
 **Source:** `julc-stdlib/src/main/java/org/julclang/stdlib/annotation/OnchainLibrary.java`
 
-#### A framework's own annotation
-
-A framework that generates validators from its users' classes can make its own annotation imply `@OnchainLibrary`, so
-that its users write one annotation instead of two. Annotate the framework's annotation with `@OnchainLibrary`:
-
-```java
-@OnchainLibrary
-@Retention(RetentionPolicy.CLASS)
-@Target(ElementType.TYPE)
-public @interface StateContract {
-    long maxDatumBytes() default 0;
-}
-```
-
-Every class annotated `@StateContract` is then an on-chain library, exactly as if it carried `@OnchainLibrary`. It
-compiles to the same script, and a validator finds it through the same imports and same-package names. Only one level
-counts: an annotation annotated with `@StateContract` does not make a library.
-
-JuLC compiles the marker annotation's source together with the libraries that carry it, so the marker must itself be
-a top-level annotation interface that JuLC can compile:
-
-- Its members may be `boolean`, `byte`, `short`, `int`, `long`, `String`, or `Class<?>` of a JDK class, with constant
-  defaults. Arrays, enums, `char` and floating-point members are not supported.
-- Its file declares the marker alone: no other class, and no nested type. JuLC compiles the whole file with the
-  libraries that use it, and reports any other type in a marker of your project (a marker's file in a jar is not
-  checked).
-- It refers to no on-chain library: no default reads a library's constant, and no `Class<?>` default names a library
-  class. JuLC compiles the marker for the annotation's sake only and does not check this rule: such a marker
-  usually fails to compile, unless the library it names is compiled anyway for another reason.
-- Its own annotations may be `@Retention`, `@Target` and `@OnchainLibrary`. `@Documented`, `@Inherited` and
-  `@Repeatable` are not available to JuLC.
-- A marker in a jar must ship its source in the jar's `META-INF/plutus-sources/`, like any on-chain library
-  ([3.2](#32-the-indextxt-manifest-format)). The marker carries `@OnchainLibrary` itself, so the Gradle plugin's
-  `bundleJulcSources` task bundles it. If the source is missing, the annotation processor reports it at the library,
-  naming the marker.
-
-The marker must be top-level, and so must the classes it marks.
-
-A validator or a library reaches a marked class through a **single-type import**, even from the same package:
-
-```java
-package app;
-
-import app.Counter;            // needed for a class marked @StateContract, even in the same package
-
-@SpendingValidator
-public class CounterValidator {
-    @Entrypoint
-    static boolean validate(BigInteger redeemer, PlutusData ctx) {
-        return Counter.step(redeemer);
-    }
-}
-```
-
-This is what a framework that generates validators in a later annotation-processing round writes. A bare
-same-package name or a wildcard import (`import app.*;`) does not find a marked class. JuLC's processor never sees the
-round that entered it, and only an imported name is certainly a class before javac attributes the code. Classes
-marked `@OnchainLibrary` directly, the stdlib and library jars are found every way, as before.
-
-If the import is missing, the build fails with `cannot find symbol` and JuLC names the import to add. An IDE's
-"optimize imports" may remove a same-package import as unnecessary; keep it. A marked class in the default package
-cannot be imported, so put marked classes in a package.
-
-A class uses its marker through a single-type import (`import fw.StateContract;`), a qualified name, or from the
-marker's own package. JuLC does not follow a marker through a wildcard import (`import fw.*;`).
-
-The annotation processor follows the marker. Tools that read source text recognise only `@OnchainLibrary` written on
-the class: the Gradle plugin's `bundleJulcSources`, and the testkit's `SourceDiscovery`. So `bundleJulcSources` does
-not bundle a user's marked classes, and a framework that ships them in a jar bundles them itself. The CLI's project
-scan treats every non-validator file of the project as a library source, so marked classes work there when they import
-their marker.
+**JOUST's `@StateContract`.** JuLC treats `org.julclang.state.api.StateContract`, the contract annotation of the JOUST
+framework, exactly like `@OnchainLibrary`. A top-level class carrying it is an on-chain library: it is found the same way
+(in the same project, or in a jar's `META-INF/plutus-sources`) and called the same way (by its simple name from the
+same package, or through an import). JuLC compiles the annotation's own source with the class, so that source must be in
+the library pool; JOUST's API jar ships it. No other annotation stands for `@OnchainLibrary`: an annotation of your own
+that carries `@OnchainLibrary` does not make the classes it marks libraries, so mark those classes `@OnchainLibrary`.
 
 ### 2.2 Basic Structure
 

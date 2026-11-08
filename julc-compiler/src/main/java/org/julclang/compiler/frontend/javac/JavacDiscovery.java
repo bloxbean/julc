@@ -174,10 +174,12 @@ final class JavacDiscovery {
     void rejectRoleConflict(ClassTree type) {
         var element = facts.element(type);
         var validators = validatorAnnotations(type);
-        if (facts.isOnchainLibrary(element) && !validators.isEmpty()) {   // directly or meta-annotated (ADR-071 D1)
+        var library = facts.libraryAnnotation(element);
+        if (library.isPresent() && !validators.isEmpty()) {
             var annotations = String.join(", ", validators.stream().map(simple -> "@" + simple).toList());
+            String libraryName = library.get().substring(library.get().lastIndexOf('.') + 1);
             throw validationError(ONCHAIN_LIBRARY_WITH_VALIDATOR, ONCHAIN_LIBRARY_WITH_VALIDATOR.fix(), type,
-                    facts.identity((TypeElement) element), annotations, JavacFacts.describeLibraryMarker(element));
+                    facts.identity((TypeElement) element), annotations, "@" + libraryName);
         }
     }
 

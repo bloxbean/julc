@@ -444,46 +444,16 @@ public final class JavacFacts {
     }
 
     /**
-     * Whether {@code element} is an on-chain library (ADR-071 D1): it carries {@code @OnchainLibrary} directly, or an
-     * annotation whose annotation interface carries it (one level of meta-annotation).
+     * The library annotation {@code element} carries, one of {@link JavacNames#LIBRARY_ANNOTATIONS}: {@code @OnchainLibrary}
+     * or an alias of it (ADR-071 D3).
      */
+    public Optional<String> libraryAnnotation(Element element) {
+        return JavacNames.LIBRARY_ANNOTATIONS.stream().filter(annotation -> hasAnnotation(element, annotation)).findFirst();
+    }
+
+    /** Whether {@code element} is an on-chain library: it carries {@code @OnchainLibrary} or an alias of it. */
     public boolean isOnchainLibrary(Element element) {
-        return libraryMarker(element).isPresent();
-    }
-
-    /**
-     * The annotation that makes {@code element} an on-chain library (ADR-071 D1): {@code @OnchainLibrary} itself when
-     * the element carries it, otherwise the first annotation whose annotation interface carries {@code @OnchainLibrary}
-     * (one level, no recursion); empty if it is not a library. The annotation processor and JuLC's own javac both decide
-     * by this rule, which reads annotation mirrors only.
-     */
-    public static Optional<TypeElement> libraryMarker(Element element) {
-        for (AnnotationMirror mirror : element.getAnnotationMirrors()) {
-            var annotation = (TypeElement) mirror.getAnnotationType().asElement();
-            if (annotation.getQualifiedName().contentEquals(JavacNames.ONCHAIN_LIBRARY)) return Optional.of(annotation);
-        }
-        for (AnnotationMirror mirror : element.getAnnotationMirrors()) {
-            var annotation = (TypeElement) mirror.getAnnotationType().asElement();
-            for (AnnotationMirror meta : annotation.getAnnotationMirrors()) {
-                if (((TypeElement) meta.getAnnotationType().asElement()).getQualifiedName()
-                        .contentEquals(JavacNames.ONCHAIN_LIBRARY)) {
-                    return Optional.of(annotation);
-                }
-            }
-        }
-        return Optional.empty();
-    }
-
-    /**
-     * How {@code element}'s library marker reads in a message: {@code @OnchainLibrary}, or {@code @StateContract (which
-     * implies @OnchainLibrary)} for a meta-annotated marker.
-     */
-    public static String describeLibraryMarker(Element element) {
-        return libraryMarker(element)
-                .map(marker -> marker.getQualifiedName().contentEquals(JavacNames.ONCHAIN_LIBRARY)
-                        ? "@OnchainLibrary"
-                        : "@" + marker.getSimpleName() + " (which implies @OnchainLibrary)")
-                .orElse("@OnchainLibrary");
+        return libraryAnnotation(element).isPresent();
     }
 
     /** The identity of a declared type: {@link #identity(TypeElement)} of its class. */
