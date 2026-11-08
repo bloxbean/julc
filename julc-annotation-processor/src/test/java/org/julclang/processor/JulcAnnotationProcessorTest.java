@@ -548,31 +548,44 @@ class JulcAnnotationProcessorTest {
                 "/META-INF/plutus-sources/org/julclang/state/api/StateContract.java").toURI()));
     }
 
-    /** A @StateContract class is a library: a validator calls it by its bare name, with no import, as any library. */
+    /** The three ways a contract can name the alias: a single-type import, a wildcard import, the qualified name. */
+    static final List<String> COUNTERS = List.of(COUNTER,
+            COUNTER.replace("import org.julclang.state.api.StateContract;", "import org.julclang.state.api.*;"),
+            COUNTER.replace("import org.julclang.state.api.StateContract;\n", "")
+                    .replace("@StateContract", "@org.julclang.state.api.StateContract"));
+
+    /**
+     * A @StateContract class is a library: a validator calls it by its bare name, with no import, as any library. The
+     * alias's source comes with it however the class names the alias.
+     */
     @Test
     void aStateContractClassIsALibrary() throws Exception {
-        var result = compileWithProcessorSources(Map.of("org/julclang/state/api/StateContract", stateContractSource(),
-                "app/Counter", COUNTER, "app/UsesCounter", USES_COUNTER), List.of());
-        assertTrue(result.success(), "Expected success, got: " + result.diagnostics());
-        assertTrue(result.diagnostics().stream().anyMatch(d -> d.getMessage(null).contains("with 2 library file(s)")),
-                "Expected Counter and StateContract, got: " + result.diagnostics());
+        for (String counter : COUNTERS) {
+            var result = compileWithProcessorSources(Map.of("org/julclang/state/api/StateContract",
+                    stateContractSource(), "app/Counter", counter, "app/UsesCounter", USES_COUNTER), List.of("-Werror"));
+            assertTrue(result.success(), "Expected success, got: " + result.diagnostics() + " for\n" + counter);
+            assertTrue(result.diagnostics().stream().anyMatch(d -> d.getMessage(null).contains("with 2 library file(s)")),
+                    "Expected Counter and StateContract, got: " + result.diagnostics());
+        }
     }
 
-    /** A @StateContract class compiles to the same script as the same class marked @OnchainLibrary. */
+    /** A @StateContract class compiles to the same script as the same class marked @OnchainLibrary, in every form. */
     @Test
     void aStateContractClassCompilesToTheSameScriptAsAnOnchainLibraryOne() throws Exception {
         String direct = COUNTER.replace("import org.julclang.state.api.StateContract;\n", "")
                 .replace("@StateContract", "@org.julclang.stdlib.annotation.OnchainLibrary");
         for (var options : List.of(List.<String>of(), List.of("-Ajulc.optimization=none"),
                 List.of("-Ajulc.sourceMap=true"))) {
-            var marked = compileWithProcessorSources(Map.of("org/julclang/state/api/StateContract",
-                    stateContractSource(), "app/Counter", COUNTER, "app/UsesCounter", USES_COUNTER), options);
-            assertTrue(marked.success(), "Expected success, got: " + marked.diagnostics());
-            String markedScript = script("UsesCounter");
             var plain = compileWithProcessorSources(Map.of("app/Counter", direct, "app/UsesCounter", USES_COUNTER),
                     options);
             assertTrue(plain.success(), "Expected success, got: " + plain.diagnostics());
-            assertEquals(script("UsesCounter"), markedScript, "options " + options);
+            String plainScript = script("UsesCounter");
+            for (String counter : COUNTERS) {
+                var marked = compileWithProcessorSources(Map.of("org/julclang/state/api/StateContract",
+                        stateContractSource(), "app/Counter", counter, "app/UsesCounter", USES_COUNTER), options);
+                assertTrue(marked.success(), "Expected success, got: " + marked.diagnostics());
+                assertEquals(plainScript, script("UsesCounter"), "options " + options + " for\n" + counter);
+            }
         }
     }
 

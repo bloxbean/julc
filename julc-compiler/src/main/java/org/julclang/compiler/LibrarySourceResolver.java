@@ -2,7 +2,9 @@ package org.julclang.compiler;
 
 import org.julclang.compiler.error.DiagnosticCollector;
 import org.julclang.compiler.frontend.javac.ExpressionRoles;
+import org.julclang.compiler.frontend.javac.JavacNames;
 import org.julclang.compiler.frontend.javac.JavacSyntax;
+import com.sun.source.tree.AnnotationTree;
 import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.ImportTree;
 import com.sun.source.tree.MemberSelectTree;
@@ -415,6 +417,12 @@ public final class LibrarySourceResolver {
         for (String fqcn : context.importsBySimpleName().values()) {
             enqueue(availableLibraries.get(fqcn), resolved, queued, toProcess);
         }
+        // ADR-071 D3: a source marked with an alias of @OnchainLibrary needs the alias's own source, however it names
+        // it (a single-type or wildcard import, or its qualified name). The alias's name is fixed, so its pooled source
+        // is taken by that name.
+        for (String alias : aliasesNamedBy(source)) {
+            enqueue(availableLibraries.get(alias), resolved, queued, toProcess);
+        }
 
         for (ClassReference reference : context.staticReferences()) {
             LibrarySource librarySource = resolveStaticReference(reference, context.packageName(),
@@ -546,6 +554,29 @@ public final class LibrarySourceResolver {
 
     private static Optional<ClassReference> javacReference(JavacSyntax syntax, Tree scope) {
         return classReferenceFromText(scope.toString(), syntax.line(scope), syntax.column(scope));
+    }
+
+    /**
+     * The aliases of {@code @OnchainLibrary} ({@link JavacNames#LIBRARY_ANNOTATIONS}) that a source's annotations name by
+     * their simple name, as javac's parser reads them; none when the source does not parse.
+     */
+    private static List<String> aliasesNamedBy(String source) {
+        var aliases = JavacNames.LIBRARY_ANNOTATIONS.stream()
+                .filter(name -> !name.equals(JavacNames.ONCHAIN_LIBRARY) && source.contains(simpleName(name)))
+                .toList();
+        if (aliases.isEmpty()) return List.of();
+        var syntax = JavacSyntax.read(source);
+        if (syntax.hasErrors()) return List.of();
+        var named = new LinkedHashSet<String>();
+        new SourceOrderScanner<Void, Void>() {
+            @Override
+            public Void visitAnnotation(AnnotationTree annotation, Void unused) {
+                String name = simpleName(annotation.getAnnotationType().toString());
+                aliases.stream().filter(alias -> simpleName(alias).equals(name)).forEach(named::add);
+                return super.visitAnnotation(annotation, unused);
+            }
+        }.scan(syntax.unit(), null);
+        return List.copyOf(named);
     }
 
     /**

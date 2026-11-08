@@ -49,8 +49,9 @@ public @interface OnchainLibrary {
 **JOUST's `@StateContract`.** JuLC treats `org.julclang.state.api.StateContract`, the contract annotation of the JOUST
 framework, exactly like `@OnchainLibrary`. A top-level class carrying it is an on-chain library: it is found the same way
 (in the same project, or in a jar's `META-INF/plutus-sources`) and called the same way (by its simple name from the
-same package, or through an import). JuLC compiles the annotation's own source with the class, so that source must be in
-the library pool; JOUST's API jar ships it. No other annotation stands for `@OnchainLibrary`: an annotation of your own
+same package, or through an import). JuLC compiles the annotation's own source with the class, however the class names
+it (a single-type or wildcard import, or `@org.julclang.state.api.StateContract`), so that source must be in the library
+pool; JOUST's API jar ships it. No other annotation stands for `@OnchainLibrary`: an annotation of your own
 that carries `@OnchainLibrary` does not make the classes it marks libraries, so mark those classes `@OnchainLibrary`.
 
 ### 2.2 Basic Structure

@@ -111,10 +111,11 @@ library. It is one constant, so the processor, the embedder API and the tools ag
 - **Tools that read source text** (`JavaSourceIntrospector`, `JavacSourceIntrospection`: Gradle `bundleJulcSources`,
   the testkit's `SourceDiscovery`, julc-tools' `JavacMetadataReading`): `StateContract` by simple name, as they match
   `@OnchainLibrary`.
-- **The annotation's own source.** JuLC compiles the contract with the library sources it imports. A contract imports
-  `StateContract`, whose source JOUST ships in its API jar's `META-INF/plutus-sources` (and its npm toolchain adds to
-  the pool), so it is compiled alongside, as on `main` for any imported pooled source. Without it, JuLC reports
-  "Annotation @StateContract is not available to JuLC".
+- **The annotation's own source.** JuLC compiles the contract with the annotation's source, which JOUST ships in its
+  API jar's `META-INF/plutus-sources` (and its npm toolchain adds to the pool). The resolver takes it from the pool by
+  its fixed name whenever a source's annotations name the alias, however they name it: a single-type import, a
+  wildcard import or the qualified name (reviewer1 F3). Without it in the pool, JuLC reports "Annotation
+  @StateContract is not available to JuLC".
 
 Nothing else changes: a validator reaches a contract as any library, by its simple name from the same package or
 through an import, and the resolver is as on `main`.
@@ -196,8 +197,8 @@ Processor tests (`JulcAnnotationProcessorTest`). The test resources ship a stand
 
 | Test | What it checks |
 |---|---|
-| `aStateContractClassIsALibrary` | D3: a bare same-package call, no import; the annotation's source compiled alongside |
-| `aStateContractClassCompilesToTheSameScriptAsAnOnchainLibraryOne` | I3, at the default level, `none` and with source maps |
+| `aStateContractClassIsALibrary` | D3: a bare same-package call, no import; the annotation's source compiled alongside, named by a single-type import, a wildcard import or its qualified name |
+| `aStateContractClassCompilesToTheSameScriptAsAnOnchainLibraryOne` | I3, in each naming form, at the default level, `none` and with source maps |
 | `aFrameworkReceivesStateContractAndItsGeneratedValidatorCompiles` | I4 and the framework case, either processor first |
 | `aNestedStateContractClassIsRejected` | the nested message |
 | `aLibraryOnlyCompilationClaimsItsAnnotationsAsBefore` | I1: `-Xlint:processing -Werror` |
@@ -214,8 +215,11 @@ Resolver tests (`LibrarySourceResolverTest`), D2:
 | `scanClasspathSources_skipsAnUnreadableEntryReportsItAndReadsTheRest` | I5 |
 | `scanClasspathSources_aMalformedEntryUrlCostsOnlyThatEntry` | I5 |
 | `scanClasspathSources_readsAJarRewrittenAfterAnEarlierScan` | fails with the URL cache on |
+| `resolve_aSourceMarkedWithStateContractBringsItsPooledSourceHoweverItNamesIt` | D3: the alias's source in each naming form |
 
-Every D3 test fails on the merge base; the framework test also fails if JuLC claims every round.
+The D3 feature tests fail on the merge base, and the framework test also fails if JuLC claims every round. Two are
+compatibility checks that pass on the merge base by design: `aLibraryOnlyCompilationClaimsItsAnnotationsAsBefore` and
+`aStateContractModuleWithoutTheStdlibOnItsClassPathCompiles` (reviewer1 F4).
 
 Regression evidence: the external julc-examples compiled with the processor at the merge base and at the head, then
 compared (I1); the full build; JOUST built against the head.
@@ -356,3 +360,6 @@ compared (I1); the full build; JOUST built against the head.
   - From Codex's review of the local `ae347783`: a module of `@StateContract` classes without julc-stdlib on its class
     path no longer fails in the processor; the text tools' role-conflict message names the annotation the class
     carries; Risks states the mixed-round `-Xlint:processing` case.
+  - From reviewer1's rounds 2 and 3 at `feba2f51`: the alias's source comes with a class however it names the alias,
+    a wildcard import or the qualified name included (F3); the merge-base test claim distinguishes the compatibility
+    checks (F4).

@@ -662,4 +662,32 @@ class LibrarySourceResolverTest {
             assertTrue(result.containsKey("com.example.V2"));
         }
     }
+
+    @Test
+    void resolve_aSourceMarkedWithStateContractBringsItsPooledSourceHoweverItNamesIt() {
+        // ADR-071 D3: the alias's source comes with a class marked with it, by a single-type import, a wildcard import
+        // or the qualified name.
+        var stateContract = LibrarySourceResolver.librarySourceFromSimpleName("StateContract", """
+                package org.julclang.state.api;
+                public @interface StateContract {}
+                """);
+        var validator = """
+                package app;
+                class V { static boolean f() { return Counter.ok(); } }
+                """;
+        for (String marking : List.of("import org.julclang.state.api.StateContract;\n@StateContract",
+                "import org.julclang.state.api.*;\n@StateContract", "@org.julclang.state.api.StateContract")) {
+            var counter = LibrarySourceResolver.librarySourceFromSimpleName("Counter", "package app;\n" + marking
+                    + "\npublic class Counter { public static boolean ok() { return true; } }\n");
+            assertEquals(List.of(counter.source(), stateContract.source()), LibrarySourceResolver.resolve(validator,
+                    Map.of("app.Counter", counter, "org.julclang.state.api.StateContract", stateContract)), marking);
+        }
+        // A class that does not carry the alias brings nothing more.
+        var plain = LibrarySourceResolver.librarySourceFromSimpleName("Counter", """
+                package app;
+                public class Counter { public static boolean ok() { return true; } }
+                """);
+        assertEquals(List.of(plain.source()), LibrarySourceResolver.resolve(validator,
+                Map.of("app.Counter", plain, "org.julclang.state.api.StateContract", stateContract)));
+    }
 }
