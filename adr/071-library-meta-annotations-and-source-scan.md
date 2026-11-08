@@ -1,7 +1,7 @@
 # ADR-071: On-chain library meta-annotations and a robust library-source scan
 
-**Status:** Proposed (r14)
-**Date:** 2026-11-07 (r2–r13: 2026-11-07; r14: 2026-11-08)
+**Status:** Proposed (r15)
+**Date:** 2026-11-07 (r2–r13: 2026-11-07; r14, r15: 2026-11-08)
 **Label:** `joust`
 **Risk class:** medium. It changes which sources the annotation processor and the library resolver hand to the
 compiler. A wrong rule could compile a class into a validator that should not be on-chain, or miss one and fail the
@@ -169,7 +169,8 @@ Where it applies:
   The resolver follows admitted sources like any other, in the same single pass and in first-named order. So a
   library that imports a marked library is found, and the library order is what it would be if the class were a
   pool entry (I3). Markers, and what only they reach (a `Class<?>` default's class, say), are resolved after the
-  libraries. So a marker never moves a library ahead of the place its callers give it (r12).
+  libraries. So a marker never moves a library ahead of the place its callers give it (r12). What a marker refers to is
+  not followed at all (r15, the marker contract).
 
   **A class-path copy of a project library (r14).** Sometimes a jar on the processor path ships a source for a class
   that this compilation also declares as an on-chain library, typically a stale jar of the project's own module.
@@ -218,10 +219,13 @@ Where it applies:
 
 The **marker contract**: JuLC compiles the marker's source, so the marker must be a top-level annotation interface
 that JuLC can compile.
-- Members: primitives, `String` or `Class<?>`, with constant defaults.
-  - A default may read a constant of an on-chain library.
-  - A `Class<?>` default that names an on-chain library (`Limits.class`) must import it, even from the marker's own
-    package. The resolver follows imports and member accesses, not class literals.
+- Members: primitives, `String` or `Class<?>` of a JDK class, with constant defaults.
+- **A marker refers to no on-chain library** (r15): no default reads a library's constant, and no `Class<?>` default
+  names a library class. JuLC compiles a marker for the annotation's sake only and does not follow what it refers
+  to. So nothing a marker names joins the script, and a marked class compiles to the same script as a direct one
+  (I3). A marker that refers to a library fails to compile, with the compiler's usual diagnostic. r2–r14 followed a
+  marker's references; an unused library that only a marker named then changed the script at `none` and with source
+  maps (review R13-1).
 - Its own annotations: only `@Retention`, `@Target` and `@OnchainLibrary`.
 - A marker in a jar ships its source in `META-INF/plutus-sources`. The marker carries `@OnchainLibrary` itself, so
   the Gradle plugin's `bundleJulcSources` bundles it. When the source is missing, the processor says so for every
@@ -311,7 +315,8 @@ a build that passed before still passes (I1), and the problem is still printed j
   - usually the build fails with `JULC0085`, and the processor names the import to add;
   - if a library of the same simple name is in the pool (a wildcard-imported one, or a jar's copy of the class), that
     library compiles instead. For a jar's copy the processor prints a note (r14).
-  The import avoids both.
+  An import avoids the first two. For a jar's copy, remove the stale jar from the processor path; an import still
+  selects the pool's copy.
 - **The marker contract** constrains framework authors (Q1). A marker JuLC cannot compile fails every library that
   uses it, with the compiler's usual diagnostic at the marker.
 - **Tools that read source text** still see only `@OnchainLibrary` (non-goals). A testkit test in which one marked class
@@ -328,6 +333,7 @@ a build that passed before still passes (I1), and the problem is still printed j
   - `JavacFacts.libraryMarker` as the one rule;
   - the JULC0134 and nested-class messages;
   - a note when a class-path copy of a project library is compiled (r14; r3–r13 replaced the copy);
+  - a marker's references not followed (r15);
   - markers resolved after the libraries, and the import hint (r12);
   - the missing-marker message (r3, r5);
   - scan notes, `IllegalArgumentException` isolation and directory-listing reports;
@@ -354,7 +360,7 @@ class-path marker whose source ships in `META-INF/plutus-sources`.
 | `rejectsNestedMetaAnnotatedLibrary` | |
 | `aNestedDirectLibraryKeepsItsMessage` | I1 |
 | `aLibraryWithTwoMarkersCompilesWithBoth` | |
-| `aMarkerDefaultThatReadsALibraryConstantCompiles` | |
+| `aMarkerThatReadsALibraryConstantIsRejected` | the marker contract, r15 |
 | `aValidatorMarkedThroughASamePackageMarkerIsJulc0134` | |
 | `aMetaAnnotatedLibraryCompilesToTheSameScriptAsADirectOne` | I3 |
 | `librariesWhosePackageLineHasASpaceStillResolve` | the r1 regression (`package q ;`) |
@@ -364,7 +370,7 @@ class-path marker whose source ships in `META-INF/plutus-sources`.
 | `aLibraryOnlyOnTheSourcePathIsAdmitted` | the I1 exception |
 | `aValidatorCompilesAloneAsItDoesWithOthers` | I5 |
 | `aLowercaseMarkerIsFollowed` | r4 |
-| `aMarkerClassDefaultThatImportsALibraryCompiles` | the marker contract |
+| `aMarkerClassDefaultNamingALibraryIsRejected` | the marker contract, r15 |
 | `aFieldQualifierNeverReadsTheSourcePath` | `-Werror`, r4 |
 | `aMarkedLibraryKeepsItsPlaceInTheLibraryOrder` | I3 at `none` and with source maps, r10 |
 | `aNestedLibraryImportedByItsOwnNameIsRejected` | r4 |
@@ -384,7 +390,8 @@ Resolver tests (`LibrarySourceResolverTest`):
 | `resolve_annotationReferencesNameOnlyAnnotationInterfacesAndNeverFallBack` | I4 |
 | `resolve_asksTheCompilationOnlyAboutImportedNames` | only imports are asked about; admitted sources are not pooled, r11 |
 | `resolve_followsOnlyAnnotationsTheHostCallsMarkers` | the CLI's pool; lookalikes; other hosts follow none, r8 |
-| `resolve_aMarkersDependenciesNeverReorderTheLibraries` | I3 with a marker's `Class<?>` default, r12 |
+| `resolve_aMarkersDependenciesNeverReorderTheLibraries` | markers after the libraries, r12 |
+| `resolve_whatAMarkerNamesIsNeverALibrary` | I3: a marker's references are not followed, r15 |
 | `resolve_anAnnotationIsNeverFollowedThroughAWildcardImport` | r9 |
 | `resolve_keepsTheOrderTheSourceNamesLibrariesIn` | r10 |
 | `resolve_anAnnotationNamingTheSourcesOwnTypeIsNotFollowed` | r10 |
@@ -517,3 +524,9 @@ Regression evidence:
     processor notes it.
   - **Removed:** the replacement rule (r3, r6, r12, r13) and its rerun loop. The host is asked only about imported
     names the pool lacks.
+- **r15** (2026-11-08, responds to Codex's review of r14, `e53ec608`, where R10-1 to R12-2 matched the merge base, and
+  the regression reviewer's approval of r14):
+  - **A marker refers to no on-chain library.** Its references are not followed, so an unused library named only by
+    a marker's `Class<?>` default no longer changes the script at `none` and with source maps (R13-1). JOUST's
+    `@StateContract`, with primitive members only, is unaffected.
+  - **Risks:** for a jar's copy, the remedy is removing the stale jar; an import does not avoid it.

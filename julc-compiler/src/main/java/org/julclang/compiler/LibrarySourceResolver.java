@@ -449,6 +449,9 @@ public final class LibrarySourceResolver {
                 continue;
             }
             resolved.put(librarySource.fqcn(), librarySource);
+            // A marker is compiled for the annotation's sake only: what it refers to is not followed, so nothing a
+            // marker names becomes a library of the script (ADR-071, the marker contract).
+            if (references.markers().test(librarySource.fqcn())) continue;
             enqueueReferencedLibraries(librarySource.source(), librarySource.packageName(), librarySource.resourcePath(),
                     references, resolved, queued, queue, diagnostics);
             diagnostics.throwIfErrors();

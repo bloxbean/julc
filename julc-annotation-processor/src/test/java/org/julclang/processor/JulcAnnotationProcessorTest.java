@@ -806,8 +806,9 @@ class JulcAnnotationProcessorTest {
         assertTrue(result.success(), "Expected success, got: " + result.diagnostics());
     }
 
+    /** The marker contract: a marker refers to no on-chain library; JuLC compiles it alone, so a default that reads a library fails. */
     @Test
-    void aMarkerDefaultThatReadsALibraryConstantCompiles() throws Exception {
+    void aMarkerThatReadsALibraryConstantIsRejected() throws Exception {
         String scaled = """
                 package lib;
 
@@ -833,7 +834,7 @@ class JulcAnnotationProcessorTest {
                 """;
         var result = compileWithProcessorSources(Map.of("lib/StateLike", scaled, "lib/Limits", limits,
                 "lib/MetaMath", META_LIBRARY, "app/UsesMeta", USES_META), List.of());
-        assertTrue(result.success(), "Expected success, got: " + result.diagnostics());
+        assertFalse(result.success(), "A marker that refers to an on-chain library should fail");
     }
 
     @Test
@@ -1265,9 +1266,9 @@ class JulcAnnotationProcessorTest {
         assertTrue(result.success(), "Expected success, got: " + result.diagnostics());
     }
 
-    /** The marker contract: a class-valued default names its class through an import, which the resolver follows. */
+    /** The marker contract: a Class<?> default naming an on-chain library fails, so nothing a marker names joins the script. */
     @Test
-    void aMarkerClassDefaultThatImportsALibraryCompiles() throws Exception {
+    void aMarkerClassDefaultNamingALibraryIsRejected() throws Exception {
         var sources = new LinkedHashMap<String, String>();
         sources.put("lib/Scaled", """
                 package lib;
@@ -1322,7 +1323,7 @@ class JulcAnnotationProcessorTest {
                 }
                 """);
         var result = compileWithProcessorSources(sources, List.of());
-        assertTrue(result.success(), "Expected success, got: " + result.diagnostics());
+        assertFalse(result.success(), "A marker that refers to an on-chain library should fail");
     }
 
     /**

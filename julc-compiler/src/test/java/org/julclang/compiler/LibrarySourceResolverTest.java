@@ -484,6 +484,33 @@ class LibrarySourceResolverTest {
     }
 
     @Test
+    void resolve_whatAMarkerNamesIsNeverALibrary() {
+        // A marker is compiled for the annotation only: Extra, named by the marker's Class<?> default and by nothing
+        // else, is not followed, so the script is the one a direct Counter gives.
+        var extra = LibrarySourceResolver.librarySourceFromQualifiedName("app.Extra",
+                "package app; public class Extra { public static boolean ok() { return false; } }");
+        var mark = LibrarySourceResolver.librarySourceFromQualifiedName("fw.Mark", """
+                package fw;
+                import app.Extra;
+                public @interface Mark { Class<?> value() default Extra.class; }
+                """);
+        var counter = LibrarySourceResolver.librarySourceFromQualifiedName("app.Counter", """
+                package app;
+                @fw.Mark
+                public class Counter { public static boolean ok() { return true; } }
+                """);
+        var validator = """
+                package v;
+                import app.Counter;
+                class V { static boolean f() { return Counter.ok(); } }
+                """;
+
+        assertEquals(List.of(counter.source(), mark.source()), LibrarySourceResolver.resolve(validator,
+                Map.of("app.Extra", extra, "fw.Mark", mark),
+                host(name -> name.equals("app.Counter") ? counter : null, Set.of("fw.Mark"))));
+    }
+
+    @Test
     void resolve_aMarkersDependenciesNeverReorderTheLibraries() {
         // ADR-071 I3: Counter, marked by fw.Mark whose Class<?> default imports Leaf, resolves its libraries in the order
         // the direct Counter does; the marker comes after them.

@@ -67,9 +67,10 @@ counts: an annotation annotated with `@StateContract` does not make a library.
 JuLC compiles the marker annotation's source together with the libraries that carry it, so the marker must itself be
 a top-level annotation interface that JuLC can compile:
 
-- Its members may be primitives, `String` or `Class<?>`, with constant defaults. Arrays and enum members are not
-  supported. A default may read a constant of an on-chain library. A `Class<?>` default that names an on-chain
-  library class (`Limits.class`) must import that class, even from the marker's own package.
+- Its members may be primitives, `String` or `Class<?>` of a JDK class, with constant defaults. Arrays and enum members
+  are not supported.
+- It refers to no on-chain library: no default reads a library's constant, and no `Class<?>` default names a library
+  class. JuLC compiles the marker for the annotation's sake only, so such a marker fails to compile.
 - Its own annotations may be `@Retention`, `@Target` and `@OnchainLibrary`. `@Documented`, `@Inherited` and
   `@Repeatable` are not available to JuLC.
 - A marker in a jar must ship its source in the jar's `META-INF/plutus-sources/`, like any on-chain library
