@@ -70,9 +70,11 @@ a top-level annotation interface that JuLC can compile:
 - Its members may be `boolean`, `byte`, `short`, `int`, `long`, `String`, or `Class<?>` of a JDK class, with constant
   defaults. Arrays, enums, `char` and floating-point members are not supported.
 - Its file declares the marker alone: no other class, and no nested type. JuLC compiles the whole file with the
-  libraries that use it, and reports any other type.
+  libraries that use it, and reports any other type in a marker of your project (a marker's file in a jar is not
+  checked).
 - It refers to no on-chain library: no default reads a library's constant, and no `Class<?>` default names a library
-  class. JuLC compiles the marker for the annotation's sake only, so such a marker fails to compile.
+  class. JuLC compiles the marker for the annotation's sake only and does not check this rule: such a marker
+  usually fails to compile, unless the library it names is compiled anyway for another reason.
 - Its own annotations may be `@Retention`, `@Target` and `@OnchainLibrary`. `@Documented`, `@Inherited` and
   `@Repeatable` are not available to JuLC.
 - A marker in a jar must ship its source in the jar's `META-INF/plutus-sources/`, like any on-chain library
