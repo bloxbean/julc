@@ -92,6 +92,9 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
     /** Marker annotations already reported as having no source. */
     private final Set<String> reportedMarkers = new HashSet<>();
 
+    /** Project libraries already reported as compiled from a jar's copy. */
+    private final Set<String> reportedJarCopies = new HashSet<>();
+
     /** Classpath library sources: FQCN -> source metadata */
     private final Map<String, LibrarySource> classpathLibraries = new LinkedHashMap<>();
 
@@ -382,10 +385,34 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
     private List<String> resolveLibrarySources(String validatorSource) {
         var pool = libraryPool();
 
-        // A library of this compilation that was not collected, such as one marked through a framework's annotation,
-        // also takes a class-path source's place when the validator names it exactly (ADR-071 D1).
-        return LibrarySourceResolver.resolve(validatorSource, pool, new LibrarySourceResolver.CompilationHost(
-                classpathLibraries, this::libraryOfThisCompilation, this::isLibraryMarker));
+        var resolved = LibrarySourceResolver.resolve(validatorSource, pool, new LibrarySourceResolver.CompilationHost(
+                this::libraryOfThisCompilation, this::isLibraryMarker));
+        noteJarCopiesOfProjectLibraries(resolved);
+        return resolved;
+    }
+
+    /**
+     * A class-path library source compiled for a class this compilation also declares as an on-chain library: JuLC
+     * compiles the jar's source, as before ADR-071, while javac checked the project's class. Typically a stale jar of the
+     * project's own module on the processor path. Reported as a note, once per class; the resolution is unchanged.
+     */
+    private void noteJarCopiesOfProjectLibraries(List<String> resolved) {
+        for (var jarSource : classpathLibraries.values()) {
+            if (resolved.stream().noneMatch(source -> source == jarSource.source())) continue;
+            String fqcn = jarSource.fqcn();
+            if (sameProjectLibraries.containsKey(fqcn) || !reportedJarCopies.add(fqcn)) continue;
+            TypeElement type;
+            try {
+                type = processingEnv.getElementUtils().getTypeElement(fqcn);
+            } catch (RuntimeException e) {
+                continue;
+            }
+            if (type == null || trees.getPath(type) == null || JavacFacts.libraryMarker(type).isEmpty()) continue;
+            processingEnv.getMessager().printMessage(Diagnostic.Kind.NOTE, "JuLC compiles " + fqcn + " from the on-chain"
+                    + " library source " + jarSource.resourcePath() + " on the annotation processor path, not from this"
+                    + " project's " + fqcn + ". If that jar is a stale copy of this project, remove it from the processor"
+                    + " path.", type);
+        }
     }
 
     private static final Pattern MISSING_SYMBOL = Pattern.compile("symbol:\\s+(?:variable|class)\\s+(\\w+)");

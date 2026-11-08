@@ -390,20 +390,17 @@ public final class LibrarySourceResolver {
      * and an annotation's qualified name, import or own-package name. A bare name or a wildcard import is never asked
      * about, so the resolver never guesses whether a name is a class.
      *
-     * @param jarSources              the pool's class-path entries: an imported one gives way to the compilation's
-     *                                library of the same name, the class javac checked
      * @param classesOfTheCompilation the library javac names by an exact name, or null: a top-level class of this
      *                                compilation that is an on-chain library, such as one marked through a framework's
      *                                annotation in a round the host never saw. What it returns is never pooled
      * @param markers                 whether javac's class of that name is a library marker (an annotation interface
      *                                carrying {@code @OnchainLibrary}): an annotation is followed only to one
      */
-    public record CompilationHost(Map<String, LibrarySource> jarSources,
-                                  Function<String, LibrarySource> classesOfTheCompilation,
+    public record CompilationHost(Function<String, LibrarySource> classesOfTheCompilation,
                                   Predicate<String> markers) {
 
         /** A host that adds nothing: {@link #resolve(String, Map)}. */
-        static final CompilationHost NONE = new CompilationHost(Map.of(), fqcn -> null, fqcn -> false);
+        static final CompilationHost NONE = new CompilationHost(fqcn -> null, fqcn -> false);
     }
 
     /** {@link #resolve(String, Map)}, with what {@code host} adds (ADR-071 D1). */
@@ -422,33 +419,13 @@ public final class LibrarySourceResolver {
 
     private static List<LibrarySource> resolveLibrarySources(String source, Map<String, LibrarySource> availableLibraries,
                                                              CompilationHost host) {
-        // ADR-071 D1: an import that finds the compilation's own library in place of a jar entry makes it the pool's
-        // entry for the whole resolution, as a collected library would be: the resolution is run again with it, so no
-        // path reaches the jar's class first. Each round only adds replacements, so it ends.
-        var pool = availableLibraries;
-        while (true) {
-            var replacements = new LinkedHashMap<String, LibrarySource>();
-            var result = resolveOnce(source, pool, host, replacements);
-            if (replacements.isEmpty()) return result;
-            var replaced = new LinkedHashMap<>(pool);
-            replaced.putAll(replacements);
-            pool = replaced;
-        }
-    }
-
-    private static List<LibrarySource> resolveOnce(String source, Map<String, LibrarySource> availableLibraries,
-                                                   CompilationHost host, Map<String, LibrarySource> replacements) {
         var asked = new HashMap<String, Optional<LibrarySource>>();
         // ADR-071 D1: an imported name is the pool's library, or else asked of the compilation. Nothing else is asked.
         Function<String, LibrarySource> ask = fqcn -> !SourceVersion.isName(fqcn) ? null : asked.computeIfAbsent(fqcn,
                 name -> Optional.ofNullable(host.classesOfTheCompilation().apply(name))).orElse(null);
-        // An imported jar entry gives way to the compilation's library of the same name, the class javac checked.
         Function<String, LibrarySource> exact = fqcn -> {
             var pooled = availableLibraries.get(fqcn);
-            if (pooled != null && host.jarSources().get(fqcn) != pooled) return pooled;
-            var own = ask.apply(fqcn);
-            if (own != null && pooled != null) replacements.put(fqcn, own);
-            return own != null ? own : pooled;
+            return pooled != null ? pooled : ask.apply(fqcn);
         };
         var references = new References(availableLibraries, exact, host.markers(),
                 indexBySimpleName(availableLibraries.values()));

@@ -1,7 +1,7 @@
 # ADR-071: On-chain library meta-annotations and a robust library-source scan
 
-**Status:** Proposed (r13)
-**Date:** 2026-11-07 (r2–r13: 2026-11-07)
+**Status:** Proposed (r14)
+**Date:** 2026-11-07 (r2–r13: 2026-11-07; r14: 2026-11-08)
 **Label:** `joust`
 **Risk class:** medium. It changes which sources the annotation processor and the library resolver hand to the
 compiler. A wrong rule could compile a class into a validator that should not be on-chain, or miss one and fail the
@@ -98,13 +98,15 @@ Non-goals:
   it.
 - **I3. Same bytes.** A library marked through a marker, and imported, compiles to the same script as the same class
   marked `@OnchainLibrary`, at every optimization level and with source maps: it takes the same place in the library
-  order (r10). That includes a class-path source of the same name: the compilation's class wins in both cases (r3).
+  order (r10). The exception is a class that a jar on the processor path also ships: the jar's source is compiled
+  for a marked class, as before this ADR, with a note (r14). A collected `@OnchainLibrary` class still beats the
+  jar's copy, as before.
 - **I4. Only libraries are added.** Nothing new reaches the compiler except:
   - a top-level class that is a library by I2 and whose source is in this compilation;
   - a marker of the library pool: javac's class of that name is an annotation interface carrying `@OnchainLibrary`
     (the processor only, r8).
   A class that is merely named in a comment or a string is never added. javac is asked only about names it has
-  already resolved as classes: imports, a pool entry's exact name, and annotation names (r11).
+  already resolved as classes: imports the pool lacks and annotation names (r11).
 - **I5. Locality.** What a validator is compiled with depends only on its own references, the `@OnchainLibrary`
   classes collected in rounds and the class path's sources. It never depends on which other validators are in the
   compilation, or on which were compiled first.
@@ -169,14 +171,17 @@ Where it applies:
   pool entry (I3). Markers, and what only they reach (a `Class<?>` default's class, say), are resolved after the
   libraries. So a marker never moves a library ahead of the place its callers give it (r12).
 
-  A library of this compilation also wins over a class-path source of the same name, as a collected one does (r3):
-  when a source imports a class-path entry, the resolver asks the host whether the compilation has a library of that
-  exact name, and takes it if so. So the script compiles the class javac checked. Only imported names are asked about
-  (r12). An import's choice holds for the whole resolution (r13). The resolution runs again with the compilation's
-  class in the pool, as a collected library would be, so no other path reaches the jar's class first.
-
-  A class-path entry reached only by a bare name or a wildcard import stays the jar's, as before this ADR, because
-  the name may be a variable's.
+  **A class-path copy of a project library (r14).** Sometimes a jar on the processor path ships a source for a class
+  that this compilation also declares as an on-chain library, typically a stale jar of the project's own module.
+  - The pool's entry, the jar's source, is compiled, exactly as before this ADR. The host is never asked about a
+    name the pool holds.
+  - The processor then prints a note, once per class: "JuLC compiles X from the on-chain library source … on the
+    annotation processor path, not from this project's X. If that jar is a stale copy of this project, remove it
+    from the processor path." A note never fails `-Werror`.
+  - r3–r13 made the project's class replace the jar's. Every way of choosing when to replace (on any path, on
+    imports only, holding the choice for the whole resolution) let a jar copy reached through a variable's name, or
+    an import inside a superseded jar source, change the libraries or fail a valid build (reviews R10-1 to R12-2).
+    The maintainer chose `main`'s behaviour and a note.
 
   This is what makes the framework case work. javac never calls the processor in the round that entered the user's
   class, but the validator that imports it resolves it.
@@ -295,8 +300,9 @@ a build that passed before still passes (I1), and the problem is still printed j
 
 ## Risks
 
-- **Admission asks javac for names** (`Elements.getTypeElement`), but only names javac has already resolved: imports,
-  a pool entry's exact name, and annotation names. It reads no source javac would not read.
+- **Admission asks javac for names** (`Elements.getTypeElement`), but only names javac has already resolved: imports
+  the pool lacks and annotation names. After resolution, the jar-copy note also asks about the names of the
+  class-path libraries compiled. None of this reads a source javac would not read.
   - An annotation inside a method body (on a local variable) is resolved by javac only when it attributes. If its
     name matches an unrelated source on an explicit `-sourcepath`, javac may read that source early and warn. Gradle's
     default empty source path never reads such sources.
@@ -304,7 +310,7 @@ a build that passed before still passes (I1), and the problem is still printed j
   wildcard import does not find one. The outcome is the same as before this ADR:
   - usually the build fails with `JULC0085`, and the processor names the import to add;
   - if a library of the same simple name is in the pool (a wildcard-imported one, or a jar's copy of the class), that
-    library compiles instead, silently.
+    library compiles instead. For a jar's copy the processor prints a note (r14).
   The import avoids both.
 - **The marker contract** constrains framework authors (Q1). A marker JuLC cannot compile fails every library that
   uses it, with the compiler's usual diagnostic at the marker.
@@ -321,9 +327,8 @@ a build that passed before still passes (I1), and the problem is still printed j
     a type the source declares itself (r10);
   - `JavacFacts.libraryMarker` as the one rule;
   - the JULC0134 and nested-class messages;
-  - the compilation's class winning over an imported class-path source (r3, r12);
+  - a note when a class-path copy of a project library is compiled (r14; r3–r13 replaced the copy);
   - markers resolved after the libraries, and the import hint (r12);
-  - an import's choice of the compilation's class held for the whole resolution (r13);
   - the missing-marker message (r3, r5);
   - scan notes, `IllegalArgumentException` isolation and directory-listing reports;
   - docs.
@@ -354,7 +359,7 @@ class-path marker whose source ships in `META-INF/plutus-sources`.
 | `aMetaAnnotatedLibraryCompilesToTheSameScriptAsADirectOne` | I3 |
 | `librariesWhosePackageLineHasASpaceStillResolve` | the r1 regression (`package q ;`) |
 | `aLibraryOnlyCompilationClaimsItsAnnotationsAsBefore` | `-Xlint:processing -Werror`, I6 |
-| `aClassPathSourceDoesNotShadowAMarkedClassOfTheCompilation` | r3 |
+| `aClassPathCopyOfAMarkedClassIsCompiledAsBeforeWithANote` | r14 |
 | `aMarkerWithoutASourceIsReportedWithTheRemedy` | r3 |
 | `aLibraryOnlyOnTheSourcePathIsAdmitted` | the I1 exception |
 | `aValidatorCompilesAloneAsItDoesWithOthers` | I5 |
@@ -379,13 +384,11 @@ Resolver tests (`LibrarySourceResolverTest`):
 | `resolve_annotationReferencesNameOnlyAnnotationInterfacesAndNeverFallBack` | I4 |
 | `resolve_asksTheCompilationOnlyAboutImportedNames` | only imports are asked about; admitted sources are not pooled, r11 |
 | `resolve_followsOnlyAnnotationsTheHostCallsMarkers` | the CLI's pool; lookalikes; other hosts follow none, r8 |
-| `resolve_aJarSourceGivesWayOnlyToAnImportedName` | a bare or wildcard name is not asked about, r12 |
 | `resolve_aMarkersDependenciesNeverReorderTheLibraries` | I3 with a marker's `Class<?>` default, r12 |
-| `resolve_anImportsChoiceHoldsForTheWholeResolution` | a jar copy reached first by a variable's name, r13 |
 | `resolve_anAnnotationIsNeverFollowedThroughAWildcardImport` | r9 |
 | `resolve_keepsTheOrderTheSourceNamesLibrariesIn` | r10 |
 | `resolve_anAnnotationNamingTheSourcesOwnTypeIsNotFollowed` | r10 |
-| `resolve_aJarSourceGivesWayToTheCompilationsClassOfTheSameName` | r5 |
+| `resolve_aPooledNameIsNeverAskedAbout` | an imported name the pool holds resolves as before, r14 |
 | `scanClasspathSources_skipsAnUnreadableEntryReportsItAndReadsTheRest` | |
 | `scanClasspathSources_aMalformedEntryUrlCostsOnlyThatEntry` | |
 | `scanClasspathSources_readsAJarRewrittenAfterAnEarlierScan` | fails with the URL cache on |
@@ -508,3 +511,9 @@ Regression evidence:
   - **The marker hint is given only for a wildcard-imported package,** not for the marker's own package (design P3-1).
   - **Risks state that an unimported marked class can silently compile a same-named pool library,** as before this ADR
     (design P3-2, Codex P2).
+- **r14** (2026-11-08, after Codex's review of r13, `aac43d63`, found R12-1 and R12-2 in the jar-replacement rule,
+  and the maintainer's decision):
+  - **No replacement.** A class-path copy of a project library is compiled exactly as before this ADR, and the
+    processor notes it.
+  - **Removed:** the replacement rule (r3, r6, r12, r13) and its rerun loop. The host is asked only about imported
+    names the pool lacks.

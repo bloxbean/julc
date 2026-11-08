@@ -1089,11 +1089,12 @@ class JulcAnnotationProcessorTest {
     }
 
     /**
-     * A class-path source of the same name as a marked class of this compilation must not replace it: the test
-     * resources ship {@code org.julclang.processor.testshadow.Shadowed} returning {@code x + x + 1000}.
+     * A class-path source of the same name as a marked class of this compilation is compiled, as before ADR-071, and a
+     * note says so: the test resources ship {@code org.julclang.processor.testshadow.Shadowed} returning
+     * {@code x + x + 1000}, a stale copy of the project's class.
      */
     @Test
-    void aClassPathSourceDoesNotShadowAMarkedClassOfTheCompilation() throws Exception {
+    void aClassPathCopyOfAMarkedClassIsCompiledAsBeforeWithANote() throws Exception {
         String own = """
                 package org.julclang.processor.testshadow;
 
@@ -1130,14 +1131,9 @@ class JulcAnnotationProcessorTest {
         var marked = compileWithFramework(Map.of("org/julclang/processor/testshadow/Shadowed", own),
                 Map.of("org.julclang.processor.testshadow.UsesShadowed", validator), true);
         assertTrue(marked.success(), "Expected success, got: " + marked.diagnostics());
-        String markedScript = script("UsesShadowed");
-
-        var direct = compileWithProcessorSources(Map.of(
-                "org/julclang/processor/testshadow/Shadowed", own.replace("import org.julclang.processor.testmarker.StateMarker;",
-                        "import org.julclang.stdlib.annotation.OnchainLibrary;").replace("@StateMarker", "@OnchainLibrary"),
-                "org/julclang/processor/testshadow/UsesShadowed", validator), List.of());
-        assertTrue(direct.success(), "Expected success, got: " + direct.diagnostics());
-        assertEquals(script("UsesShadowed"), markedScript, "The class-path source replaced the compilation's class");
+        assertTrue(marked.diagnostics().stream().anyMatch(d -> d.getKind() == Diagnostic.Kind.NOTE
+                && d.getMessage(null).contains("JuLC compiles org.julclang.processor.testshadow.Shadowed from the on-chain"
+                + " library source")), "Got: " + marked.diagnostics());
     }
 
     @Test

@@ -342,10 +342,8 @@ class LibrarySourceResolverTest {
     }
 
     /** A host that admits {@code admitted} by name and treats {@code markers} as library markers. */
-    private static LibrarySourceResolver.CompilationHost host(Map<String, LibrarySource> jarSources,
-                                                             Function<String, LibrarySource> admitted,
-                                                             Set<String> markers) {
-        return new LibrarySourceResolver.CompilationHost(jarSources, admitted, markers::contains);
+    private static LibrarySourceResolver.CompilationHost host(Function<String, LibrarySource> admitted, Set<String> markers) {
+        return new LibrarySourceResolver.CompilationHost(admitted, markers::contains);
     }
 
     @Test
@@ -369,7 +367,7 @@ class LibrarySourceResolverTest {
                 """;
 
         var resolved = LibrarySourceResolver.resolve(validator, Map.of("lib.Lib", library, "lib.Mark", mark),
-                host(Map.of(), name -> null, Set.of("lib.Mark")));
+                host(name -> null, Set.of("lib.Mark")));
 
         assertEquals(List.of(library.source(), mark.source()), resolved);
         // A host that answers no marker (the CLI, the testkit, the tools) follows no annotation, as before.
@@ -401,7 +399,7 @@ class LibrarySourceResolverTest {
                 """;
 
         var resolved = LibrarySourceResolver.resolve(validator, Map.of("other.Param", otherPackage, "app.Entrypoint", aClass),
-                host(Map.of(), name -> null, Set.of("other.Param")));
+                host(name -> null, Set.of("other.Param")));
 
         assertEquals(List.of(), resolved);
     }
@@ -426,7 +424,7 @@ class LibrarySourceResolverTest {
                 """;
         var asked = new ArrayList<String>();
 
-        var resolved = LibrarySourceResolver.resolve(validator, Map.of("other.Pooled", pooled), host(Map.of(), name -> {
+        var resolved = LibrarySourceResolver.resolve(validator, Map.of("other.Pooled", pooled), host(name -> {
             asked.add(name);
             return name.equals("lib.Counter") ? admitted : null;
         }, Set.of()));
@@ -481,65 +479,8 @@ class LibrarySourceResolverTest {
                 """;
 
         assertEquals(List.of(real.source()), LibrarySourceResolver.resolve(validator,
-                Map.of("app.Audit", plain, "app.Mark", real), host(Map.of(), name -> null, Set.of("app.Mark"))));
+                Map.of("app.Audit", plain, "app.Mark", real), host(name -> null, Set.of("app.Mark"))));
         assertEquals(List.of(), LibrarySourceResolver.resolve(validator, Map.of("app.Audit", plain, "app.Mark", real)));
-    }
-
-    @Test
-    void resolve_aJarSourceGivesWayOnlyToAnImportedName() {
-        // A wildcard or bare name may be a variable's, so it is not asked about: the jar's class stays, as before.
-        var jar = LibrarySourceResolver.librarySourceFromQualifiedName("other.Counter", """
-                package other;
-                public class Counter { public static boolean ok() { return false; } }
-                """);
-        var own = LibrarySourceResolver.librarySourceFromQualifiedName("other.Counter", """
-                package other;
-                public class Counter { public static boolean ok() { return true; } }
-                """);
-        var wildcard = """
-                package app;
-                import other.*;
-                class V { static boolean f() { return Counter.ok(); } }
-                """;
-        var asked = new ArrayList<String>();
-
-        assertEquals(List.of(jar.source()), LibrarySourceResolver.resolve(wildcard, Map.of("other.Counter", jar),
-                host(Map.of("other.Counter", jar), name -> {
-                    asked.add(name);
-                    return own;
-                }, Set.of())));
-        assertEquals(List.of(), asked);
-    }
-
-    @Test
-    void resolve_anImportsChoiceHoldsForTheWholeResolution() {
-        // V's unused parameter Counter reaches the jar's app.Counter first; Helper then imports app.Counter, which the
-        // compilation supplies. The compilation's class is the one compiled, everywhere, and the list is the one the
-        // resolution gives when that class is an ordinary pool entry.
-        var jar = LibrarySourceResolver.librarySourceFromQualifiedName("app.Counter",
-                "package app; public class Counter { public static boolean ok() { return false; } }");
-        var own = LibrarySourceResolver.librarySourceFromQualifiedName("app.Counter",
-                "package app; public class Counter { public static boolean ok() { return true; } }");
-        var helper = LibrarySourceResolver.librarySourceFromQualifiedName("app.Helper", """
-                package app;
-                import app.Counter;
-                public class Helper { public static boolean ok() { return Counter.ok(); } }
-                """);
-        var validator = """
-                package app;
-                import app.Helper;
-                class V {
-                    static boolean unused(java.math.BigInteger Counter) { return Counter.signum() > 0; }
-                    static boolean f() { return Helper.ok(); }
-                }
-                """;
-
-        var resolved = LibrarySourceResolver.resolve(validator, Map.of("app.Counter", jar, "app.Helper", helper),
-                host(Map.of("app.Counter", jar), name -> name.equals("app.Counter") ? own : null, Set.of()));
-        var asPool = LibrarySourceResolver.resolve(validator, Map.of("app.Counter", own, "app.Helper", helper));
-
-        assertFalse(resolved.contains(jar.source()), resolved.toString());
-        assertEquals(asPool, resolved);
     }
 
     @Test
@@ -573,9 +514,9 @@ class LibrarySourceResolverTest {
         Map<String, LibrarySource> pool = Map.of("app.Tail", tail, "app.Bridge", bridge, "app.Leaf", leaf, "fw.Mark", mark);
 
         var withMarker = LibrarySourceResolver.resolve(validator, pool,
-                host(Map.of(), name -> name.equals("app.Counter") ? marked : null, Set.of("fw.Mark")));
+                host(name -> name.equals("app.Counter") ? marked : null, Set.of("fw.Mark")));
         var withoutMarker = LibrarySourceResolver.resolve(validator, pool,
-                host(Map.of(), name -> name.equals("app.Counter") ? direct : null, Set.of("fw.Mark")));
+                host(name -> name.equals("app.Counter") ? direct : null, Set.of("fw.Mark")));
 
         assertEquals(List.of(marked.source(), tail.source(), bridge.source(), leaf.source(), mark.source()), withMarker);
         assertEquals(List.of(direct.source(), tail.source(), bridge.source(), leaf.source()), withoutMarker);
@@ -599,7 +540,7 @@ class LibrarySourceResolverTest {
                 """;
 
         assertEquals(List.of(), LibrarySourceResolver.resolve(validator, Map.of("fw.SuppressWarnings", marker),
-                host(Map.of(), name -> null, Set.of("fw.SuppressWarnings"))));
+                host(name -> null, Set.of("fw.SuppressWarnings"))));
     }
 
     @Test
@@ -618,7 +559,7 @@ class LibrarySourceResolverTest {
                 """;
 
         assertEquals(List.of(counter.source(), tail.source()), LibrarySourceResolver.resolve(validator,
-                Map.of("app.Tail", tail), host(Map.of(), name -> name.equals("app.Counter") ? counter : null, Set.of())));
+                Map.of("app.Tail", tail), host(name -> name.equals("app.Counter") ? counter : null, Set.of())));
     }
 
     @Test
@@ -642,30 +583,30 @@ class LibrarySourceResolverTest {
                 """;
 
         assertEquals(List.of(), LibrarySourceResolver.resolve(validator,
-                Map.of("app.Mark", mark, "x.Clue", clueX, "y.Clue", clueY), host(Map.of(), name -> null, Set.of("app.Mark"))));
+                Map.of("app.Mark", mark, "x.Clue", clueX, "y.Clue", clueY), host(name -> null, Set.of("app.Mark"))));
     }
 
     @Test
-    void resolve_aJarSourceGivesWayToTheCompilationsClassOfTheSameName() {
+    void resolve_aPooledNameIsNeverAskedAbout() {
+        // ADR-071 D1: an imported name the pool holds resolves to the pool's library, as before; the compilation is asked
+        // only about names the pool lacks.
         var jar = LibrarySourceResolver.librarySourceFromQualifiedName("lib.Counter", """
                 package lib;
                 public class Counter { public static boolean ok() { return false; } }
-                """);
-        var own = LibrarySourceResolver.librarySourceFromQualifiedName("lib.Counter", """
-                package lib;
-                public class Counter { public static boolean ok() { return true; } }
                 """);
         var validator = """
                 package app;
                 import lib.Counter;
                 class V { static boolean f() { return Counter.ok(); } }
                 """;
+        var asked = new ArrayList<String>();
 
-        assertEquals(List.of(own.source()), LibrarySourceResolver.resolve(validator, Map.of("lib.Counter", jar),
-                host(Map.of("lib.Counter", jar), name -> name.equals("lib.Counter") ? own : null, Set.of())));
-        // Without the jar map the pooled entry is a project source and stays.
         assertEquals(List.of(jar.source()), LibrarySourceResolver.resolve(validator, Map.of("lib.Counter", jar),
-                host(Map.of(), name -> name.equals("lib.Counter") ? own : null, Set.of())));
+                host(name -> {
+                    asked.add(name);
+                    return null;
+                }, Set.of())));
+        assertEquals(List.of(), asked);
     }
 
     @Test
