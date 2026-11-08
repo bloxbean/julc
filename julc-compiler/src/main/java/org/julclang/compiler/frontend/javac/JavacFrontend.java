@@ -208,7 +208,7 @@ public final class JavacFrontend {
      * What an embedder's query reads of an attribution (ADR-068, the embedder attribution query): the result, the roots'
      * attributed trees in order, and the task's {@link Trees}, {@link Elements} and {@link Types}.
      */
-    public interface Attributed {
+    public sealed interface Attributed permits Attribution {
         JavacResult result();
 
         List<CompilationUnitTree> roots();
@@ -235,16 +235,18 @@ public final class JavacFrontend {
      *       call has its own javac task, so calls on different threads are independent.</li>
      *   <li><b>Read-only.</b> Nothing done to the model reaches JuLC: a compilation reads its sources afresh.</li>
      *   <li><b>A rejected attribution.</b> {@code query} runs whatever the result, so check
-     *       {@code result().isAccepted()} first. When the roots are rejected before javac runs (a root declaring a type
-     *       of JuLC's on-chain API, a duplicate declaration, or javac unavailable), {@code trees()}, {@code elements()}
-     *       and {@code types()} are null; when javac reports an error, they hold its partial model. With no roots, the
-     *       result is accepted and they are null.</li>
-     *   <li><b>Diagnostics.</b> {@code result().diagnostics()} holds javac's errors, followed by JuLC's notes on
-     *       shadowed pool units; javac's warnings are not kept.</li>
+     *       {@code result().isAccepted()} first. When the units are rejected before javac runs, {@code trees()},
+     *       {@code elements()} and {@code types()} are null: a root or pool unit declaring a type in a package of JuLC's
+     *       on-chain API or bundled libraries, or with one of their names ({@code JULC0081}); two units of equal standing
+     *       declaring one name; or javac unavailable ({@code JULC0089}). When javac reports an error, they hold its
+     *       partial model. With no roots, and javac available, the result is accepted and they are null.</li>
+     *   <li><b>Diagnostics.</b> {@code result().diagnostics()} holds JuLC's rejection when the units are rejected before
+     *       javac runs; otherwise javac's errors, followed by JuLC's notes on shadowed pool units. javac's warnings are
+     *       not kept.</li>
      *   <li><b>JuLC's javac, not the build's.</b> The model is that of JuLC's embedded javac (ADR-068 D3): the java.base
      *       subset of its platform, and JuLC's on-chain API as signature-only stubs. A JDK class outside the platform is
      *       not found, and string concatenations of constants are not folded in the trees
-     *       ({@code Elements.getConstantValue} still folds them).</li>
+     *       ({@code VariableElement.getConstantValue} still folds them).</li>
      *   <li><b>Lookups during the query</b> may read further pool units or stubs; javac's errors in those are not
      *       reported.</li>
      * </ul>

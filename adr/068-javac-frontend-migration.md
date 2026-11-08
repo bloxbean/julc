@@ -1404,7 +1404,7 @@ then compiles the generated validators with `JulcCompiler`, in Node with no JDK.
   made during the query, and experimental status. F952's tightening of `JavacProgram` is unaffected.
 - **Alternatives.** Making `attribute()` and the record public as they were (#313 as first written) exposed the
   record's constructor and internals and gave no confinement; concurrent readers of one model fail inside javac
-  (`ConcurrentModificationException`, reproduced in review). `JavacProgram.attribute(...).read(...)` is locked but has no
+  (`ConcurrentModificationException`, reproduced by Codex in review of `c11cb52b`). `JavacProgram.attribute(...).read(...)` is locked but has no
   `Trees`, which JOUST needs for paths, source positions and its subset lint; widening `JavacFacts` for one embedder
   was not preferred.
 - **Verification.** `AttributionQueryTest`, outside the frontend package: an accepted query reads elements, types and
@@ -1742,3 +1742,5 @@ then compiles the generated validators with `JulcCompiler`, in Node with no JDK.
   - D13, O8: the 17 growing M5a Cost change rows, the 18 F1042 rows and `ee920e1e80` are accepted, under the maintainer's delegation.
     Values equal the reference's, or depart from the JVM as the reference does. Decode on demand is a cost-priority follow-up.
   - M5 is closed.
+- **Addendum** (2026-11-08, PR #313): the embedder attribution query, `JavacFrontend.attribute(roots, pool, query)`
+  over `JavacFrontend.Attributed`; F847's account names it as the one other way into the model.

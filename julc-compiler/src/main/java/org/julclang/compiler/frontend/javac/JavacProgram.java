@@ -18,7 +18,7 @@ import java.util.function.Function;
  * <ul>
  *   <li>Outside this package, the model is reached only through {@link #read}, which runs a whole query under this
  *       program's lock, as {@link JavacMetadata#read} does. The lock is reentrant, and a query takes no other lock. An
- *       embedder's {@link JavacFrontend#attribute(List, List, java.util.function.Function)} query is the one other way
+ *       embedder's {@link JavacFrontend#attribute(List, List, Function)} query is the one other way
  *       in: its own task, confined to that query on the calling thread (ADR-068, the embedder attribution query).</li>
  *   <li>A query returns JuLC's own values ({@code PirTerm}, {@code PirType}, diagnostics, strings), which hold no javac
  *       object. An {@code Element}, {@code TypeMirror} or {@code Tree} must not be kept past the query that read it.</li>

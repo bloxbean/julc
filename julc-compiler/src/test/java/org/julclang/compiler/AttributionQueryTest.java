@@ -93,6 +93,8 @@ class AttributionQueryTest {
                 """;
         JavacFrontend.shared().attribute(List.of(Unit.of(ledger)), List.of(), model -> {
             assertFalse(model.result().isAccepted());
+            assertTrue(model.result().diagnostics().stream().anyMatch(d -> "JULC0081".equals(d.code())),
+                    () -> model.result().diagnostics().toString());
             assertNull(model.elements());
             assertNull(model.types());
             assertNull(model.trees());
