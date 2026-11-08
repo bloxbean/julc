@@ -147,6 +147,19 @@ class JavaSourceIntrospectorTest {
     }
 
     @Test
+    void aRoleConflictNamesTheLibraryAnnotationTheClassCarries() {
+        var conflict = JavaSourceIntrospector.inspect("""
+                package app;
+                @StateContract
+                @SpendingValidator
+                class V {}
+                """).firstRoleConflict().orElseThrow();
+
+        assertEquals("Class app.V must not combine @StateContract with validator annotation(s): @SpendingValidator",
+                conflict.message());
+    }
+
+    @Test
     void inspectAllowsUnrelatedAnnotationsOnOnchainLibrary() {
         var source = """
                 package com.example;

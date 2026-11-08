@@ -175,8 +175,12 @@ through an import, and the resolver is as on `main`.
 - **Coupling.** JuLC names a JOUST annotation. JOUST is BloxBean's own framework and the name is settled; Q2 covers a
   second framework.
 - **Unclaimed rounds.** A round holding `@StateContract` is not claimed by JuLC, so with `-Xlint:processing` javac may
-  list that round's annotations as unclaimed. JOUST's processor does not claim it either, so a JOUST build already
-  sees that warning for `@StateContract` today; JOUST does not build with `-Xlint:processing -Werror`.
+  list that round's annotations as unclaimed, JuLC's own among them (`@OnchainLibrary`, a validator annotation), and a
+  later processor now receives them. JOUST's processor does not claim `@StateContract` either, so a JOUST build already
+  sees that warning for it today, and JOUST does not build with `-Xlint:processing -Werror`. A build in which a third
+  processor claims `@StateContract`, so that nothing warned before, can now warn about JuLC's annotations of that round
+  and fail `-Werror` (Codex, review of `ae347783`). Keeping JuLC's claims there would need a processor of its own for
+  the alias; not done for a case no known build has.
 - **Text tools match by simple name** (Compatibility).
 
 ## Implementation milestones
@@ -197,9 +201,11 @@ Processor tests (`JulcAnnotationProcessorTest`). The test resources ship a stand
 | `aFrameworkReceivesStateContractAndItsGeneratedValidatorCompiles` | I4 and the framework case, either processor first |
 | `aNestedStateContractClassIsRejected` | the nested message |
 | `aLibraryOnlyCompilationClaimsItsAnnotationsAsBefore` | I1: `-Xlint:processing -Werror` |
+| `aStateContractModuleWithoutTheStdlibOnItsClassPathCompiles` | an alias-only module, julc-stdlib absent |
 
 Compiler tests: `DiagnosticTextTest.aClassIsALibraryOrAValidatorEvenThroughAnAliasOfOnchainLibrary` (JULC0134 names
-`@StateContract`), `JavaSourceIntrospectorTest.inspectTreatsStateContractAsAnOnchainLibrary` (the text tools).
+`@StateContract`), `JavaSourceIntrospectorTest.inspectTreatsStateContractAsAnOnchainLibrary` and
+`aRoleConflictNamesTheLibraryAnnotationTheClassCarries` (the text tools).
 
 Resolver tests (`LibrarySourceResolverTest`), D2:
 
@@ -347,3 +353,6 @@ compared (I1); the full build; JOUST built against the head.
   - **D3 added:** `org.julclang.state.api.StateContract` is an alias of `@OnchainLibrary` on every path that decides a
     class is a library; JuLC does not claim a round holding it.
   - **D2 unchanged.**
+  - From Codex's review of the local `ae347783`: a module of `@StateContract` classes without julc-stdlib on its class
+    path no longer fails in the processor; the text tools' role-conflict message names the annotation the class
+    carries; Risks states the mixed-round `-Xlint:processing` case.

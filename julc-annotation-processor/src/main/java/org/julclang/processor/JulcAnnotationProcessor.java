@@ -181,7 +181,9 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
      * the library pool. An alias is taken from the round's annotations, so its name is never looked up.
      */
     private void collectSameProjectLibraries(Set<? extends TypeElement> annotations, RoundEnvironment roundEnv) {
-        collectLibraries(roundEnv.getElementsAnnotatedWith(findTypeElement(JavacNames.ONCHAIN_LIBRARY)), "OnchainLibrary");
+        // Absent when julc-stdlib is not on the compile class path: a module of @StateContract classes alone.
+        TypeElement onchainLibrary = findTypeElement(JavacNames.ONCHAIN_LIBRARY);
+        if (onchainLibrary != null) collectLibraries(roundEnv.getElementsAnnotatedWith(onchainLibrary), "OnchainLibrary");
         for (TypeElement annotation : annotations) {
             if (isAlias(annotation.getQualifiedName().toString())) {
                 collectLibraries(roundEnv.getElementsAnnotatedWith(annotation), annotation.getSimpleName().toString());

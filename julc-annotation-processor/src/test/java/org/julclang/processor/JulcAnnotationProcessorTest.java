@@ -618,6 +618,20 @@ class JulcAnnotationProcessorTest {
                 "Expected the top-level diagnostic, got: " + result.diagnostics());
     }
 
+    /**
+     * A module of @StateContract classes alone, without julc-stdlib on its compile class path: JuLC is called for the
+     * alias, and @OnchainLibrary, which it cannot find there, is simply absent.
+     */
+    @Test
+    void aStateContractModuleWithoutTheStdlibOnItsClassPathCompiles() throws Exception {
+        Path emptyClassPath = tempDir.resolve("empty-class-path");
+        Files.createDirectories(emptyClassPath);
+        var result = compileWithProcessors(Map.of("org/julclang/state/api/StateContract", stateContractSource(),
+                "app/Counter", COUNTER), List.of("-classpath", emptyClassPath.toString(), "-Werror"),
+                List.of(new JulcAnnotationProcessor()));
+        assertTrue(result.success(), "Expected success, got: " + result.diagnostics());
+    }
+
     /** A compilation of libraries alone: JuLC still claims its annotations, so -Xlint:processing has nothing to say. */
     @Test
     void aLibraryOnlyCompilationClaimsItsAnnotationsAsBefore() throws Exception {

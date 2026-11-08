@@ -76,17 +76,23 @@ public final class JavaSourceIntrospector {
             boolean topLevel) {
     }
 
+    /** A class carrying a library annotation ({@code libraryAnnotation}, a simple name) and validator annotations. */
     public record RoleConflict(
             String simpleName,
             String fqcn,
-            List<String> conflictingAnnotations) {
+            List<String> conflictingAnnotations,
+            String libraryAnnotation) {
+
+        public RoleConflict(String simpleName, String fqcn, List<String> conflictingAnnotations) {
+            this(simpleName, fqcn, conflictingAnnotations, ONCHAIN_LIBRARY_ANNOTATION);
+        }
 
         public String message() {
             String annotations = String.join(", ", conflictingAnnotations.stream()
                     .map(annotation -> "@" + annotation)
                     .toList());
             return "Class " + fqcn
-                    + " must not combine @OnchainLibrary with validator annotation(s): "
+                    + " must not combine @" + libraryAnnotation + " with validator annotation(s): "
                     + annotations;
         }
     }

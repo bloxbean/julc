@@ -61,7 +61,7 @@ final class JavacSourceIntrospection {
                 if (!conflicting.isEmpty()) {
                     String simpleName = type.getSimpleName().toString();
                     roleConflicts.add(new RoleConflict(simpleName, qualifiedName(path).orElse(simpleName),
-                            List.copyOf(conflicting)));
+                            List.copyOf(conflicting), library.get()));
                 }
             }
         }
