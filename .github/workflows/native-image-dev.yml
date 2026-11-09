@@ -64,11 +64,6 @@ jobs:
     - name: Build native image
       run: ./gradlew :julc-cli:nativeCompile -PskipSigning=true --no-daemon
       shell: bash
-      env:
-        # native-image hands the build it starts only the variables named with -E. Passing this one keeps the
-        # macOS binaries running on macOS 14, the minimum they had when built on macos-14 runners.
-        MACOSX_DEPLOYMENT_TARGET: '14.0'
-        NATIVE_IMAGE_OPTIONS: ${{ runner.os == 'macOS' && '-EMACOSX_DEPLOYMENT_TARGET' || '' }}
 
     - name: Package (Unix)
       if: runner.os != 'Windows'
@@ -278,11 +273,6 @@ jobs:
     - name: Build native image
       run: ./gradlew :julc-playground:nativeCompile -PwithFrontend -PskipSigning=true --no-daemon
       shell: bash
-      env:
-        # native-image hands the build it starts only the variables named with -E. Passing this one keeps the
-        # macOS binaries running on macOS 14, the minimum they had when built on macos-14 runners.
-        MACOSX_DEPLOYMENT_TARGET: '14.0'
-        NATIVE_IMAGE_OPTIONS: ${{ runner.os == 'macOS' && '-EMACOSX_DEPLOYMENT_TARGET' || '' }}
 
     - name: Package (Unix)
       if: runner.os != 'Windows'
