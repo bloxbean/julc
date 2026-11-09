@@ -14,6 +14,7 @@ import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.TreeMap;
+import java.util.regex.Pattern;
 
 import static org.julclang.compiler.backend.FunctionProgramTest.program;
 import static org.julclang.compiler.backend.GenericExportsTest.BOOL_REF;
@@ -89,6 +90,18 @@ class JavacExportsTest {
         }
     }
 
+    /** A specialization key's digest. */
+    private static final Pattern KEY_DIGEST = Pattern.compile("#[0-9a-f]{16}\\b");
+
+    /**
+     * {@code names} with each specialization key's digest replaced by its order of first appearance. The digest covers the
+     * compiler version, and a SNAPSHOT's version carries its commit, so a frozen answer must not hold it.
+     */
+    private static String withoutKeyDigests(String names) {
+        var seen = new LinkedHashMap<String, String>();
+        return KEY_DIGEST.matcher(names).replaceAll(m -> seen.computeIfAbsent(m.group(), digest -> "#k" + (seen.size() + 1)));
+    }
+
     @Test
     void aSpecializationIsTheReferences() {
         var sources = List.of(SEQ, UNREFERENCED);
@@ -104,7 +117,7 @@ class JavacExportsTest {
             var actual = javac.materialize(List.of(request));
             var binding = actual.binding(request);
             var term = new PirTerm.Var(binding.name(), binding.type());
-            FrozenReference.assertSame("a specialization|" + request.describe(), binding + "|" + actual.definitions().keySet() + "|"
+            FrozenReference.assertSame("a specialization|" + request.describe(), withoutKeyDigests(binding + "|" + actual.definitions().keySet()) + "|"
                     + hex(UplcFlatEncoder.encodeProgram(FunctionProgramTest.compile(program(term, binding.type(),
                             new LinkedHashMap<>(), List.of(actual))).program())));
         }
