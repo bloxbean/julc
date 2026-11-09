@@ -16,7 +16,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-14
+          - os: macos-15
             label: macos-aarch64
             binary: julc
           - os: ubuntu-22.04
@@ -212,7 +212,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-14
+          - os: macos-15
             label: macos-aarch64
             binary: julc-playground
           - os: ubuntu-22.04
