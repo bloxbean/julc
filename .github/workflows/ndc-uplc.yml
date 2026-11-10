@@ -1,0 +1,116 @@
+name: Node-diversity UPLC scenarios
+
+# The Cardano node-diversity UPLC scenarios (https://github.com/pragma-org/node-diversity-conformance) on the Java VM.
+# Both download their pinned corpora (julc-vm-java's NdcCorpus); `./gradlew build` downloads nothing.
+#
+#   uplc-conformance  gates releases: release.yml calls this workflow and publishes only if it passes. It also runs on
+#                     pull requests and pushes that touch the VM or the UPLC core, and on demand.
+#   uplc-turbo        a performance report, on demand only (Run workflow, with "Run uplc-turbo" checked). It never
+#                     gates anything; the job fails only if a script does not decode or evaluate, or consumes a budget
+#                     other than cardano-node's. Timings from a shared runner are noisy: compare them with care.
+#
+# The reports (JSON in the scenario's format, and a text summary) are uploaded as artifacts. No secrets are used.
+
+on:
+  pull_request:
+    branches: [ main, develop, release/* ]
+    paths:
+      - 'julc-core/**'
+      - 'julc-vm/**'
+      - 'julc-vm-java/**'
+      - 'julc-bls/**'
+      - '.github/workflows/ndc-uplc.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'julc-core/**'
+      - 'julc-vm/**'
+      - 'julc-vm-java/**'
+      - 'julc-bls/**'
+      - '.github/workflows/ndc-uplc.yml'
+  workflow_dispatch:
+    inputs:
+      turbo:
+        description: 'Run uplc-turbo (the performance report) as well'
+        type: boolean
+        default: false
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  uplc-conformance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4
+
+      - name: Run uplc-conformance
+        run: ./gradlew :julc-vm-java:ndcUplcConformance -PskipSigning=true --stacktrace
+
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f julc-vm-java/build/reports/ndc/uplc-conformance-summary.txt ]]; then
+            { echo '```'; cat julc-vm-java/build/reports/ndc/uplc-conformance-summary.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ndc-uplc-conformance
+          path: julc-vm-java/build/reports/ndc/
+          retention-days: 30
+          if-no-files-found: warn
+
+  uplc-turbo:
+    if: github.event_name == 'workflow_dispatch' && inputs.turbo
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4
+
+      - name: Run uplc-turbo
+        run: ./gradlew :julc-vm-java:ndcUplcTurbo -PskipSigning=true --stacktrace
+
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f julc-vm-java/build/reports/ndc/uplc-turbo-summary.txt ]]; then
+            { echo '```'; cat julc-vm-java/build/reports/ndc/uplc-turbo-summary.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ndc-uplc-turbo
+          path: julc-vm-java/build/reports/ndc/
+          retention-days: 30
+          if-no-files-found: warn
