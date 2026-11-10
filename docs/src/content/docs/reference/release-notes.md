@@ -3,8 +3,47 @@ title: "Release Notes"
 description: "JuLC release notes and migration guidance"
 ---
 
+Each section below is a release, newest first. Within a release, entries are newest first.
 
-## Upcoming preview: `JulcList.any` and `all` stop at the deciding element (#312)
+## 0.1.0-pre21
+
+### The macOS binaries need macOS 15 (#316)
+
+The macOS builds of the CLI and the playground are now made on macOS 15, because GitHub retired its macOS 14
+runners. They are Apple-silicon binaries, as before, and need macOS 15.0 or later; 0.1.0-pre20's needed macOS 14.0.
+The artifact names and the Homebrew formulas do not change. On macOS 14, keep using 0.1.0-pre20's binaries or compile
+through Gradle or Maven, which need only a JDK.
+
+### `julc-wasm` and `julc-tools` are published (#252)
+
+`org.julclang:julc-wasm` and `org.julclang:julc-tools` are now on Maven Central, so a language built on JuLC's backend
+can compile its own WebAssembly engine from these jars, without copying JuLC's code. Both are experimental.
+
+- `JsApi.install(ApiRegistry, EngineInfo)` takes the engine's global name, variant, version and operation groups, and
+  checks them. JuLC's own images pass the values they used before.
+- Operation names are `group.operation`; duplicates, groups the engine does not advertise and reserved names are rejected.
+- The JavaScript client refuses an engine whose variant, API version or groups differ from its manifest.
+- The images now carry the cost model parameter files, so `costModel: '<profile-id>'` works; it failed in every image before.
+- `slf4j-nop` is no longer a dependency of the published jar: JuLC's images add it themselves, and an embedder chooses
+  its own logging provider.
+
+No compiler, UPLC, ledger or VM behavior changes. See [JavaScript and WebAssembly](/guides/javascript-wasm/).
+
+### An attribution query for tools that embed the compiler (#313)
+
+`JavacFrontend.attribute(roots, pool, query)` attributes sources the way a JuLC compilation does, runs `query` over a
+read-only view of javac's model (`Attributed`: `result()`, `roots()`, `trees()`, `elements()`, `types()`), and returns
+what the query returns. It is experimental, for tools that generate validators from attributed source. Use the model
+only inside the query and on the calling thread, and keep no `Element`, `TypeMirror` or `Tree` after it returns. The
+model is null when the roots are rejected before javac runs, and the diagnostics hold errors only. Compilation does
+not change.
+
+### The playground completes imports (#300)
+
+On an `import` line, the playground editor suggests the next package or class: `import org.julclang.` offers `core`,
+`ledger` and `stdlib`, and choosing a class ends the line with `;`. Type a letter or press Ctrl+Space to open the list.
+
+### `JulcList.any` and `all` stop at the deciding element (#312)
 
 The compiled `any` and `all` used to test every element of the list, where the JVM's stop at
 the element that decides the answer: `any` at the first that passes, `all` at the first that
@@ -22,7 +61,7 @@ the JVM stops, at every optimisation level.
   it did. Scripts are about 5 bytes smaller per `any` or `all` (10 at `NONE`).
 - Blueprint hashes of validators that call `any` or `all` change.
 
-## Upcoming preview: a cast to a sealed-interface variant is checked (#288, #309)
+### A cast to a sealed-interface variant is checked (#288, #309)
 
 A downcast from a sealed interface to one of its record variants used to lower to its operand,
 with no check. Where Java throws `ClassCastException`, the script read the other variant's
@@ -47,7 +86,7 @@ Withdraw w = (Withdraw) redeemer;                                              /
 - A cast inside a `JulcList.any` or `all` predicate runs on the elements the JVM tests, and no
   further (see the section above).
 
-## Upcoming preview: `instanceof` pattern variables wherever Java has them in scope (#204)
+### `instanceof` pattern variables wherever Java has them in scope (#204)
 
 JuLC used to bind an `instanceof` pattern variable only when `x instanceof T v` was the whole
 condition of an `if` outside a loop body with accumulators. Everywhere else a use of the
@@ -77,7 +116,7 @@ A bare type test, `x instanceof Bid`, now works wherever an expression may stand
   `JULC0074`. `JULC0077` no longer covers a test of a variant: it is left for record patterns
   and for a test of a type that is no variant, such as the sealed interface itself.
 
-## Upcoming preview: build native BLS point and scalar lists one element at a time (#240)
+### Build native BLS point and scalar lists one element at a time (#240)
 
 `Builtins` gains six producers for the native lists that `bls12_381_G1_multiScalarMul`
 and `bls12_381_G2_multiScalarMul` take ([#240](https://github.com/bloxbean/julc/issues/240), ADR-047 amendment):
@@ -112,7 +151,7 @@ at runtime; a cast is never a decoder. Most other misuse, such as a G2 point con
 list, is rejected by javac itself (`JULC0085`). A `switch` expression that yields one group's
 native list compiles, with or without a cast to its own type.
 
-## Upcoming preview: `abs`, `signum`, `max`, `min` and `compareTo` evaluate each operand once (#146)
+### `abs`, `signum`, `max`, `min` and `compareTo` evaluate each operand once (#146)
 
 These read an operand more than once: `abs` and `signum` their receiver, and `max`, `min` and
 `compareTo` both operands. An operand that was more than a variable or a literal was evaluated
@@ -135,7 +174,7 @@ form was already fixed.
   48,000 more CPU units and 300 more memory units. A new hash means a new script address or
   policy ID. `BASELINE` changes too.
 
-## Upcoming preview: javac is JuLC's only Java reader (ADR-068 M5, M6)
+### Javac is JuLC's only Java reader (ADR-068 M5, M6)
 
 JuLC now reads every Java source with javac, on every host: the compiler API, the Gradle plugin, the annotation processor, the testkit (`JulcEval`, `ValidatorTest`, `ContractTest`), the CLI
 (`julc build`, `julc check`, the REPL, the MCP tools), the playground and `julc-wasm`, and Elci's
@@ -143,7 +182,7 @@ JuLC now reads every Java source with javac, on every host: the compiler API, th
 javac's attributed trees. The tools that read Java source without compiling it (lint, test discovery, the MCP tools'
 arity check, the metadata extractor, the verification resolvers) read it with javac's parser too.
 
-### Script hashes can change
+#### Script hashes can change
 
 A validator whose bytes change gets a new script hash, so a new address or policy ID. Rebuild every validator you have
 deployed, compare its hash with the deployed one, and treat a change as a new script: funds locked at the old address
@@ -154,7 +193,7 @@ bytes, each classified in the ADR's ledger (a semantic fix, a cost change or a r
 JavaParser frontend accepted are rejected with a code (below). Of the 102 external example programs in that corpus, 43
 keep their bytes, 11 change them, and 48 are rejected until rewritten; the examples held 125 `byte[].equals` call sites.
 
-### The JavaParser frontend and the frontend option are gone (ADR-068 M6)
+#### The JavaParser frontend and the frontend option are gone (ADR-068 M6)
 
 There is no way back to the JavaParser frontend: `javaparser-core` is on no class path, and a build that fails on javac is
 fixed by the rewrites below. What opted back is removed:
@@ -184,7 +223,7 @@ stays `JULC0080`, and a `@NewType`'s instance call keeps its own rejection where
 `JavaSourceIntrospector`'s methods on JavaParser nodes and `JavaSourceParser` are gone, and `DiagnosticCollector` reports by line
 and column. `JavacProvenance` has no gate. `CompilerFrontend.DEFAULT` is gone.
 
-### Source javac's frontend rejects
+#### Source javac's frontend rejects
 
 Each of these compiled on the JavaParser frontend, which read it otherwise than Java does or produced a script that fails
 where the Java code returns. Each now stops with a code and a fix:
@@ -218,7 +257,7 @@ correctly also stop, failing closed, until a rule for them is written: a for-eac
 `for (Number o : xs)` with `o.longValue()` (`JULC0055`), and `r.a().abs()` where `a` is an integer `@NewType` read from a
 record (`JULC0055`).
 
-### Programs that now do what their Java does
+#### Programs that now do what their Java does
 
 Each of these compiled on the JavaParser frontend to a script that disagreed with its Java code; on javac it agrees:
 
@@ -235,7 +274,7 @@ Each of these compiled on the JavaParser frontend to a script that disagreed wit
 
 The ADR-068 ledger (`adr/evidence/068/lowering-accepted-differences.tsv`) gives each difference its class and test.
 
-### The narrowing cast costs only where it can change the value
+#### The narrowing cast costs only where it can change the value
 
 `(int) x` of a non-constant `long` computes Java's value, with three builtins at the cast: about 527k CPU, 1.2k memory and
 107 lovelace each time it runs, and about 26 bytes in the script. Where the compiler can show the value is already in
@@ -250,7 +289,7 @@ Anything else keeps the builtins: a parameter, a length, arithmetic, a choice, a
 with such a cast has different bytes and a different hash than on the JavaParser frontend, where the cast was erased and the
 value could differ from Java's. `MerklePatriciaForestry`, whose `nibble` writes `(int) ByteStringLib.at(...)`, keeps its bytes.
 
-### A ledger type's `fromPlutusData` pays for its check
+#### A ledger type's `fromPlutusData` pays for its check
 
 `TxCert.fromPlutusData(d)`, and the same call on the other ledger types, now checks the exact shape of `d` on-chain, as it does on the
 JVM. It used to read `d` as it stood, and so accepted Data the JVM refuses (ADR-068 D6, r15). The check costs +87 to +967 bytes in
@@ -262,7 +301,7 @@ the 43 external example validators does, and their bytes do not change.
 - **Skip it** where you already hold the value in its type. `PlutusData.cast(d, T.class)` is a view that checks nothing and costs
   nothing, so a wrong shape is not refused there: it fails or misreads later, where the value is read.
 
-### Migrating `byte[].equals` (`JULC0087`)
+#### Migrating `byte[].equals` (`JULC0087`)
 
 On the JVM, `byte[].equals` is `Object.equals`: it compares references, so two arrays with the same bytes are not equal.
 The JavaParser frontend compiled it to a byte comparison, so a JVM test of the validator and the script disagreed. javac's
@@ -311,7 +350,7 @@ A record or sealed variant with a `byte[]` component has the same problem throug
 the old form stops at compile time, so there is nothing to look for at run time. The diagnostic's fix names the same
 replacements.
 
-### Also in this release
+#### Also in this release
 
 - **Clearer errors.** Script bytes do not change.
   - An error from the compiler, the CLI, the Gradle plugin or the annotation processor now shows the source line with the problem underlined.
@@ -337,10 +376,9 @@ replacements.
 - A sealed interface whose permitted class is a class or a `@NewType` record is `JULC0127` wherever it is declared in
   a unit the compilation reads, whether or not the program uses it: such a variant has no layout, and the compiler
   dropped its value wherever the sum was read (a parameter, a datum and its blueprint schema, a record component, a
-  library's exports). Before, only a `new`, `instanceof` or `case` of the variant was rejected. The JavaParser
-  frontend still accepts these shapes, a reason not to opt back.
+  library's exports). Before, only a `new`, `instanceof` or `case` of the variant was rejected.
 
-## Upcoming preview: an entry point takes the script context last
+### An entry point takes the script context last
 
 An `@Entrypoint` method's last parameter is `ScriptContext` or `PlutusData`; anything else is `JULC0103`. The script
 receives the script context there, undecoded, so a last parameter typed `BigInteger`, `int`, a record or a subtype of
@@ -356,7 +394,7 @@ several such errors reports each of them. A record that implements two sealed in
 declares any member but a nested type is `JULC0080` (ADR-067), so `record R(BigInteger a) { R { } }`, accepted there before,
 is rejected. See [Troubleshooting](/reference/troubleshooting/).
 
-## Upcoming preview: `String.length` counts as Java does, and a method with no parameters runs when called
+### `String.length` counts as Java does, and a method with no parameters runs when called
 
 `s.length()` counts UTF-16 code units, as Java does. It counted the bytes of the string's UTF-8
 encoding, so `"é".length()` was 2 and `"😀".length()` was 4. A constant string folds to Java's value.
@@ -383,7 +421,7 @@ not UTF-8. `JulcList.take` and `drop` throw on any negative count, and `JulcList
 `JulcArray.get` on an index past an `int`. These change no script, but a test that relied on the old
 result changes.
 
-## Upcoming preview: `mod`, `take` and `drop` fail where Java throws
+### `mod`, `take` and `drop` fail where Java throws
 
 `a.mod(b)` with `b` below 1, and `take(n)` and `drop(n)` with `n` below 0, throw in Java. They now
 fail in the script too. Before this change `mod` took a negative modulus and
@@ -398,13 +436,13 @@ Two differences from Java stay. Neither changes what a script accepts, since bot
 `max`, `signum` and `compareTo` outside `compareTo(...) OP 0` can evaluate an operand twice. Only the
 order of traces, which failure shows, and cost differ.
 
-## Upcoming preview: a `+` of string constants warns (`JULC0102`)
+### A `+` of string constants warns (`JULC0102`)
 
 `"a" + "b"` of string constants now warns: Java joins them when it compiles, and
 JuLC keeps the `+` as written, so the script joins them when it runs. The warning rejects nothing,
 and script bytes do not change. Write one literal.
 
-## Upcoming preview: a conditional lowers to `Case` on a proven boolean
+### A conditional lowers to `Case` on a proven boolean
 
 A conditional lowers to `Case` when the compiler proves its condition produces a real boolean: a
 boolean constant, a comparison or another builtin with a boolean result, a decoded boolean field, a
@@ -416,7 +454,7 @@ Recompiling can change script bytes and budgets at `pv11-safe` and `pv11-costed`
 can change: about 4 bytes at each conditional on the builtin, and 188,049 CPU and 701 memory each
 time it runs.
 
-## Upcoming preview: sources must be Java that javac accepts (ADR-068 M1)
+### Sources must be Java that javac accepts (ADR-068 M1)
 
 Every compilation now has javac analyze its sources first, on every host (the compiler API,
 the Gradle plugin, the annotation processor, the testkit, the CLI and its REPL, the
@@ -481,7 +519,7 @@ JuLC's dialect beyond Java is no longer accepted. Write it as Java:
   a record pattern on `CompileResult` needs the new arity. Generated artifacts are unchanged, so
   `plutus.json` is the same across JDK patch releases.
 
-## Upcoming preview: comparisons evaluate each operand once, left to right (#146, #295)
+### Comparisons evaluate each operand once, left to right (#146, #295)
 
 `a.compareTo(b) OP 0` lowered to the three-way `compareTo` result compared with zero, which
 evaluated a non-trivial receiver or argument more than once: a traced operand traced twice,
@@ -505,7 +543,7 @@ the script reported a different failure than the Java code
   their locked artifacts and counterexample binding are refreshed with the same property
   outcomes.
 
-## Upcoming preview: `JulcArray` in a Data-encoded position is rejected (JULC0091, #298)
+### `JulcArray` in a Data-encoded position is rejected (JULC0091, #298)
 
 A `JulcArray` is a native UPLC array, which has no Data encoding. A record or sealed-variant
 component, a type argument of `Optional`, `Tuple2`, `Tuple3`, `JulcList`, `List`, `JulcMap` or
@@ -521,7 +559,7 @@ would be encoded. Store a `JulcList` and build the array where it is used
 `JulcArray<JulcList<BigInteger>>` in a local, stay supported. A datum or redeemer type that
 holds an array, already rejected by strict boundary validation, now reports `JULC0091`.
 
-## Upcoming preview: diamond tuples encode their components (#299)
+### Diamond tuples encode their components (#299)
 
 `new Tuple2<>(a, b)` and `new Tuple3<>(a, b, c)` resolved to tuples with Data components, so a
 `BigInteger`, `byte[]`, boolean or `String` component was put into the constructor unencoded and
@@ -549,7 +587,7 @@ a return, an argument).
   type, so the call is the integer one and the comparison evaluates correctly, where it used the Data
   representation before.
 
-## Upcoming preview: JuLC collections compare `byte[]` by content on the JVM
+### JuLC collections compare `byte[]` by content on the JVM
 
 On-chain, `JulcList`, `JulcMap` and `JulcArray` compare elements and keys by Data equality, so
 an equal `byte[]` is found. Off-chain, `JulcArrayList`, `JulcAssocMap` and `JulcArrayImpl`
@@ -565,7 +603,7 @@ collections compare deeply.
   equality and hash.
 - Scripts are unchanged.
 
-## Upcoming preview: integer literals have Java's value (#270)
+### Integer literals have Java's value (#270)
 
 Integer literals were decoded by hand, not as the JLS defines them (§3.10.1):
 
@@ -587,7 +625,7 @@ type, an octal digit 8 or 9, or a `byte[]` element outside -128 to 127) is rejec
   script address or policy ID. Write `0xFFFFFFFFL` or a `BigInteger` where the unsigned value
   was meant.
 
-## Upcoming preview: Unicode escapes are read as Java reads them (#268)
+### Unicode escapes are read as Java reads them (#268)
 
 javac translates Unicode escapes (a backslash, `u` and four hex digits, such as `\u0061`)
 before it reads anything else. So an escape in a comment can be a line break or the end of
@@ -623,7 +661,7 @@ and the verification resolvers.
   leniently, and skipped if it declares none. It still fails with its diagnostic if it
   declares one, or if javac could read it differently from the lenient reading.
 
-## Upcoming preview: string literals are decoded as Java decodes them (#256)
+### String literals are decoded as Java decodes them (#256)
 
 A string literal compiled to its source text, escapes included, so `"a\nb"` held a
 backslash and an `n` on chain where Java holds a line break. Literals now compile to the
@@ -650,7 +688,7 @@ escapes) and Unicode escapes (`\u00e9`) are decoded. The same applies to the arg
   a Unicode escape whose digits are not ASCII hex digits. A Unicode escape with more than
   one `u` (`\uuu0041`) is now accepted (#268, above).
 
-## Upcoming preview: coded diagnostics for rejected loop and statement forms (#257)
+### Coded diagnostics for rejected loop and statement forms (#257)
 
 Seven forms outside the on-chain subset were already rejected, but without a diagnostic
 code, and two of the messages named the wrong problem. Each now has a code, the
@@ -703,7 +741,7 @@ location of the construct and a remedy:
   inside `while`. Match the code instead. See the
   [troubleshooting guide](/reference/troubleshooting/) for each code's fix.
 
-## Upcoming preview: loops with `break` continue after an `if` (GHSA-p9v9-f3g2-cqv9)
+### Loops with `break` continue after an `if` (GHSA-p9v9-f3g2-cqv9)
 
 In a loop body that contains `break`, a path that did not break could leave the loop, or
 skip the statements after its `if`. The script then computed something other than the
@@ -738,7 +776,9 @@ iteration, as in Java.
   the field, so it read the wrong component, or failed at run time. Each branch now has its own
   scope, as the method-level `if` already had.
 
-## Upcoming preview: on-chain `JulcMap.keys()` and `values()` keep map order
+## 0.1.0-pre20
+
+### On-chain `JulcMap.keys()` and `values()` keep map order
 
 On chain, `keys()` and `values()` returned the entries in reverse order, while off chain
 `JulcAssocMap` returns them in map order. A test run off chain could therefore pass while
@@ -754,7 +794,9 @@ the deployed script read a different first key. Both now return map order on cha
   comparing against an ordered list. Membership checks, `all`/`any` and totals give the
   same answer either way.
 
-## Upcoming preview: Plutus Data byte decoding is as strict as plutus `decodeData` (#237)
+## 0.1.0-pre19
+
+### Plutus Data byte decoding is as strict as plutus `decodeData` (#237)
 
 `PlutusDataCborDecoder` now accepts exactly the CBOR that plutus `decodeData` accepts.
 JuLC used to accept Data that the ledger rejects, so a FLAT program, inline datum or
@@ -782,7 +824,7 @@ redeemer could decode in JuLC and fail on chain.
 
 Map order and duplicate keys are still preserved. Encoding is unchanged.
 
-## Upcoming preview: `NewConstitution` carries the `Constitution` wrapper (#223)
+### `NewConstitution` carries the `Constitution` wrapper (#223)
 
 `GovernanceAction.NewConstitution` now has the Plutus Data layout of plutus-ledger-api V3,
 `Constr 5 [Maybe GovernanceActionId, Constitution]` with
@@ -818,7 +860,7 @@ decoder and rejects the bare layout. Properties about `NewConstitution` proposal
 including `whenNewConstitution`'s script, therefore have the ledger's meaning. The
 adapter goes once the pin carries the wrapper.
 
-## Upcoming preview: nested types shadow ledger types of the same name
+### Nested types shadow ledger types of the same name
 
 A record or sealed interface declared inside a validator or library class now shadows a
 bundled ledger type with the same simple name within that class, as javac binds it
@@ -831,7 +873,9 @@ qualified name such as `Inner.Constitution` resolves to the type it names, or is
 as unknown; it no longer falls back to a ledger type with the same simple name. Contracts
 without such a name collision compile to the same bytes.
 
-## Upcoming preview: instanceof pattern variables may not reuse a field name (JULC0059, #207)
+## 0.1.0-pre17
+
+### Instanceof pattern variables may not reuse a field name (JULC0059, #207)
 
 JuLC binds an `instanceof` pattern variable only when the pattern is the whole
 condition of an `if` statement outside a loop ([#204](https://github.com/bloxbean/julc/issues/204)). In every other position (a loop
@@ -848,12 +892,12 @@ bound correctly. Rename the variable. `switch` case patterns (`case Sq q ->`) bi
 variables in every position and are not affected. This is validation only: every program
 that still compiles produces the same script bytes and hashes.
 
-Known limitation until [#204](https://github.com/bloxbean/julc/issues/204) (planned for the next preview): a pattern variable with any
+Known limitation until [#204](https://github.com/bloxbean/julc/issues/204), fixed in 0.1.0-pre21: a pattern variable with any
 name that is used outside that one position fails to compile, usually with
 `Undefined variable`. Use a
 `switch` on the sealed type, or the plain `if (x instanceof T v) { ... }` form outside a loop.
 
-## Upcoming preview: value-oriented contract code guide (#163)
+### Value-oriented contract code guide (#163)
 
 A new Best Practices page, [Value-Oriented Contract Code](/best-practices/value-oriented-code/),
 shows how to compute values in initializers, switch expressions, helper methods and list
@@ -872,7 +916,7 @@ The page records current list-operation behaviour that differs from Java:
 
 No compiler behaviour changes in this entry.
 
-## Upcoming preview: a source name can never resolve to a compiler-generated binder (ADR-060)
+### A source name can never resolve to a compiler-generated binder (ADR-060)
 
 The compiler generates variables around your code for switch dispatch, loops, the
 validator wrapper, `@Param` decoding and the list and map builders. Several of
@@ -939,7 +983,7 @@ method with `SymbolTable.declareMethod`: a method registered as a variable with
 `SymbolTable.define` is no longer callable. Diagnostic codes `JULC0044`–`JULC0051`
 are reserved for the generic backend work.
 
-## Upcoming preview: builder binders no longer capture user variables (#186)
+### Builder binders no longer capture user variables (#186)
 
 A variable referenced inside a lambda or argument could silently resolve to an
 internal variable of the list, map or loop code the compiler generated around it.
@@ -961,7 +1005,7 @@ script changes its bytes, hash and budget; review it and redeploy if its
 behaviour mattered. Deployed scripts never change. The generated names #186 did
 not reach, such as the loop and switch binders, are covered by ADR-060 below.
 
-## Upcoming preview: release regression gates and profile freeze (#121)
+### Release regression gates and profile freeze (#121)
 
 The proposed pre17 [hash-stability policy](/reference/hash-stability/) freezes
 existing optimization profiles, with explicit, reviewed exceptions for correctness
@@ -974,7 +1018,7 @@ Normal builds run only the offline regressions; node tests remain opt-in.
 This test/documentation change does not alter compiler output or deployed scripts.
 The documentation build dependencies are also updated to resolve known advisories.
 
-## Upcoming preview: decode boolean and String switch fields (#166)
+### Decode boolean and String switch fields (#166)
 
 Switch case-pattern access such as `case Sum s -> s.enabled() ? ONE : ZERO`
 now decodes a boolean record field to native Bool. Previously the cached field
@@ -994,7 +1038,7 @@ optimization levels**, including NONE and BASELINE. Recompile and reassess affec
 scripts before deployment. Existing deployed scripts and ledger encodings do not
 change; switches without these field types retain their existing decoding.
 
-## Upcoming preview: preserve loop state across enclosing branches (#161)
+### Preserve loop state across enclosing branches (#161)
 
 A loop inside an `if` at method level or inside a switch-expression arm now
 preserves its accumulator updates for statements following the branch. Previously
@@ -1028,7 +1072,7 @@ change. Public APIs, ledger encoding and the restrictions below remain unchanged
 This was a missed case in the older discarded-result path: #79 added continuations
 for returns and #137 extended them to yields. #157 explicitly left this case open.
 
-## Upcoming preview: reject lost conditional loop-local updates (#155)
+### Reject lost conditional loop-local updates (#155)
 
 The compiler now rejects assignments inside an `if`/`else` branch to a variable
 declared in the loop body outside that branch. Previously the update could be
@@ -1058,7 +1102,7 @@ This validation alone preserves accepted programs' generated bytes; the separate
 unchanged. See [conditional loop state](/best-practices/conditionals/#conditional-loop-state)
 for supported patterns.
 
-## Upcoming preview: independent compiler and evaluation costs (#153)
+### Independent compiler and evaluation costs (#153)
 
 `pv11-costed` now needs no compiler cost profile. Its list-to-array rule uses
 structural eligibility; its transformations and the default `pv11-safe` level
@@ -1078,7 +1122,7 @@ remain available. Benchmark reports independently retain the model actually
 used for evaluation. Runtime callers continue supplying cost parameters through
 the VM API or `ProtocolParamsSupplier`; no named profile is required there.
 
-## Upcoming preview: typed BLS12-381 values and multi-scalar multiplication (ADR-047)
+### Typed BLS12-381 values and multi-scalar multiplication (ADR-047)
 
 BLS12-381 values now have their own types: `JulcG1` and `JulcG2` for points,
 `JulcMlResult` for a Miller-loop result (all in `org.julclang.core.types`).
@@ -1123,7 +1167,7 @@ lists (the old ones compiled but could not evaluate successfully).
 No program in the example corpus or the golden suites uses the BLS surface, so
 no existing script changes bytes or hash at any level.
 
-## Upcoming preview: array literals and literal folding (ADR-046)
+### Array literals and literal folding (ADR-046)
 
 `JulcArray.of(a, b, ...)` writes a PV11 array down. On-chain it is
 `JulcList.of(a, b, ...).toArray()`: the elements are Data-encoded as the
@@ -1157,7 +1201,7 @@ every Data-backed container). Spell a negative literal element as
 the elements, as javac does; elements of different types under `var` are rejected
 with `JULC0012` (declare `JulcArray<T>`).
 
-## Upcoming preview: native Value literals and literal folding (ADR-045)
+### Native Value literals and literal folding (ADR-045)
 
 `Builtins` gains three native Value literal producers on the PV11 target:
 `emptyValue()` (a UPLC Value constant), `singletonValue(policyId, tokenName,
@@ -1191,7 +1235,7 @@ literal, so existing scripts keep their bytes and hashes at every level.
 Spell a negative literal quantity as `new BigInteger("-5")`
 (`BigInteger.valueOf(-5)` compiles to a runtime subtraction).
 
-## Upcoming preview: automatic sharing of repeated record field projections (ADR-044)
+### Automatic sharing of repeated record field projections (ADR-044)
 
 `PV11_SAFE` (the default) and `PV11_COSTED` now share a repeated projection of
 the same record field of the same variable (`txInfo.outputs()` on a `TxInfo`
@@ -1243,7 +1287,7 @@ Each PIR-to-PIR rule can be switched off on its own for review and measurement:
 with `JULC0043`. The optimization level remains the supported rollout control,
 and the Gradle plugin and CLI do not expose the switch.
 
-## Upcoming preview: list-to-array promotion at `pv11-costed` (ADR-043)
+### List-to-array promotion at `pv11-costed` (ADR-043)
 
 `PV11_COSTED` (opt-in; `julc { optimization = 'pv11-costed' }`, no cost profile
 required) now converts a `JulcList` variable that its scope indexes at two
@@ -1300,7 +1344,7 @@ showed that a callback's element passed into a helper could then turn acceptance
 into a `ListToArray` failure. That is fixed, and no released artifact was built
 at the costed level.
 
-## Upcoming preview: automatic sharing of repeated native Value conversions (ADR-042)
+### Automatic sharing of repeated native Value conversions (ADR-042)
 
 `PV11_SAFE` (the default) and `PV11_COSTED` now share a repeated native Value
 conversion of the same variable, `NativeValueLib.fromData(x)` or
@@ -1330,7 +1374,7 @@ twice changes bytes and hash; no shipped example uses native Values, and
 sinking, adjacent conversion cancellation and Data-side (`ValuesLib`) sharing
 remain deferred (ADR-032 O8/O15).
 
-## Upcoming preview: integer Case dispatch for sealed-interface switches (ADR-041)
+### Integer Case dispatch for sealed-interface switches (ADR-041)
 
 `PV11_SAFE` (the default) and `PV11_COSTED` now dispatch every `switch` on a
 sealed interface with two or more constructors through one PV11 integer `Case`
@@ -1367,7 +1411,7 @@ same `DataMatch` HIR node. ADR-041 also closes the O6 unit Case question as
 rejected: JuLC emits no `ChooseUnit`, and a census of shipped artifacts shows no
 typed-unit statement population worth a new PIR surface.
 
-## Upcoming preview: conditional `yield` in switch case blocks
+### Conditional `yield` in switch case blocks
 
 A `yield` inside an `if`/`else` branch of a switch-expression case block was
 silently discarded when statements followed the conditional: the block lowered
@@ -1391,7 +1435,7 @@ examples were scanned and do not use the shape. The two Blaster controlled-mint
 verification fixtures do; their locked artifacts and counterexample binding are
 refreshed for the corrected lowering with the same property outcomes.
 
-## Upcoming preview: `serialiseData` compiled without a force wrapper
+### `serialiseData` compiled without a force wrapper
 
 `Builtins.serialiseData` and `ByteStringLib.serialiseData` previously compiled
 to a forced `SerialiseData` builtin. `SerialiseData` is monomorphic and takes
@@ -1413,7 +1457,7 @@ Java-source regression matrix for `serialiseData` under `BASELINE` and
 `PV11_SAFE` on Java and Scalus with exact CBOR and BLAKE2b-256 vectors
 (PR #135).
 
-## Upcoming preview: lossless Data map decoding
+### Lossless Data map decoding
 
 CBOR decoding now preserves Plutus Data map entry order and duplicate keys,
 including nested maps and Data constants read from serialized FLAT programs.
@@ -1427,7 +1471,7 @@ resource-limits change. Converting an already deduplicated external cbor-java
 `Map` cannot recover its missing entries; use `PlutusDataCborDecoder.decode` when
 starting from bytes. See ADR-037 for design and validation scope.
 
-## Upcoming preview: typed native Pair Case lowering
+### Typed native Pair Case lowering
 
 `PV11_SAFE` (the default) and `PV11_COSTED` now destructure proven native pairs
 from strict constructor-boundary checks with a single PV11 `Case`. The compiler
@@ -1455,7 +1499,7 @@ invent Java record schemas. FLAT-erased bindings are recovered from de Bruijn
 indices. External exhaustive HIR visitors must handle the new `DataMatch` node;
 the compiler's output bytes and costs are unaffected by this decompiler change.
 
-## Upcoming preview: stable typed formal-verification API v1
+### Stable typed formal-verification API v1
 
 JuLC now provides a stable construction API for exact-artifact formal
 verification. API version 1 uses canonical property schema 1 and supports
@@ -1491,7 +1535,7 @@ See the [formal verification guide](/guides/formal-verification/) for annotation
 and DSL workflows, local/Docker backends, exact certificate scope, outcome
 classification, and CI guidance.
 
-## Upcoming preview: explicit PV11 compiler target
+### Explicit PV11 compiler target
 
 JuLC compilation now resolves one explicit, immutable compiler profile:
 `plutus-v3-pv11-uplc-1.1.0`. The profile covers the Plutus language, ledger
@@ -1529,7 +1573,7 @@ and report the same stable profile ID. Supporting a later protocol version will
 add and verify a separate pinned profile; it will not silently change the PV11
 default.
 
-## Upcoming preview: Scalus protocol-aware evaluation (ADR-033)
+### Scalus protocol-aware evaluation (ADR-033)
 
 The Scalus adapter now has atomic per-language configurations, target-bound
 V1/V2/V3 VM construction, and one validated explicit-target pipeline. Public
@@ -1553,7 +1597,7 @@ bridge. Unconfigured language-only V3 retains Scalus 1.1.0's PV11/E bundled
 default, which differs from Java/Truffle's PV10 compatibility default. These VM
 changes do not modify compiled UPLC, FLAT bytes, or script hashes.
 
-## Upcoming preview: strict typed datum/redeemer boundaries
+### Strict typed datum/redeemer boundaries
 
 Typed validator boundaries now reject non-canonical `Data` before user code
 runs. Records and variants require exact constructor tags and arities;
@@ -1595,7 +1639,7 @@ verification certificates record `boundarySemantics: strict-data-v1`. See the
 [strict data boundary guide](../guides/strict-data-boundaries/) for the exact
 coverage, cost guidance, raw-data escape, and migration checklist.
 
-## Upcoming preview: purpose-indexed multi-validator blueprints
+### Purpose-indexed multi-validator blueprints
 
 An explicit `@MultiValidator` with supported `SPEND`, `MINT`, `WITHDRAW`, or
 `CERTIFY` entrypoints now publish one standard CIP-57 validator entry per
@@ -1620,7 +1664,7 @@ the blueprint opt-out to compile without metadata when needed. See the
 [purpose-indexed blueprint guide](../guides/purpose-indexed-blueprints/) for
 examples and limitations.
 
-## Upcoming preview: typed List-case lowering (#110)
+### Typed List-case lowering (#110)
 
 `pv11-safe` (the default) and `pv11-costed` now use PV11 `Case List` for
 eligible compiler-generated `for-each` loops. The compiler binds the raw head
@@ -1652,7 +1696,7 @@ adds confirmed PV11 spending transactions, direct Haskell/Java budget agreement,
 and malformed-input checks. This completes the bounded rule's node evidence gate
 without enabling additional traversal families.
 
-## Upcoming preview: target-aware PV11 optimizations
+### Target-aware PV11 optimizations
 
 ADR-032 adds an explicit optimizer rollout boundary without adding another
 compiler target. The legal output target remains
@@ -1722,7 +1766,9 @@ target starts with ADR-032 rules disabled and enables each rule only after its
 legality and semantics are revalidated; cost-directed rules additionally need
 a new pinned cost profile.
 
-## Upcoming release: PV11 builtin contract correction
+## 0.1.0-pre16
+
+### PV11 builtin contract correction
 
 JuLC's current compiler targets the Plutus V3/PV11 feature set. This contract
 was verified against Plutus 1.63.0.0
@@ -1738,7 +1784,7 @@ The released PV11 Batch 6 is exactly:
 | 92-93 | BLS12-381 G1/G2 multi-scalar multiplication | CIP-133 |
 | 94-100 | Native MaryEraValue operations | CIP-153 |
 
-### `multiIndexArray` migration warning
+#### `multiIndexArray` migration warning
 
 Earlier JuLC previews exposed `Builtins.multiIndexArray` as if it were a PV11
 builtin and could generate FLAT tag 101. Tag 101 is the future CIP-156 operation;

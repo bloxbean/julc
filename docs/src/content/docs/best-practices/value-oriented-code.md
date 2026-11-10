@@ -307,8 +307,8 @@ static boolean anyLargeShare(JulcList<BigInteger> parts) {
 }
 ```
 
-The elements before the answer are tested, so `[0, 5]` fails in both places. Before the
-upcoming preview the compiled `any` and `all` tested every element, and the first case failed
+The elements before the answer are tested, so `[0, 5]` fails in both places. Before
+0.1.0-pre21 the compiled `any` and `all` tested every element, and the first case failed
 the script ([#312](https://github.com/bloxbean/julc/issues/312)).
 
 The result of `map` needs a typed local before a lambda uses its elements:
