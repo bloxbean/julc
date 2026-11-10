@@ -1,29 +1,19 @@
 package org.julclang.vm.crypto;
 
-import net.i2p.crypto.eddsa.EdDSAEngine;
-import net.i2p.crypto.eddsa.EdDSAPublicKey;
-import net.i2p.crypto.eddsa.spec.EdDSANamedCurveTable;
-import net.i2p.crypto.eddsa.spec.EdDSAParameterSpec;
-import net.i2p.crypto.eddsa.spec.EdDSAPublicKeySpec;
-
-import java.security.GeneralSecurityException;
-import java.security.MessageDigest;
 import java.util.HexFormat;
 
 /**
  * Ed25519 verification with the outcomes of the node.
  * <p>
  * {@code verifyEd25519Signature} is {@code Ed25519DSIGN} from cardano-crypto-class, which calls libsodium's
- * {@code crypto_sign_ed25519_verify_detached}. That function makes three checks on its input and then a cofactorless
- * equation check. The checks below are libsodium's and the equation is i2p's, which is cofactorless too. The same
- * rules are in cardano-client-lib's {@code EdDSASigningProvider}.
+ * {@code crypto_sign_ed25519_verify_detached}. That function makes four checks on its input (below) and then checks
+ * the equation without the cofactor, comparing the bytes of {@code R} ({@link Ed25519Equation}). The same input
+ * checks are in cardano-client-lib's {@code EdDSASigningProvider}.
  */
 public final class Ed25519Verifier {
 
     public static final int PUBLIC_KEY_BYTES = 32;
     public static final int SIGNATURE_BYTES = 64;
-
-    private static final EdDSAParameterSpec SPEC = EdDSANamedCurveTable.getByName(EdDSANamedCurveTable.ED_25519);
 
     /** The group order {@code L = 2^252 + 27742317777372353535851937790883648493}, little-endian. */
     private static final byte[] L = bytes("edd3f55c1a631258d69cf7a2def9de1400000000000000000000000000000010");
@@ -62,21 +52,7 @@ public final class Ed25519Verifier {
                 || !pointIsCanonical(publicKey) || hasSmallOrder(publicKey)) {
             return false;
         }
-        EdDSAPublicKeySpec key;
-        try {
-            key = new EdDSAPublicKeySpec(publicKey, SPEC);
-        } catch (IllegalArgumentException notOnCurve) {
-            return false;
-        }
-        try {
-            var engine = new EdDSAEngine(MessageDigest.getInstance(SPEC.getHashAlgorithm()));
-            engine.initVerify(new EdDSAPublicKey(key));
-            engine.setParameter(EdDSAEngine.ONE_SHOT_MODE);
-            engine.update(message);
-            return engine.verify(signature);
-        } catch (GeneralSecurityException e) {
-            throw new IllegalStateException("Ed25519 verification could not run", e);
-        }
+        return Ed25519Equation.holds(publicKey, message, signature);
     }
 
     /** libsodium {@code sc25519_is_canonical(sig + 32)}: {@code S < L}. */

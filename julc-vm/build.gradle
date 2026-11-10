@@ -6,8 +6,10 @@ description = 'Plutus VM SPI interface and facade (pure Java, no Scala dependenc
 
 dependencies {
     api project(':julc-core')
-    // BloxBean's fork; the same coordinates as cardano-client-lib.
-    implementation 'com.bloxbean.cardano:net-i2p-crypto-eddsa:0.3.1'
+    // Ed25519Equation runs on BouncyCastle's field arithmetic (X25519Field); the same version as julc-vm-java.
+    implementation 'org.bouncycastle:bcprov-jdk18on:1.78.1'
+    // BloxBean's i2p fork, the verifier before Ed25519Equation: a reference for the differential tests only.
+    testImplementation 'com.bloxbean.cardano:net-i2p-crypto-eddsa:0.3.1'
 }
 
 publishing {

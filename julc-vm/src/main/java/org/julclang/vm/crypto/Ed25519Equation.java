@@ -1,0 +1,474 @@
+package org.julclang.vm.crypto;
+
+import org.bouncycastle.math.ec.rfc7748.X25519Field;
+
+import java.math.BigInteger;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
+
+/**
+ * The verification equation of libsodium's {@code crypto_sign_ed25519_verify_detached}, after its input checks.
+ * <p>
+ * libsodium decodes {@code -A} ({@code ge25519_frombytes_negate_vartime}), computes {@code k = SHA-512(R || A || M)
+ * mod L}, then {@code R' = k(-A) + SB} ({@code ge25519_double_scalarmult_vartime}), and accepts when the encoding of
+ * {@code R'} equals the 32 bytes of {@code R}. This is that algorithm step for step: the same decoding, the same signed
+ * sliding windows ({@code slide_vartime}), the same tables of odd multiples, the same byte comparison. The check is
+ * cofactorless: a key or {@code R} with a small-order part is accepted only when the equation holds exactly, as in
+ * libsodium. BouncyCastle's {@code Ed25519.verify} cannot stand in for it, because it checks the equation times
+ * the cofactor ({@code scalarMultStraus128Var} ends in doublings that clear it).
+ * <p>
+ * The libsodium sources are {@code src/libsodium/crypto_sign/ed25519/ref10/open.c} and
+ * {@code src/libsodium/crypto_core/ed25519/ref10/ed25519_ref10.c}; the functions named below are the same in
+ * libsodium 1.0.18, 1.0.20 and input-output-hk/libsodium dbb48cce5429cb6585c9034f002568964f1ce567, the version
+ * cardano-node links.
+ * <p>
+ * The field arithmetic is BouncyCastle's {@link X25519Field}, which works in place on {@code int[]}. The point
+ * formulas are BouncyCastle's, from {@code org.bouncycastle.math.ec.rfc8032.Ed25519} in bcprov-jdk18on 1.78.1 (the
+ * same in 1.83), which keeps their operands inside {@link X25519Field}'s bounds; each says which method it is. That
+ * code is
+ * <i>Copyright (c) 2000-2024 The Legion of the Bouncy Castle Inc. (https://www.bouncycastle.org)</i>, used under its
+ * MIT-style licence: "Permission is hereby granted, free of charge, to any person obtaining a copy of this software
+ * and associated documentation files (the "Software"), to deal in the Software without restriction, including
+ * without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so, subject to the following
+ * conditions: The above copyright notice and this permission notice shall be included in all copies or substantial
+ * portions of the Software. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+ * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE."
+ */
+final class Ed25519Equation {
+
+    private static final class F extends X25519Field {
+    }
+
+    /** The group order {@code L}. */
+    private static final BigInteger ORDER = BigInteger.TWO.pow(252)
+            .add(new BigInteger("27742317777372353535851937790883648493"));
+
+    /** {@code d = -121665/121666}, {@code 2d} and {@code 4d}. */
+    private static final int[] D = fieldConstant("a3785913ca4deb75abd841414d0a700098e879777940c78c73fe6f2bee6c0352");
+    private static final int[] D2 = new int[F.SIZE];
+    private static final int[] D4 = new int[F.SIZE];
+
+    /**
+     * {@code B, 3B, ..., 15B}: libsodium's {@code Bi} table in {@code ge25519_double_scalarmult_vartime}, made the way
+     * BouncyCastle's {@code Ed25519.precompute} makes its {@code PRECOMP_BASE_WNAF}.
+     */
+    private static final Precomp[] BASE_ODD_MULTIPLES = new Precomp[8];
+
+    static {
+        F.add(D, D, D2);
+        F.normalize(D2);
+        F.add(D2, D2, D4);
+        F.normalize(D4);
+
+        Affine base = new Affine();
+        if (!decodeNegated(HexFormat.of().parseHex(
+                "5866666666666666666666666666666666666666666666666666666666666666"), base)) {
+            throw new IllegalStateException("the base point does not decode");
+        }
+        F.negate(base.x, base.x);
+        F.normalize(base.x);
+
+        Extended q = new Extended();
+        copy(base, q);
+        Extended twice = new Extended();
+        Temp t = new Temp();
+        add(q, q, twice, t);
+        int[] inverse = F.create();
+        for (int i = 0; i < 8; i++) {
+            if (i > 0) {
+                add(q, twice, q, t);
+            }
+            // z := 1/(2z), so that x.z and y.z are x/2 and y/2.
+            F.add(q.z, q.z, inverse);
+            F.inv(inverse, inverse);
+            int[] xh = F.create();
+            int[] yh = F.create();
+            F.mul(q.x, inverse, xh);
+            F.mul(q.y, inverse, yh);
+            Precomp r = BASE_ODD_MULTIPLES[i] = new Precomp();
+            F.apm(yh, xh, r.ypxH, r.ymxH);
+            F.mul(xh, yh, r.xyd);
+            F.mul(r.xyd, D4, r.xyd);
+            F.normalize(r.ymxH);
+            F.normalize(r.ypxH);
+            F.normalize(r.xyd);
+        }
+    }
+
+    private Ed25519Equation() {
+    }
+
+    /**
+     * Whether {@code R} (the first 32 bytes of {@code signature}) is the encoding of {@code SB - kA}.
+     * The caller has checked the lengths and libsodium's input checks; {@code S} is below {@code L}.
+     */
+    static boolean holds(byte[] publicKey, byte[] message, byte[] signature) {
+        Affine negatedKey = new Affine();
+        if (!decodeNegated(publicKey, negatedKey)) {
+            return false;
+        }
+
+        MessageDigest sha512;
+        try {
+            sha512 = MessageDigest.getInstance("SHA-512");
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-512 is not available", e);
+        }
+        sha512.update(signature, 0, 32);
+        sha512.update(publicKey);
+        sha512.update(message);
+        byte[] k = reduce(sha512.digest());
+
+        byte[] s = new byte[32];
+        System.arraycopy(signature, 32, s, 0, 32);
+
+        Accum r = new Accum();
+        doubleScalarMult(k, negatedKey, s, r);
+
+        byte[] encoded = new byte[32];
+        encode(r, encoded);
+        for (int i = 0; i < 32; i++) {
+            if (encoded[i] != signature[i]) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * libsodium {@code ge25519_frombytes_negate_vartime} ({@code ed25519_ref10.c}), with BouncyCastle's
+     * {@code decodePointVar} steps for the square root: the point {@code -P} for the encoding of {@code P}, or
+     * false when {@code y} has no {@code x} on the curve. The sign bit of an {@code x} of zero is not checked.
+     */
+    private static boolean decodeNegated(byte[] encoded, Affine r) {
+        F.decode(encoded, 0, r.y);
+        int[] u = F.create();
+        int[] v = F.create();
+        F.sqr(r.y, u);
+        F.mul(D, u, v);
+        F.subOne(u);
+        F.addOne(v);
+        if (!F.sqrtRatioVar(u, v, r.x)) {
+            return false;
+        }
+        F.normalize(r.x);
+        F.normalize(r.y);
+        int sign = (encoded[31] & 0x80) >>> 7;
+        if ((r.x[0] & 1) == sign) {
+            F.negate(r.x, r.x);
+            F.normalize(r.x);
+        }
+        return true;
+    }
+
+    /**
+     * libsodium {@code sc25519_reduce} ({@code ed25519_ref10.c}): a 64-byte little-endian number modulo {@code L}, as
+     * 32 bytes.
+     */
+    private static byte[] reduce(byte[] wide) {
+        byte[] bigEndian = new byte[wide.length];
+        for (int i = 0; i < wide.length; i++) {
+            bigEndian[i] = wide[wide.length - 1 - i];
+        }
+        byte[] reduced = new BigInteger(1, bigEndian).mod(ORDER).toByteArray();
+        byte[] littleEndian = new byte[32];
+        for (int i = 0; i < reduced.length && i < 32; i++) {
+            littleEndian[i] = reduced[reduced.length - 1 - i];
+        }
+        return littleEndian;
+    }
+
+    /**
+     * libsodium {@code slide_vartime} ({@code ed25519_ref10.c}), line for line: signed odd digits of at most 15 in
+     * absolute value.
+     */
+    private static byte[] slide(byte[] a) {
+        byte[] r = new byte[256];
+        for (int i = 0; i < 256; i++) {
+            r[i] = (byte) (1 & (a[i >> 3] >> (i & 7)));
+        }
+        for (int i = 0; i < 256; i++) {
+            if (r[i] == 0) {
+                continue;
+            }
+            for (int b = 1; b <= 6 && i + b < 256; b++) {
+                if (r[i + b] == 0) {
+                    continue;
+                }
+                int ribs = r[i + b] << b;
+                int cmp = r[i] + ribs;
+                if (cmp <= 15) {
+                    r[i] = (byte) cmp;
+                    r[i + b] = 0;
+                } else {
+                    cmp = r[i] - ribs;
+                    if (cmp < -15) {
+                        break;
+                    }
+                    r[i] = (byte) cmp;
+                    for (int k = i + b; k < 256; k++) {
+                        if (r[k] == 0) {
+                            r[k] = 1;
+                            break;
+                        }
+                        r[k] = 0;
+                    }
+                }
+            }
+        }
+        return r;
+    }
+
+    /**
+     * libsodium {@code ge25519_double_scalarmult_vartime} ({@code ed25519_ref10.c}): {@code r = aA + bB}, with the
+     * table {@code A, 3A, ..., 15A} and, from the top nonzero digit down, a doubling then the two additions.
+     */
+    private static void doubleScalarMult(byte[] a, Affine point, byte[] b, Accum r) {
+        byte[] aSlide = slide(a);
+        byte[] bSlide = slide(b);
+
+        Temp t = new Temp();
+        PrecompZ[] oddMultiples = new PrecompZ[8];
+        Extended q = new Extended();
+        copy(point, q);
+        Extended twice = new Extended();
+        add(q, q, twice, t);
+        for (int i = 0; i < 8; i++) {
+            if (i > 0) {
+                add(q, twice, q, t);
+            }
+            copy(q, oddMultiples[i] = new PrecompZ());
+        }
+
+        setNeutral(r);
+        int i = 255;
+        while (i >= 0 && aSlide[i] == 0 && bSlide[i] == 0) {
+            i--;
+        }
+        for (; i >= 0; i--) {
+            doublePoint(r);
+            int da = aSlide[i];
+            if (da != 0) {
+                addVar(da < 0, oddMultiples[Math.abs(da) >> 1], r, t);
+            }
+            int db = bSlide[i];
+            if (db != 0) {
+                addVar(db < 0, BASE_ODD_MULTIPLES[Math.abs(db) >> 1], r, t);
+            }
+        }
+    }
+
+    /**
+     * libsodium {@code ge25519_tobytes} ({@code ed25519_ref10.c}), as BouncyCastle's {@code normalizeToAffine} and
+     * {@code encodePoint}: {@code y} with the sign of {@code x} in the top bit.
+     */
+    private static void encode(Accum p, byte[] out) {
+        int[] zInverse = F.create();
+        int[] x = F.create();
+        int[] y = F.create();
+        F.invVar(p.z, zInverse);
+        F.mul(p.x, zInverse, x);
+        F.mul(p.y, zInverse, y);
+        F.normalize(x);
+        F.normalize(y);
+        F.encode(y, out, 0);
+        out[31] |= (byte) ((x[0] & 1) << 7);
+    }
+
+    private static int[] fieldConstant(String littleEndianHex) {
+        int[] z = new int[F.SIZE];
+        F.decode(HexFormat.of().parseHex(littleEndianHex), 0, z);
+        return z;
+    }
+
+    // Point representations and formulas after BouncyCastle's Ed25519.
+
+    /** Affine {@code (x, y)}. */
+    private static final class Affine {
+        final int[] x = F.create();
+        final int[] y = F.create();
+    }
+
+    /** Extended {@code (X : Y : Z : T)}. */
+    private static final class Extended {
+        final int[] x = F.create();
+        final int[] y = F.create();
+        final int[] z = F.create();
+        final int[] t = F.create();
+    }
+
+    /** {@code (X : Y : Z)} with {@code T = u.v} kept as two factors. */
+    private static final class Accum {
+        final int[] x = F.create();
+        final int[] y = F.create();
+        final int[] z = F.create();
+        final int[] u = F.create();
+        final int[] v = F.create();
+    }
+
+    /** An affine point as {@code (y - x)/2, (y + x)/2, x.y.d}. */
+    private static final class Precomp {
+        final int[] ymxH = F.create();
+        final int[] ypxH = F.create();
+        final int[] xyd = F.create();
+    }
+
+    /** A projective point as {@code Y - X, Y + X, 2d.T, 2Z}: the halving moved onto {@code Z}. */
+    private static final class PrecompZ {
+        final int[] ymxH = F.create();
+        final int[] ypxH = F.create();
+        final int[] xyd = F.create();
+        final int[] z = F.create();
+    }
+
+    private static final class Temp {
+        final int[] r0 = F.create();
+        final int[] r1 = F.create();
+    }
+
+    /** BouncyCastle {@code pointSetNeutral(PointAccum)}. */
+    private static void setNeutral(Accum p) {
+        F.zero(p.x);
+        F.one(p.y);
+        F.one(p.z);
+        F.zero(p.u);
+        F.one(p.v);
+    }
+
+    /** BouncyCastle {@code pointCopy(PointAffine, PointExtended)}. */
+    private static void copy(Affine p, Extended r) {
+        F.copy(p.x, 0, r.x, 0);
+        F.copy(p.y, 0, r.y, 0);
+        F.one(r.z);
+        F.mul(p.x, p.y, r.t);
+    }
+
+    /** BouncyCastle {@code pointCopy(PointExtended, PointPrecompZ)}. */
+    private static void copy(Extended p, PrecompZ r) {
+        F.apm(p.y, p.x, r.ypxH, r.ymxH);
+        F.mul(p.t, D2, r.xyd);
+        F.add(p.z, p.z, r.z);
+    }
+
+    /**
+     * BouncyCastle {@code pointAdd(PointExtended, PointExtended, PointExtended, PointTemp)}: {@code r = p + q};
+     * {@code p} may be {@code r}, {@code q} may not.
+     */
+    private static void add(Extended p, Extended q, Extended r, Temp t) {
+        int[] a = r.x;
+        int[] b = r.y;
+        int[] c = t.r0;
+        int[] d = t.r1;
+        int[] e = a;
+        int[] f = c;
+        int[] g = d;
+        int[] h = b;
+
+        F.apm(p.y, p.x, b, a);
+        F.apm(q.y, q.x, d, c);
+        F.mul(a, c, a);
+        F.mul(b, d, b);
+        F.mul(p.t, q.t, c);
+        F.mul(c, D2, c);
+        F.add(p.z, p.z, d);
+        F.mul(d, q.z, d);
+        F.apm(b, a, h, e);
+        F.apm(d, c, g, f);
+        F.mul(e, h, r.t);
+        F.mul(f, g, r.z);
+        F.mul(e, f, r.x);
+        F.mul(h, g, r.y);
+    }
+
+    /**
+     * BouncyCastle {@code pointAddVar(boolean, PointPrecomp, PointAccum, PointTemp)}: {@code r + p}, or {@code r - p}
+     * when {@code negate}.
+     */
+    private static void addVar(boolean negate, Precomp p, Accum r, Temp t) {
+        int[] a = r.x;
+        int[] b = r.y;
+        int[] c = t.r0;
+        int[] e = r.u;
+        int[] f = a;
+        int[] g = b;
+        int[] h = r.v;
+
+        int[] na = negate ? b : a;
+        int[] nb = negate ? a : b;
+        int[] nf = na;
+        int[] ng = nb;
+
+        F.apm(r.y, r.x, b, a);
+        F.mul(na, p.ymxH, na);
+        F.mul(nb, p.ypxH, nb);
+        F.mul(r.u, r.v, c);
+        F.mul(c, p.xyd, c);
+        F.apm(b, a, h, e);
+        F.apm(r.z, c, ng, nf);
+        F.mul(f, g, r.z);
+        F.mul(f, e, r.x);
+        F.mul(g, h, r.y);
+    }
+
+    /**
+     * BouncyCastle {@code pointAddVar(boolean, PointPrecompZ, PointAccum, PointTemp)}: {@code r + p}, or
+     * {@code r - p} when {@code negate}.
+     */
+    private static void addVar(boolean negate, PrecompZ p, Accum r, Temp t) {
+        int[] a = r.x;
+        int[] b = r.y;
+        int[] c = t.r0;
+        int[] d = r.z;
+        int[] e = r.u;
+        int[] f = a;
+        int[] g = b;
+        int[] h = r.v;
+
+        int[] na = negate ? b : a;
+        int[] nb = negate ? a : b;
+        int[] nf = na;
+        int[] ng = nb;
+
+        F.apm(r.y, r.x, b, a);
+        F.mul(na, p.ymxH, na);
+        F.mul(nb, p.ypxH, nb);
+        F.mul(r.u, r.v, c);
+        F.mul(c, p.xyd, c);
+        F.mul(r.z, p.z, d);
+        F.apm(b, a, h, e);
+        F.apm(d, c, ng, nf);
+        F.mul(f, g, r.z);
+        F.mul(f, e, r.x);
+        F.mul(g, h, r.y);
+    }
+
+    /** BouncyCastle {@code pointDouble(PointAccum)}. */
+    private static void doublePoint(Accum r) {
+        int[] a = r.x;
+        int[] b = r.y;
+        int[] c = r.z;
+        int[] e = r.u;
+        int[] f = a;
+        int[] g = b;
+        int[] h = r.v;
+
+        F.add(r.x, r.y, e);
+        F.sqr(r.x, a);
+        F.sqr(r.y, b);
+        F.sqr(r.z, c);
+        F.add(c, c, c);
+        F.apm(a, b, h, g);
+        F.sqr(e, e);
+        F.sub(h, e, e);
+        F.add(c, g, f);
+        F.carry(f);
+        F.mul(f, g, r.z);
+        F.mul(f, e, r.x);
+        F.mul(g, h, r.y);
+    }
+}
