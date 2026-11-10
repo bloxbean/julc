@@ -82,31 +82,40 @@ case Only p -> {
 For `[1, 2, 3]`, this yields `3`; assigning to `p` instead is a compile-time error.
 Otherwise-supported `instanceof` binding reassignment is unaffected.
 
-### 1.1 `Method must have a body: <name>`
+### 1.1 `JULC0001` `Method must have a body: <name>`
 
-**Cause:** An abstract or interface method was encountered where the compiler
-expects a concrete method body.
+**Cause:** A method the program calls has no body, such as a `native` method. The compiler
+lowers every method a validator calls, so each one needs a body.
 
-**Fix:** Ensure every method in your validator class has a full body. On-chain code
-cannot contain abstract methods.
+**Fix:** Give the method a body. An `abstract` method that nothing calls is never lowered.
 
 ```java
+import java.math.BigInteger;
 import org.julclang.ledger.ScriptContext;
 import org.julclang.stdlib.annotation.Entrypoint;
 import org.julclang.stdlib.annotation.SpendingValidator;
-// WRONG: abstract method
+
+// WRONG: a method with no body
 @SpendingValidator
-public class MyValidator {
+public class FeeValidator {
+    static native BigInteger fee(BigInteger amount);
+
     @Entrypoint
-    public abstract boolean validate(Data redeemer, ScriptContext ctx);
+    public static boolean validate(BigInteger redeemer, ScriptContext ctx) {
+        return fee(redeemer).signum() > 0;
+    }
 }
 
 // CORRECT: method with body
 @SpendingValidator
-public class MyValidator {
+public class FeeValidator {
+    static BigInteger fee(BigInteger amount) {
+        return amount.divide(BigInteger.valueOf(100));
+    }
+
     @Entrypoint
-    public static boolean validate(Data redeemer, ScriptContext ctx) {
-        return true;
+    public static boolean validate(BigInteger redeemer, ScriptContext ctx) {
+        return fee(redeemer).signum() > 0;
     }
 }
 ```
@@ -509,7 +518,7 @@ var filtered = items.filter(item -> {
 
 ---
 
-### 1.15 `Unknown method: <methodName>`
+### 1.18 `Unknown method: <methodName>`
 
 **Hint (fuzzy match):** `Did you mean '<ClassName.methodName>()'?`
 **Hint (no match):** `Library methods require class qualification (e.g.,
@@ -536,7 +545,7 @@ var total = MathLib.abs(value);
 
 ---
 
-### 1.16 `Unsupported operator: <operator>`
+### 1.19 `Unsupported operator: <operator>`
 
 **Hint:** `Supported operators: +, -, *, /, %, ==, !=, <, <=, >, >=, &&, ||`
 
@@ -557,7 +566,7 @@ var shifted = BitwiseLib.shiftByteString(x, 2);
 
 ---
 
-### 1.17 `Unsupported unary operator: <operator>`
+### 1.20 `Unsupported unary operator: <operator>`
 
 **Hint:** `Supported unary operators: ! (logical NOT) and - (negation)`
 
@@ -577,7 +586,7 @@ var negative = -amount;
 
 ---
 
-### 1.18 `JULC0061` `Reassigning '<name>' is not supported outside a loop`
+### 1.21 `JULC0061` `Reassigning '<name>' is not supported outside a loop`
 
 **Cause:** On-chain variables are single-assignment. Only a loop can update a
 variable declared before it (the loop's accumulator). Anywhere else, assigning to a
@@ -608,7 +617,7 @@ var limit = vip ? BigInteger.valueOf(100) : BigInteger.TEN;
 
 ---
 
-### 1.19 `Unsupported expression: <ExpressionType>`
+### 1.22 `Unsupported expression: <ExpressionType>`
 
 **Hint:** `This expression type is not supported in on-chain code.`
 
@@ -620,7 +629,7 @@ expressions, lambdas, switch expressions, instanceof, and casts.
 
 ---
 
-### 1.20 `Undefined variable: <name>`
+### 1.23 `Undefined variable: <name>`
 
 **Cause:** A variable name was used that is not in scope. This is reported by
 lowering when javac's name has no value in the current scope.
@@ -651,7 +660,7 @@ the build again; JuLC reads the jars from disk each time.
 
 ---
 
-### 1.21 `JULC0003` `'return' is not supported inside while loop body`
+### 1.24 `JULC0003` `'return' is not supported inside while loop body`
 
 **Cause:** A `while` loop body cannot `return` from the enclosing method. A `while`
 loop is compiled to a recursive function whose result is the variables the loop
@@ -681,7 +690,7 @@ return i;
 
 ---
 
-### 1.22 `JULC0063` `break is not supported in a loop that updates no variable declared before the loop`
+### 1.25 `JULC0063` `break is not supported in a loop that updates no variable declared before the loop`
 
 **Cause:** A loop supports `break` only when it updates a variable declared before
 the loop. A loop that updates none compiles its body as plain statements, which
@@ -713,7 +722,7 @@ for (var x : xs) {
 
 ---
 
-### 1.23 `JULC0062` `JulcMap.of is off-chain only and has no on-chain implementation`
+### 1.26 `JULC0062` `JulcMap.of is off-chain only and has no on-chain implementation`
 
 **Cause:** `JulcMap.of(...)` builds a `JulcAssocMap` in Java, for tests and
 off-chain code. The compiler has no lowering for it. Before
@@ -737,7 +746,7 @@ JulcMap<byte[], BigInteger> two = JulcMap.<byte[], BigInteger>empty()
 
 ---
 
-### 1.24 `JULC0065` `Updating '<name>' inside a switch statement is not supported in this loop`
+### 1.27 `JULC0065` `Updating '<name>' inside a switch statement is not supported in this loop`
 
 **Cause:** A loop carries an update of a variable declared before it only when the
 update is a statement of its own, directly in the loop body or in an `if`/`else`
@@ -783,7 +792,7 @@ while (x - 1 > 0) {
 
 ---
 
-### 1.25 `JULC0060` `continue is not supported on-chain`
+### 1.28 `JULC0060` `continue is not supported on-chain`
 
 **Cause:** `continue` is outside the on-chain subset. Loops are compiled to folds
 and recursive functions whose body runs to its end on every iteration; there is no
@@ -810,7 +819,7 @@ for (var x : xs) {
 
 ---
 
-### 1.26 `JULC0066` `Labels are not supported on-chain: '<construct>'`
+### 1.29 `JULC0066` `Labels are not supported on-chain: '<construct>'`
 
 **Cause:** Labelled statements are outside the on-chain subset, so no `break` or
 `continue` can name a label. A labelled statement (`outer:`), a `break` that names a
@@ -860,7 +869,7 @@ for (var x : xs) {
 
 ---
 
-### 1.27 `JULC0076` `Unsupported case pattern '<pattern>'`
+### 1.30 `JULC0076` `Unsupported case pattern '<pattern>'`
 
 **Cause:** The most common case is a record pattern, which is valid Java but which JuLC does not compile yet. A case pattern must
 also name a permitted variant of the selector's sealed interface. `case S s` on a selector of type `S` is reported with this code too.
@@ -881,7 +890,7 @@ next case does.
 
 An `instanceof` with a record pattern is `JULC0077`, and the same rewrite applies: `s instanceof A a`, then `a.v()`.
 
-### 1.28 `JULC0139` A pattern variable is used where JuLC does not bind it
+### 1.31 `JULC0139` A pattern variable is used where JuLC does not bind it
 
 **Cause:** JuLC binds an `instanceof` pattern variable wherever Java puts it in scope within
 one statement (`&&`, `||`, `!`, `?:`, the `if` and its branches, lambdas, loop bodies) and
@@ -904,7 +913,7 @@ if (s instanceof Circle c) { return c.radius(); }
 If the tested value is a call, store it in a local first, so the second test does not call
 it again.
 
-### 1.29 `JULC0140` Reassigning pattern variable `<name>` is not supported
+### 1.32 `JULC0140` Reassigning pattern variable `<name>` is not supported
 
 **Cause:** Java lets a pattern variable that is not `final` be reassigned; JuLC does not. In
 a loop the update could be lost on the path that rejoins the rest of the body. The one form
@@ -920,6 +929,137 @@ if (x instanceof Bid b) { if (late) { b = penalised(b); } total = total + b.amou
 // CORRECT
 if (x instanceof Bid b) { Bid bid = late ? penalised(b) : b; total = total + bid.amount(); }
 ```
+
+### 1.33 `JULC0072` `Invalid guard on '<case>': <reason>`
+
+**Example message:** `Invalid guard on 'case Bid b when b.amount().intValue() > 100': 'b.amount().intValue()' narrows to 32 bits in Java, but JuLC lowers it to the identity; compare the BigInteger value instead`
+
+**Cause:** A `when` guard uses something whose on-chain meaning differs from Java's: `intValue()` or
+`longValue()`, `int` or `long` arithmetic that is not a constant, a cast to a reference type, or a
+`char`, `byte` or `short` value. A guard that is not a `boolean`, or a constant `false`, is
+rejected as well; javac usually reports those first, as `JULC0085`.
+
+**Fix:** Compare the `BigInteger` value itself, or compute the condition in a helper that returns `boolean`.
+
+```java
+// WRONG
+case Bid b when b.amount().intValue() > 100 -> true;
+
+// CORRECT
+case Bid b when b.amount().compareTo(BigInteger.valueOf(100)) > 0 -> true;
+```
+
+---
+
+### 1.34 `JULC0074` `Guard on '<case>' declares pattern variable '<name>', which is not supported`
+
+**Cause:** A `when` guard declares a pattern variable, as in `when p.target() instanceof ToKey k`.
+Java puts `k` in scope in the arm, but JuLC does not bind a variable that a switch guard declares.
+An `instanceof` without a binding is fine in a guard.
+
+**Fix:** Move the pattern test into the arm, where `instanceof` patterns are bound, or test the
+type in the guard and cast in the arm.
+
+```java
+// WRONG
+case Pay p when p.target() instanceof ToKey k -> signers.contains(k.key());
+
+// CORRECT: the pattern in the arm
+case Pay p -> p.target() instanceof ToKey k && signers.contains(k.key());
+
+// CORRECT: a type test in the guard, a cast in the arm
+case Pay p when p.target() instanceof ToKey -> {
+    ToKey k = (ToKey) p.target();
+    yield signers.contains(k.key());
+}
+```
+
+---
+
+### 1.35 `JULC0075` `Unsupported switch group '<case>': <reason>`
+
+**Example message:** `Unsupported switch group 'case Add a': the group can complete normally, so Java would fall through into the next group; JuLC does not implement fall-through. End the group with yield`
+
+**Cause:** In a colon-form switch expression (`case X x:`), a group can fall through into the next
+one, or one group has several labels. JuLC compiles a colon-form group only when it has one label
+and yields on every path.
+
+**Fix:** End every group with `yield`, give each label its own group, or use the arrow form.
+
+```java
+// WRONG: the first group falls through into default
+BigInteger r = switch (step) {
+    case Add a:
+        a.v().negate();
+    default:
+        yield BigInteger.TWO;
+};
+
+// CORRECT
+BigInteger r = switch (step) {
+    case Add a:
+        yield a.v().negate();
+    default:
+        yield BigInteger.TWO;
+};
+```
+
+---
+
+### 1.36 `JULC0083` `Pattern variable '<name>' is already defined <where>`
+
+**Cause:** A pattern variable has the name of a parameter, a local or another pattern variable in
+scope, or a pattern declares one name twice. javac rejects almost every such source first, as
+`JULC0085` with `compiler.err.already.defined` or `compiler.err.match.binding.exists`; JuLC keeps
+`JULC0083` for a guard that declares the same name twice. A pattern variable may have the name of a
+field, as in Java.
+
+**Fix:** Rename the pattern variable.
+
+```java
+// WRONG: javac reports "variable r is already defined in method size(...)"
+static BigInteger size(BigInteger r, Shape s) {
+    return switch (s) {
+        case Circle r -> r.r();
+        case Square q -> q.side();
+    };
+}
+
+// CORRECT
+static BigInteger size(BigInteger r, Shape s) {
+    return switch (s) {
+        case Circle c -> c.r();
+        case Square q -> q.side();
+    };
+}
+```
+
+---
+
+### 1.37 `JULC0132` `This switch case block does not yield a value on every path`
+
+**Cause:** A `{ ... }` block in a switch expression can end without a `yield` on some path, by
+JuLC's reading. JuLC does not read a loop as never finishing, so `while (true) { yield x; }`, which
+javac accepts, has a path with no value.
+
+**Fix:** End every path in the block with `yield`.
+
+```java
+// WRONG
+case Add a -> {
+    while (true) {
+        yield a.v();
+    }
+}
+
+// CORRECT
+case Add a -> {
+    BigInteger v = a.v();
+    yield v.signum() > 0 ? v : BigInteger.ZERO;
+}
+```
+
+---
 
 ## 2. Validation Errors (subset rules)
 
@@ -1058,7 +1198,7 @@ while (hasMore) {
 
 ```java
 // WRONG
-Data result = null;
+PlutusData result = null;
 
 // CORRECT
 var result = Optional.empty();
@@ -1440,7 +1580,7 @@ validator has two `@Entrypoint` methods.
 
 ### `JULC0103` `Entrypoint <method> of <class> takes <type> as its last parameter; the last parameter is the script context, ScriptContext or PlutusData`
 
-**Cause:** An `@Entrypoint` method of a validator declares its last parameter with a type other than `org.julclang.ledger.ScriptContext` or `org.julclang.core.PlutusData`. The script receives the script context there, undecoded, so a parameter typed `BigInteger`, a record or a subtype of `PlutusData` reads the context as that type, and the method's JVM test does not test the script. A type of your own named `ScriptContext` is not the ledger's. An entry point with a parameter count its purpose does not take is `JULC0008` instead. This rule holds on both frontends.javacGate=report` or `off` turns it off there, as it does the other gate rules. The javac frontend has no gate to turn off.
+**Cause:** An `@Entrypoint` method of a validator declares its last parameter with a type other than `org.julclang.ledger.ScriptContext` or `org.julclang.core.PlutusData`. The script receives the script context there, undecoded, so a parameter typed `BigInteger`, a record or a subtype of `PlutusData` reads the context as that type, and the method's JVM test does not test the script. A type of your own named `ScriptContext` is not the ledger's. An entry point with a parameter count its purpose does not take is `JULC0008` instead.
 
 **Fix:** Declare the last parameter `ScriptContext`, or `PlutusData` to keep the context as Data. Take other values from the redeemer, or, for a spending validator, from the datum: `validate(BigInteger datum, BigInteger redeemer, ScriptContext ctx)`.
 
@@ -1452,7 +1592,7 @@ validator has two `@Entrypoint` methods.
 
 ### `JULC0080` `Record <record> declares <member>, which JuLC does not compile; a record body may contain only nested type declarations`
 
-**Cause:** a record declares a member other than a nested type: a method, `equals`, `hashCode`, `toString`, a compact or other constructor, a static field or an initializer block. JuLC compiles a record as its components only, so such a member is never what the script runs (ADR-067 D9). A declared accessor or `toPlutusData` is `JULC0101`, and a constructor with a statement `JULC0099`, on both frontends.
+**Cause:** a record declares a member other than a nested type: a method, `equals`, `hashCode`, `toString`, a compact or other constructor, a static field or an initializer block. JuLC compiles a record as its components only, so such a member is never what the script runs (ADR-067 D9). A declared accessor or `toPlutusData` is `JULC0101`, and a constructor with a statement `JULC0099`.
 
 **Fix:** Move the logic into a static method of the enclosing class, which takes the record as a parameter, and let the record hold its components alone.
 
@@ -1592,7 +1732,7 @@ strings built from literals and `+` alone keep their meaning.
 
 **Fix:** A switch expression exports only its yielded value. Declare an accumulator inside the arm, yield its result, and use the switch value outside the arm instead of mutating an enclosing variable.
 
-### `JULC0122` `Generic library method <class.method> cannot be called from Java yet: generic @OnchainLibrary methods are specialized only by language-neutral library providers (ADR-059). Provide a concrete overload-free method for Java callers.`
+### `JULC0122` `Generic library method <class.method> cannot be called from Java yet: generic @OnchainLibrary methods are specialized only by language-neutral library providers. Provide a concrete overload-free method for Java callers.`
 
 **Cause:** a generic @OnchainLibrary method is a template that only a language-neutral producer instantiates (ADR-059), so Java code cannot call it.
 
@@ -1600,7 +1740,7 @@ strings built from literals and `+` alone keep their meaning.
 
 ### `JULC0123` `Static call <call> names its class by a qualified name; on-chain code calls a static method through its class's simple name`
 
-**Cause:** JuLC resolves a static call through the simple name of its class, as an import or the enclosing class declares it, so a call through a package-qualified class name, such as `java.math.BigInteger.valueOf(1)`, is not resolved.of`. A nested class's qualified name, `Outer.Inner.f(a)`, is `JULC0011`.
+**Cause:** JuLC resolves a static call through the simple name of its class, as an import or the enclosing class declares it, so a call through a package-qualified class name, such as `java.math.BigInteger.valueOf(1)`, is not resolved. A nested class's qualified name, `Outer.Inner.f(a)`, is `JULC0011`.
 
 **Fix:** Import the class and call the method through its simple name, for example `import java.math.BigInteger;` and `BigInteger.valueOf(1)`.
 
@@ -1665,7 +1805,7 @@ semicolons, unmatched braces, invalid Java 21 syntax.
 
 ---
 
-### 3.2 `No validator annotation found (e.g. @SpendingValidator, @MintingValidator)`
+### 3.2 `JULC0010` `No validator annotation found (e.g. @SpendingValidator, @MintingValidator)`
 
 **Cause:** The validator source file does not contain any class annotated with a
 validator annotation.
@@ -1673,10 +1813,14 @@ validator annotation.
 **Fix:** Annotate your validator class with one of the recognized annotations.
 
 ```java
+import org.julclang.core.PlutusData;
 import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 // WRONG: no annotation
 public class MyValidator {
-    public static boolean validate(Data redeemer, ScriptContext ctx) {
+    public static boolean validate(PlutusData redeemer, ScriptContext ctx) {
         return true;
     }
 }
@@ -1685,7 +1829,7 @@ public class MyValidator {
 @SpendingValidator
 public class MyValidator {
     @Entrypoint
-    public static boolean validate(Data datum, Data redeemer, ScriptContext ctx) {
+    public static boolean validate(PlutusData datum, PlutusData redeemer, ScriptContext ctx) {
         return true;
     }
 }
@@ -1696,7 +1840,7 @@ public class MyValidator {
 
 ---
 
-### 3.3 `No @Entrypoint method found in <ClassName>`
+### 3.3 `JULC0009` `No @Entrypoint method found in <ClassName>`
 
 **Cause:** The annotated validator class does not contain a method annotated with
 `@Entrypoint`.
@@ -1704,12 +1848,15 @@ public class MyValidator {
 **Fix:** Add `@Entrypoint` to the validator's main method.
 
 ```java
+import org.julclang.core.PlutusData;
 import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.annotation.Entrypoint;
 import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 public class MyValidator {
     // WRONG: missing @Entrypoint
-    public static boolean validate(Data datum, Data redeemer, ScriptContext ctx) {
+    public static boolean validate(PlutusData datum, PlutusData redeemer, ScriptContext ctx) {
         return true;
     }
 }
@@ -1717,7 +1864,7 @@ public class MyValidator {
 @SpendingValidator
 public class MyValidator {
     @Entrypoint  // CORRECT
-    public static boolean validate(Data datum, Data redeemer, ScriptContext ctx) {
+    public static boolean validate(PlutusData datum, PlutusData redeemer, ScriptContext ctx) {
         return true;
     }
 }
@@ -1743,11 +1890,11 @@ public static boolean validate(ScriptContext ctx) { ... }
 
 // CORRECT: 2 parameters (datum in ScriptContext)
 @Entrypoint
-public static boolean validate(Data redeemer, ScriptContext ctx) { ... }
+public static boolean validate(PlutusData redeemer, ScriptContext ctx) { ... }
 
 // CORRECT: 3 parameters (explicit datum)
 @Entrypoint
-public static boolean validate(Data datum, Data redeemer, ScriptContext ctx) { ... }
+public static boolean validate(PlutusData datum, PlutusData redeemer, ScriptContext ctx) { ... }
 ```
 
 ---
@@ -1766,14 +1913,16 @@ If you specified 3 parameters, the compiler asks if you meant to use
 `@SpendingValidator` if you need a datum parameter.
 
 ```java
+import org.julclang.core.PlutusData;
 import org.julclang.ledger.ScriptContext;
 import org.julclang.stdlib.annotation.Entrypoint;
 import org.julclang.stdlib.annotation.MintingValidator;
+
 // WRONG: 3 params on a minting validator
 @MintingValidator
 public class MyPolicy {
     @Entrypoint
-    public static boolean validate(Data datum, Data redeemer, ScriptContext ctx) { ... }
+    public static boolean validate(PlutusData datum, PlutusData redeemer, ScriptContext ctx) { ... }
     // Error: "Did you mean @SpendingValidator?"
 }
 
@@ -1781,7 +1930,7 @@ public class MyPolicy {
 @MintingValidator
 public class MyPolicy {
     @Entrypoint
-    public static boolean validate(Data redeemer, ScriptContext ctx) { ... }
+    public static boolean validate(PlutusData redeemer, ScriptContext ctx) { ... }
 }
 ```
 
@@ -1828,6 +1977,103 @@ call them.
 
 **Fix:** Call the method where the value is needed, or initialise the field with an expression that
 does not call a method of the same class.
+
+---
+
+### 3.9 `JULC0081` `<source> declares <type>, which JuLC's <owner> owns`
+
+**Example message:** `AmountValidator.java declares org.julclang.ledger.AmountValidator, which JuLC's API package org.julclang.ledger owns`
+
+**Cause:** A source declares a type in one of JuLC's API packages (`org.julclang.core`,
+`org.julclang.ledger`, the stdlib's on-chain packages), or redeclares a bundled library. Those
+types come only from JuLC, so no source can replace or extend them.
+
+**Fix:** Move the type to a package of your own.
+
+```java
+// WRONG
+package org.julclang.ledger;
+
+// CORRECT
+package com.example;
+
+import org.julclang.ledger.ScriptContext;
+```
+
+---
+
+### 3.10 `JULC0088` `@Param field <name> is a constant variable in Java, so javac would fold it; it is runtime input`
+
+**Cause:** A `static final` `@Param` field of a primitive type or `String` has a constant
+initializer. javac copies a constant into every place that reads it, so the JVM program would use
+the initializer, while the script reads the parameter applied at deployment.
+
+**Fix:** Drop `final`. A `@Param` value is supplied when the script is parameterized.
+
+```java
+// WRONG
+@Param static final String TAG = "v1";
+
+// CORRECT
+@Param static String TAG;
+```
+
+---
+
+### 3.11 `JULC0133` `No class found in source`
+
+**Cause:** A source given to `compileMethod` (or to `JulcEval`) declares no class, for example
+only an interface or a record.
+
+**Fix:** Put the method in a class.
+
+```java
+// WRONG
+interface Fees {
+    BigInteger fee(BigInteger amount);
+}
+
+// CORRECT
+class Fees {
+    static BigInteger fee(BigInteger amount) {
+        return amount.divide(BigInteger.valueOf(100));
+    }
+}
+```
+
+---
+
+### 3.12 `JULC0134` `Class <name> must not combine @OnchainLibrary with validator annotation(s): <annotations>`
+
+**Cause:** A class is annotated both as a library (`@OnchainLibrary`) and as a validator. A class is either a library that other code calls or a validator that the
+ledger runs.
+
+**Fix:** Keep one role on the class, and move the other into a class of its own.
+
+```java
+// WRONG
+@OnchainLibrary
+@SpendingValidator
+public class FeeLib { ... }
+
+// CORRECT
+@OnchainLibrary
+public class FeeLib { ... }
+
+@SpendingValidator
+public class FeeValidator { ... }   // calls FeeLib.fee(...)
+```
+
+---
+
+### 3.13 `JULC0135` `Class <name> has multiple validator annotations: <annotations>`
+
+**Example message:** `Class BadValidator has multiple validator annotations: @SpendingValidator, @MintingValidator`
+
+**Cause:** Each class compiles to one script with one purpose. See also
+[Multiple validator annotations on the same class](#q-multiple-validator-annotations-on-the-same-class).
+
+**Fix:** Keep one validator annotation. For several purposes in one script, use `@MultiValidator`.
 
 ---
 
@@ -1902,7 +2148,7 @@ name.
 **Cause:** The type registrar found a circular dependency when topologically sorting
 types. Type A depends on type B, which depends on type A.
 
-**Fix:** Break the circular dependency by restructuring your types. Use `Data` as
+**Fix:** Break the circular dependency by restructuring your types. Use `PlutusData` as
 an opaque type to break cycles if needed.
 
 ---
@@ -1927,6 +2173,147 @@ return amount(d);
 
 ---
 
+### 4.9 `JULC0078` `<call> compares <type> with <type>, which Java keeps distinct: on-chain the two can compare equal`
+
+**Example message:** `PubKeyHash.equals compares org.julclang.ledger.PubKeyHash with org.julclang.core.PlutusData, which Java keeps distinct: on-chain the two can compare equal`
+
+**Cause:** An `equals` call, or a collection operation that compares with `equals`
+(`contains`, `get`, `containsKey`, ...), between two unrelated types. On the JVM the answer is
+always `false`; on-chain a comparison reads representations, so a `PubKeyHash` and a `PlutusData`
+holding the same bytes, or two records with the same fields, could compare equal.
+
+**Fix:** Compare two values of one type: decode the datum or redeemer to its record first, or
+compare the components.
+
+```java
+// WRONG: sig is a PubKeyHash, redeemer a PlutusData
+static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+    boolean found = false;
+    for (var sig : ctx.txInfo().signatories()) {
+        if (sig.equals(redeemer)) {
+            found = true;
+        }
+    }
+    return found;
+}
+
+// CORRECT: the redeemer is a record holding a PubKeyHash
+record Claim(PubKeyHash signer) {}
+
+static boolean validate(Claim redeemer, ScriptContext ctx) {
+    boolean found = false;
+    for (var sig : ctx.txInfo().signatories()) {
+        if (sig.equals(redeemer.signer())) {
+            found = true;
+        }
+    }
+    return found;
+}
+```
+
+---
+
+### 4.10 `JULC0090` `String concatenation <expression> has a non-String operand of type <type>`
+
+**Example message:** `String concatenation "redeemer: " + redeemer has a non-String operand of type java.math.BigInteger`
+
+**Cause:** `"a" + 1` is valid Java, but JuLC lowers a string `+` to `appendString`, which fails
+at run time on an integer, so the script would fail where the Java code returns.
+
+**Fix:** Concatenate `String`s only.
+
+```java
+// WRONG
+ContextsLib.trace("redeemer: " + redeemer);
+
+// CORRECT
+ContextsLib.trace("checking the redeemer");
+```
+
+---
+
+### 4.11 `JULC0091` `<position> needs a Data encoding of the native array <type>, which has none`
+
+**Example message:** `Component 'values' of record Prices needs a Data encoding of the native array Array[Integer], which has none`
+
+**Cause:** A `JulcArray` is a native UPLC array, which has no Data encoding. A record or
+sealed-variant component, a type argument of `Optional`, `Tuple2`, `Tuple3`, `JulcList`, `JulcMap`
+or `JulcArray`, and a `@Param` are Data-encoded, so an array cannot be stored there.
+
+**Fix:** Store a `JulcList`, and build the array where it is used.
+
+```java
+// WRONG
+record Prices(JulcArray<BigInteger> values) {}
+Prices p = new Prices(redeemer.toArray());
+return p.values().length() > 0;
+
+// CORRECT
+record Prices(JulcList<BigInteger> values) {}
+Prices p = new Prices(redeemer);
+JulcArray<BigInteger> values = p.values().toArray();
+return values.length() > 0;
+```
+
+---
+
+### 4.12 `JULC0092` `Sealed interface '<name>' has no permits clause, and its permitted subclasses (<types>) are not exactly the records nested in it`
+
+**Cause:** A variant's Data tag is its position in the `permits` clause. Without one, JuLC uses
+the order of the records nested in the interface. Java also permits other classes of the same
+file implicitly, such as top-level records, and those have no tag under that rule.
+
+**Fix:** Add a `permits` clause listing every variant, in tag order.
+
+```java
+// WRONG
+sealed interface Shape {}
+record Circle(BigInteger r) implements Shape {}
+record Square(BigInteger side) implements Shape {}
+
+// CORRECT
+sealed interface Shape permits Circle, Square {}
+record Circle(BigInteger r) implements Shape {}
+record Square(BigInteger side) implements Shape {}
+```
+
+---
+
+### 4.13 `JULC0093` `A string literal holds the unpaired surrogate U+<hex>, which a UPLC string cannot hold`
+
+**Cause:** javac accepts a lone UTF-16 surrogate in a string literal, but a UPLC string is
+Unicode text, so the script would hold a different string from the Java program.
+
+**Fix:** Write a supplementary character as its high surrogate followed by its low surrogate,
+or remove it.
+
+```java
+// WRONG
+return redeemer.equals("\uD83D");
+
+// CORRECT
+return redeemer.equals("😀");
+```
+
+---
+
+### 4.14 `JULC0131` `PlutusData.cast() needs a class literal as its second argument`
+
+**Cause:** The target type of `PlutusData.cast` must be known when the script is compiled, so the
+second argument must be a class literal written directly, not wrapped in parentheses or computed.
+
+**Fix:** Write the class literal directly.
+
+```java
+// WRONG
+Bid bid = PlutusData.cast(redeemer, (Bid.class));
+
+// CORRECT
+Bid bid = PlutusData.cast(redeemer, Bid.class);
+```
+
+---
+
 ## 5. Runtime Errors
 
 These errors occur when evaluating compiled UPLC programs on the Plutus VM.
@@ -1941,7 +2328,8 @@ These errors occur when evaluating compiled UPLC programs on the Plutus VM.
 ```groovy
 // build.gradle
 dependencies {
-    implementation 'org.julclang:julc-vm-scalus:<version>'
+    // the default VM; julc-vm-scalus is an alternative
+    testRuntimeOnly 'org.julclang:julc-vm-java:<version>'
 }
 ```
 
@@ -1998,14 +2386,14 @@ the default result is unit/void, which is treated as failure.
 
 ```java
 @Entrypoint
-public static boolean validate(Data redeemer, ScriptContext ctx) {
+public static boolean validate(PlutusData redeemer, ScriptContext ctx) {
     // Do some checks...
     var txInfo = ContextsLib.getTxInfo(ctx);
     // WRONG: forgot to return true
 }
 
 @Entrypoint
-public static boolean validate(Data redeemer, ScriptContext ctx) {
+public static boolean validate(PlutusData redeemer, ScriptContext ctx) {
     var txInfo = ContextsLib.getTxInfo(ctx);
     // checks...
     return true; // CORRECT: explicit success
@@ -2108,7 +2496,7 @@ are collected in `EvalResult.traces()`.
 
 ```java
 @Entrypoint
-public static boolean validate(Data redeemer, ScriptContext ctx) {
+public static boolean validate(PlutusData redeemer, ScriptContext ctx) {
     var txInfo = ContextsLib.getTxInfo(ctx);
     Builtins.trace("got txInfo");
 
@@ -2127,15 +2515,15 @@ public static boolean validate(Data redeemer, ScriptContext ctx) {
 ### Q: Why do I get "Circular type dependency detected"?
 
 **A:** Records that reference each other cannot be topologically sorted. Break the
-cycle by using `Data` as an intermediate opaque type.
+cycle by using `PlutusData` as an intermediate opaque type.
 
 ```java
 // WRONG: circular
 public record A(B other) {}
 public record B(A other) {}
 
-// CORRECT: break cycle with Data
-public record A(Data other) {}  // other is opaque Data, cast as needed
+// CORRECT: break cycle with PlutusData
+public record A(PlutusData other) {}  // other is opaque Data; decode it with PlutusData.cast(other, B.class)
 public record B(A parent) {}
 ```
 
@@ -2289,6 +2677,7 @@ long amount = ValuesLib.assetOf(value, myPolicy, tokenName);
 ### Q: Duplicate purpose in @MultiValidator
 
 **A:** Two `@Entrypoint` methods in a `@MultiValidator` class have the same `Purpose` value. Each purpose can only have one handler.
+The error is `JULC0138`: `Duplicate purpose MINT in @MultiValidator BadValidator`.
 
 ```java
 import org.julclang.core.PlutusData;
@@ -2322,6 +2711,9 @@ public class GoodValidator {
 ### Q: Cannot mix DEFAULT and explicit purposes in @MultiValidator
 
 **A:** You are combining `Purpose.DEFAULT` (manual dispatch) with explicit purposes like `Purpose.MINT` (auto-dispatch). Choose one mode.
+The error is `JULC0136`: `@MultiValidator BadValidator mixes DEFAULT and explicit purposes`. Two `@Entrypoint` methods
+that both use `DEFAULT` are `JULC0137`: `@MultiValidator BadValidator has multiple @Entrypoint methods with DEFAULT purpose`;
+keep one, or give each an explicit purpose.
 
 ```java
 import org.julclang.core.PlutusData;
@@ -2355,6 +2747,7 @@ public class GoodValidator {
 ### Q: Multiple validator annotations on the same class
 
 **A:** A class cannot have both `@MultiValidator` and a single-purpose annotation (like `@SpendingValidator`). Use one or the other.
+The error is `JULC0135`: `Class BadValidator has multiple validator annotations: @SpendingValidator, @MultiValidator`.
 
 ```java
 import org.julclang.core.PlutusData;

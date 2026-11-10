@@ -7,6 +7,11 @@ JuLC compiles `for (var item : list)` loops into recursive folds over Data lists
 
 This document covers every supported pattern, the compilation strategy behind each, and known limitations.
 
+The snippets are bodies of a validator's methods. They assume `TxInfo txInfo = ctx.txInfo();` and a
+`PubKeyHash owner` taken from the datum, for example `record OwnerDatum(PubKeyHash owner) {}`. Each element of
+`txInfo.signatories()` is a `PubKeyHash`, so `sig.equals(owner)` compares two values of one type. Comparing a
+`PubKeyHash` with a raw `PlutusData` redeemer is rejected (`JULC0078`): decode the redeemer to its record first.
+
 
 ## How It Works
 
@@ -28,7 +33,7 @@ When the loop body doesn't assign to any pre-loop variable, the compiler uses a 
 
 ```java
 for (var sig : txInfo.signatories()) {
-    ContextsLib.trace(sig);
+    ContextsLib.trace("signatory");
 }
 ```
 
@@ -47,7 +52,7 @@ The most common pattern. A single pre-loop variable is updated inside the loop. 
 ```java
 boolean found = false;
 for (var sig : txInfo.signatories()) {
-    if (sig.equals(redeemer)) {
+    if (sig.equals(owner)) {
         found = true;
     }
 }
@@ -69,7 +74,7 @@ return total;
 ```java
 boolean found = false;
 for (var sig : txInfo.signatories()) {
-    found = found || sig.equals(redeemer);
+    found = found || sig.equals(owner);
 }
 return found;
 ```
@@ -92,7 +97,7 @@ After the loop, the accumulator is rebound to the fold result for use in subsequ
 ```java
 boolean found = false;
 for (var sig : txInfo.signatories()) {
-    if (sig.equals(redeemer)) {
+    if (sig.equals(owner)) {
         found = true;
         break;
     }
@@ -107,7 +112,7 @@ The assignment can be a standalone statement before the `if`:
 ```java
 boolean found = false;
 for (var sig : txInfo.signatories()) {
-    found = sig.equals(redeemer);
+    found = sig.equals(owner);
     if (found) {
         break;
     }
@@ -118,6 +123,7 @@ return found;
 ### Integer accumulator with break
 
 ```java
+// items is a JulcList<BigInteger>
 BigInteger sum = BigInteger.ZERO;
 for (var item : items) {
     sum = sum.add(item);
@@ -145,7 +151,7 @@ When two or more pre-loop variables are assigned inside the loop, the compiler p
 boolean found = false;
 BigInteger count = BigInteger.ZERO;
 for (var sig : txInfo.signatories()) {
-    found = found || sig.equals(redeemer);
+    found = found || sig.equals(owner);
     count = count.add(BigInteger.ONE);
 }
 return found;
@@ -194,7 +200,7 @@ Combines multi-accumulator tuple packing with break-aware fold generation.
 boolean found = false;
 BigInteger index = BigInteger.ZERO;
 for (var sig : txInfo.signatories()) {
-    found = sig.equals(redeemer);
+    found = sig.equals(owner);
     index = index.add(BigInteger.ONE);
     if (found) {
         break;
@@ -214,7 +220,7 @@ BigInteger total = BigInteger.ZERO;
 for (var output : txInfo.outputs()) {
     boolean match = false;
     for (var sig : txInfo.signatories()) {
-        if (sig.equals(redeemer)) {
+        if (sig.equals(owner)) {
             match = true;
             break;
         }
@@ -391,7 +397,8 @@ while (i.compareTo(BigInteger.valueOf(3)) < 0) {
 BigInteger matchCount = BigInteger.ZERO;
 for (var output : txInfo.outputs()) {
     for (var sig : txInfo.signatories()) {
-        if (output.address().credential() == sig) {
+        if (output.address().credential() instanceof Credential.PubKeyCredential pk
+                && pk.hash().equals(sig)) {
             matchCount = matchCount.add(BigInteger.ONE);
         }
     }
@@ -401,16 +408,15 @@ for (var output : txInfo.outputs()) {
 ### Mixed Nesting (For-Each with While)
 
 ```java
+// targetPolicy is a byte[] policy ID
 boolean found = false;
 for (var input : txInfo.inputs()) {
-    var pairs = Builtins.unMapData(input.resolved().value());
-    PlutusData cursor = pairs;
-    while (!Builtins.nullList(cursor)) {
-        var pair = Builtins.headList(cursor);
-        if (Builtins.equalsData(Builtins.fstPair(pair), targetPolicy)) {
+    JulcList<AssetEntry> assets = ValuesLib.flattenTyped(input.resolved().value());
+    while (!assets.isEmpty()) {
+        if (Builtins.equalsByteString(assets.head().policyId(), targetPolicy)) {
             found = true;
         }
-        cursor = Builtins.tailList(cursor);
+        assets = assets.tail();
     }
 }
 ```
@@ -471,6 +477,7 @@ Instead of `continue`, use an `if` to skip the rest of the body:
 ```java
 // Instead of: if (cond) { continue; }
 // Use:
+// items is a JulcList<BigInteger>
 BigInteger sum = BigInteger.ZERO;
 for (var item : items) {
     if (!skipCondition) {
