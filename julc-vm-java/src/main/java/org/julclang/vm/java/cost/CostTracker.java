@@ -88,7 +88,10 @@ public final class CostTracker {
         if (costPair == null) {
             throw IncompleteCostModelException.missing(profile, List.of(fun));
         }
-        long[] sizes = BuiltinCostModel.argSizes(profile.semanticsVariant(), fun, args);
+        // Size only the arguments the cost functions read: a constant-cost
+        // builtin such as unConstrData must not walk its Data argument
+        int sizedArguments = costPair.cpu().sizedArguments() | costPair.mem().sizedArguments();
+        long[] sizes = BuiltinCostModel.argSizes(profile.semanticsVariant(), fun, args, sizedArguments);
         long cpu = costPair.cpu().apply(sizes);
         long mem = costPair.mem().apply(sizes);
         charge(cpu, mem);

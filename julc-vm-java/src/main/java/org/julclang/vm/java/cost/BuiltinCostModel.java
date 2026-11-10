@@ -21,7 +21,10 @@ import java.util.Set;
  * <p>
  * Cost functions take argument sizes as input and produce a cost value.
  * Argument sizes are computed from the evaluated {@link CekValue} arguments
- * following the Plutus specification's {@code ExMemoryUsage} instances.
+ * following the Plutus specification's {@code ExMemoryUsage} instances. The
+ * evaluator computes a size only when one of the builtin's cost functions
+ * reads it ({@link CostFunction#sizedArguments()}), as Haskell computes them
+ * lazily: a constant-cost builtin never walks its {@code Data} arguments.
  * <p>
  * All sizes are in 64-bit machine words (8 bytes), matching the Plutus/Scalus
  * memory usage model. Data values additionally include a 4-word node overhead
@@ -39,6 +42,9 @@ public final class BuiltinCostModel {
             }
         }
     }
+
+    /** Every argument position, for {@link #argSizes(BuiltinSemanticsVariant, DefaultFun, List, int)}. */
+    private static final int ALL_ARGUMENTS = -1;
 
     private final Map<DefaultFun, CostPair> costs;
 
@@ -116,7 +122,7 @@ public final class BuiltinCostModel {
     public static long sizeOfConstant(Constant c) {
         return switch (c) {
             case Constant.IntegerConst ic -> integerSize(ic.value());
-            case Constant.ByteStringConst bs -> byteStringSize(bs.value());
+            case Constant.ByteStringConst bs -> byteStringSize(bs.size());
             // Plutus counts Unicode code points (Text.length), not UTF-16 units
             case Constant.StringConst s -> s.value().codePointCount(0, s.value().length());
             case Constant.BoolConst _ -> 1;
@@ -145,33 +151,33 @@ public final class BuiltinCostModel {
      * <p>
      * Every Data node has a 4-word overhead (including IntData and BytesData).
      * This matches the Plutus {@code memoryUsage @Data} implementation.
+     * Byte strings are measured by their length, without copying them, and
+     * the (immutable, random-access) child lists are walked by index.
      */
     public static long sizeOfData(PlutusData data) {
         return switch (data) {
             case PlutusData.IntData id -> 4 + integerSize(id.value());
-            case PlutusData.BytesData bd -> 4 + byteStringSize(bd.value());
-            case PlutusData.ConstrData cd -> {
-                long size = 4;
-                for (var field : cd.fields()) {
-                    size += sizeOfData(field);
-                }
-                yield size;
-            }
-            case PlutusData.ListData ld -> {
-                long size = 4;
-                for (var item : ld.items()) {
-                    size += sizeOfData(item);
-                }
-                yield size;
-            }
+            case PlutusData.BytesData bd -> 4 + byteStringSize(bd.size());
+            case PlutusData.ConstrData cd -> 4 + sizeOfAll(cd.fields());
+            case PlutusData.ListData ld -> 4 + sizeOfAll(ld.items());
             case PlutusData.MapData md -> {
                 long size = 4;
-                for (var entry : md.entries()) {
+                List<PlutusData.Pair> entries = md.entries();
+                for (int i = 0; i < entries.size(); i++) {
+                    PlutusData.Pair entry = entries.get(i);
                     size += sizeOfData(entry.key()) + sizeOfData(entry.value());
                 }
                 yield size;
             }
         };
+    }
+
+    private static long sizeOfAll(List<PlutusData> items) {
+        long size = 0;
+        for (int i = 0; i < items.size(); i++) {
+            size += sizeOfData(items.get(i));
+        }
+        return size;
     }
 
     /**
@@ -180,16 +186,23 @@ public final class BuiltinCostModel {
      * Matches Plutus: {@code (integerLog2(abs(n))) `div` 64 + 1}, or equivalently
      * {@code (abs(n).bitLength() - 1) / 64 + 1}. Zero has size 1.
      * <p>
-     * The {@code abs} matters: Java's {@code bitLength()} of a negative power of
-     * two is one less than that of its absolute value (e.g. -2^64 gives 64, not 65).
+     * The absolute value matters: Java's {@code bitLength()} of a negative
+     * number {@code n} is that of {@code -n - 1}, one less than that of
+     * {@code -n} exactly when {@code -n} is a power of two (e.g. -2^64 gives
+     * 64, not 65). That case is detected from the lowest set bit instead of
+     * allocating {@code abs()}.
      */
     static long integerSize(BigInteger value) {
-        if (value.signum() == 0) return 1;
-        return (value.abs().bitLength() - 1) / 64 + 1;
+        int signum = value.signum();
+        if (signum == 0) return 1;
+        int bits = value.bitLength();
+        // -n is a power of two 2^k exactly when n's lowest set bit is k = bitLength(-n - 1)
+        if (signum < 0 && value.getLowestSetBit() == bits) bits++;
+        return (bits - 1) / 64 + 1;
     }
 
     /**
-     * Memory usage of a byte string in 8-byte (64-bit) words.
+     * Memory usage of a byte string of the given length in 8-byte (64-bit) words.
      * <p>
      * Matches Plutus: {@code ((BS.length bs - 1) `quot` 8) + 1}.
      * This is ceiling division of byte length by 8, with empty strings giving 1.
@@ -197,13 +210,13 @@ public final class BuiltinCostModel {
      * Note: Java's integer division truncates toward zero (same as Haskell's {@code quot}),
      * so {@code (0 - 1) / 8 + 1 = 1} correctly handles empty byte strings.
      */
-    static long byteStringSize(byte[] bytes) {
-        return (bytes.length - 1) / 8 + 1;
+    static long byteStringSize(int length) {
+        return (length - 1) / 8 + 1;
     }
 
     /**
-     * Compute argument sizes for a builtin call.
-     * Returns an array of sizes, one per argument.
+     * Compute generic argument sizes for a builtin call, one per argument,
+     * without any builtin-specific sizing.
      */
     public static long[] argSizes(List<CekValue> args) {
         long[] sizes = new long[args.size()];
@@ -235,64 +248,86 @@ public final class BuiltinCostModel {
      * sizing above, so it needs no override here.
      */
     public static long[] argSizes(DefaultFun fun, List<CekValue> args) {
-        long[] sizes = argSizes(args);
-        // A wrong-typed arg is a type error — the builtin fails right after
-        // charging — so each case keeps the generic size on a type mismatch.
-        switch (fun) {
-            case ReplicateByte -> {
-                if (integerArg(args, 0) instanceof BigInteger n) sizes[0] = literalByteSize(n);
-            }
-            case IntegerToByteString -> {
-                if (integerArg(args, 1) instanceof BigInteger n) sizes[1] = literalByteSize(n);
-            }
-            case ShiftByteString, RotateByteString -> {
-                if (integerArg(args, 1) instanceof BigInteger n) sizes[1] = literalValue(n);
-            }
-            case DropList -> {
-                if (integerArg(args, 0) instanceof BigInteger n) sizes[0] = literalValue(n);
-            }
-            case InsertCoin -> {
-                if (valueArg(args, 3) instanceof Constant.ValueConst vc) sizes[3] = valueMaxDepth(vc);
-            }
-            case LookupCoin -> {
-                if (valueArg(args, 2) instanceof Constant.ValueConst vc) sizes[2] = valueMaxDepth(vc);
-            }
-            case UnValueData -> {
-                if (idx(args, 0) instanceof Constant.DataConst dc) sizes[0] = dataNodeCount(dc.value());
-            }
-            default -> { }
+        long[] sizes = new long[args.size()];
+        for (int i = 0; i < args.size(); i++) {
+            sizes[i] = argSize(false, fun, args, i);
         }
         return sizes;
     }
 
     /**
-     * Variant-aware costing boundary. Variant-specific wrappers are applied
-     * here as their runtime behavior is implemented.
+     * Variant-aware argument sizes for a builtin call, one per argument: the
+     * sizing of {@link #argSizes(DefaultFun, List)}, plus UTF-8 byte-length
+     * costing of {@code Text} arguments for the variants that use it.
      */
     public static long[] argSizes(BuiltinSemanticsVariant variant, DefaultFun fun,
                                   List<CekValue> args) {
-        long[] sizes = argSizes(fun, args);
-        if (!variant.usesUtf8StringCosting()) {
-            return sizes;
-        }
+        return argSizes(variant, fun, args, ALL_ARGUMENTS);
+    }
 
-        switch (fun) {
-            case AppendString, EqualsString -> {
-                applyTextCostedByByteLength(args, sizes, 0);
-                applyTextCostedByByteLength(args, sizes, 1);
+    /**
+     * Variant-aware argument sizes for a builtin call, computed only for the
+     * arguments whose bit is set in {@code sizedArguments} (see
+     * {@link CostFunction#sizedArguments()}). The other positions are 0: a
+     * cost function that does not read an argument's size never pays for
+     * computing it, which for {@code Data} is a walk of the whole value.
+     */
+    public static long[] argSizes(BuiltinSemanticsVariant variant, DefaultFun fun,
+                                  List<CekValue> args, int sizedArguments) {
+        boolean utf8Text = variant.usesUtf8StringCosting();
+        long[] sizes = new long[args.size()];
+        for (int i = 0; i < args.size(); i++) {
+            if ((sizedArguments & (1 << i)) != 0) {
+                sizes[i] = argSize(utf8Text, fun, args, i);
             }
-            case EncodeUtf8 -> applyTextCostedByByteLength(args, sizes, 0);
-            default -> { }
         }
         return sizes;
     }
 
-    private static void applyTextCostedByByteLength(
-            List<CekValue> args, long[] sizes, int index) {
-        if (index < args.size()) {
-            Long wrappedSize = TextCostedByByteLength.sizeOf(args.get(index));
-            if (wrappedSize != null) sizes[index] = wrappedSize;
+    /**
+     * The costing size of argument {@code index} of a call to {@code fun}.
+     * A wrong-typed argument is a type error (the builtin fails right after
+     * charging), so each special case falls back to the generic size on a
+     * type mismatch.
+     */
+    private static long argSize(boolean utf8Text, DefaultFun fun, List<CekValue> args, int index) {
+        switch (fun) {
+            case ReplicateByte -> {
+                if (index == 0 && integerArg(args, 0) instanceof BigInteger n) return literalByteSize(n);
+            }
+            case IntegerToByteString -> {
+                if (index == 1 && integerArg(args, 1) instanceof BigInteger n) return literalByteSize(n);
+            }
+            case ShiftByteString, RotateByteString -> {
+                if (index == 1 && integerArg(args, 1) instanceof BigInteger n) return literalValue(n);
+            }
+            case DropList -> {
+                if (index == 0 && integerArg(args, 0) instanceof BigInteger n) return literalValue(n);
+            }
+            case InsertCoin -> {
+                if (index == 3 && valueArg(args, 3) instanceof Constant.ValueConst vc) return valueMaxDepth(vc);
+            }
+            case LookupCoin -> {
+                if (index == 2 && valueArg(args, 2) instanceof Constant.ValueConst vc) return valueMaxDepth(vc);
+            }
+            case UnValueData -> {
+                if (index == 0 && idx(args, 0) instanceof Constant.DataConst dc) return dataNodeCount(dc.value());
+            }
+            case AppendString, EqualsString -> {
+                if (utf8Text && index <= 1) {
+                    Long textSize = TextCostedByByteLength.sizeOf(args.get(index));
+                    if (textSize != null) return textSize;
+                }
+            }
+            case EncodeUtf8 -> {
+                if (utf8Text && index == 0) {
+                    Long textSize = TextCostedByByteLength.sizeOf(args.get(index));
+                    if (textSize != null) return textSize;
+                }
+            }
+            default -> { }
         }
+        return sizeOf(args.get(index));
     }
 
     private static Constant idx(List<CekValue> args, int i) {

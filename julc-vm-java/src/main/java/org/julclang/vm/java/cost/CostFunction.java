@@ -21,6 +21,18 @@ public sealed interface CostFunction {
      */
     long apply(long... sizes);
 
+    /**
+     * The argument sizes {@link #apply} reads, as a bit set: bit {@code i} is
+     * set when {@code sizes[i]} can affect the result (bit 0 is x, bit 1 is y,
+     * bit 2 is z, bit 3 is u).
+     * <p>
+     * The evaluator sizes only these arguments, so a builtin whose costs read
+     * no size never walks its arguments, as in Haskell, where argument sizes
+     * are computed lazily. The values {@link #apply} receives at the other
+     * positions are unspecified.
+     */
+    int sizedArguments();
+
     /** Saturating addition matching Haskell's {@code SatInt}. */
     static long satAdd(long a, long b) {
         long r = a + b;
@@ -61,6 +73,11 @@ public sealed interface CostFunction {
     /** Fixed cost independent of argument sizes. */
     record ConstantCost(long cost) implements CostFunction {
         @Override
+        public int sizedArguments() {
+            return 0; // no argument
+        }
+
+        @Override
         public long apply(long... sizes) {
             return cost;
         }
@@ -68,6 +85,11 @@ public sealed interface CostFunction {
 
     /** Cost is linear in the first argument: intercept + slope * x. */
     record LinearInX(long intercept, long slope) implements CostFunction {
+        @Override
+        public int sizedArguments() {
+            return 0b0001; // x
+        }
+
         @Override
         public long apply(long... sizes) {
             return linear(intercept, slope, sizes[0]);
@@ -77,6 +99,11 @@ public sealed interface CostFunction {
     /** Cost is linear in the second argument: intercept + slope * y. */
     record LinearInY(long intercept, long slope) implements CostFunction {
         @Override
+        public int sizedArguments() {
+            return 0b0010; // y
+        }
+
+        @Override
         public long apply(long... sizes) {
             return linear(intercept, slope, sizes[1]);
         }
@@ -84,6 +111,11 @@ public sealed interface CostFunction {
 
     /** Cost is linear in the third argument: intercept + slope * z. */
     record LinearInZ(long intercept, long slope) implements CostFunction {
+        @Override
+        public int sizedArguments() {
+            return 0b0100; // z
+        }
+
         @Override
         public long apply(long... sizes) {
             return linear(intercept, slope, sizes[2]);
@@ -93,6 +125,11 @@ public sealed interface CostFunction {
     /** Cost based on sum of two argument sizes: intercept + slope * (x + y). */
     record AddedSizes(long intercept, long slope) implements CostFunction {
         @Override
+        public int sizedArguments() {
+            return 0b0011; // x and y
+        }
+
+        @Override
         public long apply(long... sizes) {
             return linear(intercept, slope, satAdd(sizes[0], sizes[1]));
         }
@@ -100,6 +137,11 @@ public sealed interface CostFunction {
 
     /** Cost based on product of two argument sizes: intercept + slope * (x * y). */
     record MultipliedSizes(long intercept, long slope) implements CostFunction {
+        @Override
+        public int sizedArguments() {
+            return 0b0011; // x and y
+        }
+
         @Override
         public long apply(long... sizes) {
             return linear(intercept, slope, satMul(sizes[0], sizes[1]));
@@ -109,6 +151,11 @@ public sealed interface CostFunction {
     /** Cost based on minimum of two argument sizes: intercept + slope * min(x, y). */
     record MinSize(long intercept, long slope) implements CostFunction {
         @Override
+        public int sizedArguments() {
+            return 0b0011; // x and y
+        }
+
+        @Override
         public long apply(long... sizes) {
             return linear(intercept, slope, Math.min(sizes[0], sizes[1]));
         }
@@ -116,6 +163,11 @@ public sealed interface CostFunction {
 
     /** Cost based on maximum of two argument sizes: intercept + slope * max(x, y). */
     record MaxSize(long intercept, long slope) implements CostFunction {
+        @Override
+        public int sizedArguments() {
+            return 0b0011; // x and y
+        }
+
         @Override
         public long apply(long... sizes) {
             return linear(intercept, slope, Math.max(sizes[0], sizes[1]));
@@ -127,6 +179,11 @@ public sealed interface CostFunction {
      * Matches Haskell: intercept + slope * max(minSize, x - y).
      */
     record SubtractedSizes(long intercept, long slope, long minimum) implements CostFunction {
+        @Override
+        public int sizedArguments() {
+            return 0b0011; // x and y
+        }
+
         @Override
         public long apply(long... sizes) {
             long diff = Math.max(minimum, sizes[0] - sizes[1]);
@@ -140,6 +197,11 @@ public sealed interface CostFunction {
      */
     record ConstAboveDiagonal(long constant, long c00, long c01, long c02,
                               long c10, long c11, long c20, long minimum) implements CostFunction {
+        @Override
+        public int sizedArguments() {
+            return 0b0011; // x and y
+        }
+
         @Override
         public long apply(long... sizes) {
             long x = sizes[0];
@@ -164,6 +226,11 @@ public sealed interface CostFunction {
      */
     record AboveAndBelowDiagonal(long constant, CostFunction model) implements CostFunction {
         @Override
+        public int sizedArguments() {
+            return 0b0011; // x and y: the nested model gets their maximum and minimum
+        }
+
+        @Override
         public long apply(long... sizes) {
             return model.apply(Math.max(sizes[0], sizes[1]), Math.min(sizes[0], sizes[1]));
         }
@@ -173,6 +240,11 @@ public sealed interface CostFunction {
     record QuadraticInXAndY(long c00, long c01, long c02,
                             long c10, long c11, long c20,
                             long minimum) implements CostFunction {
+        @Override
+        public int sizedArguments() {
+            return 0b0011; // x and y
+        }
+
         @Override
         public long apply(long... sizes) {
             long x = sizes[0];
@@ -196,6 +268,11 @@ public sealed interface CostFunction {
     record LinearInY2(long intercept, long slope, long minimum)
             implements CostFunction {
         @Override
+        public int sizedArguments() {
+            return 0b0010; // y
+        }
+
+        @Override
         public long apply(long... sizes) {
             return linear(intercept, slope, sizes[1]);
         }
@@ -206,6 +283,11 @@ public sealed interface CostFunction {
      * Used for equality comparisons on bytestrings/strings.
      */
     record LinearOnDiagonal(long constant, long intercept, long slope) implements CostFunction {
+        @Override
+        public int sizedArguments() {
+            return 0b0011; // x and y
+        }
+
         @Override
         public long apply(long... sizes) {
             if (sizes[0] != sizes[1]) {
@@ -218,6 +300,11 @@ public sealed interface CostFunction {
     /** Quadratic in y: c0 + c1*y + c2*y*y. Used for byteStringToInteger. */
     record QuadraticInY(long c0, long c1, long c2) implements CostFunction {
         @Override
+        public int sizedArguments() {
+            return 0b0010; // y
+        }
+
+        @Override
         public long apply(long... sizes) {
             return quadratic(c0, c1, c2, sizes[1]);
         }
@@ -225,6 +312,11 @@ public sealed interface CostFunction {
 
     /** Quadratic in z: c0 + c1*z + c2*z*z. Used for integerToByteString. */
     record QuadraticInZ(long c0, long c1, long c2) implements CostFunction {
+        @Override
+        public int sizedArguments() {
+            return 0b0100; // z
+        }
+
         @Override
         public long apply(long... sizes) {
             return quadratic(c0, c1, c2, sizes[2]);
@@ -242,6 +334,11 @@ public sealed interface CostFunction {
      */
     record LiteralInYOrLinearInZ(long intercept, long slope) implements CostFunction {
         @Override
+        public int sizedArguments() {
+            return 0b0110; // y, and z when y is 0
+        }
+
+        @Override
         public long apply(long... sizes) {
             long y = sizes[1];
             if (y == 0) {
@@ -254,6 +351,11 @@ public sealed interface CostFunction {
     /** Linear in max of y and z: intercept + slope * max(y, z). Used for bitwise memory. */
     record LinearInMaxYZ(long intercept, long slope) implements CostFunction {
         @Override
+        public int sizedArguments() {
+            return 0b0110; // y and z
+        }
+
+        @Override
         public long apply(long... sizes) {
             return linear(intercept, slope, Math.max(sizes[1], sizes[2]));
         }
@@ -261,6 +363,11 @@ public sealed interface CostFunction {
 
     /** Linear in y and z independently: intercept + slope1*y + slope2*z. Used for bitwise CPU. */
     record LinearInYAndZ(long intercept, long slope1, long slope2) implements CostFunction {
+        @Override
+        public int sizedArguments() {
+            return 0b0110; // y and z
+        }
+
         @Override
         public long apply(long... sizes) {
             return satAdd(satAdd(intercept, satMul(slope1, sizes[1])), satMul(slope2, sizes[2]));
@@ -273,6 +380,11 @@ public sealed interface CostFunction {
      * If base > mod, apply 50% penalty: cost0 + cost0 / 2 (integer division).
      */
     record ExpModCost(long c00, long c11, long c12) implements CostFunction {
+        @Override
+        public int sizedArguments() {
+            return 0b0111; // x, y and z
+        }
+
         @Override
         public long apply(long... sizes) {
             long base = sizes[0];
@@ -290,6 +402,11 @@ public sealed interface CostFunction {
     /** Cost is linear in the fourth argument (index 3): intercept + slope * u. */
     record LinearInU(long intercept, long slope) implements CostFunction {
         @Override
+        public int sizedArguments() {
+            return 0b1000; // u
+        }
+
+        @Override
         public long apply(long... sizes) {
             return linear(intercept, slope, sizes[3]);
         }
@@ -297,6 +414,11 @@ public sealed interface CostFunction {
 
     /** Quadratic in the first argument: c0 + c1*x + c2*x*x. */
     record QuadraticInX(long c0, long c1, long c2) implements CostFunction {
+        @Override
+        public int sizedArguments() {
+            return 0b0001; // x
+        }
+
         @Override
         public long apply(long... sizes) {
             return quadratic(c0, c1, c2, sizes[0]);
@@ -308,6 +430,11 @@ public sealed interface CostFunction {
      * Used for ValueContains CPU.
      */
     record ConstAboveDiagonalLinear(long constant, long intercept, long slope1, long slope2) implements CostFunction {
+        @Override
+        public int sizedArguments() {
+            return 0b0011; // x and y
+        }
+
         @Override
         public long apply(long... sizes) {
             long x = sizes[0];
@@ -326,6 +453,11 @@ public sealed interface CostFunction {
      * Field order matches Haskell ParamName canonical ordering (c00, c10, c01, c11).
      */
     record WithInteractionInXAndY(long c00, long c10, long c01, long c11) implements CostFunction {
+        @Override
+        public int sizedArguments() {
+            return 0b0011; // x and y
+        }
+
         @Override
         public long apply(long... sizes) {
             long x = sizes[0];

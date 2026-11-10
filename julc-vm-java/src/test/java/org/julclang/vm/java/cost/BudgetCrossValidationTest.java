@@ -392,18 +392,18 @@ class BudgetCrossValidationTest {
     void byteStringSize_matchesHaskellFormula() {
         // Haskell: ((BS.length bs - 1) `quot` 8) + 1
         // This is ceiling(len / 8), with empty giving 1
-        assertEquals(1, BuiltinCostModel.byteStringSize(new byte[0]),  "empty");
-        assertEquals(1, BuiltinCostModel.byteStringSize(new byte[1]),  "1 byte");
-        assertEquals(1, BuiltinCostModel.byteStringSize(new byte[7]),  "7 bytes");
-        assertEquals(1, BuiltinCostModel.byteStringSize(new byte[8]),  "8 bytes");
-        assertEquals(2, BuiltinCostModel.byteStringSize(new byte[9]),  "9 bytes");
-        assertEquals(2, BuiltinCostModel.byteStringSize(new byte[16]), "16 bytes");
-        assertEquals(3, BuiltinCostModel.byteStringSize(new byte[17]), "17 bytes");
-        assertEquals(3, BuiltinCostModel.byteStringSize(new byte[24]), "24 bytes");
-        assertEquals(4, BuiltinCostModel.byteStringSize(new byte[28]), "28 bytes (PubKeyHash)");
-        assertEquals(4, BuiltinCostModel.byteStringSize(new byte[32]), "32 bytes (TxId)");
-        assertEquals(5, BuiltinCostModel.byteStringSize(new byte[33]), "33 bytes");
-        assertEquals(6, BuiltinCostModel.byteStringSize(new byte[48]), "48 bytes");
+        assertEquals(1, BuiltinCostModel.byteStringSize(0),  "empty");
+        assertEquals(1, BuiltinCostModel.byteStringSize(1),  "1 byte");
+        assertEquals(1, BuiltinCostModel.byteStringSize(7),  "7 bytes");
+        assertEquals(1, BuiltinCostModel.byteStringSize(8),  "8 bytes");
+        assertEquals(2, BuiltinCostModel.byteStringSize(9),  "9 bytes");
+        assertEquals(2, BuiltinCostModel.byteStringSize(16), "16 bytes");
+        assertEquals(3, BuiltinCostModel.byteStringSize(17), "17 bytes");
+        assertEquals(3, BuiltinCostModel.byteStringSize(24), "24 bytes");
+        assertEquals(4, BuiltinCostModel.byteStringSize(28), "28 bytes (PubKeyHash)");
+        assertEquals(4, BuiltinCostModel.byteStringSize(32), "32 bytes (TxId)");
+        assertEquals(5, BuiltinCostModel.byteStringSize(33), "33 bytes");
+        assertEquals(6, BuiltinCostModel.byteStringSize(48), "48 bytes");
     }
 
     @Test
