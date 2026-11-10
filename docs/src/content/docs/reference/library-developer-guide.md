@@ -46,13 +46,8 @@ public @interface OnchainLibrary {
 
 **Source:** `julc-stdlib/src/main/java/org/julclang/stdlib/annotation/OnchainLibrary.java`
 
-**JOUST's `@StateContract`.** JuLC treats `org.julclang.state.api.StateContract`, the contract annotation of the JOUST
-framework, exactly like `@OnchainLibrary`. A top-level class carrying it is an on-chain library: it is found the same way
-(in the same project, or in a jar's `META-INF/plutus-sources`) and called the same way (by its simple name from the
-same package, or through an import). JuLC compiles the annotation's own source with the class, however the class names
-it (a single-type or wildcard import, or `@org.julclang.state.api.StateContract`), so that source must be in the library
-pool; JOUST's API jar ships it. No other annotation stands for `@OnchainLibrary`: an annotation of your own
-that carries `@OnchainLibrary` does not make the classes it marks libraries, so mark those classes `@OnchainLibrary`.
+An annotation of your own that carries `@OnchainLibrary` does not make the classes it marks libraries, so mark those
+classes `@OnchainLibrary` directly.
 
 ### 2.2 Basic Structure
 
@@ -535,32 +530,42 @@ class TokenUtilsTest {
     @Test
     void hasTokenReturnsTrueWhenPresent() {
         var libSource = """
-            import org.julclang.core.PlutusData;
+            import java.math.BigInteger;
+            import org.julclang.ledger.PolicyId;
+            import org.julclang.ledger.TokenName;
+            import org.julclang.ledger.Value;
             import org.julclang.stdlib.annotation.OnchainLibrary;
-            import org.julclang.stdlib.Builtins;
 
             @OnchainLibrary
             public class TokenUtils {
-                public static long tokenAmount(PlutusData value, PlutusData policy, PlutusData token) {
-                    // ... implementation ...
-                }
-                public static boolean hasToken(PlutusData value, PlutusData policy,
-                                               PlutusData token, long minAmount) {
-                    var amount = tokenAmount(value, policy, token);
-                    return minAmount <= amount;
+                public static boolean hasToken(Value value, PolicyId policy, TokenName token,
+                                               BigInteger minAmount) {
+                    return value.assetOf(policy, token).compareTo(minAmount) >= 0;
                 }
             }
             """;
 
         var validatorSource = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.ledger.*;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class TestValidator {
+                record Expected(PolicyId policy, TokenName token, BigInteger minAmount) {}
+
                 @Entrypoint
-                static boolean validate(BigInteger redeemer, PlutusData ctx) {
-                    // Test logic calling TokenUtils
-                    return true;
+                static boolean validate(Expected datum, PlutusData redeemer, ScriptContext ctx) {
+                    boolean found = false;
+                    for (TxOut output : ctx.txInfo().outputs()) {
+                        if (TokenUtils.hasToken(output.value(), datum.policy(), datum.token(),
+                                datum.minAmount())) {
+                            found = true;
+                        }
+                    }
+                    return found;
                 }
             }
             """;
@@ -568,8 +573,10 @@ class TokenUtilsTest {
         var result = compiler.compile(validatorSource, List.of(libSource));
         assertFalse(result.hasErrors(), "Compilation failed: " + result.diagnostics());
 
+        // datum, redeemer and ctx are PlutusData values built by the test,
+        // for example with ScriptContextTestBuilder from julc-testkit
         var program = result.program();
-        var evalResult = vm.evaluateWithArgs(program, List.of(mockCtx));
+        var evalResult = vm.evaluateWithArgs(program, List.of(datum, redeemer, ctx));
         assertTrue(evalResult.isSuccess());
     }
 }

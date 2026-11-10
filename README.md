@@ -69,6 +69,7 @@ open-sourcing a high-quality Plutus VM that made this project possible.
 |--------|-------------|
 | `julc-core` | UPLC AST, CBOR/FLAT serialization |
 | `julc-vm` | VM SPI interface |
+| `julc-vm-java` | Pure-Java VM backend (the default) |
 | `julc-vm-scalus` | Scalus-based VM backend |
 | `julc-ledger-api` | ScriptContext, TxInfo, and ledger types |
 | `julc-compiler` | Java source to UPLC compiler |
@@ -168,14 +169,13 @@ silently change this default.
 
 ### Current Preview Version
 
-**`0.1.0-pre16`**
+**`0.1.0-pre21`**
 
 ```groovy
-ext.julcVersion = '0.1.0-pre16'
+ext.julcVersion = '0.1.0-pre21'
 ```
 
-Releases are on Maven Central and, from the next release on, also in
-`https://repo.bloxbean.org/maven/releases`, with the same files.
+Releases are on Maven Central, so `mavenCentral()` is the only repository a release needs.
 
 ### Using Snapshot Builds
 

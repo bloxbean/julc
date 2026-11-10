@@ -241,7 +241,7 @@ subprojects {
     }
 }
 
-// The `stagingRepository` hook (release-ops docs/12-bloxbean-maven-repository.md). Publishes the same
+// The `stagingRepository` hook (bloxbean/release-ops docs/12-bloxbean-maven-repository.md). Publishes the same
 // MavenPublications as the Central deployment to an isolated repository - no second publication definition. CI
 // passes an absolute path: `./gradlew publishAllPublicationsToStagingRepository -PstagingRepository=$PWD/...`.
 def stagingRepository = providers.gradleProperty('stagingRepository')

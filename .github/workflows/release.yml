@@ -4,7 +4,7 @@
 name: Release Maven artifacts
 
 # A v* tag, created by tag-release.yml after a code-owner-approved version bump merges, builds and signs every module
-# once and publishes the Maven artifacts where gradle.properties says (docs/12-bloxbean-maven-repository.md):
+# once and publishes the Maven artifacts where gradle.properties says (bloxbean/release-ops docs/12-bloxbean-maven-repository.md):
 #   maven_central_publish  uploads a USER_MANAGED Central Portal deployment. It stops there: nothing is on Maven
 #                          Central until a human publishes the deployment, via publish-central.yml or the portal.
 #   bloxbean_repo_publish  publishes to https://repo.bloxbean.org/maven/releases, public and permanent at once.

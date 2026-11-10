@@ -28,6 +28,8 @@ provides a layered testing approach so you can catch bugs early:
 
 ### Gradle
 
+`<version>` below is the JuLC release, currently `0.1.0-pre21`, from Maven Central.
+
 Add these test dependencies to your `build.gradle`:
 
 ```groovy
@@ -40,7 +42,7 @@ dependencies {
 
     // Test framework
     testImplementation 'org.julclang:julc-testkit:<version>'
-    testRuntimeOnly    'org.julclang:julc-vm-scalus:<version>'
+    testRuntimeOnly    'org.julclang:julc-vm-java:<version>'
 }
 ```
 
@@ -78,7 +80,7 @@ test {
 </dependency>
 <dependency>
     <groupId>org.julclang</groupId>
-    <artifactId>julc-vm-scalus</artifactId>
+    <artifactId>julc-vm-java</artifactId>
     <version><version></version>
     <scope>test</scope>
 </dependency>
@@ -1387,6 +1389,8 @@ multiple sources:
 
 ```java
 static final String MATH_LIB = """
+        import java.math.BigInteger;
+
         class MathUtils {
             static BigInteger max(BigInteger a, BigInteger b) {
                 if (a.compareTo(b) > 0) { return a; } else { return b; }
@@ -1395,11 +1399,17 @@ static final String MATH_LIB = """
         """;
 
 static final String VALIDATOR = """
+        import java.math.BigInteger;
+        import org.julclang.core.PlutusData;
+        import org.julclang.stdlib.annotation.Entrypoint;
+        import org.julclang.stdlib.annotation.SpendingValidator;
+
         @SpendingValidator
         class AuctionValidator {
             @Entrypoint
             static boolean validate(BigInteger redeemer, PlutusData ctx) {
-                return MathUtils.max(100, 50) == 100;
+                BigInteger highest = MathUtils.max(BigInteger.valueOf(100), BigInteger.valueOf(50));
+                return highest.equals(BigInteger.valueOf(100));
             }
         }
         """;
@@ -1464,14 +1474,15 @@ class StdlibDirectTests {
 |--------|----------|
 | `julc-testkit` | `ContractTest`, `ValidatorTest`, `ScriptContextTestBuilder`, `BudgetAssertions`, `TestDataBuilder`, `JulcEval`, `ScriptAnalysis` |
 | `julc-testkit-jqwik` | `CardanoArbitraries`, `ArbitraryScriptContext`, `BudgetCollector`, `CardanoArbitraryProvider` (SPI) |
-| `julc-vm-scalus` | Scalus-based CEK machine (runtime dependency) |
+| `julc-vm-java` | Pure-Java CEK machine, the default VM (runtime dependency) |
+| `julc-vm-scalus` | Scalus-based CEK machine, an alternative VM (runtime dependency) |
 
 ### Minimal Test Setup (Gradle)
 
 ```groovy
 dependencies {
     testImplementation 'org.julclang:julc-testkit:<version>'
-    testRuntimeOnly    'org.julclang:julc-vm-scalus:<version>'
+    testRuntimeOnly    'org.julclang:julc-vm-java:<version>'
 }
 
 test { useJUnitPlatform() }
@@ -1484,7 +1495,7 @@ dependencies {
     testImplementation 'org.julclang:julc-testkit:<version>'
     testImplementation 'org.julclang:julc-testkit-jqwik:<version>'
     testImplementation 'net.jqwik:jqwik:1.9.2'
-    testRuntimeOnly    'org.julclang:julc-vm-scalus:<version>'
+    testRuntimeOnly    'org.julclang:julc-vm-java:<version>'
 }
 
 test { useJUnitPlatform() }
