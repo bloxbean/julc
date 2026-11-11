@@ -1,6 +1,6 @@
 # ADR-072: The node-diversity UPLC scenarios as a release gate and an on-demand benchmark
 
-**Status:** Proposed (r2: review round on #321)
+**Status:** Proposed (r2, r3: review rounds on #321)
 **Date:** 2026-11-10 (r2: 2026-11-11)
 **Risk class:** low. Test harness and CI only: no compiler, VM or published artifact changes. It adds a release gate,
 which can stop a release.
@@ -46,7 +46,9 @@ Non-goals:
   each run unpacks it afresh, so nothing extracted is reused. The expectations and the reference reports come from one
   pinned revision of the node-diversity repository.
 - **I2. Untrusted inputs.** A download is refused on a non-200 status before its body is read, and stopped once it
-  passes a per-pin size limit (64 MiB for the tarballs, 16 MiB for the JSON files). Only regular files and directories
+  passes a per-pin size limit (64 MiB for the tarballs, 16 MiB for the JSON files). Each attempt, body included, must
+  finish within five minutes, or it is cancelled and the next URL is tried (r3: a server that sends 200 and then
+  stalls cannot hold the gate). Only regular files and directories
   are extracted; links, devices, entries whose path would leave the target directory and archives that extract to more
   than 1 GiB are refused.
 - **I3. Scored as the site scores.** The conformance score uses the site's rule (`build.py`): Plutus and protocol
@@ -63,9 +65,11 @@ Non-goals:
     as Flat, 248 error labels), its Flat program alone must give exactly that: the same result up to bound-variable
     names, or the same kind of failure. One exception is built in: `.flat.expected` is computed without the scenario's
     10B / 14M budget, so a Flat program that runs out of that budget passes when the scenario itself expects
-    "out of budget" (the six `dropList` vectors with huge counts). One vector is allowed by name with its reason
-    (`constr-07`: its `.flat.expected` repeats its text's outcome, a negative tag that does not parse, while its Flat
-    program holds the valid Word64 tag 2^64 - 5).
+    "out of budget" (the six `dropList` vectors with huge counts). One exact problem of one vector is allowed, with its reason
+    (`constr-07`: its Flat program gives "evaluation failure" where `.flat.expected` says "parse/decode error", because
+    `.flat.expected` repeats its text's outcome, a negative tag that does not parse, while its Flat program holds the
+    valid Word64 tag 2^64 - 5). The allowlist matches the problem text exactly, so any other problem on that vector,
+    a crash above all, still fails the gate (r3).
   - *No crash counts as a failure:* the evaluation API reports every exception as a failure, so an expected
     "evaluation failure" would be met by a `NullPointerException`. A failed evaluation is re-run step by step, and
     anything thrown other than a machine or builtin error (`CekEvaluationException`) fails the gate.
@@ -97,7 +101,7 @@ Non-goals:
 4. **Conformance gate.** The task fails on any unmet expectation, except entries of an explicit allowlist
    (`UplcConformanceNdcScenario.ALLOWED_MISMATCHES`, empty), each of which must state its reason and issue, and fails if
    an allowlisted entry starts passing. It also fails on JuLC's own checks (I4), with their own allowlist
-   (`ALLOWED_PROBLEMS`, one entry). `release.yml`'s `publish` job and `native-image-release.yml`'s first job (and so the
+   (`ALLOWED_PROBLEMS`, one exact problem of one vector). `release.yml`'s `publish` job and `native-image-release.yml`'s first job (and so the
    GitHub release and the Homebrew formulas) `need` a job that calls `ndc-uplc.yml`.
    `ndc-uplc.yml` also runs it on pull requests and pushes that touch `julc-core`, `julc-vm`, `julc-vm-java` or
    `julc-bls`.

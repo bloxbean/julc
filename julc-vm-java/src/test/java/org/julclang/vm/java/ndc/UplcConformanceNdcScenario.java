@@ -44,16 +44,48 @@ class UplcConformanceNdcScenario {
     static final Map<String, String> ALLOWED_MISMATCHES = Map.of();
 
     /**
-     * Vectors for which JuLC's own checks ({@link UplcEvaluation}: the Flat program alone gives what
-     * {@code .flat.expected} says; no failure is a crash of the VM) are known to fail, by
-     * {@link UplcConformanceScore#key}, each with its reason and issue. Adding an entry needs review.
+     * A problem of JuLC's own checks that is accepted for one vector: only that exact problem, so any other problem on
+     * the vector (a crash above all) still fails the gate.
+     *
+     * @param problem the exact problem text, as {@link UplcEvaluation} reports it
+     * @param reason  why it is accepted, and the issue that tracks it
      */
-    static final Map<String, String> ALLOWED_PROBLEMS = Map.of(
-            "term_constr_constr_07_v3 V3/11.0",
-            "its text has the tag -5, which does not parse, and its .flat.expected repeats that outcome; its Flat "
-                    + "program holds the tag 2^64 - 5, which fits Plutus's Word64 constr tag (Constr !ann !Word64), "
-                    + "so it decodes, and its (error) field fails evaluation; the reported outcome then comes from "
-                    + "the text, as the scenario expects");
+    record AllowedProblem(String problem, String reason) {
+    }
+
+    /**
+     * Problems of JuLC's own checks ({@link UplcEvaluation}: the Flat program alone gives what {@code .flat.expected}
+     * says; no failure is a crash of the VM) accepted for a vector, by {@link UplcConformanceScore#key}. Adding an entry
+     * needs review.
+     */
+    static final Map<String, AllowedProblem> ALLOWED_PROBLEMS = Map.of(
+            "term_constr_constr_07_v3 V3/11.0", new AllowedProblem(
+                    UplcEvaluation.flatKindProblem(UplcEvaluation.Kind.FAILURE, UplcEvaluation.Kind.PARSE_ERROR),
+                    "its text has the tag -5, which does not parse, and its .flat.expected repeats that outcome; its "
+                            + "Flat program holds the tag 2^64 - 5, which fits Plutus's Word64 constr tag (Constr "
+                            + "!ann !Word64), so it decodes, and its (error) field fails evaluation; the reported "
+                            + "outcome then comes from the text, as the scenario expects"));
+
+    /** @return every problem, as {@code key: problem}, that {@code allowed} does not accept exactly */
+    static List<String> unexpectedProblems(Map<String, List<String>> problems, Map<String, AllowedProblem> allowed) {
+        List<String> unexpected = new ArrayList<>();
+        problems.forEach((key, list) -> list.stream()
+                .filter(problem -> !isAllowed(allowed, key, problem))
+                .forEach(problem -> unexpected.add(key + ": " + problem)));
+        return unexpected;
+    }
+
+    /** @return the keys whose accepted problem no longer occurs */
+    static List<String> staleProblems(Map<String, List<String>> problems, Map<String, AllowedProblem> allowed) {
+        return allowed.entrySet().stream()
+                .filter(e -> !problems.getOrDefault(e.getKey(), List.of()).contains(e.getValue().problem()))
+                .map(Map.Entry::getKey).sorted().toList();
+    }
+
+    private static boolean isAllowed(Map<String, AllowedProblem> allowed, String key, String problem) {
+        AllowedProblem accepted = allowed.get(key);
+        return accepted != null && accepted.problem().equals(problem);
+    }
 
     @Test
     void meetsTheScenarioExpectations() throws IOException {
@@ -126,10 +158,8 @@ class UplcConformanceNdcScenario {
                 .filter(m -> !ALLOWED_MISMATCHES.containsKey(m.key())).toList();
         List<String> stale = ALLOWED_MISMATCHES.keySet().stream()
                 .filter(key -> result.mismatches().stream().noneMatch(m -> m.key().equals(key))).sorted().toList();
-        List<String> unexpectedProblems = problems.keySet().stream()
-                .filter(key -> !ALLOWED_PROBLEMS.containsKey(key)).toList();
-        List<String> staleProblems = ALLOWED_PROBLEMS.keySet().stream()
-                .filter(key -> !problems.containsKey(key)).sorted().toList();
+        List<String> unexpectedProblems = unexpectedProblems(problems, ALLOWED_PROBLEMS);
+        List<String> staleProblems = staleProblems(problems, ALLOWED_PROBLEMS);
         NdcReports.writeSummary(SCENARIO, summary(vectors.size(), millis, expectations, result, stale, flatChecks,
                 defaultCostModels, defaultCostModelDifferences, problems, staleProblems));
 
@@ -145,9 +175,8 @@ class UplcConformanceNdcScenario {
                     + "them all.");
         }
         if (!unexpectedProblems.isEmpty()) {
-            String first = unexpectedProblems.getFirst();
-            fail(unexpectedProblems.size() + " uplc-conformance vectors fail JuLC's own checks (first: " + first
-                    + ": " + problems.get(first) + "). The summary lists them all.");
+            fail(unexpectedProblems.size() + " problems of JuLC's own checks on the uplc-conformance vectors (first: "
+                    + unexpectedProblems.getFirst() + "). The summary lists them all.");
         }
     }
 
@@ -198,16 +227,18 @@ class UplcConformanceNdcScenario {
         defaultCostModels.forEach((name, count) -> out.append(String.format("    %-22s %5d / %d%n", name, count[0],
                 count[1])));
         defaultCostModelDifferences.forEach(line -> out.append("      ").append(line).append('\n'));
-        out.append(String.format("  vectors with problems: %d (%d allowed)%n", problems.size(),
-                problems.keySet().stream().filter(ALLOWED_PROBLEMS::containsKey).count()));
+        int problemCount = problems.values().stream().mapToInt(List::size).sum();
+        out.append(String.format("  problems: %d on %d vectors (%d allowed)%n", problemCount, problems.size(),
+                problemCount - unexpectedProblems(problems, ALLOWED_PROBLEMS).size()));
         problems.forEach((key, list) -> {
-            out.append("    ").append(key);
-            String reason = ALLOWED_PROBLEMS.get(key);
-            if (reason != null) {
-                out.append(" [allowed: ").append(reason).append(']');
-            }
-            out.append('\n');
-            list.forEach(problem -> out.append("      ").append(oneLine(problem)).append('\n'));
+            out.append("    ").append(key).append('\n');
+            list.forEach(problem -> {
+                out.append("      ").append(oneLine(problem));
+                if (isAllowed(ALLOWED_PROBLEMS, key, problem)) {
+                    out.append(" [allowed: ").append(ALLOWED_PROBLEMS.get(key).reason()).append(']');
+                }
+                out.append('\n');
+            });
         });
         if (!staleProblems.isEmpty()) {
             out.append("  allowed problems that no longer occur: ").append(staleProblems).append('\n');

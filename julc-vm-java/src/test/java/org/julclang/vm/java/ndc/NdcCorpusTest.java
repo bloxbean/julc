@@ -18,9 +18,12 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
@@ -39,6 +42,7 @@ class NdcCorpusTest {
     /** A local server: path to the bytes it serves (a missing path is a 404). */
     private final Map<String, byte[]> served = new HashMap<>();
     private final AtomicInteger requests = new AtomicInteger();
+    private final ExecutorService handlers = Executors.newCachedThreadPool();
     private HttpServer server;
 
     @BeforeEach
@@ -46,8 +50,18 @@ class NdcCorpusTest {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/", exchange -> {
             requests.incrementAndGet();
-            byte[] body = served.get(exchange.getRequestURI().getPath());
-            if (body == null) {
+            String path = exchange.getRequestURI().getPath();
+            byte[] body = served.get(path);
+            if (path.equals("/stall")) {
+                // a 200 with its headers, then nothing: the body never comes
+                exchange.sendResponseHeaders(200, 1000);
+                exchange.getResponseBody().flush();
+                try {
+                    Thread.sleep(60_000);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            } else if (body == null) {
                 exchange.sendResponseHeaders(404, -1);
             } else {
                 exchange.sendResponseHeaders(200, body.length);
@@ -57,12 +71,14 @@ class NdcCorpusTest {
             }
             exchange.close();
         });
+        server.setExecutor(handlers);
         server.start();
     }
 
     @AfterEach
     void stopServer() {
         server.stop(0);
+        handlers.shutdownNow();
     }
 
     private URI local(String path) {
@@ -118,6 +134,21 @@ class NdcCorpusTest {
         IllegalStateException e = assertThrows(IllegalStateException.class, () -> pin.fetch(cache));
         assertTrue(e.getMessage().contains("limit"), e.getMessage());
         assertEquals(1, requests.get());
+    }
+
+    @Test
+    void movesOnFromAResponseWhoseBodyStalls() {
+        byte[] good = "pinned".getBytes(StandardCharsets.UTF_8);
+        served.put("/mirror", good);
+        NdcCorpus pin = pin(good, NdcCorpus.Kind.PLAIN, local("/stall"), local("/mirror"));
+
+        long started = System.nanoTime();
+        assertArrayEquals(good, pin.download(Duration.ofSeconds(1)));
+        long seconds = (System.nanoTime() - started) / 1_000_000_000;
+
+        // the stalled exchange is cancelled at the deadline and not retried
+        assertTrue(seconds < 10, () -> "took " + seconds + " s");
+        assertEquals(2, requests.get());
     }
 
     @Test

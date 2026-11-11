@@ -24,6 +24,10 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.stream.Stream;
 
 /**
@@ -117,6 +121,9 @@ public record NdcCorpus(String name, List<URI> urls, String sha256, int maxBytes
 
     private static final int ATTEMPTS_PER_URL = 3;
 
+    /** How long one download attempt may take, body included. */
+    static final Duration DOWNLOAD_DEADLINE = Duration.ofMinutes(5);
+
     /**
      * Returns the pinned bytes, unpacked into a new directory under {@code cacheRoot/work}: from the cache if the
      * cached file still has the pinned digest, otherwise downloaded (and then cached).
@@ -187,13 +194,21 @@ public record NdcCorpus(String name, List<URI> urls, String sha256, int maxBytes
 
     /** @return the first download, in URL order, that is within the limit and has the pinned digest */
     byte[] download() {
+        return download(DOWNLOAD_DEADLINE);
+    }
+
+    /**
+     * @param deadline how long one attempt may take, from the request to the last byte of the body; an attempt that
+     *                 takes longer is cancelled and the next URL is tried
+     */
+    byte[] download(Duration deadline) {
         HttpClient client = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NORMAL)
                 .connectTimeout(Duration.ofSeconds(20)).build();
         List<String> failures = new ArrayList<>();
         for (URI url : urls) {
             System.out.println("Downloading " + name + " from " + url);
             try {
-                byte[] bytes = downloadWithRetries(client, url);
+                byte[] bytes = downloadWithRetries(client, url, deadline);
                 String actual = sha256(bytes);
                 if (actual.equals(sha256)) {
                     return bytes;
@@ -209,12 +224,12 @@ public record NdcCorpus(String name, List<URI> urls, String sha256, int maxBytes
                 + ". Nothing was unpacked.\n  " + String.join("\n  ", failures));
     }
 
-    private byte[] downloadWithRetries(HttpClient client, URI url) throws IOException {
+    private byte[] downloadWithRetries(HttpClient client, URI url, Duration deadline) throws IOException {
         IOException last = null;
         for (int attempt = 1; attempt <= ATTEMPTS_PER_URL; attempt++) {
             try {
-                return downloadOnce(client, url);
-            } catch (TooLargeException | HttpStatusException e) {
+                return downloadOnce(client, url, deadline);
+            } catch (NotRetriedException e) {
                 throw e;
             } catch (IOException e) {
                 last = e;
@@ -224,46 +239,46 @@ public record NdcCorpus(String name, List<URI> urls, String sha256, int maxBytes
         throw last;
     }
 
-    /** One download, refused on a status other than 200 before its body is read, and stopped past the limit. */
-    private byte[] downloadOnce(HttpClient client, URI url) throws IOException {
-        HttpRequest request = HttpRequest.newBuilder(url).timeout(Duration.ofMinutes(5)).GET().build();
-        HttpResponse<InputStream> response;
+    /**
+     * One download. The body of a response other than 200 is discarded unread; a body over the limit is stopped; and
+     * the whole exchange, body included, must finish within {@code deadline}, or it is cancelled.
+     */
+    private byte[] downloadOnce(HttpClient client, URI url, Duration deadline) throws IOException {
+        HttpRequest request = HttpRequest.newBuilder(url).timeout(deadline).GET().build();
+        HttpResponse.BodyHandler<byte[]> handler = info -> info.statusCode() == 200
+                ? HttpResponse.BodyHandlers.limiting(HttpResponse.BodyHandlers.ofByteArray(), maxBytes).apply(info)
+                : HttpResponse.BodySubscribers.replacing(null);
+        CompletableFuture<HttpResponse<byte[]>> exchange = client.sendAsync(request, handler);
+        HttpResponse<byte[]> response;
         try {
-            response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
+            response = exchange.get(deadline.toMillis(), TimeUnit.MILLISECONDS);
+        } catch (TimeoutException e) {
+            exchange.cancel(true);
+            throw new NotRetriedException("no complete response within " + deadline.toSeconds() + " s");
         } catch (InterruptedException e) {
+            exchange.cancel(true);
             Thread.currentThread().interrupt();
             throw new IOException("interrupted", e);
+        } catch (ExecutionException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof IOException io && String.valueOf(io.getMessage()).contains("exceeds")) {
+                throw new NotRetriedException("more than the limit of " + maxBytes + " bytes");
+            }
+            throw cause instanceof IOException io ? io : new IOException(cause);
         }
-        try (InputStream body = response.body()) {
-            int status = response.statusCode();
-            if (status >= 400 && status < 500) {
-                throw new HttpStatusException("HTTP " + status);
-            }
-            if (status != 200) {
-                throw new IOException("HTTP " + status);
-            }
-            long declared = response.headers().firstValueAsLong("content-length").orElse(-1);
-            if (declared > maxBytes) {
-                throw new TooLargeException("declares " + declared + " bytes, over the limit of " + maxBytes);
-            }
-            byte[] bytes = body.readNBytes(maxBytes + 1);
-            if (bytes.length > maxBytes) {
-                throw new TooLargeException("more than the limit of " + maxBytes + " bytes");
-            }
-            return bytes;
+        int status = response.statusCode();
+        if (status >= 400 && status < 500) {
+            throw new NotRetriedException("HTTP " + status);
         }
+        if (status != 200) {
+            throw new IOException("HTTP " + status);
+        }
+        return response.body();
     }
 
-    /** A download over the limit: not retried at the same URL. */
-    static final class TooLargeException extends IOException {
-        TooLargeException(String message) {
-            super(message);
-        }
-    }
-
-    /** A client error (4xx), such as a missing file: not retried at the same URL. */
-    static final class HttpStatusException extends IOException {
-        HttpStatusException(String message) {
+    /** A client error (4xx), a body over the limit or a stalled exchange: not retried at the same URL. */
+    static final class NotRetriedException extends IOException {
+        NotRetriedException(String message) {
             super(message);
         }
     }

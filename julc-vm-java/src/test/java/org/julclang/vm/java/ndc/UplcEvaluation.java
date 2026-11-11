@@ -157,9 +157,18 @@ final class UplcEvaluation {
 
     private static void addCrash(List<String> problems, String form, Run run) {
         if (run.crash() != null) {
-            problems.add("the " + form + " program's evaluation failed with " + run.crash()
-                    + ", not with a machine or builtin error");
+            problems.add(crashProblem(form, run.crash()));
         }
+    }
+
+    /** @return the problem reported for a failure that is not a machine or builtin error */
+    static String crashProblem(String form, String crash) {
+        return "the " + form + " program's evaluation failed with " + crash + ", not with a machine or builtin error";
+    }
+
+    /** @return the problem reported when the Flat program ends otherwise than {@code .flat.expected} says */
+    static String flatKindProblem(Kind actual, Kind expected) {
+        return "the Flat program gave " + actual.label() + ", where the vector expects " + expected.label();
     }
 
     /** @return what differs between the Flat program's run and {@code .flat.expected}, or null */
@@ -172,8 +181,7 @@ final class UplcEvaluation {
             default -> Kind.SUCCESS;
         };
         if (flat.kind() != expectedKind) {
-            return "the Flat program gave " + flat.kind().label() + ", where the vector expects "
-                    + expectedKind.label();
+            return flatKindProblem(flat.kind(), expectedKind);
         }
         if (expectedKind != Kind.SUCCESS) {
             return null;
