@@ -30,8 +30,8 @@ import java.util.jar.Manifest;
  * <p>
  * The field arithmetic is BouncyCastle's {@link X25519Field}, which works in place on {@code int[]}. The point
  * formulas are BouncyCastle's, from {@code org.bouncycastle.math.ec.rfc8032.Ed25519} in bcprov-jdk18on 1.78.1 (the
- * same in 1.83), which keeps their operands inside {@link X25519Field}'s bounds; each says which method it is. That
- * code is
+ * same in 1.83 and 1.86), which keeps their operands inside {@link X25519Field}'s bounds; each says which method it
+ * is. That code is
  * <i>Copyright (c) 2000-2024 The Legion of the Bouncy Castle Inc. (https://www.bouncycastle.org)</i>, used under its
  * MIT-style licence: "Permission is hereby granted, free of charge, to any person obtaining a copy of this software
  * and associated documentation files (the "Software"), to deal in the Software without restriction, including
@@ -51,7 +51,7 @@ final class Ed25519Equation {
 
     private static final String SELF_CHECK_ADVICE = "Ed25519 verification uses BouncyCastle's internal field "
             + "arithmetic (org.bouncycastle.math.ec.rfc7748.X25519Field), so it runs only on a bcprov version it "
-            + "agrees with libsodium on. Use bcprov-jdk18on 1.78.1 (also tested with 1.83 and 1.86), or report "
+            + "agrees with libsodium on. Use bcprov-jdk18on 1.86 (also tested with 1.78.1 and 1.83), or report "
             + "the version found.";
 
     /** The group order {@code L}. */

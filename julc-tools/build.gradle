@@ -19,7 +19,7 @@ dependencies {
     implementation project(':julc-cardano-client-lib')
     implementation "com.bloxbean.cardano:cardano-client-lib:${cardanoClientLibVersion}"
     api 'com.fasterxml.jackson.core:jackson-databind:2.18.2'
-    implementation 'org.bouncycastle:bcprov-jdk18on:1.83'
+    implementation "org.bouncycastle:bcprov-jdk18on:${bouncyCastleVersion}"
 
     // Model records carry Jackson annotations; (de)serialization happens in the transports
     api 'com.fasterxml.jackson.core:jackson-annotations:2.18.2'

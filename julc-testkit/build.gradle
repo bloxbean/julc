@@ -10,7 +10,7 @@ dependencies {
     api project(':julc-compiler')
     api project(':julc-stdlib')
     api project(':julc-ledger-api')
-    implementation 'org.bouncycastle:bcprov-jdk18on:1.83'
+    implementation "org.bouncycastle:bcprov-jdk18on:${bouncyCastleVersion}"
     testImplementation project(':julc-vm-java')
     testRuntimeOnly project(':julc-vm-scalus')
 }
