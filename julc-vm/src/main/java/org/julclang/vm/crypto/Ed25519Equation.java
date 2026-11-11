@@ -2,10 +2,15 @@ package org.julclang.vm.crypto;
 
 import org.bouncycastle.math.ec.rfc7748.X25519Field;
 
+import java.io.InputStream;
 import java.math.BigInteger;
+import java.net.URI;
+import java.net.URL;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
+import java.util.List;
+import java.util.jar.Manifest;
 
 /**
  * The verification equation of libsodium's {@code crypto_sign_ed25519_verify_detached}, after its input checks.
@@ -44,6 +49,11 @@ final class Ed25519Equation {
     private static final class F extends X25519Field {
     }
 
+    private static final String SELF_CHECK_ADVICE = "Ed25519 verification uses BouncyCastle's internal field "
+            + "arithmetic (org.bouncycastle.math.ec.rfc7748.X25519Field), so it runs only on a bcprov version it "
+            + "agrees with libsodium on. Use bcprov-jdk18on 1.78.1 (also tested with 1.83 and 1.86), or report "
+            + "the version found.";
+
     /** The group order {@code L}. */
     private static final BigInteger ORDER = BigInteger.TWO.pow(252)
             .add(new BigInteger("27742317777372353535851937790883648493"));
@@ -68,7 +78,8 @@ final class Ed25519Equation {
         Affine base = new Affine();
         if (!decodeNegated(HexFormat.of().parseHex(
                 "5866666666666666666666666666666666666666666666666666666666666666"), base)) {
-            throw new IllegalStateException("the base point does not decode");
+            throw new LinkageError("Ed25519: the base point does not decode with BouncyCastle bcprov "
+                    + bouncyCastleVersion() + "; " + SELF_CHECK_ADVICE);
         }
         F.negate(base.x, base.x);
         F.normalize(base.x);
@@ -108,6 +119,83 @@ final class Ed25519Equation {
      * The caller has checked the lengths and libsodium's input checks; {@code S} is below {@code L}.
      */
     static boolean holds(byte[] publicKey, byte[] message, byte[] signature) {
+        requirePassed(SelfCheck.FAILURE);
+        return equationHolds(publicKey, message, signature);
+    }
+
+    // The self-check. X25519Field is BouncyCastle's internal arithmetic, not its public API, and a consumer's build may
+    // resolve another bcprov than the one this module is tested with. Before the first verification, the equation
+    // must give libsodium's verdicts on these vectors, or every verification fails with a LinkageError (an Error,
+    // so that no catch of Exception turns it into an ordinary false or a failed script).
+
+    /** A case with libsodium's verdict (PyNaCl 1.6.2, libsodium 1.0.20-stable, crypto_sign_open). */
+    record Vector(String name, String publicKey, String message, String signature, boolean libsodium) {
+    }
+
+    static final List<Vector> SELF_CHECK_VECTORS = List.of(
+            new Vector("RFC 8032 section 7.1 test 1",
+                    "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a", "",
+                    "e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e06522490155"
+                            + "5fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b", true),
+            // R = rB + T (T of order 8): SB - kA = rB != R. libsodium rejects it, a cofactored check accepts it.
+            new Vector("an R with a small-order part",
+                    "91c82cf052f0ca436aa42042597b353ddeacb39c4c8d2f11f24c86a28857817d", "2891c7db6b177b",
+                    "f22a89ca724581d70f4f61af196b9c7f01cfef7119337540d360ea9cfcc3c315"
+                            + "df2d5ee84950485798af86b4ee44377e0ff58a6c647d4e2d30ac12abaa4d7a03", false),
+            // A and R with small-order parts that cancel: SB - kA = R exactly, so libsodium accepts it.
+            new Vector("a key and R with small-order parts that cancel",
+                    "64fbc9dd8d882582ac4485342d249a7d42a8d9fd07cfcea33aaf8963a72e9be5", "bf7d",
+                    "f2ebf3a65afb6702a617fe6dd850790b543bf1e00bf7db36e3f60d1850622253"
+                            + "a7d5eaae539a7fc14d0cec6650810690255d2c5b8c2c46f8afbf9e77904b130c", true));
+
+    /** Runs the self-check once, on first use. */
+    private static final class SelfCheck {
+        static final String FAILURE = failures(SELF_CHECK_VECTORS);
+    }
+
+    /** {@code null} when the equation gives each vector libsodium's verdict, otherwise what went wrong. */
+    static String failures(List<Vector> vectors) {
+        HexFormat hex = HexFormat.of();
+        StringBuilder wrong = new StringBuilder();
+        for (Vector v : vectors) {
+            boolean actual = equationHolds(hex.parseHex(v.publicKey()), hex.parseHex(v.message()),
+                    hex.parseHex(v.signature()));
+            if (actual != v.libsodium()) {
+                wrong.append(wrong.isEmpty() ? "" : "; ").append(v.name()).append(": ")
+                        .append(actual ? "accepted" : "rejected").append(", libsodium ")
+                        .append(v.libsodium() ? "accepts" : "rejects");
+            }
+        }
+        return wrong.isEmpty() ? null : "Ed25519 verification failed its self-check with BouncyCastle bcprov "
+                + bouncyCastleVersion() + " (" + wrong + "). " + SELF_CHECK_ADVICE;
+    }
+
+    /** Throws the self-check's failure, if there is one. */
+    static void requirePassed(String failure) {
+        if (failure != null) {
+            throw new LinkageError(failure);
+        }
+    }
+
+    /** The {@code Bundle-Version} of the jar {@link X25519Field} came from, for the self-check's message. */
+    static String bouncyCastleVersion() {
+        URL classFile = X25519Field.class.getResource("X25519Field.class");
+        if (classFile == null || !"jar".equals(classFile.getProtocol())) {
+            return "of unknown version";
+        }
+        String url = classFile.toString();
+        String jar = url.substring(0, url.indexOf("!/") + 2);
+        try (InputStream in = URI.create(jar + "META-INF/MANIFEST.MF").toURL().openStream()) {
+            String version = new Manifest(in).getMainAttributes().getValue("Bundle-Version");
+            return (version == null ? "of unknown version" : version) + " (" + jar.substring(4, jar.length() - 2) + ")";
+        } catch (Exception e) {
+            // Only the message of an error already being reported depends on this.
+            return "of unknown version (" + e + ")";
+        }
+    }
+
+    /** The equation itself. */
+    private static boolean equationHolds(byte[] publicKey, byte[] message, byte[] signature) {
         Affine negatedKey = new Affine();
         if (!decodeNegated(publicKey, negatedKey)) {
             return false;
