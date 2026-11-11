@@ -148,7 +148,9 @@ class UplcTurboNdcScenario {
             out.append("filter: scripts starting with ").append(filter).append('\n');
         }
         long passed = rows.stream().filter(Row::passes).count();
-        out.append(String.format("score: %d / %d (%d scripts in the corpus)%n", passed, rows.size(), corpusSize));
+        // A script that does not decode is measured by no one: it counts as failed.
+        long scored = rows.size() + undecoded.stream().filter(line -> line.startsWith(filter)).count();
+        out.append(String.format("score: %d / %d (%d scripts in the corpus)%n", passed, scored, corpusSize));
         out.append(String.format("  did not decode: %d, evaluation failures: %d, budgets differing from "
                 + "cardano-node: %d%n", undecoded.size(), failed.size(), disagreeing.size()));
         List<Row> measured = rows.stream().filter(r -> r.measurement().succeeded()).toList();

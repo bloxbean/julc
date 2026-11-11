@@ -41,6 +41,11 @@ record UplcVector(String id, String title, String group, int language, int proto
         return program.resolveSibling(name.substring(0, name.length() - ".uplc".length()) + ".flat");
     }
 
+    /** @return the {@code .flat.expected} file: what the Flat program gives (absent for some vectors) */
+    Path flatExpected() {
+        return flat().resolveSibling(flat().getFileName() + ".expected");
+    }
+
     /** @return every vector below {@code root}, sorted by path */
     static List<UplcVector> list(Path root) {
         try (Stream<Path> files = Files.walk(root)) {
@@ -61,7 +66,9 @@ record UplcVector(String id, String title, String group, int language, int proto
         String protocolFolder = relative.getName(0).toString();
         String languageFolder = relative.getName(1).toString();
         if (!protocolFolder.matches("protocol-version-\\d+") || !languageFolder.matches("v[123]")) {
-            throw new IllegalArgumentException("not a vector path: " + relative);
+            // The scenario also allows an "all" Plutus-version folder; this corpus has none, and how to label and run
+            // its vectors is decided when a corpus that has one is pinned.
+            throw new IllegalArgumentException("not a vector path (protocol-version-<n>/v1|v2|v3/...): " + relative);
         }
         int protocolMajor = Integer.parseInt(protocolFolder.substring("protocol-version-".length()));
         int language = languageFolder.charAt(1) - '0';

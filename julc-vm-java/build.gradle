@@ -41,10 +41,13 @@ dependencies {
 //   ./gradlew :julc-vm-java:ndcUplcTurbo         the uplc-turbo mainnet scripts, timed; reports scripts over the
 //                                                scenario's time and allocation thresholds without failing on them.
 //
-// -PndcCacheDir=<dir> keeps the downloads elsewhere (default build/ndc/cache, one directory per SHA-256).
+// -PndcCacheDir=<dir> keeps the downloads elsewhere (default build/ndc/cache; a relative path is taken from the
+// directory Gradle runs in). The cache holds each download as a file named by its SHA-256, checked on every use;
+// every run unpacks it afresh.
 // Reports: build/reports/ndc (JSON in the scenario's report format, and a text summary).
+def invocationDir = gradle.startParameter.currentDir
 def ndcCacheDir = providers.gradleProperty('ndcCacheDir')
-        .map { file(it).absolutePath }
+        .map { new File(it).absolute ? new File(it).absolutePath : new File(invocationDir, it).absolutePath }
         .orElse(layout.buildDirectory.dir('ndc/cache').map { it.asFile.absolutePath })
 def ndcReportDir = layout.buildDirectory.dir('reports/ndc')
 

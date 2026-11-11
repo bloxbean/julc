@@ -3,8 +3,12 @@ name: Node-diversity UPLC scenarios
 # The Cardano node-diversity UPLC scenarios (https://github.com/pragma-org/node-diversity-conformance) on the Java VM.
 # Both download their pinned corpora (julc-vm-java's NdcCorpus); `./gradlew build` downloads nothing.
 #
-#   uplc-conformance  gates releases: release.yml calls this workflow and publishes only if it passes. It also runs on
-#                     pull requests and pushes that touch the VM or the UPLC core, and on demand.
+#   uplc-conformance  gates releases: release.yml and native-image-release.yml call this workflow, and neither publishes
+#                     anything unless it passes. It also runs on pull requests and pushes that touch the VM or the UPLC
+#                     core, and on demand.
+#
+# The pinned downloads are kept with actions/cache. That cache only saves downloading: every cached file's SHA-256 is
+# checked before use, and the gate job builds nothing that a release publishes.
 #   uplc-turbo        a performance report, on demand only (Run workflow, with "Run uplc-turbo" checked). It never
 #                     gates anything; the job fails only if a script does not decode or evaluate, or consumes a budget
 #                     other than cardano-node's. Timings from a shared runner are noisy: compare them with care.
@@ -57,8 +61,16 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4
 
+      # The pinned downloads, keyed by the file that pins them. The harness checks every cached file's SHA-256 before
+      # use, so a stale or damaged cache is downloaded again, never trusted.
+      - name: Cache the pinned corpora
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/julc-ndc
+          key: ndc-corpora-${{ hashFiles('julc-vm-java/src/test/java/org/julclang/vm/java/ndc/NdcCorpus.java') }}
+
       - name: Run uplc-conformance
-        run: ./gradlew :julc-vm-java:ndcUplcConformance -PskipSigning=true --stacktrace
+        run: ./gradlew :julc-vm-java:ndcUplcConformance -PndcCacheDir="$HOME/.cache/julc-ndc" -PskipSigning=true --stacktrace
 
       - name: Summary
         if: always()
@@ -95,8 +107,14 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4
 
+      - name: Cache the pinned corpora
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/julc-ndc
+          key: ndc-corpora-${{ hashFiles('julc-vm-java/src/test/java/org/julclang/vm/java/ndc/NdcCorpus.java') }}
+
       - name: Run uplc-turbo
-        run: ./gradlew :julc-vm-java:ndcUplcTurbo -PskipSigning=true --stacktrace
+        run: ./gradlew :julc-vm-java:ndcUplcTurbo -PndcCacheDir="$HOME/.cache/julc-ndc" -PskipSigning=true --stacktrace
 
       - name: Summary
         if: always()

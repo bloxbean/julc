@@ -19,7 +19,15 @@ on:
 permissions: {}
 
 jobs:
+  # Release gate, as in release.yml: the node-diversity uplc-conformance vectors must all give the scenario's expected
+  # results on the Java VM before anything is built for the release (ndc-uplc.yml). No secrets.
+  uplc-conformance:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ndc-uplc.yml
+
   validate:
+    needs: uplc-conformance
     runs-on: ubuntu-latest
     name: Read release gates
     permissions:

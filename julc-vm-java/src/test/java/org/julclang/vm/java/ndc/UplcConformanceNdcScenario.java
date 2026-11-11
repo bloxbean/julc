@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -26,17 +27,33 @@ import static org.junit.jupiter.api.Assertions.fail;
  * scores it. Run by {@code ./gradlew :julc-vm-java:ndcUplcConformance}, which gates releases.
  *
  * <p>Fails when any expectation is not met, unless the entry is in {@link #ALLOWED_MISMATCHES}, and when an allowed
- * mismatch has started to pass (so the list cannot go stale). The report and the summary are written either way.</p>
+ * mismatch has started to pass (so the list cannot go stale). Also fails on JuLC's own checks, which the site's score
+ * does not make ({@link #ALLOWED_PROBLEMS}): the Flat program alone gives what {@code .flat.expected} says, no
+ * failure is a crash of the VM. It also reports, without failing, the vectors that the VM's default cost model of
+ * their target prices differently from the corpus's cost model. The report and the summary are written either
+ * way.</p>
  */
 class UplcConformanceNdcScenario {
 
     static final String SCENARIO = "uplc-conformance";
 
     /**
-     * Expectations the VM is known not to meet, by {@link UplcConformanceScore#key}, each with the reason it is accepted
-     * and the issue that tracks it. Adding an entry needs review: it lets a release ship with that difference.
+     * Expectations the VM is known not to meet, by {@link UplcConformanceScore#key}, each with the reason it is
+     * accepted and the issue that tracks it. Adding an entry needs review: it lets a release ship with that difference.
      */
     static final Map<String, String> ALLOWED_MISMATCHES = Map.of();
+
+    /**
+     * Vectors for which JuLC's own checks ({@link UplcEvaluation}: the Flat program alone gives what
+     * {@code .flat.expected} says; no failure is a crash of the VM) are known to fail, by
+     * {@link UplcConformanceScore#key}, each with its reason and issue. Adding an entry needs review.
+     */
+    static final Map<String, String> ALLOWED_PROBLEMS = Map.of(
+            "term_constr_constr_07_v3 V3/11.0",
+            "its text has the tag -5, which does not parse, and its .flat.expected repeats that outcome; its Flat "
+                    + "program holds the tag 2^64 - 5, which fits Plutus's Word64 constr tag (Constr !ann !Word64), "
+                    + "so it decodes, and its (error) field fails evaluation; the reported outcome then comes from "
+                    + "the text, as the scenario expects");
 
     @Test
     void meetsTheScenarioExpectations() throws IOException {
@@ -45,18 +62,48 @@ class UplcConformanceNdcScenario {
                 NdcCorpus.UPLC_EXPECTATIONS.fetch(NdcReports.cacheDir()).toFile()).get("scenarios");
         List<UplcVector> vectors = UplcVector.list(corpus);
         Map<String, long[]> costModels = new HashMap<>();
+        Map<String, String> scenarioEvaluations = new HashMap<>();
+        expectations.forEach(e -> scenarioEvaluations.put(UplcConformanceScore.key(e), e.path("evaluation").asText()));
 
         ObjectNode report = NdcReports.report(SCENARIO);
         ArrayNode entries = report.putArray("scenarios");
+        Map<String, List<String>> problems = new TreeMap<>();
+        Map<String, int[]> defaultCostModels = new TreeMap<>();
+        List<String> defaultCostModelDifferences = new ArrayList<>();
+        int flatChecks = 0;
         long started = System.nanoTime();
         for (UplcVector vector : vectors) {
+            String versions = "V" + vector.language() + " / protocol " + vector.protocolVersion();
             long[] costModel = costModels.computeIfAbsent(vector.protocolMajor() + "/" + vector.language(),
                     k -> UplcEvaluation.costModel(corpus.resolve("cost-models/protocol-version-"
                             + vector.protocolMajor() + "/v" + vector.language() + ".json")));
-            Path flat = vector.flat();
-            UplcEvaluation.Outcome outcome = UplcEvaluation.evaluate(
-                    Files.isRegularFile(flat) ? Files.readString(flat) : null, Files.readString(vector.program()),
-                    Files.readString(vector.expected()), vector.language(), vector.protocolMajor(), costModel);
+            String flat = readIfPresent(vector.flat());
+            String flatExpected = flat == null ? null : readIfPresent(vector.flatExpected());
+            if (flatExpected != null) {
+                flatChecks++;
+            }
+            String text = Files.readString(vector.program());
+            String expected = Files.readString(vector.expected());
+            String key = vector.id() + " " + vector.plutusVersion() + "/" + vector.protocolVersion();
+            UplcEvaluation.Outcome outcome = UplcEvaluation.evaluate(flat, flatExpected, text, expected,
+                    scenarioEvaluations.get(key), vector.language(), vector.protocolMajor(), costModel);
+            if (!outcome.problems().isEmpty()) {
+                problems.put(key, outcome.problems());
+            }
+            if (outcome.budget() != null) {
+                // Reported, not failed: the corpus's cost model of a protocol version can be newer than the VM's
+                // default for it (protocol 11's parameters are not final), and the budgets above already use it.
+                UplcEvaluation.Outcome withDefaults = UplcEvaluation.evaluate(flat, flatExpected, text, expected,
+                        vector.language(), vector.protocolMajor(), null);
+                int[] count = defaultCostModels.computeIfAbsent(versions, k -> new int[2]);
+                count[1]++;
+                if (outcome.budget().equals(withDefaults.budget())) {
+                    count[0]++;
+                } else {
+                    defaultCostModelDifferences.add(key + ": " + withDefaults.budget() + " with the VM's default, "
+                            + outcome.budget() + " with the corpus's");
+                }
+            }
             ObjectNode entry = entries.addObject()
                     .put("id", vector.id())
                     .put("title", vector.title())
@@ -79,21 +126,39 @@ class UplcConformanceNdcScenario {
                 .filter(m -> !ALLOWED_MISMATCHES.containsKey(m.key())).toList();
         List<String> stale = ALLOWED_MISMATCHES.keySet().stream()
                 .filter(key -> result.mismatches().stream().noneMatch(m -> m.key().equals(key))).sorted().toList();
-        NdcReports.writeSummary(SCENARIO, summary(vectors.size(), millis, expectations, result, stale));
+        List<String> unexpectedProblems = problems.keySet().stream()
+                .filter(key -> !ALLOWED_PROBLEMS.containsKey(key)).toList();
+        List<String> staleProblems = ALLOWED_PROBLEMS.keySet().stream()
+                .filter(key -> !problems.containsKey(key)).sorted().toList();
+        NdcReports.writeSummary(SCENARIO, summary(vectors.size(), millis, expectations, result, stale, flatChecks,
+                defaultCostModels, defaultCostModelDifferences, problems, staleProblems));
 
         assertEquals(expectations.size(), vectors.size(),
                 "the corpus and the expectations should hold the same vectors; check the two pins belong together");
         assertTrue(stale.isEmpty(), () -> "allowed mismatches that now pass; remove them from ALLOWED_MISMATCHES: "
                 + stale);
+        assertTrue(staleProblems.isEmpty(), () -> "allowed problems that no longer occur; remove them from "
+                + "ALLOWED_PROBLEMS: " + staleProblems);
         if (!unexpected.isEmpty()) {
             fail(unexpected.size() + " of " + result.total() + " uplc-conformance vectors differ from the "
                     + "scenario's expectations (first: " + describe(unexpected.getFirst()) + "). The summary lists "
                     + "them all.");
         }
+        if (!unexpectedProblems.isEmpty()) {
+            String first = unexpectedProblems.getFirst();
+            fail(unexpectedProblems.size() + " uplc-conformance vectors fail JuLC's own checks (first: " + first
+                    + ": " + problems.get(first) + "). The summary lists them all.");
+        }
+    }
+
+    private static String readIfPresent(Path file) throws IOException {
+        return Files.isRegularFile(file) ? Files.readString(file) : null;
     }
 
     private static String summary(int vectors, long millis, JsonNode expectations, UplcConformanceScore.Result result,
-                                  List<String> stale) {
+                                  List<String> stale, int flatChecks, Map<String, int[]> defaultCostModels,
+                                  List<String> defaultCostModelDifferences, Map<String, List<String>> problems,
+                                  List<String> staleProblems) {
         StringBuilder out = new StringBuilder();
         out.append("uplc-conformance on the Java VM (julc ").append(System.getProperty("ndc.version", "dev"))
                 .append(")\n");
@@ -124,6 +189,28 @@ class UplcConformanceNdcScenario {
         }
         if (!stale.isEmpty()) {
             out.append("\nallowed mismatches that now pass: ").append(stale).append('\n');
+        }
+
+        out.append("\nJuLC's own checks (not part of the site's score):\n");
+        out.append(String.format("  Flat programs checked against .flat.expected: %d%n", flatChecks));
+        out.append("  results priced the same by the VM's default cost models and the corpus's (reported, not "
+                + "failed):\n");
+        defaultCostModels.forEach((name, count) -> out.append(String.format("    %-22s %5d / %d%n", name, count[0],
+                count[1])));
+        defaultCostModelDifferences.forEach(line -> out.append("      ").append(line).append('\n'));
+        out.append(String.format("  vectors with problems: %d (%d allowed)%n", problems.size(),
+                problems.keySet().stream().filter(ALLOWED_PROBLEMS::containsKey).count()));
+        problems.forEach((key, list) -> {
+            out.append("    ").append(key);
+            String reason = ALLOWED_PROBLEMS.get(key);
+            if (reason != null) {
+                out.append(" [allowed: ").append(reason).append(']');
+            }
+            out.append('\n');
+            list.forEach(problem -> out.append("      ").append(oneLine(problem)).append('\n'));
+        });
+        if (!staleProblems.isEmpty()) {
+            out.append("  allowed problems that no longer occur: ").append(staleProblems).append('\n');
         }
         return out.toString();
     }
