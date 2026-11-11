@@ -22,9 +22,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 /**
- * The node-diversity {@code uplc-conformance} scenario on the Java VM: every vector of the pinned corpus, with the cost
- * model the corpus ships for its protocol and Plutus versions, scored against the scenario's expectations as the site
- * scores it. Run by {@code ./gradlew :julc-vm-java:ndcUplcConformance}, which gates releases.
+ * The node-diversity {@code uplc-conformance} scenario on the Java VM: every vector of the vendored corpus
+ * ({@link UplcConformanceCorpus}), with the cost model the corpus ships for its protocol and Plutus versions, scored
+ * against the scenario's expectations as the site scores it. It runs in {@code test} (so in {@code ./gradlew build})
+ * and alone as {@code ./gradlew :julc-vm-java:ndcUplcConformance}, which gates releases. No network is used.
  *
  * <p>Fails when any expectation is not met, unless the entry is in {@link #ALLOWED_MISMATCHES}, and when an allowed
  * mismatch has started to pass (so the list cannot go stale). Also fails on JuLC's own checks, which the site's score
@@ -89,9 +90,9 @@ class UplcConformanceNdcScenario {
 
     @Test
     void meetsTheScenarioExpectations() throws IOException {
-        Path corpus = NdcCorpus.UPLC_CONFORMANCE.fetch(NdcReports.cacheDir());
-        JsonNode expectations = NdcReports.JSON.readTree(
-                NdcCorpus.UPLC_EXPECTATIONS.fetch(NdcReports.cacheDir()).toFile()).get("scenarios");
+        Path corpus = UplcConformanceCorpus.corpus();
+        JsonNode expectations = NdcReports.JSON.readTree(UplcConformanceCorpus.expectations().toFile())
+                .get("scenarios");
         List<UplcVector> vectors = UplcVector.list(corpus);
         Map<String, long[]> costModels = new HashMap<>();
         Map<String, String> scenarioEvaluations = new HashMap<>();
@@ -191,8 +192,8 @@ class UplcConformanceNdcScenario {
         StringBuilder out = new StringBuilder();
         out.append("uplc-conformance on the Java VM (julc ").append(System.getProperty("ndc.version", "dev"))
                 .append(")\n");
-        out.append("corpus ").append(NdcCorpus.UPLC_CONFORMANCE.sha256()).append(", expectations at ")
-                .append(NdcCorpus.NDC_REVISION).append('\n');
+        out.append("corpus (vendored) from tarball ").append(UplcConformanceCorpus.TARBALL_SHA256)
+                .append(", expectations at ").append(NdcCorpus.NDC_REVISION).append('\n');
         out.append(String.format("%d vectors evaluated in %d ms%n", vectors, millis));
         out.append(String.format("score: %d / %d (%.2f%%)%n", result.passed(), result.total(),
                 100.0 * result.passed() / Math.max(1, result.total())));

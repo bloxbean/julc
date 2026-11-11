@@ -129,10 +129,11 @@ JUnit 5 (Jupiter) with `junit-bom:5.11.4`. Test files follow the `*Test.java` na
 - **Stdlib tests**: `julc-stdlib/src/test/java/.../lib/*Test.java` — 259 tests across 11 library files
 - **Compile-eval tests**: `julc-compiler/src/test/java/.../StdlibCompileEvalTest.java` — compiles and evaluates methods through the full pipeline
 - **E2E tests**: `julc-e2e-tests/` — require Yaci Devkit running externally
-- **Node-diversity UPLC scenarios** (download their pinned corpora, so not part of `./gradlew build`):
-  `./gradlew :julc-vm-java:ndcUplcConformance` runs the 1,064 uplc-conformance vectors on the Java VM and fails on
-  any result the scenario does not expect; releases are gated on it. `./gradlew :julc-vm-java:ndcUplcTurbo` times the
-  3,997 uplc-turbo mainnet scripts (add `-PndcTurboFilter=<prefix>` for some of them). Reports are written to
+- **Node-diversity UPLC scenarios**: the 1,064 uplc-conformance vectors are vendored under
+  `julc-vm-java/src/test/resources/ndc/uplc-conformance/` (its README says how to refresh them) and run in `test`, so
+  `./gradlew build` fails on any result the scenario does not expect; `./gradlew :julc-vm-java:ndcUplcConformance`
+  runs them alone, and releases are gated on it. `./gradlew :julc-vm-java:ndcUplcTurbo` downloads and times the 3,997
+  uplc-turbo mainnet scripts on demand (add `-PndcTurboFilter=<prefix>` for some of them). Reports are written to
   `julc-vm-java/build/reports/ndc/`. See ADR-072.
 
 ### Testing Utilities

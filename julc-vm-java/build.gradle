@@ -33,15 +33,15 @@ dependencies {
     testImplementation 'com.github.luben:zstd-jni:1.5.6-10'
 }
 
-// The Cardano node-diversity UPLC scenarios (https://github.com/pragma-org/node-diversity-conformance), run on
-// demand because they download their pinned corpora. `test` runs the harness's unit tests, on in-repo samples only.
+// The Cardano node-diversity UPLC scenarios (https://github.com/pragma-org/node-diversity-conformance).
 //
-//   ./gradlew :julc-vm-java:ndcUplcConformance   the uplc-conformance vectors; fails on any result that differs from
-//                                                the scenario's expectations. Release gate (.github/workflows/release.yml).
-//   ./gradlew :julc-vm-java:ndcUplcTurbo         the uplc-turbo mainnet scripts, timed; reports scripts over the
-//                                                scenario's time and allocation thresholds without failing on them.
+//   uplc-conformance   the vectors are vendored (src/test/resources/ndc/uplc-conformance, README there), so `test`
+//                      runs them: ./gradlew build fails on any result that differs from the scenario's expectations.
+//                      ./gradlew :julc-vm-java:ndcUplcConformance runs them alone (the release workflows' gate).
+//   uplc-turbo         ./gradlew :julc-vm-java:ndcUplcTurbo, on demand only: downloads its pinned corpus and times
+//                      the mainnet scripts; reports scripts over the scenario's thresholds without failing on them.
 //
-// -PndcCacheDir=<dir> keeps the downloads elsewhere (default build/ndc/cache; a relative path is taken from the
+// -PndcCacheDir=<dir> keeps turbo's downloads elsewhere (default build/ndc/cache; a relative path is taken from the
 // directory Gradle runs in). The cache holds each download as a file named by its SHA-256, checked on every use;
 // every run unpacks it afresh.
 // Reports: build/reports/ndc (JSON in the scenario's report format, and a text summary).
@@ -51,9 +51,14 @@ def ndcCacheDir = providers.gradleProperty('ndcCacheDir')
         .orElse(layout.buildDirectory.dir('ndc/cache').map { it.asFile.absolutePath })
 def ndcReportDir = layout.buildDirectory.dir('reports/ndc')
 
+// The version is left out of `test`'s inputs (a snapshot's version changes with every commit): its reports say "dev".
+tasks.withType(Test).configureEach {
+    systemProperty 'ndc.report.dir', ndcReportDir.get().asFile.absolutePath
+}
+
 tasks.named('test', Test) {
     filter {
-        excludeTestsMatching '*NdcScenario'
+        excludeTestsMatching '*UplcTurboNdcScenario'
     }
 }
 
@@ -66,15 +71,13 @@ def registerNdcScenario = { String taskName, String testClass, String taskDescri
         filter {
             includeTestsMatching testClass
         }
-        systemProperty 'ndc.cache.dir', ndcCacheDir.get()
-        systemProperty 'ndc.report.dir', ndcReportDir.get().asFile.absolutePath
         systemProperty 'ndc.version', project.version.toString()
         testLogging {
             events 'passed', 'skipped', 'failed'
             showStandardStreams = true
             exceptionFormat = 'full'
         }
-        // The result depends on downloaded corpora and, for turbo, on the machine: always run.
+        // Run on request every time: turbo depends on the machine, and a gate should be seen to run.
         outputs.upToDateWhen { false }
         outputs.cacheIf { false }
     }
@@ -87,6 +90,7 @@ registerNdcScenario('ndcUplcTurbo', 'org.julclang.vm.java.ndc.UplcTurboNdcScenar
 
 tasks.named('ndcUplcTurbo', Test) {
     maxHeapSize = '4g'
+    systemProperty 'ndc.cache.dir', ndcCacheDir.get()
     // -PndcTurboFilter=<prefix> measures only the scripts whose name starts with it (e.g. one outlier).
     def turboFilter = providers.gradleProperty('ndcTurboFilter')
     if (turboFilter.present) {

@@ -275,8 +275,8 @@ class NdcCorpusTest {
             assertTrue(pin.sha256().matches("[0-9a-f]{64}"), pin.name());
             pin.urls().forEach(url -> assertEquals("https", url.getScheme(), pin.name()));
         }
-        assertTrue(NdcCorpus.UPLC_EXPECTATIONS.urls().getFirst().toString().contains(NdcCorpus.NDC_REVISION));
-        assertTrue(NdcCorpus.UPLC_CONFORMANCE.urls().getLast().toString().startsWith(NdcCorpus.MIRROR));
+        assertTrue(NdcCorpus.TURBO_CARDANO_NODE.urls().getFirst().toString().contains(NdcCorpus.NDC_REVISION));
+        assertTrue(NdcCorpus.TURBO_AMARU.urls().getFirst().toString().contains(NdcCorpus.NDC_REVISION));
         assertTrue(NdcCorpus.TURBO.urls().getLast().toString().startsWith(NdcCorpus.MIRROR));
     }
 

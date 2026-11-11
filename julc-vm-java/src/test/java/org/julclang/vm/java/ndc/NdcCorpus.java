@@ -34,11 +34,12 @@ import java.util.concurrent.TimeoutException;
 import java.util.stream.Stream;
 
 /**
- * A pinned input of the node-diversity scenarios: where it can be downloaded from, its SHA-256, the most bytes a
- * download may have, and how it is unpacked.
+ * A downloaded, pinned input of the uplc-turbo scenario: where it can be downloaded from, its SHA-256, the most bytes a
+ * download may have, and how it is unpacked. (The uplc-conformance corpus is vendored instead:
+ * {@link UplcConformanceCorpus}.)
  *
  * <ul>
- *   <li>The corpora are downloaded at run time, not kept in the repository. The URLs are tried in order; a download
+ *   <li>The turbo corpus and the reference reports are downloaded at run time. The URLs are tried in order; a download
  *       that fails, is larger than the limit, or whose digest differs from the pin is refused, and the next URL is
  *       tried. The first is the upstream location; the others are mirrors that hold the same bytes.</li>
  *   <li>The cache keeps only the downloaded file, named by its digest, and its digest is checked again on every use.
@@ -47,7 +48,7 @@ import java.util.stream.Stream;
  *       leave the target directory is refused, and the extracted size is limited.</li>
  * </ul>
  *
- * <p>Changing a pin is a deliberate corpus upgrade: run both scenarios and review the differences.</p>
+ * <p>Changing a pin is a deliberate corpus upgrade: run the turbo scenario and review the differences.</p>
  *
  * @param name     a short name, used in messages
  * @param urls     where it is downloaded from, in the order tried
@@ -83,8 +84,8 @@ public record NdcCorpus(String name, List<URI> urls, String sha256, int maxBytes
     private static final String NDC_R2 = "https://pub-2239d82d9a074482b2eb2c886191cb4e.r2.dev/";
 
     /**
-     * JuLC's copy of the pinned tarballs, as assets of the GitHub release {@code ndc-corpora-v1}: the fallback when the
-     * upstream location is unreachable or serves other bytes.
+     * JuLC's copy of the pinned turbo tarball, as an asset of the GitHub release {@code ndc-corpora-v1}: the fallback
+     * when the upstream location is unreachable or serves other bytes.
      */
     static final String MIRROR = "https://github.com/bloxbean/julc/releases/download/ndc-corpora-v1/";
 
@@ -92,16 +93,6 @@ public record NdcCorpus(String name, List<URI> urls, String sha256, int maxBytes
 
     /** The most bytes an archive may extract to. */
     static final long MAX_EXTRACTED_BYTES = 1024L * MIB;
-
-    /** The uplc-conformance vectors and the cost models they are run with (the scenario page's tarball). */
-    public static final NdcCorpus UPLC_CONFORMANCE = new NdcCorpus("uplc-conformance",
-            List.of(URI.create(NDC_R2 + "uplc-conformance.tar.zst"), URI.create(MIRROR + "uplc-conformance.tar.zst")),
-            "8bd4ad4f9f4c8c6b8ffa1f06ed1db0b43043afbba77ef6a14bcfb5a52345ed3f", 64 * MIB, Kind.TAR_ZSTD);
-
-    /** What the site scores a uplc-conformance report against. */
-    public static final NdcCorpus UPLC_EXPECTATIONS = new NdcCorpus("uplc-conformance expectations",
-            List.of(URI.create(NDC_RAW + "scenarios/uplc-conformance/expectations.json")),
-            "1c93d210b4bf155b1d53fecbb98c380a35b647ea3738efffa674e3b348001357", 16 * MIB, Kind.PLAIN);
 
     /** The uplc-turbo mainnet scripts (the scenario page's tarball). */
     public static final NdcCorpus TURBO = new NdcCorpus("uplc-turbo",
@@ -119,8 +110,7 @@ public record NdcCorpus(String name, List<URI> urls, String sha256, int maxBytes
             "8ff205d7aaf459c0582c35b6defcc0775522051e7ec6547b051084180bcfbfcc", 16 * MIB, Kind.ZSTD);
 
     /** Every pin, for the cache key and the tests. */
-    static final List<NdcCorpus> ALL = List.of(UPLC_CONFORMANCE, UPLC_EXPECTATIONS, TURBO, TURBO_CARDANO_NODE,
-            TURBO_AMARU);
+    static final List<NdcCorpus> ALL = List.of(TURBO, TURBO_CARDANO_NODE, TURBO_AMARU);
 
     private static final int ATTEMPTS_PER_URL = 3;
 
