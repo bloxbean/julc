@@ -56,8 +56,8 @@ class UplcConformanceNdcScenario {
 
     /**
      * Problems of JuLC's own checks ({@link UplcEvaluation}: the Flat program alone gives what {@code .flat.expected}
-     * says; no failure is a crash of the VM) accepted for a vector, by {@link UplcConformanceScore#key}. Adding an entry
-     * needs review.
+     * says; no failure is a crash of the VM) accepted for a vector, by {@link UplcConformanceScore#key}. Adding an
+     * entry needs review.
      */
     static final Map<String, AllowedProblem> ALLOWED_PROBLEMS = Map.of(
             "term_constr_constr_07_v3 V3/11.0", new AllowedProblem(
@@ -90,6 +90,7 @@ class UplcConformanceNdcScenario {
 
     @Test
     void meetsTheScenarioExpectations() throws IOException {
+        UplcConformanceCorpus.verify(UplcConformanceCorpus.root());
         Path corpus = UplcConformanceCorpus.corpus();
         JsonNode expectations = NdcReports.JSON.readTree(UplcConformanceCorpus.expectations().toFile())
                 .get("scenarios");

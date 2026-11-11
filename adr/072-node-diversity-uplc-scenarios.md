@@ -45,9 +45,12 @@ Non-goals:
 - **I1. Pinned inputs.** Every input is pinned to one revision of the node-diversity repository and to SHA-256 digests.
   - *Vendored (uplc-conformance, r4):* `julc-vm-java/src/test/resources/ndc/uplc-conformance/` holds the scenario's
     tarball unpacked byte for byte (`corpus/`, from tarball `8bd4ad4f…`) and `expectations.json`, with the upstream
-    `LICENSE` and a README naming the source, the digests and how to refresh them. `UplcConformanceCorpusTest`, part of
-    every build, checks a digest of the whole tree (the `shasum` listing of every file, sorted by path) and the
-    expectations' digest, so an edit, a lost file or a line-ending rewrite fails the build. A `.gitattributes` there
+    `LICENSE` and a README naming the source, the digests and how to refresh them. Every run of the scenario,
+    in `test` or in `ndcUplcConformance` alone, first checks a digest of the whole tree (the `shasum` listing of every
+    file, sorted by path) and the expectations' digest (`UplcConformanceCorpus.verify`, r4b), so an edit, a lost file or
+    a line-ending rewrite fails it wherever it runs; `UplcConformanceCorpusTest` shows that an edited budget and a
+    removed `.flat.expected` are refused. The folder must be a directory on the test classpath; a jar-backed copy is
+    refused with a clear error. A `.gitattributes` there
     turns off Git's text conversion.
   - *Downloaded (uplc-turbo):* the turbo tarball and the cardano-node and Amaru turbo reports are refused, before they
     are unpacked, if their digest differs. That holds for the cache too: it keeps only the downloaded file, whose
@@ -201,3 +204,5 @@ Resolved in r2: `native-image-release.yml` waits for the gate too (it was open q
   deadline, body included; a refused response's body is never read.
 - **r4** (2026-11-11, maintainer decision): the uplc-conformance corpus and its expectations are vendored with their
   licence and digests (I1, decision 2), conformance runs in `./gradlew build` (decision 3), and only turbo downloads.
+- **r4b** (2026-11-11, review): the scenario itself verifies the vendored digests, so the standalone release gate is
+  pinned too; a jar-backed classpath copy is refused.

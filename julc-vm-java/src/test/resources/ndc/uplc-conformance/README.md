@@ -20,9 +20,12 @@ copy under `crates/amaru-uplc/tests/conformance/`). `UplcConformanceNdcScenario`
   cd corpus && find . -type f | LC_ALL=C sort | sed 's|^\./||' | tr '\n' '\0' | xargs -0 shasum -a 256 | shasum -a 256
   ```
 
-  `UplcConformanceCorpusTest` (part of `./gradlew build`) checks the tree digest and the digest of
-  `expectations.json`, so an edit, a lost file or a line-ending rewrite fails the build. `.gitattributes` turns off
-  Git's text conversion here.
+  Every run of the scenario (in `./gradlew build` or `./gradlew :julc-vm-java:ndcUplcConformance` alone) first
+  checks the tree digest and the digest of `expectations.json` (`UplcConformanceCorpus.verify`), so an edit, a lost
+  file or a line-ending rewrite fails it. `.gitattributes` turns off Git's text conversion here.
+- **Classpath:** the scenario reads this folder from the test classpath as a directory (Gradle's
+  `build/resources/test`); test resources are never packaged into a jar, and a jar-backed copy is refused with a
+  clear error.
 
 ## Refreshing
 

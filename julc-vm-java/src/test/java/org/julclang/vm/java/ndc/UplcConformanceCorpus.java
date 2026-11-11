@@ -35,12 +35,16 @@ final class UplcConformanceCorpus {
     private UplcConformanceCorpus() {
     }
 
-    /** @return the vendored folder on the test classpath */
+    /** @return the vendored folder on the test classpath, which must be a directory (test resources are not jarred) */
     static Path root() {
         URL url = UplcConformanceCorpus.class.getResource(RESOURCE);
         if (url == null) {
             throw new IllegalStateException("the vendored uplc-conformance corpus " + RESOURCE
                     + " is not on the test classpath");
+        }
+        if (!"file".equals(url.getProtocol())) {
+            throw new IllegalStateException("the uplc-conformance corpus must be on the classpath as a directory, "
+                    + "found " + url);
         }
         try {
             return Path.of(url.toURI());
@@ -57,6 +61,32 @@ final class UplcConformanceCorpus {
     /** @return the expectations file */
     static Path expectations() {
         return root().resolve("expectations.json");
+    }
+
+    /**
+     * Checks that {@code root} holds exactly the pinned files: the tree digest of {@code corpus/} and the digest of
+     * {@code expectations.json}. Every run of the scenario calls it first, so no path that runs conformance (the
+     * {@code test} task or {@code ndcUplcConformance} alone) can use an edited or incomplete corpus.
+     *
+     * @throws IllegalStateException naming what differs
+     */
+    static void verify(Path root) {
+        String tree = treeSha256(root.resolve("corpus"));
+        if (!tree.equals(TREE_SHA256)) {
+            throw new IllegalStateException("the files under " + root.resolve("corpus") + " have the tree digest "
+                    + tree + ", not the pinned " + TREE_SHA256 + " of the unpacked tarball " + TARBALL_SHA256
+                    + ": a vector was edited, added or removed. Refresh the corpus as its README describes.");
+        }
+        String expectations;
+        try {
+            expectations = NdcCorpus.sha256(Files.readAllBytes(root.resolve("expectations.json")));
+        } catch (IOException e) {
+            throw new UncheckedIOException("cannot read " + root.resolve("expectations.json"), e);
+        }
+        if (!expectations.equals(EXPECTATIONS_SHA256)) {
+            throw new IllegalStateException(root.resolve("expectations.json") + " has the SHA-256 " + expectations
+                    + ", not the pinned " + EXPECTATIONS_SHA256 + ". Refresh it as the corpus's README describes.");
+        }
     }
 
     /** @return the tree digest of {@code dir}, computed as {@link #TREE_SHA256} is */
