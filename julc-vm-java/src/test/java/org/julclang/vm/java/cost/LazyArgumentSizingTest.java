@@ -44,6 +44,14 @@ class LazyArgumentSizingTest {
 
     // === Every cost function shape reads only the sizes it declares ===
 
+    /**
+     * The load-bearing test for the masks. {@code CostTracker} sizes the union
+     * of a builtin's CPU and memory masks, so a memory function whose mask
+     * misses an argument goes unnoticed by every charge-level test (the
+     * builtin test below, the conformance suites) whenever the CPU function
+     * reads that argument: the size is computed anyway. Only this test checks
+     * each shape's mask on its own; do not weaken it.
+     */
     @Test
     void everyCostFunctionShapeIgnoresTheSizesItDoesNotDeclare() throws Exception {
         var random = new Random(SEED);
@@ -133,8 +141,9 @@ class LazyArgumentSizingTest {
     @Test
     void everyBuiltinChargesExactlyWhatEagerSizingCharges() {
         var random = new Random(SEED);
-        List<CekValue> pool = valuePool(random);
+        var pools = Pools.of(valuePool(random));
         int checked = 0;
+        int valueDepthDraws = 0;
         for (var model : shippedModels()) {
             var functions = EnumSet.noneOf(DefaultFun.class);
             functions.addAll(model.costs().costedBuiltins());
@@ -143,13 +152,67 @@ class LazyArgumentSizingTest {
                 int arity = BuiltinTable.getSignature(fun).arity();
                 for (int trial = 0; trial < 300; trial++) {
                     var args = new ArrayList<CekValue>(arity);
-                    for (int i = 0; i < arity; i++) args.add(pool.get(random.nextInt(pool.size())));
+                    for (int i = 0; i < arity; i++) {
+                        // Every other call draws a special-measure argument from its own
+                        // type, so the measure is exercised and not just its fallback
+                        List<CekValue> typed = trial % 2 == 0 ? pools.forSpecialMeasure(fun, i) : null;
+                        List<CekValue> from = typed != null ? typed : pools.any();
+                        CekValue arg = from.get(random.nextInt(from.size()));
+                        if (isValueMaxDepthPosition(fun, i) && arg instanceof CekValue.VCon(Constant.ValueConst _)) {
+                            valueDepthDraws++;
+                        }
+                        args.add(arg);
+                    }
                     assertSameCharge(model, fun, args);
                     checked++;
                 }
             }
         }
         assertTrue(checked > 10_000, "checked " + checked + " calls");
+        assertTrue(valueDepthDraws > 1_000, "only " + valueDepthDraws
+                + " insertCoin/lookupCoin calls had a Value at the ValueMaxDepth position");
+    }
+
+    private static boolean isValueMaxDepthPosition(DefaultFun fun, int index) {
+        return (fun == DefaultFun.InsertCoin && index == 3) || (fun == DefaultFun.LookupCoin && index == 2);
+    }
+
+    /**
+     * The argument pool, and the sub-pools of the right type for the
+     * positions whose size is a builtin-specific measure rather than the
+     * generic {@code ExMemoryUsage}.
+     */
+    private record Pools(List<CekValue> any, List<CekValue> integers, List<CekValue> values,
+                         List<CekValue> data, List<CekValue> texts) {
+
+        static Pools of(List<CekValue> any) {
+            return new Pools(any, ofType(any, Constant.IntegerConst.class),
+                    ofType(any, Constant.ValueConst.class), ofType(any, Constant.DataConst.class),
+                    ofType(any, Constant.StringConst.class));
+        }
+
+        private static List<CekValue> ofType(List<CekValue> values, Class<? extends Constant> type) {
+            var matching = new ArrayList<CekValue>();
+            for (var value : values) {
+                if (value instanceof CekValue.VCon(Constant c) && type.isInstance(c)) matching.add(value);
+            }
+            assertTrue(!matching.isEmpty(), "no " + type.getSimpleName() + " in the pool");
+            return matching;
+        }
+
+        /** The sub-pool for a special-measure position, or null for a generic one. */
+        List<CekValue> forSpecialMeasure(DefaultFun fun, int index) {
+            return switch (fun) {
+                case ReplicateByte, DropList -> index == 0 ? integers : null;
+                case IntegerToByteString, ShiftByteString, RotateByteString -> index == 1 ? integers : null;
+                case InsertCoin -> index == 3 ? values : null;
+                case LookupCoin -> index == 2 ? values : null;
+                case UnValueData -> index == 0 ? data : null;
+                case AppendString, EqualsString -> index <= 1 ? texts : null;
+                case EncodeUtf8 -> index == 0 ? texts : null;
+                default -> null;
+            };
+        }
     }
 
     @Test
@@ -358,11 +421,11 @@ class LazyArgumentSizingTest {
         }
         constants.add(new Constant.PairConst(Constant.integer(1), Constant.data(randomData(random, 3))));
         // Values
-        for (int policies : new int[]{0, 1, 3, 17}) {
+        for (int policies : new int[]{0, 1, 2, 3, 4, 7, 8, 17, 64}) {
             var entries = new ArrayList<Constant.ValueConst.ValueEntry>();
             for (int p = 0; p < policies; p++) {
                 var tokens = new ArrayList<Constant.ValueConst.TokenEntry>();
-                int count = 1 + random.nextInt(9);
+                int count = 1 + random.nextInt(p % 4 == 0 ? 40 : 9);
                 for (int t = 0; t < count; t++) {
                     tokens.add(new Constant.ValueConst.TokenEntry(
                             randomBytes(random, random.nextInt(33)), BigInteger.valueOf(random.nextLong())));
