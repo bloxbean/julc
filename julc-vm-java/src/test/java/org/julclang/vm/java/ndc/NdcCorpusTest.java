@@ -22,6 +22,7 @@ import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -42,6 +43,7 @@ class NdcCorpusTest {
     /** A local server: path to the bytes it serves (a missing path is a 404). */
     private final Map<String, byte[]> served = new HashMap<>();
     private final AtomicInteger requests = new AtomicInteger();
+    private final Map<String, AtomicInteger> requestsByPath = new ConcurrentHashMap<>();
     private final ExecutorService handlers = Executors.newCachedThreadPool();
     private HttpServer server;
 
@@ -51,15 +53,27 @@ class NdcCorpusTest {
         server.createContext("/", exchange -> {
             requests.incrementAndGet();
             String path = exchange.getRequestURI().getPath();
+            requestsByPath.computeIfAbsent(path, k -> new AtomicInteger()).incrementAndGet();
             byte[] body = served.get(path);
-            if (path.equals("/stall")) {
-                // a 200 with its headers, then nothing: the body never comes
-                exchange.sendResponseHeaders(200, 1000);
+            if (path.startsWith("/stall-")) {
+                // a status and its headers, then nothing: the body never comes
+                exchange.sendResponseHeaders(Integer.parseInt(path.substring("/stall-".length())), 1000);
                 exchange.getResponseBody().flush();
                 try {
                     Thread.sleep(60_000);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
+                }
+            } else if (path.startsWith("/large-")) {
+                // a status with an endless body
+                exchange.sendResponseHeaders(Integer.parseInt(path.substring("/large-".length())), 0);
+                try (OutputStream out = exchange.getResponseBody()) {
+                    byte[] chunk = new byte[64 * 1024];
+                    for (int i = 0; i < 100_000; i++) {
+                        out.write(chunk);
+                    }
+                } catch (IOException e) {
+                    // the client stopped reading
                 }
             } else if (body == null) {
                 exchange.sendResponseHeaders(404, -1);
@@ -140,15 +154,63 @@ class NdcCorpusTest {
     void movesOnFromAResponseWhoseBodyStalls() {
         byte[] good = "pinned".getBytes(StandardCharsets.UTF_8);
         served.put("/mirror", good);
-        NdcCorpus pin = pin(good, NdcCorpus.Kind.PLAIN, local("/stall"), local("/mirror"));
+        NdcCorpus pin = pin(good, NdcCorpus.Kind.PLAIN, local("/stall-200"), local("/mirror"));
 
         long started = System.nanoTime();
-        assertArrayEquals(good, pin.download(Duration.ofSeconds(1)));
+        assertArrayEquals(good, pin.download(Duration.ofSeconds(1), Duration.ZERO));
         long seconds = (System.nanoTime() - started) / 1_000_000_000;
 
         // the stalled exchange is cancelled at the deadline and not retried
         assertTrue(seconds < 10, () -> "took " + seconds + " s");
         assertEquals(2, requests.get());
+    }
+
+    @Test
+    void refusesAnErrorWhoseBodyStallsAtOnce() {
+        byte[] good = "pinned".getBytes(StandardCharsets.UTF_8);
+        served.put("/mirror", good);
+        NdcCorpus pin = pin(good, NdcCorpus.Kind.PLAIN, local("/stall-404"), local("/mirror"));
+
+        // a deadline far longer than the test may take: the error body must not be waited for
+        long started = System.nanoTime();
+        assertArrayEquals(good, pin.download(Duration.ofSeconds(60), Duration.ZERO));
+        long seconds = (System.nanoTime() - started) / 1_000_000_000;
+
+        assertTrue(seconds < 10, () -> "took " + seconds + " s");
+        assertEquals(1, requestsByPath.get("/stall-404").get());
+    }
+
+    @Test
+    void doesNotReadAnEndlessErrorBody() {
+        byte[] good = "pinned".getBytes(StandardCharsets.UTF_8);
+        served.put("/mirror", good);
+        // the limit is 1 KiB; the error body is endless
+        NdcCorpus pin = new NdcCorpus("test", List.of(local("/large-404"), local("/mirror")),
+                NdcCorpus.sha256(good), 1024, NdcCorpus.Kind.PLAIN);
+
+        long started = System.nanoTime();
+        assertArrayEquals(good, pin.download(Duration.ofSeconds(60), Duration.ZERO));
+        long seconds = (System.nanoTime() - started) / 1_000_000_000;
+
+        assertTrue(seconds < 10, () -> "took " + seconds + " s");
+        assertEquals(1, requestsByPath.get("/large-404").get());
+    }
+
+    @Test
+    void retriesAServerErrorButNotAClientError() {
+        byte[] good = "pinned".getBytes(StandardCharsets.UTF_8);
+        served.put("/mirror", good);
+        NdcCorpus pin = pin(good, NdcCorpus.Kind.PLAIN, local("/stall-503"), local("/stall-404"), local("/mirror"));
+
+        long started = System.nanoTime();
+        assertArrayEquals(good, pin.download(Duration.ofSeconds(60), Duration.ZERO));
+        long seconds = (System.nanoTime() - started) / 1_000_000_000;
+
+        // a 5xx is tried three times, a 4xx once; neither waits for its stalled body
+        assertTrue(seconds < 10, () -> "took " + seconds + " s");
+        assertEquals(3, requestsByPath.get("/stall-503").get());
+        assertEquals(1, requestsByPath.get("/stall-404").get());
+        assertEquals(1, requestsByPath.get("/mirror").get());
     }
 
     @Test

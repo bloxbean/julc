@@ -45,7 +45,9 @@ Non-goals:
   differs. That holds for the cache too: it keeps only the downloaded file, whose digest is checked on every use, and
   each run unpacks it afresh, so nothing extracted is reused. The expectations and the reference reports come from one
   pinned revision of the node-diversity repository.
-- **I2. Untrusted inputs.** A download is refused on a non-200 status before its body is read, and stopped once it
+- **I2. Untrusted inputs.** A download is refused on a non-200 status before its body is read (r4: the body's
+  subscription is cancelled at once, so an error body that stalls or never ends holds nothing up; 4xx is final, 5xx is
+  retried), and stopped once it
   passes a per-pin size limit (64 MiB for the tarballs, 16 MiB for the JSON files). Each attempt, body included, must
   finish within five minutes, or it is cancelled and the next URL is tried (r3: a server that sends 200 and then
   stalls cannot hold the gate). Only regular files and directories

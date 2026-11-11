@@ -13,6 +13,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.ByteBuffer;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -25,7 +26,9 @@ import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Flow;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.stream.Stream;
@@ -124,6 +127,9 @@ public record NdcCorpus(String name, List<URI> urls, String sha256, int maxBytes
     /** How long one download attempt may take, body included. */
     static final Duration DOWNLOAD_DEADLINE = Duration.ofMinutes(5);
 
+    /** The pause before the second attempt at a URL; the third waits twice as long. */
+    static final Duration RETRY_PAUSE = Duration.ofSeconds(2);
+
     /**
      * Returns the pinned bytes, unpacked into a new directory under {@code cacheRoot/work}: from the cache if the
      * cached file still has the pinned digest, otherwise downloaded (and then cached).
@@ -194,21 +200,22 @@ public record NdcCorpus(String name, List<URI> urls, String sha256, int maxBytes
 
     /** @return the first download, in URL order, that is within the limit and has the pinned digest */
     byte[] download() {
-        return download(DOWNLOAD_DEADLINE);
+        return download(DOWNLOAD_DEADLINE, RETRY_PAUSE);
     }
 
     /**
-     * @param deadline how long one attempt may take, from the request to the last byte of the body; an attempt that
-     *                 takes longer is cancelled and the next URL is tried
+     * @param deadline   how long one attempt may take, from the request to the last byte of the body; an attempt that
+     *                   takes longer is cancelled and the next URL is tried
+     * @param retryPause the pause before the second attempt at a URL; it grows linearly with the attempt
      */
-    byte[] download(Duration deadline) {
+    byte[] download(Duration deadline, Duration retryPause) {
         HttpClient client = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NORMAL)
                 .connectTimeout(Duration.ofSeconds(20)).build();
         List<String> failures = new ArrayList<>();
         for (URI url : urls) {
             System.out.println("Downloading " + name + " from " + url);
             try {
-                byte[] bytes = downloadWithRetries(client, url, deadline);
+                byte[] bytes = downloadWithRetries(client, url, deadline, retryPause);
                 String actual = sha256(bytes);
                 if (actual.equals(sha256)) {
                     return bytes;
@@ -224,7 +231,9 @@ public record NdcCorpus(String name, List<URI> urls, String sha256, int maxBytes
                 + ". Nothing was unpacked.\n  " + String.join("\n  ", failures));
     }
 
-    private byte[] downloadWithRetries(HttpClient client, URI url, Duration deadline) throws IOException {
+    /** Retries a URL on network errors and server errors (5xx); a client error (4xx) is final. */
+    private byte[] downloadWithRetries(HttpClient client, URI url, Duration deadline, Duration retryPause)
+            throws IOException {
         IOException last = null;
         for (int attempt = 1; attempt <= ATTEMPTS_PER_URL; attempt++) {
             try {
@@ -233,21 +242,24 @@ public record NdcCorpus(String name, List<URI> urls, String sha256, int maxBytes
                 throw e;
             } catch (IOException e) {
                 last = e;
-                pause(attempt);
+                if (attempt < ATTEMPTS_PER_URL) {
+                    pause(retryPause.multipliedBy(attempt));
+                }
             }
         }
         throw last;
     }
 
     /**
-     * One download. The body of a response other than 200 is discarded unread; a body over the limit is stopped; and
-     * the whole exchange, body included, must finish within {@code deadline}, or it is cancelled.
+     * One download. The body of a response other than 200 is not read: its subscription is cancelled as soon as the
+     * status is known. A body over the limit is stopped, and the whole exchange, body included, must finish within
+     * {@code deadline}, or it is cancelled.
      */
     private byte[] downloadOnce(HttpClient client, URI url, Duration deadline) throws IOException {
         HttpRequest request = HttpRequest.newBuilder(url).timeout(deadline).GET().build();
         HttpResponse.BodyHandler<byte[]> handler = info -> info.statusCode() == 200
                 ? HttpResponse.BodyHandlers.limiting(HttpResponse.BodyHandlers.ofByteArray(), maxBytes).apply(info)
-                : HttpResponse.BodySubscribers.replacing(null);
+                : new UnreadBody();
         CompletableFuture<HttpResponse<byte[]>> exchange = client.sendAsync(request, handler);
         HttpResponse<byte[]> response;
         try {
@@ -283,9 +295,43 @@ public record NdcCorpus(String name, List<URI> urls, String sha256, int maxBytes
         }
     }
 
-    private static void pause(int attempt) {
+    /**
+     * The body of a response that is refused on its status: cancelled at once, so a body that stalls or never ends
+     * holds nothing up. ({@code BodySubscribers.replacing} would read it to the end.)
+     */
+    static final class UnreadBody implements HttpResponse.BodySubscriber<byte[]> {
+        private final CompletableFuture<byte[]> body = new CompletableFuture<>();
+
+        @Override
+        public CompletionStage<byte[]> getBody() {
+            return body;
+        }
+
+        @Override
+        public void onSubscribe(Flow.Subscription subscription) {
+            subscription.cancel();
+            body.complete(null);
+        }
+
+        @Override
+        public void onNext(List<ByteBuffer> item) {
+            // cancelled: nothing is read
+        }
+
+        @Override
+        public void onError(Throwable throwable) {
+            body.complete(null);
+        }
+
+        @Override
+        public void onComplete() {
+            body.complete(null);
+        }
+    }
+
+    private static void pause(Duration duration) {
         try {
-            Thread.sleep(2000L * attempt);
+            Thread.sleep(duration.toMillis());
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
