@@ -150,8 +150,8 @@ var total = BigInteger.ZERO;
 
 **Cause:** A `break` statement appeared outside of a for-each or while loop scope.
 A `break` inside a loop that updates no variable declared before it reports
-`JULC0063` instead ([1.22](#122-julc0063-break-is-not-supported-in-a-loop-that-updates-no-variable-declared-before-the-loop)).
-A `break` that names a label reports `JULC0066` ([1.26](#126-julc0066-labels-are-not-supported-on-chain-construct)).
+`JULC0063` instead ([1.25](#125-julc0063-break-is-not-supported-in-a-loop-that-updates-no-variable-declared-before-the-loop)).
+A `break` that names a label reports `JULC0066` ([1.29](#129-julc0066-labels-are-not-supported-on-chain-construct)).
 
 **Fix:** Move the `break` inside a loop body, or restructure your logic to use
 `return` instead.
@@ -181,8 +181,8 @@ expression statements are supported on-chain.`
 **Cause:** A Java statement type that has no on-chain equivalent was used.
 Unsupported statements include `switch` statements (as opposed to `switch`
 expressions), `try`/`catch`, `do`/`while`, labeled statements, and others.
-`continue` reports `JULC0060` ([1.25](#125-julc0060-continue-is-not-supported-on-chain)),
-and a labelled statement `JULC0066` ([1.26](#126-julc0066-labels-are-not-supported-on-chain-construct)).
+`continue` reports `JULC0060` ([1.28](#128-julc0060-continue-is-not-supported-on-chain)),
+and a labelled statement `JULC0066` ([1.29](#129-julc0066-labels-are-not-supported-on-chain-construct)).
 
 **Fix:** Rewrite using the supported statement forms: variable declarations, if/else,
 for-each, while, return, and expression statements.
@@ -647,11 +647,11 @@ return total;
 ```
 
 An `instanceof` pattern variable that JuLC does not bind is reported as `JULC0139`
-([1.28](#128-julc0139-a-pattern-variable-is-used-where-julc-does-not-bind-it)), not as an
+([1.31](#131-julc0139-a-pattern-variable-is-used-where-julc-does-not-bind-it)), not as an
 undefined variable.
 
 `JulcMap.of(...)` used to be reported as `Undefined variable: JulcMap`; it now
-reports `JULC0062` ([1.23](#123-julc0062-julcmapof-is-off-chain-only-and-has-no-on-chain-implementation)).
+reports `JULC0062` ([1.26](#126-julc0062-julcmapof-is-off-chain-only-and-has-no-on-chain-implementation)).
 
 If the undefined name is an on-chain library class, such as `OutputLib`, look for a note earlier in the build output:
 `JuLC skipped an on-chain library source on the processor path: ...`. It names a jar whose `META-INF/plutus-sources`
@@ -701,7 +701,7 @@ The same applies to such a loop nested inside a loop that does update a variable
 That form used to be accepted, with its `break` ignored, so the inner loop ran to its
 end ([#273](https://github.com/bloxbean/julc/issues/273)); it is now rejected with this
 code too. A loop whose only update is inside a `switch` statement or an expression
-reports `JULC0065` at the update instead ([1.24](#124-julc0065-updating-name-inside-a-switch-statement-is-not-supported-in-this-loop)).
+reports `JULC0065` at the update instead ([1.27](#127-julc0065-updating-name-inside-a-switch-statement-is-not-supported-in-this-loop)).
 
 **Fix:** Declare a variable before the loop and set it where the loop breaks.
 
@@ -825,7 +825,7 @@ for (var x : xs) {
 `continue` can name a label. A labelled statement (`outer:`), a `break` that names a
 label (`break outer`) and a `continue` that names one (`continue outer`) report this
 code, at that statement, whether or not a matching label exists. `continue` is not
-supported without a label either ([1.25](#125-julc0060-continue-is-not-supported-on-chain)).
+supported without a label either ([1.28](#128-julc0060-continue-is-not-supported-on-chain)).
 
 Before [#201](https://github.com/bloxbean/julc/issues/201), a `break` that named a
 label was accepted and compiled as a plain `break` of the innermost loop. javac
@@ -1160,7 +1160,7 @@ while (i < BigInteger.TEN) {
 **Suggestion:** `Use for-each or while with an accumulator and break to exit early`
 
 **Cause:** A `break` statement appeared outside of a for-each or while loop.
-A `break` there that names a label reports `JULC0066` instead ([1.26](#126-julc0066-labels-are-not-supported-on-chain-construct)).
+A `break` there that names a label reports `JULC0066` instead ([1.29](#129-julc0066-labels-are-not-supported-on-chain-construct)).
 
 **Fix:** Place `break` inside a for-each or while loop.
 
@@ -1329,8 +1329,7 @@ public record Cancel() implements Action {}
 **Cause:** A bitwise, shift or boolean compound assignment (`&=`, `|=`, `^=`, `<<=`, `>>=`,
 `>>>=`) was used. Only `+=`, `-=`, `*=`, `/=` and `%=` on integers, and `+=` on strings, are
 lowered (as `x = x op y`). Java evaluates the right-hand side of `&=` and `|=` even when the
-result is already known; lowering them as `&&` or `||` would skip it, so they are rejected
-([ADR-060](https://github.com/bloxbean/julc/blob/main/adr/060-generated-binder-namespace.md)).
+result is already known; lowering them as `&&` or `||` would skip it, so they are rejected.
 
 **Fix:** Evaluate the check first, then combine it.
 
@@ -1481,7 +1480,7 @@ These errors are raised during compiler setup and pipeline orchestration.
 ### 3.0 `JULC0085` `<javac's message> (compiler.err.<key>)`
 
 **Cause:** javac rejects the source. Before JuLC compiles anything, javac analyzes the
-sources of the compilation (ADR-068 M1), and an error is reported with javac's message, key
+sources of the compilation, and an error is reported with javac's message, key
 and position. JuLC's dialect beyond Java is rejected this way, for example `a + b` or
 `a > b` on `BigInteger` (`compiler.err.operator.cant.be.applied.1`), an `int` where a
 `BigInteger` is expected (`compiler.err.prob.found.req`), or a ledger or stdlib type used
@@ -1586,13 +1585,13 @@ validator has two `@Entrypoint` methods.
 
 ### `JULC0079` `Record <record> implements sealed interfaces <interface> and <interface>; a record may have at most one sealed parent`
 
-**Cause:** a record implements two sealed interfaces. A Data value has one constructor tag, so one of the two families would read the record as another of its variants (ADR-067 D6). On the javac frontend every sealed interface counts.
+**Cause:** a record implements two sealed interfaces. A Data value has one constructor tag, so one of the two families would read the record as another of its variants.
 
 **Fix:** Give the record one sealed parent. For the second family, wrap it in a variant of its own: `record InT(A a) implements T { }`.
 
 ### `JULC0080` `Record <record> declares <member>, which JuLC does not compile; a record body may contain only nested type declarations`
 
-**Cause:** a record declares a member other than a nested type: a method, `equals`, `hashCode`, `toString`, a compact or other constructor, a static field or an initializer block. JuLC compiles a record as its components only, so such a member is never what the script runs (ADR-067 D9). A declared accessor or `toPlutusData` is `JULC0101`, and a constructor with a statement `JULC0099`.
+**Cause:** a record declares a member other than a nested type: a method, `equals`, `hashCode`, `toString`, a compact or other constructor, a static field or an initializer block. JuLC compiles a record as its components only, so such a member is never what the script runs. A declared accessor or `toPlutusData` is `JULC0101`, and a constructor with a statement `JULC0099`.
 
 **Fix:** Move the logic into a static method of the enclosing class, which takes the record as a parameter, and let the record hold its components alone.
 
@@ -1601,8 +1600,8 @@ validator has two `@Entrypoint` methods.
 **Cause:** an `equals`, or a collection operation that compares
 elements or keys (`contains`, `get`, `lookup`, `containsKey`, `delete`), at a type whose JVM equality compares a `byte[]`
 by reference: `byte[].equals`, a record or sealed variant with a `byte[]` component, or an `Optional`, tuple or
-`java.util` collection of one. On-chain the comparison is by content, so the script and the method's JVM test disagree
-(ADR-068 D6). A type the check cannot read (a raw collection, `Object`, a type variable) is rejected the same way, as is
+`java.util` collection of one. On-chain the comparison is by content, so the script and the method's JVM test disagree.
+A type the check cannot read (a raw collection, `Object`, a type variable) is rejected the same way, as is
 `equals` between two containers of unrelated arguments, which Java answers both ways.
 
 **Fix:** Compare the bytes with `Builtins.equalsByteString(a, b)`; `ByteStringLib.equals(a, b)` is equivalent, a few bytes larger. For a `@NewType` byte wrapper, compare its
@@ -1619,7 +1618,7 @@ return Builtins.equalsByteString(signer, expected);
 ### `JULC0086` `<expression> compares <type> by reference; use equals`
 
 **Cause:** `==` or `!=` between references (`BigInteger`, `byte[]`,
-`String`, boxed values, records) is reference equality in Java and value equality on-chain (ADR-068 D6). Constant
+`String`, boxed values, records) is reference equality in Java and value equality on-chain. Constant
 strings built from literals and `+` alone keep their meaning.
 
 **Fix:** `a.equals(b)`, or `Builtins.equalsByteString(a, b)` for bytes.
@@ -1734,7 +1733,7 @@ strings built from literals and `+` alone keep their meaning.
 
 ### `JULC0122` `Generic library method <class.method> cannot be called from Java yet: generic @OnchainLibrary methods are specialized only by language-neutral library providers. Provide a concrete overload-free method for Java callers.`
 
-**Cause:** a generic @OnchainLibrary method is a template that only a language-neutral producer instantiates (ADR-059), so Java code cannot call it.
+**Cause:** a generic @OnchainLibrary method is a template that only a language-neutral producer instantiates, so Java code cannot call it.
 
 **Fix:** Provide a concrete overload-free method for Java callers.
 
@@ -2156,8 +2155,8 @@ an opaque type to break cycles if needed.
 ### 4.8 `JULC0055` `Cannot resolve <member> on a value whose type is not known here`
 
 **Cause:** `x.name()` or `x.name` was used on a value whose record, ledger or library type the
-compiler does not know, for example a `PlutusData` or an untyped `var`. Before ADR-060 such a call
-was bound to whatever variable or helper method happened to be named `name`, which is not Java's
+compiler does not know, for example a `PlutusData` or an untyped `var`. Earlier releases bound such a call
+to whatever variable or helper method happened to be named `name`, which is not Java's
 meaning.
 
 **Fix:** Give the receiver its record or ledger type, or call a static helper as `helper(x)`.
@@ -2343,7 +2342,7 @@ contains a description of the failure.
 
 **Fix:** Check the trace messages via `result.traces()` for debugging output.
 Ensure your validator logic returns `true` for valid transactions. Add
-`Builtins.trace("message", ...)` calls to narrow down the failure point.
+`ContextsLib.trace("message")` calls to narrow down the failure point.
 
 ---
 
@@ -2380,25 +2379,32 @@ compiler error but a chain-level constraint.
 
 ### Q: Why does my validator always return false?
 
-**A:** The most common cause is a missing `return true` at the end of the
-entrypoint method. In UPLC, if your code falls through without returning `true`,
-the default result is unit/void, which is treated as failure.
+**A:** It is not a missing `return`: a method that can end without one does not compile. javac reports
+`JULC0085` `missing return statement (compiler.err.missing.ret.stmt)`.
 
 ```java
+// WRONG: javac rejects this, because the method can end without a return
 @Entrypoint
 public static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-    // Do some checks...
-    var txInfo = ContextsLib.getTxInfo(ctx);
-    // WRONG: forgot to return true
+    TxInfo txInfo = ctx.txInfo();
+    if (txInfo.signatories().isEmpty()) {
+        return false;
+    }
 }
 
+// CORRECT: every path returns
 @Entrypoint
 public static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-    var txInfo = ContextsLib.getTxInfo(ctx);
-    // checks...
-    return true; // CORRECT: explicit success
+    TxInfo txInfo = ctx.txInfo();
+    return !txInfo.signatories().isEmpty();
 }
 ```
+
+A validator that compiles and rejects every transaction usually checks something the transaction does not
+hold: a signer missing from `signatories()`, an output paid to another address, or a datum or redeemer whose
+fields are in a different order from the record. Trace each check (see
+[How do I debug a failing validator?](#q-how-do-i-debug-a-failing-validator)) to find the one that fails, and build
+the test's script context with exactly the values that check reads.
 
 ---
 
@@ -2491,24 +2497,30 @@ so it can be auto-discovered from the classpath via
 
 ### Q: How do I debug a failing validator?
 
-**A:** Use `Builtins.trace()` to emit messages during evaluation. Trace messages
+**A:** Use `ContextsLib.trace()` to emit messages during evaluation. Trace messages
 are collected in `EvalResult.traces()`.
 
 ```java
-@Entrypoint
-public static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-    var txInfo = ContextsLib.getTxInfo(ctx);
-    Builtins.trace("got txInfo");
+static boolean signedBy(TxInfo txInfo, PubKeyHash owner) {
+    return txInfo.signatories().contains(owner);
+}
 
-    if (!checkSomething(txInfo)) {
-        Builtins.trace("checkSomething failed");
+@Entrypoint
+public static boolean validate(OwnerDatum datum, PlutusData redeemer, ScriptContext ctx) {
+    TxInfo txInfo = ctx.txInfo();
+    ContextsLib.trace("got txInfo");
+
+    if (!signedBy(txInfo, datum.owner())) {
+        ContextsLib.trace("owner did not sign");
         return false;
     }
 
-    Builtins.trace("all checks passed");
+    ContextsLib.trace("all checks passed");
     return true;
 }
 ```
+
+`OwnerDatum` is the validator's datum record, for example `record OwnerDatum(PubKeyHash owner) {}`.
 
 ---
 
@@ -2828,6 +2840,6 @@ load. Use JDK 25.0.3 or later to run your tests, or avoid the shape:
 ## Retired codes
 
 These codes are retired and never reused. No compilation reports them. `JULC0084` said the javac frontend had not ported a
-construct, and `JULC0100` that a name read by its spelling bound to something else; both went with the JavaParser frontend
-(ADR-068 M6). `JULC0005`, `JULC0071`, `JULC0073` and `JULC0082` covered a switch that is not exhaustive, a dominated label, a guard's
+construct, and `JULC0100` that a name read by its spelling bound to something else; both went with the JavaParser frontend,
+which has been removed. `JULC0005`, `JULC0071`, `JULC0073` and `JULC0082` covered a switch that is not exhaustive, a dominated label, a guard's
 variable that is reassigned and a second `default`: javac rejects each of those itself, and you see `JULC0085` with javac's key.

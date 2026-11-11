@@ -521,15 +521,30 @@ Libraries can be tested in two ways:
 
 Write a minimal validator that calls the library method, compile it with the library source, and evaluate the resulting UPLC program. This is the primary integration testing approach.
 
+A Plutus V3 script takes one argument, the script context, which carries the datum and the redeemer. Build it with
+`ScriptContextTestBuilder` and evaluate with `ValidatorTest.evaluate(result, ctx)`, which uses the target the compiler
+recorded.
+
 ```java
+import org.julclang.compiler.JulcCompiler;
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.*;
+import org.julclang.stdlib.StdlibRegistry;
+import org.julclang.testkit.ScriptContextTestBuilder;
+import org.julclang.testkit.TestDataBuilder;
+import org.julclang.testkit.ValidatorTest;
+import org.junit.jupiter.api.Test;
+
+import java.math.BigInteger;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.*;
+
 class TokenUtilsTest {
 
-    private final JulcCompiler compiler = new JulcCompiler();
-    private final JulcVm vm = JulcVm.create();
+    private final JulcCompiler compiler = new JulcCompiler(StdlibRegistry.defaultRegistry());
 
-    @Test
-    void hasTokenReturnsTrueWhenPresent() {
-        var libSource = """
+    static final String LIB = """
             import java.math.BigInteger;
             import org.julclang.ledger.PolicyId;
             import org.julclang.ledger.TokenName;
@@ -545,7 +560,7 @@ class TokenUtilsTest {
             }
             """;
 
-        var validatorSource = """
+    static final String VALIDATOR = """
             import java.math.BigInteger;
             import org.julclang.core.PlutusData;
             import org.julclang.ledger.*;
@@ -570,14 +585,33 @@ class TokenUtilsTest {
             }
             """;
 
-        var result = compiler.compile(validatorSource, List.of(libSource));
+    @Test
+    void hasTokenReturnsTrueWhenPresent() {
+        var result = compiler.compile(VALIDATOR, List.of(LIB));
         assertFalse(result.hasErrors(), "Compilation failed: " + result.diagnostics());
 
-        // datum, redeemer and ctx are PlutusData values built by the test,
-        // for example with ScriptContextTestBuilder from julc-testkit
-        var program = result.program();
-        var evalResult = vm.evaluateWithArgs(program, List.of(datum, redeemer, ctx));
-        assertTrue(evalResult.isSuccess());
+        var policy = new PolicyId(new byte[28]);
+        var token = new TokenName("GOLD".getBytes());
+        // Expected(policy, token, minAmount) as Data: constructor 0 with the record's components
+        var datum = PlutusData.constr(0, policy.toPlutusData(), token.toPlutusData(), PlutusData.integer(10));
+
+        var owner = new PubKeyHash(new byte[28]);
+        var paid = TestDataBuilder.txOut(TestDataBuilder.pubKeyAddress(owner),
+                Value.singleton(policy, token, BigInteger.valueOf(25)));
+        var ref = new TxOutRef(new TxId(new byte[32]), BigInteger.ZERO);
+        var ctx = ScriptContextTestBuilder.spending(ref, datum)
+                .redeemer(PlutusData.UNIT)
+                .output(paid)
+                .buildPlutusData();
+
+        var evalResult = ValidatorTest.evaluate(result, ctx);
+        assertTrue(evalResult.isSuccess(), evalResult.toString());
+
+        var none = ScriptContextTestBuilder.spending(ref, datum)
+                .redeemer(PlutusData.UNIT)
+                .output(TestDataBuilder.txOut(TestDataBuilder.pubKeyAddress(owner), Value.lovelace(BigInteger.TWO)))
+                .buildPlutusData();
+        assertFalse(ValidatorTest.evaluate(result, none).isSuccess());
     }
 }
 ```

@@ -3,7 +3,7 @@ title: "Release Notes"
 description: "JuLC release notes and migration guidance"
 ---
 
-Each section below is a release, newest first. Within a release, entries are newest first.
+Each section below is a release, newest first.
 
 ## 0.1.0-pre21
 
@@ -14,34 +14,15 @@ runners. They are Apple-silicon binaries, as before, and need macOS 15.0 or late
 The artifact names and the Homebrew formulas do not change. On macOS 14, keep using 0.1.0-pre20's binaries or compile
 through Gradle or Maven, which need only a JDK.
 
-### `julc-wasm` and `julc-tools` are published (#252)
-
-`org.julclang:julc-wasm` and `org.julclang:julc-tools` are now on Maven Central, so a language built on JuLC's backend
-can compile its own WebAssembly engine from these jars, without copying JuLC's code. Both are experimental.
-
-- `JsApi.install(ApiRegistry, EngineInfo)` takes the engine's global name, variant, version and operation groups, and
-  checks them. JuLC's own images pass the values they used before.
-- Operation names are `group.operation`; duplicates, groups the engine does not advertise and reserved names are rejected.
-- The JavaScript client refuses an engine whose variant, API version or groups differ from its manifest.
-- The images now carry the cost model parameter files, so `costModel: '<profile-id>'` works; it failed in every image before.
-- `slf4j-nop` is no longer a dependency of the published jar: JuLC's images add it themselves, and an embedder chooses
-  its own logging provider.
-
-No compiler, UPLC, ledger or VM behavior changes. See [JavaScript and WebAssembly](/guides/javascript-wasm/).
-
 ### An attribution query for tools that embed the compiler (#313)
 
 `JavacFrontend.attribute(roots, pool, query)` attributes sources the way a JuLC compilation does, runs `query` over a
 read-only view of javac's model (`Attributed`: `result()`, `roots()`, `trees()`, `elements()`, `types()`), and returns
 what the query returns. It is experimental, for tools that generate validators from attributed source. Use the model
 only inside the query and on the calling thread, and keep no `Element`, `TypeMirror` or `Tree` after it returns. The
-model is null when the roots are rejected before javac runs, and the diagnostics hold errors only. Compilation does
-not change.
-
-### The playground completes imports (#300)
-
-On an `import` line, the playground editor suggests the next package or class: `import org.julclang.` offers `core`,
-`ledger` and `stdlib`, and choosing a class ends the line with `;`. Type a letter or press Ctrl+Space to open the list.
+model is null when the roots are rejected before javac runs. `result().diagnostics()` then holds JuLC's rejection;
+otherwise it holds javac's errors, followed by notes on shadowed library sources, and javac's warnings are not kept.
+Compilation does not change.
 
 ### `JulcList.any` and `all` stop at the deciding element (#312)
 
@@ -174,7 +155,27 @@ form was already fixed.
   48,000 more CPU units and 300 more memory units. A new hash means a new script address or
   policy ID. `BASELINE` changes too.
 
-### Javac is JuLC's only Java reader (ADR-068 M5, M6)
+### `julc-wasm` and `julc-tools` are published (#252)
+
+`org.julclang:julc-wasm` and `org.julclang:julc-tools` are now on Maven Central, so a language built on JuLC's backend
+can compile its own WebAssembly engine from these jars, without copying JuLC's code. Both are experimental.
+
+- `JsApi.install(ApiRegistry, EngineInfo)` takes the engine's global name, variant, version and operation groups, and
+  checks them. JuLC's own images pass the values they used before.
+- Operation names are `group.operation`; duplicates, groups the engine does not advertise and reserved names are rejected.
+- The JavaScript client refuses an engine whose variant, API version or groups differ from its manifest.
+- The images now carry the cost model parameter files, so `costModel: '<profile-id>'` works; it failed in every image before.
+- `slf4j-nop` is no longer a dependency of the published jar: JuLC's images add it themselves, and an embedder chooses
+  its own logging provider.
+
+No compiler, UPLC, ledger or VM behavior changes. See [JavaScript and WebAssembly](/guides/javascript-wasm/).
+
+### The playground completes imports (#300)
+
+On an `import` line, the playground editor suggests the next package or class: `import org.julclang.` offers `core`,
+`ledger` and `stdlib`, and choosing a class ends the line with `;`. Type a letter or press Ctrl+Space to open the list.
+
+### javac is JuLC's only Java reader (ADR-068 M5, M6)
 
 JuLC now reads every Java source with javac, on every host: the compiler API, the Gradle plugin, the annotation processor, the testkit (`JulcEval`, `ValidatorTest`, `ContractTest`), the CLI
 (`julc build`, `julc check`, the REPL, the MCP tools), the playground and `julc-wasm`, and Elci's
@@ -875,7 +876,7 @@ without such a name collision compile to the same bytes.
 
 ## 0.1.0-pre17
 
-### Instanceof pattern variables may not reuse a field name (JULC0059, #207)
+### `instanceof` pattern variables may not reuse a field name (JULC0059, #207)
 
 JuLC binds an `instanceof` pattern variable only when the pattern is the whole
 condition of an `if` statement outside a loop ([#204](https://github.com/bloxbean/julc/issues/204)). In every other position (a loop
@@ -1007,7 +1008,7 @@ not reach, such as the loop and switch binders, are covered by ADR-060 below.
 
 ### Release regression gates and profile freeze (#121)
 
-The proposed pre17 [hash-stability policy](/reference/hash-stability/) freezes
+The pre17 [hash-stability policy](/reference/hash-stability/) freezes
 existing optimization profiles, with explicit, reviewed exceptions for correctness
 fixes. It distinguishes script-hash changes from network execution-cost changes.
 
@@ -1636,7 +1637,7 @@ boundary with a reviewed manual check when full traversal is unsuitable.
 
 Blueprint compiler identities include `+boundary.strict-data-v1`, and formal
 verification certificates record `boundarySemantics: strict-data-v1`. See the
-[strict data boundary guide](../guides/strict-data-boundaries/) for the exact
+[strict data boundary guide](/guides/strict-data-boundaries/) for the exact
 coverage, cost guidance, raw-data escape, and migration checklist.
 
 ### Purpose-indexed multi-validator blueprints
@@ -1661,7 +1662,7 @@ or `PROPOSE` validators now also fail strict blueprint generation: older
 previews emitted incomplete purpose-free metadata for these single-purpose
 validators, but the pinned CIP-57 vocabulary cannot name them truthfully. Use
 the blueprint opt-out to compile without metadata when needed. See the
-[purpose-indexed blueprint guide](../guides/purpose-indexed-blueprints/) for
+[purpose-indexed blueprint guide](/guides/purpose-indexed-blueprints/) for
 examples and limitations.
 
 ### Typed List-case lowering (#110)

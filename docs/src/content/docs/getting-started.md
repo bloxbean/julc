@@ -141,6 +141,26 @@ test {
         <artifactId>cardano-client-lib</artifactId>
         <version>${ccl.version}</version>
     </dependency>
+
+    <!-- Test: VM for local evaluation -->
+    <dependency>
+        <groupId>org.julclang</groupId>
+        <artifactId>julc-testkit</artifactId>
+        <version>${julc.version}</version>
+        <scope>test</scope>
+    </dependency>
+    <dependency>
+        <groupId>org.julclang</groupId>
+        <artifactId>julc-vm</artifactId>
+        <version>${julc.version}</version>
+        <scope>test</scope>
+    </dependency>
+    <dependency>
+        <groupId>org.julclang</groupId>
+        <artifactId>julc-vm-java</artifactId>
+        <version>${julc.version}</version>
+        <scope>test</scope>
+    </dependency>
 </dependencies>
 
 <build>
@@ -1179,19 +1199,23 @@ loaded at runtime with `JulcScriptLoader`.
 For projects that prefer separate validator source files, apply the Gradle plugin:
 
 ```groovy
-// settings.gradle: the plugin is published to Maven Central, not the Gradle Plugin Portal
+// build.gradle
+plugins {
+    id 'org.julclang.julc' version '0.1.0-pre21'
+}
+```
+
+The plugin is published to Maven Central. Gradle's default plugin repository, the Gradle Plugin Portal, forwards
+requests for it to Maven Central, so a build that declares no plugin repositories resolves it. A build that lists
+its plugin repositories in `settings.gradle`, for example to use a mirror, must include `mavenCentral()`:
+
+```groovy
+// settings.gradle
 pluginManagement {
     repositories {
         mavenCentral()
         gradlePluginPortal()
     }
-}
-```
-
-```groovy
-// build.gradle
-plugins {
-    id 'org.julclang.julc' version '0.1.0-pre21'
 }
 ```
 
