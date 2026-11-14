@@ -9,7 +9,7 @@ import java.util.List;
  * Each file is written twice:
  * <ul>
  *   <li>under the validator's binary name, {@code META-INF/plutus/com/b/VaultValidator.plutus.json}, which no other
- *       class shares, and</li>
+ *       class in a package shares, and</li>
  *   <li>under its simple name, {@code META-INF/plutus/VaultValidator.plutus.json}, for loaders older than this
  *       layout. Validators in different packages can share this name.</li>
  * </ul>

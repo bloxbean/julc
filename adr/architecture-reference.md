@@ -496,7 +496,7 @@ The plugin adds `src/main/plutus` to IDE source sets but excludes it from `compi
 1. Reads source via Trees API
 2. Resolves library sources (same-project `@OnchainLibrary` classes + classpath `META-INF/plutus-sources/`)
 3. Compiles via `JulcCompiler`
-4. Writes `META-INF/plutus/<ClassName>.plutus.json` (CBOR hex, script hash, params, size)
+4. Writes `META-INF/plutus/<package path>/<ClassName>.plutus.json` and `META-INF/plutus/<ClassName>.plutus.json` (CBOR hex, script hash, params, size, the class's binary name); `JulcScriptLoader` reads the qualified copy first (ADR-073)
 
 ### Library Source Distribution
 

@@ -1,6 +1,6 @@
 # ADR-073: Compiled scripts keyed by the validator's qualified name
 
-**Status:** Proposed
+**Status:** Proposed (r2: review round 1 on the implementation)
 **Date:** 2026-11-14
 **Label:** `joust`
 **Risk class:** low. No compiler, lowering or VM change: no script's bytes change. It changes which class path
@@ -20,8 +20,10 @@ that name. Inside one compilation the second `Filer.createResource` fails with a
 
 ## Goals
 
-- A class loads its own script and source map, or an error. It never loads another class's.
-- Modules compiled before this change keep loading where that is unambiguous.
+- A class loads its own script and source map, or gets an error. It never loads another class's script, except in
+  one case JuLC cannot detect, listed under Risks: a jar that merges two same-named validators compiled before this
+  change.
+- Modules compiled before this change keep loading their own scripts.
 - Loaders older than this change keep finding scripts that this version writes.
 
 ## Non-goals
@@ -35,11 +37,16 @@ that name. Inside one compilation the second `Filer.createResource` fails with a
 
 ## Invariants
 
-1. **I1.** For a class `C`, `JulcScriptLoader` returns a script whose JSON is the only distinct copy of `C`'s qualified
-   resource. When `C` has none, the script is the only distinct copy of its simple-name resource, and that copy does
-   not record a class other than `C`. In every other case it throws `IllegalArgumentException`.
-2. **I2.** A source map is read only from beside the copy of the script that was loaded (same URL with the
-   `.sourcemap.json` suffix), never from another copy.
+1. **I1.** For a class `C`, `JulcScriptLoader` uses the first of these that exists, and otherwise throws
+   `IllegalArgumentException`:
+   1. a copy of `C`'s qualified resource. All its copies must be identical, and it must record `C` or no class;
+   2. a copy of `C`'s simple-name resource that records `C`. All such copies must be identical;
+   3. a copy of `C`'s simple-name resource that records no class, located in the class path root (directory or jar)
+      that holds `C.class`.
+
+   A copy that records another class is never used.
+2. **I2.** A source map is read only from beside the copy of the script that was used (the same URL with the
+   `.sourcemap.json` suffix). Among identical copies, the one in `C`'s own root is used when there is one.
 3. **I3.** Script bytes, hashes, the blueprint and the simple-name file's location are unchanged. The JSON gains only
    the `validator` field.
 4. **I4.** Output is deterministic: the processor writes the same files with the same content for the same input.
@@ -49,62 +56,86 @@ that name. Inside one compilation the second `Filer.createResource` fails with a
 1. **Layout** (`ScriptResourcePaths` in `julc-cardano-client-lib`, shared by writer and reader). Each script and
    source map is written to `META-INF/plutus/<binary name with '.' as '/'><suffix>`, for example
    `META-INF/plutus/com/b/VaultValidator.plutus.json` or `META-INF/plutus/com/b/Outer$VaultValidator.plutus.json`,
-   and to `META-INF/plutus/<SimpleName><suffix>`. For a class in the unnamed package the two paths are the same and
-   the file is written once. The binary name is `Elements.getBinaryName`, which is what `Class.getName()` returns.
+   and to `META-INF/plutus/<SimpleName><suffix>`. For a class in the unnamed package the two paths are the same, and
+   the file is written once. The binary name comes from `Elements.getBinaryName`, which matches `Class.getName()`.
+   The files are written as UTF-8, whatever javac's `-encoding`.
 2. **Recorded class.** `ValidatorOutput` gains a last component, `validator`, holding the binary name. It is empty
-   for older metadata. The old seven-argument constructor is kept, and `toJson()` writes `"validator"` after
-   `"description"` only when it is non-empty, so output without it is byte-identical to before.
-3. **Lookup.** `JulcScriptLoader` reads every copy of the qualified path from the class's class loader, using the
-   system loader when the class has none, and merges identical contents. When there are none it does the same for
-   the simple-name path. No copy means "not found". More than one distinct copy is refused, and the error lists each
-   URL with the class it records. A single copy that records another class is refused. Every public entry point
-   (`load`, `loadOutput`, `scriptHash`, `loadWithSourceMap`, `loadSourceMap`) goes through this lookup.
-4. **Source map pairing** (I2): the loader takes the source-map resource whose URL is the script URL with the
+   for older metadata. The old seven-argument constructor is kept. `toJson()` writes `"validator"` after
+   `"description"`, and only when the name is non-empty, so output without it is byte-identical to before.
+   `fromJson` reads a field only where its name is a key (followed by `:`), so a description such as `"validator"`
+   is not mistaken for one.
+3. **Lookup** (I1). The loader reads every copy of a path from the class's class loader, or from the system loader
+   when the class has none. Every public entry point goes through it: `load`, `loadOutput`, `scriptHash`,
+   `loadWithSourceMap` and `loadSourceMap`, with and without parameters.
+   - The class's root is the URL of `<binary path>.class` from the same loader, with that path removed, for example
+     `file:/app/classes/` or `jar:file:/app.jar!/`. A copy is in the root when its URL is the root followed by its
+     resource path.
+   - When the class path holds two different copies at step 1 or 2, the error lists each URL with the class it
+     records.
+4. **Source map pairing** (I2): the loader takes the source-map resource whose URL is the chosen script's URL with the
    `.sourcemap.json` suffix. If there is none it returns `null`.
 5. **Processor diagnostic.** When a second validator with an already-seen simple name is processed, the processor
    reports an error that names both classes and stops before compiling it.
 
 ## Alternatives considered
 
-- **Read from the class's own code source** (JOUST's workaround: resolve the resource inside the class's
-  `CodeSource`). Rejected as the primary rule. Code-source URLs differ by packaging (directories, jars, nested jars,
-  the module path, custom loaders), and some are unavailable under a security manager or a custom loader. A
-  qualified name gives the same isolation through the ordinary class loader lookup.
+- **Take a single simple-name copy that records no class, from anywhere** (issue #326's proposed rule, and r1 of this
+  ADR). Rejected in review. A class whose own module has no script, for example because the processor did not run,
+  would get a script that another old module, or a dependency, left on the class path.
+- **Refuse every copy that records no class.** Rejected: every module compiled before this change would stop
+  loading.
+- **Read from the class's `CodeSource`** (JOUST's workaround). Not adopted as stated. `CodeSource` URLs differ from
+  resource URLs (`file:/app.jar` against `jar:file:/app.jar!/`), and some loaders do not set them. Step 3 instead
+  uses the class's own `.class` resource URL from the same loader as the script, so both URLs have the same form.
+- **Scan the class's root for another class with the same simple name** (JOUST does this for jars). Rejected for
+  now. It needs code for each URL scheme (directories, jars, nested jars), and it serves only modules compiled before
+  this change. That case is listed under Risks instead.
 - **Write only the qualified file.** Rejected: older `JulcScriptLoader`s, and tools that read
   `META-INF/plutus/<SimpleName>.plutus.json` directly, would stop finding new scripts.
 - **Take the first copy with a warning** (the old behaviour plus logging). Rejected: the caller still gets another
   contract's script.
 - **Refuse any second copy, even an identical one.** Rejected: the same module twice on a class path, such as a
-  classes directory and its jar, is harmless, and the merged copies are one script.
-- **Accept a simple-name copy that records no class when another copy records a different class.** Rejected: with
-  more than one visible copy the loader cannot tell which one, if any, belongs to the class (issue #326's rule).
+  classes directory and its jar, is harmless, and identical copies are one script.
+- **Skip the recorded-class check on the qualified path** so that a relocated validator could load once its
+  resources are moved too. Rejected: shading plugins do not move `META-INF/plutus/<package path>/` with the
+  package, and do not rewrite the recorded name. The check costs nothing and catches a resource that was copied to
+  the wrong path.
 
 ## Affected modules
 
 - `julc-cardano-client-lib`: `ScriptResourcePaths` (new), `ValidatorOutput`, `JulcScriptLoader`.
 - `julc-annotation-processor`: `JulcAnnotationProcessor`.
-- Docs: getting started, troubleshooting 5.5–5.7, release notes.
+- Docs: getting started, troubleshooting 3.14 and 5.5–5.6, release notes, architecture reference.
 
 ## Compatibility
 
-- **Old module, new loader:** loads through the simple-name fallback when exactly one distinct copy is visible. If
-  several are visible, which used to return the first silently, it now throws.
+- **Old module, new loader:** each old class loads the simple-name copy in its own jar or directory, as before,
+  including when other same-named validators are on the class path. That case used to return the first copy. This
+  needs the class loader to serve the class's `.class` file as a resource, which standard, Spring Boot and module
+  path loaders do. A copy kept apart from its class, for example by a build that moved `META-INF/plutus/` into
+  another jar, is refused until the module is recompiled.
 - **New module, old loader:** finds the simple-name copy as before. An old parser ignores the extra field, because it
   reads fields by name.
 - **`ValidatorOutput`:** a new record component. The canonical constructor now takes eight arguments; the
-  seven-argument constructor remains. Record patterns that deconstruct `ValidatorOutput` need the new component.
-- **Relocated (shaded) validator classes:** a class whose package was relocated without its resources finds no
-  qualified copy, and the simple-name copy records the original name, so it is refused. Relocate
-  `META-INF/plutus/<package path>/` with the classes.
+  seven-argument constructor remains. Record patterns that deconstruct `ValidatorOutput`, and `equals`, now include
+  the new component.
+- **Relocated (shaded) validator classes:** a relocated class has no qualified copy under its new name, and its
+  copies record the original name, so it is refused, with an error that names relocation as the cause. Exclude
+  validator packages from relocation, or recompile them in their new package.
 - **One compilation with two same-named validators:** failed before (`FilerException`) and still fails, now with a
   diagnostic that names both.
 
 ## Risks
 
-- A build that has two different copies of one class's script on its class path, such as a stale jar beside fresh
-  classes, used to pick one and now fails. The error names both URLs.
-- Tools that list `META-INF/plutus/` without recursing see only the simple-name files, which are still complete for
-  every compilation, because one compilation cannot hold two validators with one simple name.
+- **Undetected:** a fat or shaded jar built from two modules compiled before this change, each with a validator of
+  one simple name, keeps one simple-name copy. Both classes sit in that jar's root, so both read it. The jar build had
+  already dropped the other script. Recompiling either module with this version writes the qualified copies, which
+  fixes it.
+- Two different builds of one class's script on the class path, such as a stale jar beside fresh classes, used to
+  pick one silently and now fail; the error names both URLs. When the stale jar predates this change, it has no
+  qualified copy, so the fresh build's qualified copy is used.
+- Tools that list `META-INF/plutus/` without recursing see only the simple-name files. That list is still complete
+  for every compilation, because one compilation cannot hold two validators with one simple name.
 
 ## Milestones
 
@@ -112,17 +143,28 @@ that name. Inside one compilation the second `Filer.createResource` fails with a
 
 ## Verification
 
-- `SameSimpleNameValidatorsTest` (processor module) compiles `com.a.VaultValidator` and `com.b.VaultValidator` into
-  two class output directories and covers:
-  - each class loads its own script in either class path order (the issue's repro);
-  - each class loads its own source map, checked through the source lines its terms map to;
-  - a legacy-only module still loads its script and source map;
-  - two different simple-name copies are refused, and so is a simple-name copy recorded for another class (through
-    every entry point);
-  - two different qualified copies are refused, and identical copies are accepted;
-  - the processor rejects one compilation holding both classes;
-  - an unnamed-package validator is written once.
-- `ValidatorOutputTest`: the field round-trips, older JSON reads as empty, and output without it is byte-identical.
+- `SameSimpleNameValidatorsTest` (processor module) compiles real validators into separate class output
+  directories. Some cases also package them as jars. It covers:
+  - each class loads its own script and source map in either class path order, from directories and from jars (the
+    issue's repro);
+  - old modules (simple-name copy only, no recorded class), alone, next to each other in either order, and next to a
+    new module, each load their own script;
+  - two old modules whose script JSON is identical but whose source maps differ each read their own map;
+  - a class without a script refuses another class's copy, recorded or not, through all eight entry points;
+  - two different qualified copies are refused in either order;
+  - identical copies are accepted, and the source map comes from the class's own root, including when a root holding
+    only a copy of the script comes first;
+  - the processor rejects one compilation that holds both classes;
+  - an unnamed-package validator is written once, and loads beside a packaged validator of the same name;
+  - a nested validator loads by its binary name;
+  - a relocated class is refused, and the error names relocation.
+- Mutations of the lookup, each caught by at least one of those tests:
+  - an unrecorded copy accepted from any root;
+  - the own-root preference dropped;
+  - a copy that records another class counted as the class's own;
+  - the recorded-class check on the qualified path dropped.
+- `ValidatorOutputTest`: the field round-trips, older JSON reads as empty, output without the field is
+  byte-identical, and a value that spells a key is not read as that key.
 - `ScriptResourcePathsTest`: packaged, nested and unnamed-package paths.
 - Module suites (`julc-cardano-client-lib`, `julc-annotation-processor`), the full `./gradlew build`, and the external
   `julc-examples` build against the local snapshot.

@@ -16,18 +16,19 @@ only, so `com.a.VaultValidator` and `com.b.VaultValidator` on one class path bot
 - The processor now also writes each script and source map under the class's qualified name, for example
   `META-INF/plutus/com/b/VaultValidator.plutus.json`, and records the class in the JSON (`"validator":
   "com.b.VaultValidator"`). It still writes the simple-name copy, for older loaders.
-- `JulcScriptLoader` reads the qualified copy. For a module compiled before this release it falls back to the
-  simple-name copy, but only when one copy is visible and it does not record another class; otherwise it throws an
-  `IllegalArgumentException` that names the copies. The source map now always comes from beside the script that was
-  loaded.
+- `JulcScriptLoader` reads the qualified copy. For a module compiled before this release, it reads the simple-name
+  copy in the jar or directory that holds the class. It never uses a copy that records another class. When no copy
+  is the class's own, or two different copies are, it throws an `IllegalArgumentException` that names them. The
+  source map always comes from beside the script that was used.
 - `ValidatorOutput` gains a `validator` component, the class's binary name, which is empty for older metadata. The
   existing constructors are kept, and `toJson()` writes the field only when it is known.
 - Two validators with one simple name in one compilation now fail with an error that names both, instead of a
   `FilerException`.
 
-Migration: recompile the modules that hold your validators. A class whose package was relocated, for example by a
-shading plugin, no longer loads the simple-name copy recorded for its original name; relocate the
-`META-INF/plutus/<package path>/` resources with it.
+Migration: recompile the modules that hold your validators. Until you do, one case still goes undetected: a fat jar
+that merges two such older modules with same-named validators keeps one simple-name copy, which both classes read.
+Exclude validator packages from relocation by shading plugins: a relocated validator is now refused, because its
+script records its original name.
 
 ### Ed25519 verification on BouncyCastle; bcprov 1.86 (#322)
 

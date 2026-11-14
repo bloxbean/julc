@@ -144,4 +144,28 @@ class ValidatorOutputTest {
         assertEquals("", output.validator());
         assertFalse(output.toJson().contains("validator"));
     }
+
+    /** A value that spells a key is not that key: older JSON for a class named {@code validator} records no class. */
+    @Test
+    void aValueSpellingAKeyIsNotThatKey() {
+        var parsed = ValidatorOutput.fromJson("""
+                {
+                  "type": "PlutusScriptV3",
+                  "purpose": "spending",
+                  "description": "validator",
+                  "cborHex": "8201",
+                  "hash": "aabb",
+                  "params": "",
+                  "sizeBytes": 3
+                }
+                """);
+
+        assertEquals("", parsed.validator());
+        assertEquals("validator", parsed.description());
+        assertEquals("8201", parsed.cborHex());
+
+        var recorded = new ValidatorOutput("PlutusScriptV3", "spending", "validator", "8201", "aabb", "", 3,
+                "com.b.validator");
+        assertEquals("com.b.validator", ValidatorOutput.fromJson(recorded.toJson()).validator());
+    }
 }

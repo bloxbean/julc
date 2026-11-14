@@ -163,36 +163,23 @@ public record ValidatorOutput(String type, String purpose, String description, S
     private record TypeParts(String type, String purpose) {}
 
     private static String extractField(String json, String field) {
-        String key = "\"" + field + "\"";
-        int keyIdx = json.indexOf(key);
-        if (keyIdx < 0) {
+        int colonIdx = colonAfterKey(json, field);
+        if (colonIdx < 0) {
             throw new IllegalArgumentException("Missing field: " + field);
         }
-        int colonIdx = json.indexOf(':', keyIdx + key.length());
-        int quoteStart = json.indexOf('"', colonIdx + 1);
-        int quoteEnd = json.indexOf('"', quoteStart + 1);
-        return json.substring(quoteStart + 1, quoteEnd);
+        return stringValue(json, colonIdx);
     }
 
     private static String extractFieldOptional(String json, String field) {
-        String key = "\"" + field + "\"";
-        int keyIdx = json.indexOf(key);
-        if (keyIdx < 0) {
-            return "";
-        }
-        int colonIdx = json.indexOf(':', keyIdx + key.length());
-        int quoteStart = json.indexOf('"', colonIdx + 1);
-        int quoteEnd = json.indexOf('"', quoteStart + 1);
-        return json.substring(quoteStart + 1, quoteEnd);
+        int colonIdx = colonAfterKey(json, field);
+        return colonIdx < 0 ? "" : stringValue(json, colonIdx);
     }
 
     private static int extractIntFieldOptional(String json, String field, int defaultValue) {
-        String key = "\"" + field + "\"";
-        int keyIdx = json.indexOf(key);
-        if (keyIdx < 0) {
+        int colonIdx = colonAfterKey(json, field);
+        if (colonIdx < 0) {
             return defaultValue;
         }
-        int colonIdx = json.indexOf(':', keyIdx + key.length());
         // Skip whitespace after colon, then read digits (possibly with leading minus)
         int start = colonIdx + 1;
         while (start < json.length() && Character.isWhitespace(json.charAt(start))) start++;
@@ -204,6 +191,28 @@ public record ValidatorOutput(String type, String purpose, String description, S
         } catch (NumberFormatException e) {
             return defaultValue;
         }
+    }
+
+    /**
+     * The index of the colon after {@code "field"} used as a key, or -1. A string value that spells the key, such as
+     * {@code "description": "validator"}, is followed by a comma rather than a colon, so it is skipped.
+     */
+    private static int colonAfterKey(String json, String field) {
+        String key = "\"" + field + "\"";
+        for (int keyIdx = json.indexOf(key); keyIdx >= 0; keyIdx = json.indexOf(key, keyIdx + 1)) {
+            int i = keyIdx + key.length();
+            while (i < json.length() && Character.isWhitespace(json.charAt(i))) i++;
+            if (i < json.length() && json.charAt(i) == ':') {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private static String stringValue(String json, int colonIdx) {
+        int quoteStart = json.indexOf('"', colonIdx + 1);
+        int quoteEnd = json.indexOf('"', quoteStart + 1);
+        return json.substring(quoteStart + 1, quoteEnd);
     }
 
     /**

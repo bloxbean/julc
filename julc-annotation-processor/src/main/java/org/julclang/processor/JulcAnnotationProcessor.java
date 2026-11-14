@@ -30,7 +30,9 @@ import javax.lang.model.element.TypeElement;
 import javax.tools.Diagnostic;
 import javax.tools.StandardLocation;
 import java.io.IOException;
+import java.io.OutputStreamWriter;
 import java.io.Writer;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -253,8 +255,8 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
                     "Two validators in this compilation are named " + className + ": " + sameSimpleName + " and "
                             + binaryName + ". JuLC also writes each script under its simple name, as "
                             + ScriptResourcePaths.simpleName(className, ScriptResourcePaths.SCRIPT_SUFFIX)
-                            + ", and the blueprint names each validator by it. Rename one of them, or compile them"
-                            + " in separate modules.",
+                            + ", and the CIP-57 blueprint uses it as the validator's title. Rename one of them, or"
+                            + " compile them in separate modules.",
                     element);
             return;
         }
@@ -376,7 +378,8 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
 
     private void writeResource(String path, String content, Element element) throws IOException {
         var resource = processingEnv.getFiler().createResource(StandardLocation.CLASS_OUTPUT, "", path, element);
-        try (Writer writer = resource.openWriter()) {
+        // UTF-8 whatever javac's -encoding: the loader reads it as UTF-8 and compares the recorded class name.
+        try (Writer writer = new OutputStreamWriter(resource.openOutputStream(), StandardCharsets.UTF_8)) {
             writer.write(content);
         }
     }

@@ -28,9 +28,10 @@ import static org.julclang.clientlib.ScriptResourcePaths.SOURCE_MAP_SUFFIX;
  * This loader reads them at runtime.
  * <p>
  * A class's script is the one under its qualified name. A class compiled before that layout has only the simple-name
- * copy, which validators in different packages share, so the loader uses that copy only when it is the single one
- * on the class path and was not recorded for another class (issue #326). Otherwise it refuses: it never returns
- * another validator's script.
+ * copy, which validators in different packages share, so the loader takes a simple-name copy only when it records the
+ * class, or records none and sits in the jar or directory that holds the class (issue #326, ADR-073). Otherwise it
+ * refuses rather than return another validator's script. One case it cannot tell apart: a jar that merges two
+ * same-named validators compiled before JuLC 0.1.0-pre21 keeps one simple-name copy, which both classes then read.
  * <p>
  * Usage:
  * <pre>{@code
@@ -56,7 +57,7 @@ public final class JulcScriptLoader {
      * @param validatorClass the validator class annotated with a supported JuLC validator annotation
      * @return the compiled PlutusV3Script ready for use with cardano-client-lib
      * @throws IllegalArgumentException if the validator is parameterized (use the overload with params)
-     *                                  or if no compiled script is found for the class
+     *                                  or if no compiled script of the class's own is found (see {@link #loadOutput})
      */
     public static PlutusV3Script load(Class<?> validatorClass) {
         var output = loadOutput(validatorClass);
@@ -83,7 +84,8 @@ public final class JulcScriptLoader {
      * @param validatorClass the validator class annotated with a supported JuLC validator annotation
      * @param params         the parameter values to apply (as cardano-client-lib PlutusData)
      * @return the compiled PlutusV3Script with parameters applied
-     * @throws IllegalArgumentException if the param count doesn't match the validator's requirements
+     * @throws IllegalArgumentException if the param count doesn't match the validator's requirements, or if no
+     *                                  compiled script of the class's own is found (see {@link #loadOutput})
      */
     public static PlutusV3Script load(Class<?> validatorClass,
             com.bloxbean.cardano.client.plutus.spec.PlutusData... params) {
@@ -116,7 +118,8 @@ public final class JulcScriptLoader {
      *
      * @param validatorClass the validator class annotated with a supported JuLC validator annotation
      * @return the script hash as hex string (28 bytes / 56 hex chars)
-     * @throws IllegalArgumentException if the validator is parameterized or no compiled script is found
+     * @throws IllegalArgumentException if the validator is parameterized, or if no compiled script of the class's own
+     *                                  is found (see {@link #loadOutput})
      */
     public static String scriptHash(Class<?> validatorClass) {
         var output = loadOutput(validatorClass);
@@ -154,7 +157,8 @@ public final class JulcScriptLoader {
      *
      * @param validatorClass the validator class annotated with a supported JuLC validator annotation
      * @return the ValidatorOutput containing type, description, cborHex, hash, and params
-     * @throws IllegalArgumentException if no compiled script is found for the class
+     * @throws IllegalArgumentException if no compiled script of the class's own is found, or if the class path holds
+     *                                  more than one different script for it
      */
     public static ValidatorOutput loadOutput(Class<?> validatorClass) {
         return locate(validatorClass).output();
@@ -169,90 +173,158 @@ public final class JulcScriptLoader {
      */
     private record LocatedScript(ValidatorOutput output, String resourcePath, URL url) {}
 
-    /** One copy of a class path resource. */
-    private record Copy(URL url, String content) {}
+    /**
+     * One copy of a class path resource.
+     *
+     * @param url      where it is
+     * @param content  its text
+     * @param recorded the class it records, or "" when it records none (written before issue #326) or is unreadable
+     */
+    private record Copy(URL url, String content, String recorded) {
+        /** Whether this copy is {@code path} under the class path root {@code root}. */
+        boolean isUnder(String root, String path) {
+            return root != null && url.toString().equals(root + path);
+        }
+    }
 
     /**
-     * The class's script: the qualified copy when there is one, else the simple-name copy. Refuses when the chosen
-     * path holds more than one different copy, or when the copy records another class.
+     * The class's script (issue #326, ADR-073):
+     * <ol>
+     *   <li>its qualified copy, when there is one;</li>
+     *   <li>else a simple-name copy that records the class;</li>
+     *   <li>else a simple-name copy that records no class (written before #326), only from the class path root
+     *       (directory or jar) that holds the class itself.</li>
+     * </ol>
+     * A copy that records another class is never taken, and two different copies at the chosen step are refused.
+     * Among identical copies, the one beside the class is preferred, so that its source map is the class's own.
      */
     private static LocatedScript locate(Class<?> validatorClass) {
         ClassLoader loader = classLoader(validatorClass);
         String className = validatorClass.getName();
         String qualifiedPath = ScriptResourcePaths.qualified(className, SCRIPT_SUFFIX);
         String simplePath = ScriptResourcePaths.simpleName(validatorClass.getSimpleName(), SCRIPT_SUFFIX);
+        String root = classRoot(loader, className);
 
-        String path = qualifiedPath;
-        List<Copy> copies = distinctCopies(loader, qualifiedPath, className);
-        if (copies.isEmpty() && !simplePath.equals(qualifiedPath)) {
-            path = simplePath;
-            copies = distinctCopies(loader, simplePath, className);
+        if (!qualifiedPath.equals(simplePath)) {
+            List<Copy> qualified = copies(loader, qualifiedPath, className);
+            if (!qualified.isEmpty()) {
+                requireOneScript(qualified, className, qualifiedPath,
+                        "Keep only one build of " + className + " on the class path.");
+                Copy copy = preferUnder(qualified, root, qualifiedPath);
+                if (!copy.recorded().isEmpty() && !copy.recorded().equals(className)) {
+                    throw new IllegalArgumentException(
+                            "The compiled Plutus script at " + copy.url() + " was written for " + copy.recorded()
+                                    + ", not for " + className + ". If " + className + " was relocated, for example"
+                                    + " by a shading plugin, exclude its package from relocation, or recompile it in"
+                                    + " its new package.");
+                }
+                return located(copy, qualifiedPath, className);
+            }
         }
-        if (copies.isEmpty()) {
+
+        // Every validator writes the simple-name copy, so only one that records this class, or an old one beside it,
+        // is this class's own.
+        List<Copy> simple = copies(loader, simplePath, className);
+        List<Copy> recorded = simple.stream().filter(copy -> copy.recorded().equals(className)).toList();
+        if (!recorded.isEmpty()) {
+            requireOneScript(recorded, className, simplePath,
+                    "Keep only one build of " + className + " on the class path.");
+            return located(preferUnder(recorded, root, simplePath), simplePath, className);
+        }
+        for (Copy copy : simple) {
+            if (copy.recorded().isEmpty() && copy.isUnder(root, simplePath)) {
+                return located(copy, simplePath, className);
+            }
+        }
+
+        if (simple.isEmpty()) {
             throw new IllegalArgumentException(
                     "No compiled Plutus script found for " + className
                             + ". Ensure the annotation processor ran during compilation. "
                             + "Expected resource: " + qualifiedPath);
         }
-        if (copies.size() > 1) {
-            String urls = copies.stream().map(JulcScriptLoader::describe).collect(Collectors.joining(", "));
-            String fix = path.equals(simplePath)
-                    ? " Validators in different packages with the simple name " + validatorClass.getSimpleName()
-                    + " share this resource. Recompile them with this version of JuLC, which also writes "
-                    + qualifiedPath + ", or keep only one of them on the class path."
-                    : " Keep only one copy of " + className + " on the class path.";
-            throw new IllegalArgumentException(
-                    "Found " + copies.size() + " different compiled Plutus scripts for " + className + " at "
-                            + path + ": " + urls + "." + fix);
-        }
-        Copy copy = copies.getFirst();
-        ValidatorOutput output = parse(copy, className);
-        if (!output.validator().isEmpty() && !output.validator().equals(className)) {
-            throw new IllegalArgumentException(
-                    "The compiled Plutus script at " + copy.url() + " belongs to " + output.validator()
-                            + ", not to " + className + ". No script for " + className
-                            + " is on the class path: ensure the annotation processor ran when it was compiled. "
-                            + "Expected resource: " + qualifiedPath);
-        }
-        return new LocatedScript(output, path, copy.url());
+        String copies = simple.stream().map(JulcScriptLoader::describe).collect(Collectors.joining(", "));
+        throw new IllegalArgumentException(
+                "No compiled Plutus script for " + className + " is on the class path (expected resource: "
+                        + qualifiedPath + "). The copies of " + simplePath + " that are there are not its own: "
+                        + copies + ". A copy that names a class belongs to that class. One that names none was"
+                        + " compiled before JuLC 0.1.0-pre21, and is used only from the jar or directory that holds "
+                        + className + ". Ensure the annotation processor ran when " + className
+                        + " was compiled, and recompile it with JuLC 0.1.0-pre21 or later.");
     }
 
-    private static ValidatorOutput parse(Copy copy, String className) {
+    /** Refuses when {@code copies} hold more than one different script. */
+    private static void requireOneScript(List<Copy> copies, String className, String path, String fix) {
+        var distinct = new LinkedHashMap<String, Copy>();
+        for (Copy copy : copies) distinct.putIfAbsent(copy.content(), copy);
+        if (distinct.size() > 1) {
+            String urls = distinct.values().stream().map(JulcScriptLoader::describe)
+                    .collect(Collectors.joining(", "));
+            throw new IllegalArgumentException(
+                    "Found " + distinct.size() + " different compiled Plutus scripts for " + className + " at "
+                            + path + ": " + urls + ". " + fix);
+        }
+    }
+
+    /** The copy under the class's own root, if any is, else the first. */
+    private static Copy preferUnder(List<Copy> copies, String root, String path) {
+        for (Copy copy : copies) {
+            if (copy.isUnder(root, path)) return copy;
+        }
+        return copies.getFirst();
+    }
+
+    private static LocatedScript located(Copy copy, String path, String className) {
+        ValidatorOutput output;
         try {
-            return ValidatorOutput.fromJson(copy.content());
+            output = ValidatorOutput.fromJson(copy.content());
         } catch (RuntimeException e) {
             throw new IllegalArgumentException(
                     "Could not read the compiled Plutus script for " + className + " at " + copy.url()
                             + ": " + e.getMessage(), e);
         }
+        return new LocatedScript(output, path, copy.url());
     }
 
-    /** A copy's location, and the class it records when it records one. */
+    /** A copy's location, and the class it records. */
     private static String describe(Copy copy) {
-        String recorded;
-        try {
-            recorded = ValidatorOutput.fromJson(copy.content()).validator();
-        } catch (RuntimeException e) {
-            recorded = "";
-        }
-        return recorded.isEmpty() ? copy.url().toString() : copy.url() + " (" + recorded + ")";
+        return copy.url() + (copy.recorded().isEmpty() ? " (names no class)" : " (" + copy.recorded() + ")");
     }
 
-    /** The copies of {@code path} on the class path, in class path order, one per distinct content. */
-    private static List<Copy> distinctCopies(ClassLoader loader, String path, String className) {
-        var byContent = new LinkedHashMap<String, URL>();
+    /** Every copy of {@code path} on the class path, in class path order. */
+    private static List<Copy> copies(ClassLoader loader, String path, String className) {
+        var copies = new ArrayList<Copy>();
         try {
             for (URL url : Collections.list(loader.getResources(path))) {
                 try (InputStream is = url.openStream()) {
-                    byContent.putIfAbsent(new String(is.readAllBytes(), StandardCharsets.UTF_8), url);
+                    String content = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+                    copies.add(new Copy(url, content, recordedClass(content)));
                 }
             }
         } catch (IOException e) {
             throw new UncheckedIOException("Failed to read compiled script for " + className, e);
         }
-        var copies = new ArrayList<Copy>();
-        byContent.forEach((content, url) -> copies.add(new Copy(url, content)));
         return copies;
+    }
+
+    private static String recordedClass(String content) {
+        try {
+            return ValidatorOutput.fromJson(content).validator();
+        } catch (RuntimeException e) {
+            return "";
+        }
+    }
+
+    /**
+     * The class path root that holds the class, such as {@code file:/app/classes/} or {@code jar:file:/app.jar!/}, as
+     * the URL of its {@code .class} file without the class's own path; null when the loader does not serve it.
+     */
+    private static String classRoot(ClassLoader loader, String className) {
+        String classPath = className.replace('.', '/') + ".class";
+        URL url = loader.getResource(classPath);
+        if (url == null) return null;
+        String text = url.toString();
+        return text.endsWith(classPath) ? text.substring(0, text.length() - classPath.length()) : null;
     }
 
     private static ClassLoader classLoader(Class<?> validatorClass) {
@@ -280,7 +352,8 @@ public final class JulcScriptLoader {
      *
      * @param validatorClass the validator class annotated with a supported JuLC validator annotation
      * @return LoadResult containing script, source map (may be null), and program
-     * @throws IllegalArgumentException if the validator is parameterized or no compiled script is found
+     * @throws IllegalArgumentException if the validator is parameterized, or if no compiled script of the class's own
+     *                                  is found (see {@link #loadOutput})
      */
     public static LoadResult loadWithSourceMap(Class<?> validatorClass) {
         var located = locate(validatorClass);

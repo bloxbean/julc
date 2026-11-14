@@ -1,5 +1,6 @@
 package org.julclang.processor;
 
+import com.bloxbean.cardano.client.plutus.spec.BigIntPlutusData;
 import org.julclang.clientlib.JulcScriptLoader;
 import org.julclang.clientlib.ValidatorOutput;
 import org.julclang.core.Term;
@@ -21,21 +22,24 @@ import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.IntSummaryStatistics;
 import java.util.List;
 import java.util.Map;
+import java.util.jar.JarEntry;
+import java.util.jar.JarOutputStream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Issue #326: validators with one simple name in different packages, such as {@code com.a.VaultValidator} and
- * {@code com.b.VaultValidator}, each load their own script and source map, never the other's.
+ * Issue #326 (ADR-073): validators with one simple name in different packages, such as {@code com.a.VaultValidator}
+ * and {@code com.b.VaultValidator}, each load their own script and source map, never the other's.
  */
 class SameSimpleNameValidatorsTest {
 
     @TempDir
     Path tempDir;
 
-    /** {@code com.a}'s validator accepts everything. */
+    /** {@code com.a}'s validator accepts everything; its code sits in lines 1-13. */
     static final String VAULT_A = """
             package com.a;
 
@@ -53,25 +57,15 @@ class SameSimpleNameValidatorsTest {
             }
             """;
 
-    /** {@code com.b}'s validator differs, and its code starts below line {@value #B_FIRST_LINE}. */
-    static final String VAULT_B = "\n".repeat(40) + """
-            package com.b;
-
-            import org.julclang.core.PlutusData;
-            import org.julclang.ledger.ScriptContext;
-            import org.julclang.stdlib.annotation.Entrypoint;
-            import org.julclang.stdlib.annotation.SpendingValidator;
-
-            @SpendingValidator
-            public class VaultValidator {
-                @Entrypoint
-                public static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                    return ctx.txInfo().fee().signum() > 0;
-                }
-            }
-            """;
-
     static final int B_FIRST_LINE = 40;
+
+    /** {@code com.b}'s validator differs, and its code starts below line {@value #B_FIRST_LINE}. */
+    static final String VAULT_B = shifted(B_FIRST_LINE, VAULT_A.replace("package com.a;", "package com.b;")
+            .replace("return true;", "return ctx.txInfo().fee().signum() > 0;"));
+
+    static String shifted(int lines, String source) {
+        return "\n".repeat(lines) + source;
+    }
 
     record Module(Path classes, List<Diagnostic<? extends JavaFileObject>> diagnostics) {
         List<String> errors() {
@@ -101,16 +95,32 @@ class SameSimpleNameValidatorsTest {
         return new Module(classes, diagnostics.getDiagnostics());
     }
 
-    Module moduleA() throws IOException {
-        var module = compile("a", Map.of("com/a/VaultValidator.java", VAULT_A), List.of("-Ajulc.sourceMap=true"));
+    /** One validator, with a source map, compiled without errors. */
+    Path module(String name, String path, String source) throws IOException {
+        var module = compile(name, Map.of(path, source), List.of("-Ajulc.sourceMap=true"));
         assertEquals(List.of(), module.errors());
-        return module;
+        return module.classes();
     }
 
-    Module moduleB() throws IOException {
-        var module = compile("b", Map.of("com/b/VaultValidator.java", VAULT_B), List.of("-Ajulc.sourceMap=true"));
-        assertEquals(List.of(), module.errors());
-        return module;
+    Path moduleA() throws IOException {
+        return module("a", "com/a/VaultValidator.java", VAULT_A);
+    }
+
+    Path moduleB() throws IOException {
+        return module("b", "com/b/VaultValidator.java", VAULT_B);
+    }
+
+    /** The directory packaged as a jar beside it. */
+    static Path jar(Path root) throws IOException {
+        Path jar = root.resolveSibling(root.getFileName() + ".jar");
+        try (var out = new JarOutputStream(Files.newOutputStream(jar)); var files = Files.walk(root)) {
+            for (Path file : files.filter(Files::isRegularFile).sorted().toList()) {
+                out.putNextEntry(new JarEntry(root.relativize(file).toString().replace('\\', '/')));
+                out.write(Files.readAllBytes(file));
+                out.closeEntry();
+            }
+        }
+        return jar;
     }
 
     static URLClassLoader classPath(Path... roots) throws IOException {
@@ -132,56 +142,71 @@ class SameSimpleNameValidatorsTest {
     static final String SIMPLE_SCRIPT = "META-INF/plutus/VaultValidator.plutus.json";
     static final String SIMPLE_SOURCE_MAP = "META-INF/plutus/VaultValidator.sourcemap.json";
 
+    static String sourceMapOf(String script) {
+        return script.replace(".plutus.json", ".sourcemap.json");
+    }
+
+    /** Every entry point that reads the script, with and without parameters. */
+    static List<Executable> entryPoints(Class<?> validator) {
+        var param = BigIntPlutusData.of(1);
+        return List.of(
+                () -> JulcScriptLoader.load(validator),
+                () -> JulcScriptLoader.load(validator, param),
+                () -> JulcScriptLoader.loadOutput(validator),
+                () -> JulcScriptLoader.scriptHash(validator),
+                () -> JulcScriptLoader.scriptHash(validator, param),
+                () -> JulcScriptLoader.loadWithSourceMap(validator),
+                () -> JulcScriptLoader.loadWithSourceMap(validator, param),
+                () -> JulcScriptLoader.loadSourceMap(validator));
+    }
+
+    static void assertEveryEntryPointRefuses(Class<?> validator, String expected) {
+        for (var entryPoint : entryPoints(validator)) {
+            var error = assertThrows(IllegalArgumentException.class, entryPoint);
+            assertTrue(error.getMessage().contains(expected), error.getMessage());
+        }
+    }
+
     @Test
     void eachScriptIsWrittenUnderItsQualifiedNameAndItsSimpleName() throws Exception {
-        Path b = moduleB().classes();
+        Path b = moduleB();
         assertEquals(json(b, B_SCRIPT), json(b, SIMPLE_SCRIPT));
-        assertEquals(json(b, "META-INF/plutus/com/b/VaultValidator.sourcemap.json"), json(b, SIMPLE_SOURCE_MAP));
+        assertEquals(json(b, sourceMapOf(B_SCRIPT)), json(b, SIMPLE_SOURCE_MAP));
         var output = ValidatorOutput.fromJson(json(b, B_SCRIPT));
         assertEquals("com.b.VaultValidator", output.validator());
         assertEquals("VaultValidator", output.description(), "the description keeps the simple name");
     }
 
-    /** The issue's repro: both modules on one class path, in either order. */
+    /** The issue's repro: both modules on one class path, in either order, as directories and as jars. */
     @Test
-    void eachClassLoadsItsOwnScriptWhicheverModuleComesFirst() throws Exception {
-        Path a = moduleA().classes();
-        Path b = moduleB().classes();
+    void eachClassLoadsItsOwnScriptAndSourceMapWhicheverModuleComesFirst() throws Exception {
+        Path a = moduleA();
+        Path b = moduleB();
         assertNotEquals(cbor(a, A_SCRIPT), cbor(b, B_SCRIPT));
-        for (var order : List.of(List.of(a, b), List.of(b, a))) {
+        Path aJar = jar(a);
+        Path bJar = jar(b);
+        for (var order : List.of(List.of(a, b), List.of(b, a), List.of(aJar, bJar), List.of(bJar, aJar))) {
             try (var loader = classPath(order.toArray(Path[]::new))) {
                 var classA = loader.loadClass("com.a.VaultValidator");
                 var classB = loader.loadClass("com.b.VaultValidator");
                 assertEquals(cbor(a, A_SCRIPT), JulcScriptLoader.load(classA).getCborHex(), "order " + order);
                 assertEquals(cbor(b, B_SCRIPT), JulcScriptLoader.load(classB).getCborHex(), "order " + order);
                 assertEquals("com.b.VaultValidator", JulcScriptLoader.loadOutput(classB).validator());
+                assertLinesWithin(JulcScriptLoader.loadWithSourceMap(classA), 0, B_FIRST_LINE);
+                assertLinesWithin(JulcScriptLoader.loadWithSourceMap(classB), B_FIRST_LINE, 2 * B_FIRST_LINE);
             }
         }
     }
 
-    /** The source map comes from beside the script that was loaded: {@code com.b}'s locations, not {@code com.a}'s. */
-    @Test
-    void eachClassLoadsItsOwnSourceMap() throws Exception {
-        Path a = moduleA().classes();
-        Path b = moduleB().classes();
-        try (var loader = classPath(a, b)) {
-            var resultB = JulcScriptLoader.loadWithSourceMap(loader.loadClass("com.b.VaultValidator"));
-            assertNotNull(resultB.sourceMap());
-            assertFalse(resultB.sourceMap().isEmpty());
-            assertEquals(cbor(b, B_SCRIPT), resultB.script().getCborHex());
-            assertTrue(lines(resultB).stream().allMatch(line -> line > B_FIRST_LINE), "com.b's lines: " + lines(resultB));
-
-            var resultA = JulcScriptLoader.loadWithSourceMap(loader.loadClass("com.a.VaultValidator"));
-            assertNotNull(resultA.sourceMap());
-            assertTrue(lines(resultA).stream().allMatch(line -> line < B_FIRST_LINE), "com.a's lines: " + lines(resultA));
-        }
-    }
-
-    static List<Integer> lines(JulcScriptLoader.LoadResult result) {
+    /** Every location the source map gives for the program's terms lies in {@code (from, to)}. */
+    static void assertLinesWithin(JulcScriptLoader.LoadResult result, int from, int to) {
+        assertNotNull(result.sourceMap(), "no source map");
         var lines = new ArrayList<Integer>();
         collectLines(result.program().term(), result.sourceMap(), lines);
         assertFalse(lines.isEmpty(), "the source map locates no term");
-        return lines;
+        IntSummaryStatistics stats = lines.stream().mapToInt(Integer::intValue).summaryStatistics();
+        assertTrue(stats.getMin() > from && stats.getMax() < to,
+                "lines " + lines + " outside (" + from + ", " + to + ")");
     }
 
     static void collectLines(Term term, SourceMap map, List<Integer> lines) {
@@ -204,92 +229,154 @@ class SameSimpleNameValidatorsTest {
         }
     }
 
-    /** Modules built before #326 have only the shared simple-name copy, without the class it belongs to. */
+    /** Makes a module look built before #326: only the simple-name copies, which record no class. */
     static void makeLegacy(Path root, String qualifiedScript) throws IOException {
         Files.delete(root.resolve(qualifiedScript));
-        Files.delete(root.resolve(qualifiedScript.replace(".plutus.json", ".sourcemap.json")));
+        Files.delete(root.resolve(sourceMapOf(qualifiedScript)));
         var output = ValidatorOutput.fromJson(json(root, SIMPLE_SCRIPT));
         Files.writeString(root.resolve(SIMPLE_SCRIPT), new ValidatorOutput(output.type(), output.purpose(),
                 output.description(), output.cborHex(), output.hash(), output.params(), output.sizeBytes()).toJson());
+        assertFalse(json(root, SIMPLE_SCRIPT).contains("\"validator\""));
+    }
+
+    /** Removes a module's scripts, as when the processor did not run for it. */
+    static void removeScripts(Path root, String qualifiedScript) throws IOException {
+        for (String path : List.of(qualifiedScript, SIMPLE_SCRIPT)) {
+            Files.delete(root.resolve(path));
+            Files.delete(root.resolve(sourceMapOf(path)));
+        }
     }
 
     @Test
-    void aLegacyModuleAloneStillLoadsItsScript() throws Exception {
-        Path b = moduleB().classes();
+    void aLegacyModuleAloneStillLoadsItsScriptAndSourceMap() throws Exception {
+        Path b = moduleB();
         makeLegacy(b, B_SCRIPT);
-        assertFalse(json(b, SIMPLE_SCRIPT).contains("\"validator\""));
-        try (var loader = classPath(b)) {
-            var classB = loader.loadClass("com.b.VaultValidator");
-            assertEquals(cbor(b, SIMPLE_SCRIPT), JulcScriptLoader.load(classB).getCborHex());
-            assertNotNull(JulcScriptLoader.loadWithSourceMap(classB).sourceMap(), "the simple-name source map");
-        }
-    }
-
-    /** A legacy module's class takes neither copy of the shared name: two are visible, and they differ. */
-    @Test
-    void twoDifferentSimpleNameCopiesAreRefused() throws Exception {
-        Path a = moduleA().classes();
-        Path b = moduleB().classes();
-        makeLegacy(b, B_SCRIPT);
-        try (var loader = classPath(a, b)) {
-            var classB = loader.loadClass("com.b.VaultValidator");
-            var error = assertThrows(IllegalArgumentException.class, () -> JulcScriptLoader.load(classB));
-            assertTrue(error.getMessage().contains("2 different compiled Plutus scripts for com.b.VaultValidator"),
-                    error.getMessage());
-            assertTrue(error.getMessage().contains("(com.a.VaultValidator)"), error.getMessage());
-            assertTrue(error.getMessage().contains(B_SCRIPT), error.getMessage());
-            // com.a is unaffected: its qualified copy is its own.
-            assertEquals(cbor(a, A_SCRIPT), JulcScriptLoader.load(loader.loadClass("com.a.VaultValidator")).getCborHex());
-        }
-    }
-
-    /** A class with no script of its own never takes the simple-name copy recorded for another class. */
-    @Test
-    void aSimpleNameCopyOfAnotherClassIsRefused() throws Exception {
-        Path a = moduleA().classes();
-        Path b = moduleB().classes();
-        for (String suffix : List.of(".plutus.json", ".sourcemap.json")) {
-            Files.delete(b.resolve(B_SCRIPT.replace(".plutus.json", suffix)));
-            Files.delete(b.resolve(SIMPLE_SCRIPT.replace(".plutus.json", suffix)));
-        }
-        try (var loader = classPath(a, b)) {
-            var classB = loader.loadClass("com.b.VaultValidator");
-            for (var load : List.<Executable>of(
-                    () -> JulcScriptLoader.load(classB),
-                    () -> JulcScriptLoader.scriptHash(classB),
-                    () -> JulcScriptLoader.loadWithSourceMap(classB),
-                    () -> JulcScriptLoader.loadSourceMap(classB))) {
-                var error = assertThrows(IllegalArgumentException.class, load);
-                assertTrue(error.getMessage().contains("belongs to com.a.VaultValidator, not to com.b.VaultValidator"),
-                        error.getMessage());
+        for (Path root : List.of(b, jar(b))) {
+            try (var loader = classPath(root)) {
+                var classB = loader.loadClass("com.b.VaultValidator");
+                assertEquals(cbor(b, SIMPLE_SCRIPT), JulcScriptLoader.load(classB).getCborHex());
+                assertLinesWithin(JulcScriptLoader.loadWithSourceMap(classB), B_FIRST_LINE, 2 * B_FIRST_LINE);
             }
         }
     }
 
-    /** Two different qualified copies of one class, such as a stale jar beside fresh classes, are refused too. */
+    /** Old modules each read the simple-name copy beside their own class, in either order. */
     @Test
-    void twoDifferentQualifiedCopiesAreRefused() throws Exception {
-        Path b = moduleB().classes();
-        Path stale = compile("stale", Map.of("com/b/VaultValidator.java",
-                VAULT_B.replace("signum() > 0", "signum() < 0")), List.of()).classes();
-        assertNotEquals(cbor(b, B_SCRIPT), cbor(stale, B_SCRIPT));
-        try (var loader = classPath(b, stale)) {
-            var classB = loader.loadClass("com.b.VaultValidator");
-            var error = assertThrows(IllegalArgumentException.class, () -> JulcScriptLoader.load(classB));
-            assertTrue(error.getMessage().contains("2 different compiled Plutus scripts for com.b.VaultValidator at "
-                    + B_SCRIPT), error.getMessage());
+    void legacyModulesEachLoadTheirOwnScript() throws Exception {
+        Path a = moduleA();
+        Path b = moduleB();
+        makeLegacy(a, A_SCRIPT);
+        makeLegacy(b, B_SCRIPT);
+        for (var order : List.of(List.of(a, b), List.of(b, a), List.of(jar(a), jar(b)))) {
+            try (var loader = classPath(order.toArray(Path[]::new))) {
+                assertEquals(cbor(a, SIMPLE_SCRIPT),
+                        JulcScriptLoader.load(loader.loadClass("com.a.VaultValidator")).getCborHex(), "order " + order);
+                assertEquals(cbor(b, SIMPLE_SCRIPT),
+                        JulcScriptLoader.load(loader.loadClass("com.b.VaultValidator")).getCborHex(), "order " + order);
+            }
         }
     }
 
-    /** Identical copies of one script, such as the same module twice, are one script. */
+    /** An old module and a new one: the new one by its qualified copy, the old one by the copy beside it. */
     @Test
-    void identicalCopiesAreOneScript() throws Exception {
-        Path b = moduleB().classes();
-        Path again = compile("again", Map.of("com/b/VaultValidator.java", VAULT_B), List.of("-Ajulc.sourceMap=true"))
-                .classes();
-        assertEquals(json(b, B_SCRIPT), json(again, B_SCRIPT));
-        try (var loader = classPath(b, again)) {
-            assertEquals(cbor(b, B_SCRIPT), JulcScriptLoader.load(loader.loadClass("com.b.VaultValidator")).getCborHex());
+    void aLegacyAndANewModuleEachLoadTheirOwnScript() throws Exception {
+        Path a = moduleA();
+        Path b = moduleB();
+        makeLegacy(b, B_SCRIPT);
+        for (var order : List.of(List.of(a, b), List.of(b, a))) {
+            try (var loader = classPath(order.toArray(Path[]::new))) {
+                assertEquals(cbor(a, A_SCRIPT),
+                        JulcScriptLoader.load(loader.loadClass("com.a.VaultValidator")).getCborHex(), "order " + order);
+                var classB = loader.loadClass("com.b.VaultValidator");
+                assertEquals(cbor(b, SIMPLE_SCRIPT), JulcScriptLoader.load(classB).getCborHex(), "order " + order);
+                assertLinesWithin(JulcScriptLoader.loadWithSourceMap(classB), B_FIRST_LINE, 2 * B_FIRST_LINE);
+            }
+        }
+    }
+
+    /**
+     * Two old modules whose scripts are byte for byte the same, but whose source maps differ: each class reads its own
+     * source map, not the first module's.
+     */
+    @Test
+    void legacyModulesWithOneScriptEachLoadTheirOwnSourceMap() throws Exception {
+        Path a = moduleA();
+        Path b = module("b", "com/b/VaultValidator.java",
+                shifted(B_FIRST_LINE, VAULT_A.replace("package com.a;", "package com.b;")));
+        makeLegacy(a, A_SCRIPT);
+        makeLegacy(b, B_SCRIPT);
+        assertEquals(json(a, SIMPLE_SCRIPT), json(b, SIMPLE_SCRIPT), "precondition: the same script JSON");
+        assertNotEquals(json(a, SIMPLE_SOURCE_MAP), json(b, SIMPLE_SOURCE_MAP));
+        for (var order : List.of(List.of(a, b), List.of(b, a))) {
+            try (var loader = classPath(order.toArray(Path[]::new))) {
+                assertLinesWithin(JulcScriptLoader.loadWithSourceMap(loader.loadClass("com.a.VaultValidator")),
+                        0, B_FIRST_LINE);
+                assertLinesWithin(JulcScriptLoader.loadWithSourceMap(loader.loadClass("com.b.VaultValidator")),
+                        B_FIRST_LINE, 2 * B_FIRST_LINE);
+            }
+        }
+    }
+
+    /** A class with no script of its own never takes another class's simple-name copy, recorded or not. */
+    @Test
+    void aClassWithoutAScriptRefusesAnotherClassesSimpleNameCopy() throws Exception {
+        Path a = moduleA();
+        Path b = moduleB();
+        removeScripts(b, B_SCRIPT);
+        try (var loader = classPath(a, b)) {
+            assertEveryEntryPointRefuses(loader.loadClass("com.b.VaultValidator"),
+                    "No compiled Plutus script for com.b.VaultValidator is on the class path");
+        }
+        makeLegacy(a, A_SCRIPT);
+        for (var order : List.of(List.of(a, b), List.of(b, a))) {
+            try (var loader = classPath(order.toArray(Path[]::new))) {
+                var classB = loader.loadClass("com.b.VaultValidator");
+                assertEveryEntryPointRefuses(classB, "(names no class)");
+                assertEveryEntryPointRefuses(classB, "No compiled Plutus script for com.b.VaultValidator");
+            }
+        }
+    }
+
+    /** Two different qualified copies of one class, such as a stale jar beside fresh classes, are refused. */
+    @Test
+    void twoDifferentQualifiedCopiesAreRefused() throws Exception {
+        Path b = moduleB();
+        Path stale = compile("stale", Map.of("com/b/VaultValidator.java",
+                VAULT_B.replace("signum() > 0", "signum() < 0")), List.of()).classes();
+        assertNotEquals(cbor(b, B_SCRIPT), cbor(stale, B_SCRIPT));
+        for (var order : List.of(List.of(b, stale), List.of(stale, b))) {
+            try (var loader = classPath(order.toArray(Path[]::new))) {
+                assertEveryEntryPointRefuses(loader.loadClass("com.b.VaultValidator"),
+                        "2 different compiled Plutus scripts for com.b.VaultValidator at " + B_SCRIPT);
+            }
+        }
+    }
+
+    /**
+     * Identical copies of one script are one script, and its source map is the one beside the class that was loaded:
+     * here the two builds differ only in where the code sits.
+     */
+    @Test
+    void identicalCopiesAreOneScriptWithTheLoadedClassesSourceMap() throws Exception {
+        Path b = moduleB();
+        Path moved = module("moved", "com/b/VaultValidator.java", shifted(2 * B_FIRST_LINE, VAULT_B));
+        assertEquals(json(b, B_SCRIPT), json(moved, B_SCRIPT), "precondition: the same script JSON");
+        try (var loader = classPath(b, moved)) {
+            var classB = loader.loadClass("com.b.VaultValidator");
+            assertEquals(cbor(b, B_SCRIPT), JulcScriptLoader.load(classB).getCborHex());
+            assertLinesWithin(JulcScriptLoader.loadWithSourceMap(classB), B_FIRST_LINE, 2 * B_FIRST_LINE);
+        }
+        try (var loader = classPath(moved, b)) {
+            assertLinesWithin(JulcScriptLoader.loadWithSourceMap(loader.loadClass("com.b.VaultValidator")),
+                    3 * B_FIRST_LINE, 4 * B_FIRST_LINE);
+        }
+        // A root ahead of the class's own that holds only a copy of the script, without its source map.
+        Path copyOnly = Files.createDirectories(tempDir.resolve("copy-only/META-INF/plutus/com/b"))
+                .getParent().getParent().getParent().getParent();
+        Files.copy(b.resolve(B_SCRIPT), copyOnly.resolve(B_SCRIPT));
+        try (var loader = classPath(copyOnly, b)) {
+            assertLinesWithin(JulcScriptLoader.loadWithSourceMap(loader.loadClass("com.b.VaultValidator")),
+                    B_FIRST_LINE, 2 * B_FIRST_LINE);
         }
     }
 
@@ -309,16 +396,78 @@ class SameSimpleNameValidatorsTest {
     /** A class in the unnamed package has one path: its qualified name is its simple name. */
     @Test
     void anUnnamedPackageValidatorIsWrittenOnce() throws Exception {
-        String source = VAULT_A.replace("package com.a;\n", "");
-        Path root = compile("unnamed", Map.of("VaultValidator.java", source), List.of()).classes();
+        Path root = module("unnamed", "VaultValidator.java", VAULT_A.replace("package com.a;\n", ""));
         try (var files = Files.list(root.resolve("META-INF/plutus"))) {
-            assertEquals(List.of("VaultValidator.plutus.json", "plutus.json"),
+            assertEquals(List.of("VaultValidator.plutus.json", "VaultValidator.sourcemap.json", "plutus.json"),
                     files.map(p -> p.getFileName().toString()).sorted().toList());
         }
         assertEquals("VaultValidator", ValidatorOutput.fromJson(json(root, SIMPLE_SCRIPT)).validator());
         try (var loader = classPath(root)) {
             assertEquals(cbor(root, SIMPLE_SCRIPT),
                     JulcScriptLoader.load(loader.loadClass("VaultValidator")).getCborHex());
+        }
+    }
+
+    /** The unnamed package's one path is shared with every packaged validator of that name; the record tells them apart. */
+    @Test
+    void anUnnamedPackageValidatorAndAPackagedOneEachLoadTheirOwnScript() throws Exception {
+        Path unnamed = module("unnamed", "VaultValidator.java", VAULT_A.replace("package com.a;\n", ""));
+        Path b = moduleB();
+        for (var order : List.of(List.of(unnamed, b), List.of(b, unnamed))) {
+            try (var loader = classPath(order.toArray(Path[]::new))) {
+                assertEquals(cbor(unnamed, SIMPLE_SCRIPT),
+                        JulcScriptLoader.load(loader.loadClass("VaultValidator")).getCborHex(), "order " + order);
+                assertEquals(cbor(b, B_SCRIPT),
+                        JulcScriptLoader.load(loader.loadClass("com.b.VaultValidator")).getCborHex(), "order " + order);
+            }
+        }
+    }
+
+    /** A nested validator is written and read under its binary name, {@code Outer$VaultValidator}. */
+    @Test
+    void aNestedValidatorLoadsByItsBinaryName() throws Exception {
+        String source = """
+                package com.n;
+
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
+
+                public class Outer {
+                    @SpendingValidator
+                    public static class VaultValidator {
+                        @Entrypoint
+                        public static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            return false;
+                        }
+                    }
+                }
+                """;
+        Path n = module("n", "com/n/Outer.java", source);
+        String nested = "META-INF/plutus/com/n/Outer$VaultValidator.plutus.json";
+        assertEquals("com.n.Outer$VaultValidator", ValidatorOutput.fromJson(json(n, nested)).validator());
+        Path b = moduleB();
+        try (var loader = classPath(b, n)) {
+            assertEquals(cbor(n, nested),
+                    JulcScriptLoader.load(loader.loadClass("com.n.Outer$VaultValidator")).getCborHex());
+            assertEquals(cbor(b, B_SCRIPT), JulcScriptLoader.load(loader.loadClass("com.b.VaultValidator")).getCborHex());
+        }
+    }
+
+    /** A relocated class whose script was moved with it still records its old name, and is refused with that cause. */
+    @Test
+    void aRelocatedValidatorIsRefusedWithTheRelocationFix() throws Exception {
+        Path b = moduleB();
+        Path shaded = compile("shaded", Map.of("shaded/com/b/VaultValidator.java",
+                "package shaded.com.b; public class VaultValidator {}"), List.of()).classes();
+        Path target = shaded.resolve("META-INF/plutus/shaded/com/b/VaultValidator.plutus.json");
+        Files.createDirectories(target.getParent());
+        Files.copy(b.resolve(B_SCRIPT), target);
+        try (var loader = classPath(shaded)) {
+            assertEveryEntryPointRefuses(loader.loadClass("shaded.com.b.VaultValidator"),
+                    "was written for com.b.VaultValidator, not for shaded.com.b.VaultValidator. If"
+                            + " shaded.com.b.VaultValidator was relocated");
         }
     }
 }
