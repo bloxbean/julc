@@ -606,14 +606,15 @@ No compiler, core, ledger API, stdlib or VM source changes are expected.
 5. How the CIP-57 double-CBOR question is settled, given that UAL's dialect uses
    single-CBOR.
 6. Whether to offer an expert Lean-annotation escape hatch later.
-7. Whether to ask IOG to include JuLC in BL.03 Language Integrations once R.4
-   works. This is the maintainer's decision.
-8. Whether specifications live in `src/verification/java` or in the test
+7. Whether specifications live in `src/verification/java` or in the test
    source set. A separate source set keeps trusted specification code out of
    tests; the test source set is more familiar. Lean: a separate source set.
-9. Which mutation operators to ship first, and the default mutant budget.
-10. Whether CI should fail on unapproved properties by default, or only warn.
+8. Which mutation operators to ship first, and the default mutant budget.
+9. Whether CI should fail on unapproved properties by default, or only warn.
 
 ## Revision history
 
 - r1 (2026-11-14): initial version.
+- r2 (2026-11-14, maintainer request on r1 `6c52227a`): removed the open
+  question about asking IOG to list JuLC in BL.03; JuLC will not ask yet.
+  Open questions 8–10 renumbered to 7–9.
