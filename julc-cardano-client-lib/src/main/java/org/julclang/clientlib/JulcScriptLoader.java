@@ -236,7 +236,7 @@ public final class JulcScriptLoader {
                     "Keep only one build of " + className + " on the class path.");
             return located(preferUnder(recorded, root, simplePath), simplePath, className);
         }
-        String relocatedFrom = relocatedFrom(loader, className, simple);
+        String relocatedFrom = relocatedFrom(loader, className, simple, roots, simplePath);
         if (relocatedFrom != null) {
             throw new IllegalArgumentException(
                     "No compiled Plutus script for " + className + " is on the class path, but one for "
@@ -285,16 +285,26 @@ public final class JulcScriptLoader {
 
     /**
      * The original name of a relocated class: the longest proper suffix of {@code className} that still has a package,
-     * such as {@code com.b.Vault} for {@code shaded.com.b.Vault}, and names a script on the class path through its
-     * qualified copy or a simple-name copy recording it. Null if there is none. A bare simple name is not a candidate:
-     * its qualified path is the shared simple-name path.
+     * such as {@code com.b.Vault} for {@code shaded.com.b.Vault}, whose script sits in a root that holds the class,
+     * as its qualified copy or a simple-name copy recording it. A shading plugin leaves the script there. A script for
+     * that name in another root belongs to a class of its own, and is no evidence. Null if there is none. A bare
+     * simple name is not a candidate: its qualified path is the shared simple-name path.
      */
-    private static String relocatedFrom(ClassLoader loader, String className, List<Copy> simple) {
+    private static String relocatedFrom(ClassLoader loader, String className, List<Copy> simple, List<String> roots,
+                                        String simplePath) {
         int last = className.lastIndexOf('.');
         for (int dot = className.indexOf('.'); dot >= 0 && dot < last; dot = className.indexOf('.', dot + 1)) {
             String original = className.substring(dot + 1);
-            if (loader.getResource(ScriptResourcePaths.qualified(original, SCRIPT_SUFFIX)) != null
-                    || simple.stream().anyMatch(copy -> copy.recorded().equals(original))) {
+            String qualifiedPath = ScriptResourcePaths.qualified(original, SCRIPT_SUFFIX);
+            boolean qualifiedBeside;
+            try {
+                qualifiedBeside = Collections.list(loader.getResources(qualifiedPath)).stream()
+                        .anyMatch(url -> roots.stream().anyMatch(root -> decode(url.toString()).equals(root + qualifiedPath)));
+            } catch (IOException e) {
+                qualifiedBeside = false;
+            }
+            if (qualifiedBeside || simple.stream().anyMatch(copy -> copy.recorded().equals(original)
+                    && roots.stream().anyMatch(root -> copy.isUnder(root, simplePath)))) {
                 return original;
             }
         }

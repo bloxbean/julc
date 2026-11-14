@@ -27,8 +27,8 @@ only, so `com.a.VaultValidator` and `com.b.VaultValidator` on one class path bot
 
 Migration: recompile the modules that hold your validators. Until you do, one case still goes undetected: a fat jar
 that merges two such older modules with same-named validators keeps one simple-name copy, which both classes read.
-Exclude validator packages from relocation by shading plugins: a relocated validator is now refused, because its
-script records its original name.
+Exclude validator packages from relocation by shading plugins. A validator whose package gained a prefix is now
+refused, because its script records its original name. One whose package was replaced is not detected.
 
 ### Ed25519 verification on BouncyCastle; bcprov 1.86 (#322)
 

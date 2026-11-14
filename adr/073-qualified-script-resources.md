@@ -43,8 +43,9 @@ that name. Inside one compilation the second `Filer.createResource` fails with a
    2. a copy of `C`'s simple-name resource that records `C`. All such copies must be identical;
    3. a copy of `C`'s simple-name resource that records no class. It is used only when every class path root
       (directory or jar) that holds `C.class` holds such a copy, all of them identical. It is also refused when a
-      script for a shorter name that still has a package is on the class path, such as `com.b.Vault` for
-      `shaded.com.b.Vault`: the class looks relocated.
+      script for a shorter name that still has a package, such as `com.b.Vault` for `shaded.com.b.Vault`, sits in a
+      root that holds `C.class`: the class looks relocated. A script for that name in another root belongs to a class
+      of its own and does not count.
 
    A copy that records another class is never used.
 2. **I2.** A source map is read only from beside the copy of the script that was used (the same URL with the
@@ -129,10 +130,12 @@ that name. Inside one compilation the second `Filer.createResource` fails with a
 - **`ValidatorOutput`:** a new record component. The canonical constructor now takes eight arguments; the
   seven-argument constructor remains. Record patterns that deconstruct `ValidatorOutput`, and `equals`, now include
   the new component.
-- **Relocated (shaded) validator classes:** a relocated class has no qualified copy under its new name, and its
-  copies record the original name, so it is refused, with an error that names relocation as the cause, whether or not
-  its resources were moved with it. Exclude validator packages from relocation, or recompile them in their new
-  package.
+- **Relocated (shaded) validator classes:** a relocated class has no qualified copy under its new name. When a prefix
+  was added to its package (`com.b` to `shaded.com.b`), its script is found under the original name in its own jar,
+  and the class is refused with an error that names relocation, whether or not its resources were moved with it.
+  When the package was replaced (`com.b` to `shaded.b`), JuLC cannot link the two names, and the class falls under
+  the undetected case in Risks. Either way: exclude validator packages from relocation, or recompile them in their
+  new package.
 - **One compilation with two same-named validators:** failed before (`FilerException`) and still fails, now with a
   diagnostic that names both.
 
@@ -140,8 +143,8 @@ that name. Inside one compilation the second `Filer.createResource` fails with a
 
 - **Undetected:** a root that holds a simple-name copy written before this change serves it to every class with that
   simple name in the same root that has no script of its own and does not look relocated. Examples: a fat jar
-  merging two such older modules, which keeps one copy, or a class in the jar that the processor skipped. origin/main
-  did the same. Recompiling the older module with this version writes the qualified copies, which fixes it.
+  merging two such older modules, which keeps one copy; a class in the jar that the processor skipped; a validator
+  whose package was replaced by relocation. origin/main did the same. Recompiling the older module with this version writes the qualified copies, which fixes it.
 - Two different builds of one class's script on the class path, such as a stale jar beside fresh classes, used to
   pick one silently and now fail; the error names both URLs. When the stale jar predates this change, it has no
   qualified copy, so the fresh build's qualified copy is used, even when the class itself was loaded from the stale
@@ -171,6 +174,9 @@ that name. Inside one compilation the second `Filer.createResource` fails with a
   - a nested validator loads by its binary name;
   - a relocated class is refused, and the error names relocation, whether its resources were moved or not, including
     in a fat jar that also holds an older same-named validator's copy;
+  - an old `org.example.com.b.VaultValidator` beside an unrelated new `com.b.VaultValidator` is not taken for a
+    relocation;
+  - an old class on the class path twice, with a different unrecorded copy beside each, is refused;
   - two different copies that both record the class, with no qualified copy, are refused;
   - an old module twice on the class path (directory and jar) still loads;
   - a loader that is child-first for classes and parent-first for resources does not take an old copy that sits

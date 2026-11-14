@@ -649,4 +649,53 @@ class SameSimpleNameValidatorsTest {
             }
         }
     }
+
+    /**
+     * An old {@code org.example.com.b.VaultValidator} beside an unrelated, new {@code com.b.VaultValidator} in another
+     * module: the longer name is not mistaken for a relocation of the shorter one.
+     */
+    @Test
+    void aLegacyModuleIsNotTakenForARelocationOfAnUnrelatedValidator() throws Exception {
+        Path b = moduleB();
+        Path longer = module("longer", "org/example/com/b/VaultValidator.java",
+                VAULT_A.replace("package com.a;", "package org.example.com.b;"));
+        Files.delete(longer.resolve("META-INF/plutus/org/example/com/b/VaultValidator.plutus.json"));
+        Files.delete(longer.resolve("META-INF/plutus/org/example/com/b/VaultValidator.sourcemap.json"));
+        var output = ValidatorOutput.fromJson(json(longer, SIMPLE_SCRIPT));
+        Files.writeString(longer.resolve(SIMPLE_SCRIPT), new ValidatorOutput(output.type(), output.purpose(),
+                output.description(), output.cborHex(), output.hash(), output.params(), output.sizeBytes()).toJson());
+        for (var order : List.of(List.of(b, longer), List.of(longer, b))) {
+            try (var loader = classPath(order.toArray(Path[]::new))) {
+                assertEquals(cbor(longer, SIMPLE_SCRIPT),
+                        JulcScriptLoader.load(loader.loadClass("org.example.com.b.VaultValidator")).getCborHex(),
+                        "order " + order);
+                assertEquals(cbor(b, B_SCRIPT),
+                        JulcScriptLoader.load(loader.loadClass("com.b.VaultValidator")).getCborHex(), "order " + order);
+            }
+        }
+    }
+
+    /** An old class on the class path twice, with a different unrecorded copy beside each, is refused. */
+    @Test
+    void twoDifferentLegacyCopiesBesideOneClassAreRefused() throws Exception {
+        Path b = moduleB();
+        makeLegacy(b, B_SCRIPT);
+        Path stale = compile("stale", Map.of("com/b/VaultValidator.java",
+                VAULT_B.replace("signum() > 0", "signum() < 0")), List.of()).classes();
+        makeLegacyWithoutSourceMap(stale);
+        assertNotEquals(cbor(b, SIMPLE_SCRIPT), cbor(stale, SIMPLE_SCRIPT));
+        for (var order : List.of(List.of(b, stale), List.of(stale, b))) {
+            try (var loader = classPath(order.toArray(Path[]::new))) {
+                assertEveryEntryPointRefuses(loader.loadClass("com.b.VaultValidator"),
+                        "No compiled Plutus script for com.b.VaultValidator");
+            }
+        }
+    }
+
+    static void makeLegacyWithoutSourceMap(Path root) throws IOException {
+        Files.delete(root.resolve(B_SCRIPT));
+        var output = ValidatorOutput.fromJson(json(root, SIMPLE_SCRIPT));
+        Files.writeString(root.resolve(SIMPLE_SCRIPT), new ValidatorOutput(output.type(), output.purpose(),
+                output.description(), output.cborHex(), output.hash(), output.params(), output.sizeBytes()).toJson());
+    }
 }
