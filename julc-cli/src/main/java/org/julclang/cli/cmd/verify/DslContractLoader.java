@@ -2,16 +2,13 @@ package org.julclang.cli.cmd.verify;
 
 import org.julclang.clientlib.JulcScriptAdapter;
 import org.julclang.compiler.CompilerException;
-import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.schema.ContractSchema;
 import org.julclang.stdlib.StdlibRegistry;
-import org.julclang.cli.cmd.BuildCommand;
 import org.julclang.cli.cmd.blueprint.ArtifactCommand;
 import org.julclang.cli.project.ProjectLayout;
 import org.julclang.cli.project.ProjectScanner;
 import org.julclang.cli.project.ProjectSourceResolver;
-import picocli.CommandLine;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -28,11 +25,20 @@ final class DslContractLoader {
             Path projectDirectory,
             String validatorTitle,
             VerificationPurpose requestedPurpose) throws Exception {
+        return load(projectDirectory, validatorTitle, requestedPurpose,
+                VerificationBuild.forProfileId(null));
+    }
+
+    static Loaded load(
+            Path projectDirectory,
+            String validatorTitle,
+            VerificationPurpose requestedPurpose,
+            VerificationBuild build) throws Exception {
         Path project = projectDirectory.toAbsolutePath().normalize();
         if (!Files.isRegularFile(ProjectLayout.tomlFile(project))) {
             throw new IllegalArgumentException("Not a JuLC project: " + project);
         }
-        if (new CommandLine(new BuildCommand()).execute(project.toString()) != 0) {
+        if (build.runOrdinaryBuild(project) != 0) {
             throw new IllegalStateException("Ordinary JuLC build failed; DSL preparation stopped");
         }
         var scan = ProjectScanner.scan(ProjectLayout.srcDir(project));
@@ -44,7 +50,7 @@ final class DslContractLoader {
         var pool = ProjectSourceResolver.buildPool(scan.libraries());
         var libraries = ProjectSourceResolver.resolve(source, pool);
         var compiled = new JulcCompiler(StdlibRegistry.defaultRegistry(),
-                ProjectSourceResolver.options(new CompilerOptions(), pool))
+                ProjectSourceResolver.options(build.compilerOptions(), pool))
                 .compileContract(source, libraries);
         if (compiled.compileResult().hasErrors()) {
             throw new CompilerException(compiled.compileResult().diagnostics());

@@ -15,10 +15,10 @@ run_fixture() {
   mkdir -p "${workspace}"
   if [[ "${fixture}" != "authorized" ]]; then
     [[ -d "${workspace}/.lake" ]] || cp -R "${C6_DIR}/generated/authorized/.lake" "${workspace}/"
-    [[ -d "${workspace}/.julc" ]] || cp -R "${C6_DIR}/generated/authorized/.julc" "${workspace}/"
+    [[ -d "${workspace}/.julc" ]] || [[ ! -d "${C6_DIR}/generated/authorized/.julc" ]] || cp -R "${C6_DIR}/generated/authorized/.julc" "${workspace}/"
   fi
   set +e
-  "${JULC[@]}" verify "${C6_DIR}/fixtures/${fixture}" --validator "${validator}" \
+  "${JULC[@]}" verify --optimization baseline "${C6_DIR}/fixtures/${fixture}" --validator "${validator}" \
     --backend local --fuel "${fuel}" --out-dir "${workspace}" --force
   local actual_exit=$?
   set -e

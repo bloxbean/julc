@@ -1,5 +1,6 @@
 package org.julclang.cli.cmd.verify;
 
+import org.julclang.compiler.OptimizationLevel;
 import org.julclang.verification.dsl.ContractMetamodelGenerator;
 import org.julclang.verification.dsl.VerificationDslApi;
 import picocli.CommandLine.Command;
@@ -27,6 +28,9 @@ public final class VerifyDslInitCommand implements Callable<Integer> {
     @Option(names = "--out", required = true,
             description = "Generated .java file (refuses to overwrite)")
     private Path output;
+    @Option(names = "--optimization", defaultValue = OptimizationLevel.DEFAULT_PROFILE_ID,
+            description = VerificationBuild.OPTION_DESCRIPTION)
+    private String optimizationProfile;
 
     @Override
     public Integer call() {
@@ -36,7 +40,8 @@ public final class VerifyDslInitCommand implements Callable<Integer> {
                 throw new IllegalArgumentException(
                         "Refusing to overwrite generated metamodel: " + target);
             }
-            var loaded = DslContractLoader.load(projectDir, validator, purpose);
+            var loaded = DslContractLoader.load(projectDir, validator, purpose,
+                    VerificationBuild.forProfileId(optimizationProfile));
             String source = ContractMetamodelGenerator.generate(
                     loaded.schema(), packageName, className);
             if (target.getParent() != null) Files.createDirectories(target.getParent());

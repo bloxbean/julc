@@ -23,7 +23,7 @@ prepare() {
   local validator="$1" model="$2" spec="$3"
   local source="${BUILD_DIR}/src/evidence/${model}.java"
   rm -f "${source}"
-  "${JULC[@]}" verify dsl-init "${PROJECT}" --validator "${validator}" \
+  "${JULC[@]}" verify dsl-init --optimization baseline "${PROJECT}" --validator "${validator}" \
     --purpose spending --package evidence --class "${model}" \
     --out "${source}"
   javac -cp "${JULC_JAR}" -d "${BUILD_DIR}/classes" \
@@ -42,7 +42,7 @@ prepare VacuousReviewedAdapters VacuousReviewedAdaptersModel \
 run_property() {
   local validator="$1" spec="$2" output="$3" expected_exit="$4" expected="$5"
   set +e
-  "${JULC[@]}" verify dsl "${PROJECT}" --validator "${validator}" \
+  "${JULC[@]}" verify dsl --optimization baseline "${PROJECT}" --validator "${validator}" \
     --purpose spending --spec-class "evidence.${spec}" \
     --spec-classpath "${BUILD_DIR}/classes:${JULC_JAR}" \
     --source "${E4L_DIR}/${spec}.java" --backend "${BACKEND}" --fuel 5000 \

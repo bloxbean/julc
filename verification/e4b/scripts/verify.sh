@@ -23,7 +23,7 @@ prepare_model() {
   local model_source="${build_dir}/src/evidence/${model}.java"
   mkdir -p "$(dirname "${model_source}")" "${build_dir}/classes"
   rm -f "${model_source}"
-  "${JULC[@]}" verify dsl-init "${project}" --validator "${validator}" \
+  "${JULC[@]}" verify dsl-init --optimization baseline "${project}" --validator "${validator}" \
     --purpose spending --package evidence --class "${model}" --out "${model_source}"
 }
 
@@ -38,7 +38,7 @@ mint_build="${mint_project}/build/dsl"
 mint_model="${mint_build}/src/evidence/ComposedPolicyModel.java"
 mkdir -p "$(dirname "${mint_model}")" "${mint_build}/classes"
 rm -f "${mint_model}"
-"${JULC[@]}" verify dsl-init "${mint_project}" --validator ComposedPolicy \
+"${JULC[@]}" verify dsl-init --optimization baseline "${mint_project}" --validator ComposedPolicy \
   --purpose minting --package evidence --class ComposedPolicyModel --out "${mint_model}"
 javac -cp "${JULC_JAR}" -d "${mint_build}/classes" \
   "${mint_model}" "${E4B_DIR}/ComposedMintingSpec.java"
@@ -53,7 +53,7 @@ run_property() {
   local output="$5" expected_exit="$6" expected_outcome="$7" fuel="$8"
   local classes="${E4B_DIR}/fixtures/${fixture}/build/dsl/classes"
   set +e
-  "${JULC[@]}" verify dsl "${E4B_DIR}/fixtures/${fixture}" \
+  "${JULC[@]}" verify dsl --optimization baseline "${E4B_DIR}/fixtures/${fixture}" \
     --validator "${validator}" --purpose "${purpose}" \
     --spec-class "evidence.${spec}" --spec-classpath "${classes}:${JULC_JAR}" \
     --source "${E4B_DIR}/${spec}.java" --backend "${BACKEND}" --fuel "${fuel}" \

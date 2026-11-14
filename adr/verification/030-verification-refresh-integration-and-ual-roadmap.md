@@ -1,6 +1,6 @@
 # ADR-030: Verification Refresh, Build Integration, AI-Agent Support and UAL Export Roadmap
 
-- **Status:** Proposed
+- **Status:** Proposed; R.1 implemented on this branch
 - **Date:** 2026-11-14
 - **Related:**
   [ADR-001 — IOG Blaster Verification Strategy](001-iog-blaster-verification-strategy.md),
@@ -31,7 +31,15 @@ Blaster stack also moved.
   artifacts from the current compiler and are not run in CI. They have not
   been re-run as a set since the javac migration.
 - The annotated workflow (`AnnotatedVerificationWorkflow`) compiles with
-  default options, i.e. `OptimizationLevel.DEFAULT = PV11_SAFE`.
+  default options, i.e. `OptimizationLevel.DEFAULT = PV11_SAFE`, and `julc
+  verify` has no option to choose another level.
+- `PV11_SAFE` became the default on 2026-08-29 (`69540a2a`), six days after
+  E.6 merged. Every C.5–E.4l result was therefore produced at `baseline`.
+  ADR-032 recorded that a `PV11_SAFE` smoke proof "remained compute-bound
+  beyond ten minutes in Lean preprocessing", pinned `verification/blaster` to
+  `baseline`, and stated that Blaster results "must not be cited as formal
+  coverage of PV11-safe". The per-milestone suites were not pinned (see the
+  R.1 findings).
 - The pinned stack is Lean-blaster `083bae79`, PlutusCoreBlaster `7cf5a78c`,
   CardanoLedgerApiBlaster `5dab3c43`, Lean 4.24.0 and Z3 4.15.2. These values
   are repeated in `VerificationProjectGenerator` (`BLASTER_REV`,
@@ -188,14 +196,17 @@ tested against JuLC's generated Lean.
 
 ## Decision
 
-Verification work resumes with the milestones below. R.1 must finish before
-R.2, and R.2 before R.3–R.6. After R.2, R.3, R.4 and R.5 may proceed in
-parallel. R.6 depends on R.4's function targets.
+Verification work resumes with the milestones below. R.1 and R.1b must
+finish before R.2, so that a stack change is never blamed for a generator
+regression, and R.2 before R.2a and R.3–R.6. After R.2, R.2a, R.3, R.4 and R.5 may
+proceed in parallel, with R.2a first in priority. R.6 depends on R.4's
+function targets.
 
 ```text
-R.1 re-baseline --> R.2 stack refresh --+--> R.3 PV11 builtins
-                                        +--> R.4 UAL export --> R.6 helper conformance
-                                        +--> R.5 translation-validation calibration
+R.1 re-baseline --> R.1b refutation fix --> R.2 stack refresh --+--> R.2a PV11 lowering shapes
+                                                                +--> R.3 PV11 builtins
+                                                                +--> R.4 UAL export --> R.6 helper conformance
+                                                                +--> R.5 translation-validation calibration
 
 R.8 DSL workflow --> R.7 build integration --> R.9 AI-agent support
 ```
@@ -219,13 +230,188 @@ never mixed.
   - generator or toolchain breakage: fix it in `julc-cli`/`julc-verification`;
   - a changed proof outcome: stop and investigate as a possible miscompile or
     verification bug before refreshing anything.
-- Add a scheduled CI job (nightly or weekly) that runs a representative set:
-  `c5`, `c6`, `c7`, `e4b`, `e4h` and `strict-boundaries`. `verification/blaster`
-  stays on pull requests.
+- Add a scheduled CI job (weekly, plus manual dispatch) that runs a
+  representative set: `c5`, `c7`, `e4b` and `e4h`. `c6`, `e3` and
+  `strict-boundaries` join the set when R.1b lands. `verification/blaster` stays
+  on pull requests.
 - Record a per-suite table (outcome, runtime, refresh reason) in this ADR.
 
 Exit: every suite reproduces its expected classifications on one recorded
-main commit, and the scheduled job is green.
+main commit, and the scheduled job is green. Status: met for 16 of 20
+suites; the other four move to R.1b.
+
+#### R.1 findings (2026-11-14, main `c77ae5f3` plus this branch)
+
+Runs were on a 32-core Linux VM with Temurin 25.0.5, Lean 4.24.0 and Z3
+4.15.2, one clone per suite group.
+
+1. **`verification/blaster` reproduces.** `SMT-VALID: all-properties-established`
+   in 70 s. Its fixtures compile at `baseline`.
+2. **Every other suite stalls at the default level.** Each one's first
+   obligation stayed in single-threaded Lean preprocessing at 100% CPU for
+   more than 30 minutes, with no Z3 process started. `c5`, the simplest
+   `@RequiresSigner` property, ended with the runner's own
+   `COULD-NOT-EVALUATE: verification-timeout`. That is the correct
+   fail-closed result, but it means `julc verify` on a default build does not
+   finish today.
+3. **The cause is the `PV11_SAFE` lowering, not artifact size.** Decoding
+   e4g's authorized fixture:
+   - at the current default it is 681 hex characters, with 18 `case` terms on
+     builtin values and no `ifThenElse`;
+   - the committed August artifact is 1163 hex characters, with 19
+     `ifThenElse` and 38 `delay`.
+
+   The pinned PlutusCoreBlaster parses and evaluates `case` on constants, so
+   this is a preprocessing performance cliff, not missing support.
+4. **The suites were never pinned to a level.** They regenerate artifacts at
+   the current default, so they have silently tested `PV11_SAFE` since
+   2026-08-29.
+
+5. **Generated DSL models are now per validator.** Since the javac migration
+   (ADR-068, `1f0354c6`), a validator's nested record types are named with
+   their class (`AuthorizedRewards.Redeemer`, not `Redeemer`). The contract
+   schema hash therefore differs between two validators with the same shape,
+   and the DSL validator correctly rejects a model generated for another
+   validator: "contract schema hash does not match compiler-owned types".
+   The e4c and e4d scripts reused one model for four validators, so they
+   failed. A specification shared across validators now needs one generated
+   model per validator, which is what R.8's per-run model generation does
+   for users.
+6. **The `.julc` cache is optional.** It exists only when JuLC provisions Z3
+   itself or uses Docker. The c6, c7, e3 and e4a scripts copied it
+   unconditionally and failed when Z3 was already on `PATH`.
+
+7. **Two refutation controls no longer complete: a generator regression.**
+   e3's `unpaid` and c6's `missing-signer` fixtures are deliberately
+   vulnerable and must be `REFUTED` with a counterexample. Both compile to
+   the same bytes as in August (`unpaid` SHA-256 prefix `e7f430c883ce`,
+   `missing-signer` `f2c70ab021fa`). Both now run Z3 for the runner's full
+   30 minutes and end `COULD-NOT-EVALUATE: verification-timeout`, on Linux
+   and on macOS.
+   - The workspace generated on 2026-08-20, still on the maintainer's
+     machine, refutes `unpaid` in 11 s today on macOS with the same pins
+     and Z3.
+   - Today's generator emits a different property for the same artifact:
+     `SecurityProperty.lean` differs by 424 lines, and the obligations are
+     now per property. These changes came from E.4b–E.6.
+   - ADR-029 already recorded the c6 case ("did not complete within a
+     ten-minute review ceiling") as a solver-performance residual.
+
+   The result still fails closed, but a vulnerable contract is reported as
+   unevaluated instead of refuted with a counterexample. That makes these
+   negative controls useless as evidence, and it would hide a real
+   vulnerability from a user in the same way. It has to be fixed, not
+   accepted (see R.1b).
+8. **Two suites carried pre-E.6 certificate checks.** e3 and e4a looked for
+   `validMintingContext/v3-pinned` or `validSpendingContext/v3-pinned` in the
+   certificate. Since the schema-1 reset (ADR-029) the certificate records
+   the domain per property (`"domain" : "VALID_MINTING_V3_PINNED"`), and the
+   hash-bound manifest keeps the assumption list. E.6 confirmed that the
+   scripts parse but did not re-run them, so this went unnoticed. The
+   verification outcomes themselves were all as expected.
+
+9. **c2's container workspace no longer compiles in reasonable time.** At
+   `baseline`, c2's generated `verify init` workspace spent more than 75
+   minutes in the `#prep_uplc` step (fuel 20000) without finishing.
+   - Its artifact changed since the August workspace (SHA-256 prefix
+     `3286d1b18e97` on 2026-08-13, `2f30229c0155` today).
+   - That August workspace predates strict data boundaries (ADR-015,
+     `bc79531f`) and still completes in 14 s on macOS.
+   - c2's fixtures are lists, maps and optionals, so strict container
+     decoding is the likely cause. This is not yet confirmed.
+
+Changes made in R.1 as a result:
+
+- `julc verify`, `julc verify dsl` and `julc verify dsl-init` accept
+  `--optimization <level>` (default unchanged). The ordinary build and the
+  observational compile take it from one value (`VerificationBuild`), so the
+  verified bytes are always the built bytes.
+- At `pv11-safe` and `pv11-costed`, the commands print a note that Blaster
+  preprocessing is very slow at that level and how to verify at `baseline`.
+- Every evidence suite builds and verifies with `--optimization baseline`,
+  the level its expectations were produced at, as `verification/blaster`
+  already does.
+- The e4c and e4d scripts generate one model per validator, and the c6, c7,
+  e3 and e4a scripts copy the `.julc` cache only when it exists.
+- The e3 and e4a scripts check the schema-1 domain field in the
+  certificate and the assumption list in the manifest.
+- Verifying the level you deploy is the user's responsibility. A
+  certificate binds the exact bytes, so verifying `baseline` says nothing
+  about a `pv11-safe` deployment.
+
+Per-suite results at `baseline` (branch head plus the R.1 changes, Linux
+x86-64 VM, local backend, runner timeout 1800 s per step):
+
+| Suite | Result | Time (s) | Notes |
+|---|---|---:|---|
+| `blaster` | passes | 70 | CI suite; `SMT-VALID: all-properties-established` |
+| `c2` | no result | 4500+ | stopped after 75 min in `#prep_uplc`; finding 9 |
+| `c3` | passes | 442 | |
+| `c5` | passes | 548 | timed out at `pv11-safe` (finding 2) |
+| `c6` | fails | 2477 | authorized `SMT-VALID`; `missing-signer` times out (finding 7) |
+| `c7` | passes | 321 | |
+| `e3` | fails | 2139 | authorized `SMT-VALID`; `unpaid` times out (finding 7) |
+| `e4a` | passes | 170 | after the schema-1 check fix (finding 8) |
+| `e4b` | passes | 3863 | |
+| `e4c` | passes | 1353 | after the per-validator model fix (finding 5) |
+| `e4d` | passes | 1311 | after the per-validator model fix (finding 5) |
+| `e4f` | passes | 803 | covers E.4e and E.4f |
+| `e4g` | passes | 755 | |
+| `e4h` | passes | 785 | |
+| `e4i` | passes | 888 | |
+| `e4j` | passes | 1272 | |
+| `e4k` | passes | 782 | |
+| `e4l` | passes | 1014 | |
+| `p4` | passes | 74 | |
+| `strict-boundaries` | fails | 3727 | runs c3, c5, c6 and c7; fails on c6 (finding 7) |
+
+Sixteen of twenty suites reproduce at `baseline`. The remaining four
+depend on R.1b. Every reproduced classification matches the committed
+expectation. No outcome changed from `SMT-VALID` to `REFUTED` or the
+reverse, so nothing points at a miscompile.
+
+The repository-wide `./gradlew build` passed on the same VM with these
+changes: 18,019 tests, 543 skipped, 0 failures.
+
+### R.1b: Restore refutation performance of generated properties
+
+1. Find the generator change that made the e3 `unpaid` refutation stop
+   completing. Bisect `julc-cli`/`julc-verification` between 2026-08-20 and
+   the ADR-029 merge, regenerating the e3 workspace at each commit; each
+   step takes about a minute.
+2. Restore a property shape that Z3 refutes quickly, without weakening what
+   the property states. Prove in Lean that the new shape is equivalent to
+   the current one, or keep the shape the reviewed property used.
+3. Make the expected negative controls part of the scheduled CI job, so a
+   refutation that stops completing fails CI.
+
+4. Measure c2's container workspace with and without strict container
+   decoding. If strict decoding is the cause, keep it (ADR-015 is a
+   correctness rule) and make the preprocessing practical instead, for
+   example by lowering the init workspace's default fuel or adding a Lean
+   lemma for the decoder's shape.
+
+Exit: e3 and c6 reproduce all their classifications at `baseline` within
+the runner's default timeout, on Linux and macOS, and c2 completes.
+
+### R.2a: Make PV11 lowering shapes practical in Blaster
+
+The default build must become verifiable. This is now the highest-value
+milestone, because without it verification applies only to `baseline`
+deployments.
+
+1. Measure the stalled R.1 obligations against the R.2 stack. Lean-blaster
+   #155 reworked match reduction and the optimizer, so it may already help.
+2. If not, add a Lean lemma that rewrites `case` on a Bool constant to the
+   equivalent `ifThenElse` form before preprocessing. The lemma is proved by
+   Lean's kernel, so it adds nothing to the trusted base. Propose it
+   upstream, or apply it through Blaster's user optimisation rules once those
+   land (Lean-blaster PR #472).
+3. Repeat for the other PV11 shapes JuLC emits: `case` on integers (O5),
+   lists and pairs.
+
+Exit: the c5, c6 and c7 suites reproduce at `pv11-safe` within the runner's
+default timeout, and the `pv11-safe` warning is removed.
 
 ### R.2: Refresh the Blaster stack
 
@@ -544,6 +730,9 @@ No compiler, core, ledger API, stdlib or VM source changes are expected.
   the new stack. They must be regenerated, and the CLI must say so instead of
   failing obscurely.
 - The canonical DSL schema 1 and construction API version 1 are unchanged.
+- `julc verify`, `verify dsl` and `verify dsl-init` gain `--optimization`.
+  Its default is the compiler default, so existing invocations build exactly
+  as before.
 - Existing `julc verify dsl` options keep working. They become overrides of
   convention-based discovery.
 - The Gradle verification task is opt-in and is not added to `check` by
@@ -618,3 +807,10 @@ No compiler, core, ledger API, stdlib or VM source changes are expected.
 - r2 (2026-11-14, maintainer request on r1 `6c52227a`): removed the open
   question about asking IOG to list JuLC in BL.03; JuLC will not ask yet.
   Open questions 8–10 renumbered to 7–9.
+- r3 (2026-11-15, R.1 implementation): recorded that `PV11_SAFE` output
+  stalls Blaster preprocessing in every suite except `verification/blaster`;
+  added `--optimization` to the verify commands and pinned the suites to
+  `baseline`; added milestone R.2a. Recorded the e3/c6 refutation regression
+  from the E.4b–E.6 generator and added milestone R.1b; recorded the
+  per-validator DSL model, optional `.julc` cache and schema-1 certificate
+  check fixes.

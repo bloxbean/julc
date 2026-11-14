@@ -153,6 +153,27 @@ This is a useful development check, but neither command is a formal proof.
 `julc verify` performs its own exact build before generating the proof
 workspace, so a separate `julc build` is not required for verification.
 
+### Choose the optimizer level you deploy
+
+`julc verify`, `julc verify dsl` and `julc verify dsl-init` accept the same
+`--optimization` option as `julc build`, with the same default
+(`pv11-safe`). The verified bytes are the bytes that build produces, so verify
+at the level you will deploy.
+
+At `pv11-safe` and `pv11-costed`, JuLC emits UPLC `case` on builtin values.
+The pinned Blaster stack preprocesses that shape very slowly: a run can stay
+in Lean preprocessing until the runner's timeout and end as
+`COULD-NOT-EVALUATE: verification-timeout`. Until this is fixed (ADR-030
+R.2a), build, verify and deploy with `baseline` when you need a result:
+
+```bash
+julc build --optimization baseline
+julc verify . --validator AuthorizedStateValidator --optimization baseline
+```
+
+A `baseline` certificate says nothing about a `pv11-safe` build of the same
+source: the bytes, and therefore the script hash, differ.
+
 ## 6. Verify with Docker
 
 From the project root:
@@ -160,6 +181,7 @@ From the project root:
 ```bash
 julc verify . \
   --validator AuthorizedStateValidator \
+  --optimization baseline \
   --backend docker
 ```
 
@@ -203,6 +225,7 @@ and the classified properties.
 ```bash
 julc verify . \
   --validator AuthorizedStateValidator \
+  --optimization baseline \
   --backend local
 ```
 
@@ -839,7 +862,7 @@ and `--force`, then archive `verification-result.json` and its referenced logs:
 
 ```bash
 julc verify . --validator AuthorizedStateValidator \
-  --backend docker --fuel 1000 \
+  --backend docker --fuel 1000 --optimization baseline \
   --out-dir verification/ci-authorized --force
 ```
 

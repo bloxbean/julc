@@ -1,5 +1,6 @@
 package org.julclang.cli.cmd.verify;
 
+import org.julclang.compiler.OptimizationLevel;
 import org.julclang.verification.ComposedDslProperty;
 import org.julclang.verification.dsl.ComposedDslPromotion;
 import org.julclang.verification.dsl.ir.DslPropertySet;
@@ -41,6 +42,9 @@ public final class VerifyDslCommand implements Callable<Integer> {
     private int workerTimeoutSeconds;
     @Option(names = "--force")
     private boolean force;
+    @Option(names = "--optimization", defaultValue = OptimizationLevel.DEFAULT_PROFILE_ID,
+            description = VerificationBuild.OPTION_DESCRIPTION)
+    private String optimizationProfile;
 
     @Override
     public Integer call() {
@@ -48,7 +52,9 @@ public final class VerifyDslCommand implements Callable<Integer> {
             if (workerTimeoutSeconds <= 0) {
                 throw new IllegalArgumentException("Worker timeout must be positive");
             }
-            var loaded = DslContractLoader.load(projectDir, validator, purpose);
+            var build = VerificationBuild.forProfileId(optimizationProfile);
+            build.warnIfSlowForBlaster(System.out);
+            var loaded = DslContractLoader.load(projectDir, validator, purpose, build);
             var progress = VerificationProgress.console(System.out);
             progress.heading("Preparing typed DSL verification for " + validator + " ...");
             Path worker = loaded.project().resolve("build/verification-dsl-worker")

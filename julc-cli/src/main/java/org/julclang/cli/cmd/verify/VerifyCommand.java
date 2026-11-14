@@ -1,5 +1,6 @@
 package org.julclang.cli.cmd.verify;
 
+import org.julclang.compiler.OptimizationLevel;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
@@ -52,6 +53,10 @@ public class VerifyCommand implements Callable<Integer> {
             description = "Regenerate generator-owned workspace files")
     private boolean force;
 
+    @Option(names = "--optimization", defaultValue = OptimizationLevel.DEFAULT_PROFILE_ID,
+            description = VerificationBuild.OPTION_DESCRIPTION)
+    private String optimizationProfile;
+
     @Override
     public Integer call() {
         if (validatorTitle == null || validatorTitle.isBlank()) {
@@ -59,10 +64,12 @@ public class VerifyCommand implements Callable<Integer> {
             return 0;
         }
         try {
+            var build = VerificationBuild.forProfileId(optimizationProfile);
+            build.warnIfSlowForBlaster(System.out);
             var progress = VerificationProgress.console(System.out);
             var execution = new AnnotatedVerificationWorkflow().run(
                     projectDir, validatorTitle, purpose, backend, outputDirectory,
-                    fuel, recursiveDepth, force, progress);
+                    fuel, recursiveDepth, force, build, progress);
             var result = execution.run().result();
             System.out.println();
             System.out.println(result.outcome() + ": " + result.reason());

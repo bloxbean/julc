@@ -25,17 +25,17 @@ run_fixture() {
 
   mkdir -p "$(dirname "${model}")" "${classes}" "${workspace}"
   rm -f "${model}"
-  "${JULC[@]}" verify dsl-init "${project}" --validator "${validator}" \
+  "${JULC[@]}" verify dsl-init --optimization baseline "${project}" --validator "${validator}" \
     --package evidence --class SaleModel --out "${model}"
   javac -cp "${REPO_DIR}/julc-cli/build/libs/julc.jar" -d "${classes}" \
     "${model}" "${E3_DIR}/SellerPaymentSpec.java"
 
   if [[ "${fixture}" != "authorized" ]]; then
     [[ -d "${workspace}/.lake" ]] || cp -R "${E3_DIR}/generated/authorized/.lake" "${workspace}/"
-    [[ -d "${workspace}/.julc" ]] || cp -R "${E3_DIR}/generated/authorized/.julc" "${workspace}/"
+    [[ -d "${workspace}/.julc" ]] || [[ ! -d "${E3_DIR}/generated/authorized/.julc" ]] || cp -R "${E3_DIR}/generated/authorized/.julc" "${workspace}/"
   fi
   set +e
-  "${JULC[@]}" verify dsl "${project}" --validator "${validator}" \
+  "${JULC[@]}" verify dsl --optimization baseline "${project}" --validator "${validator}" \
     --spec-class evidence.SellerPaymentSpec --spec-classpath "${classes}" \
     --source SellerPaymentSpec.java \
     --backend local --fuel "${fuel}" --out-dir "${workspace}" --force
@@ -59,8 +59,12 @@ run_fixture multi-satisfaction MultiSatisfactionSale 1500 0 SMT-VALID
 
 grep -q '"ledgerValidityModeled" : true' \
   "${E3_DIR}/generated/authorized/verification-result.json"
-grep -q 'validSpendingContext/v3-pinned' \
+# Schema 1 (ADR-029) records the domain per property in the certificate and the
+# assumption list in the hash-bound manifest.
+grep -q '"domain" : "VALID_SPENDING_V3_PINNED"' \
   "${E3_DIR}/generated/authorized/verification-result.json"
+grep -q 'validSpendingContext/v3-pinned' \
+  "${E3_DIR}/generated/authorized/verification-manifest.json"
 grep -q 'Counterexample:' \
   "${E3_DIR}/generated/unpaid/verification-results/verify.log"
 grep -q 'global protection against multi-satisfaction' \

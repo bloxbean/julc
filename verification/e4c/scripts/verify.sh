@@ -16,20 +16,25 @@ fi
 JULC=(java -jar "${REPO_DIR}/julc-cli/build/libs/julc.jar")
 JULC_JAR="${REPO_DIR}/julc-cli/build/libs/julc.jar"
 PROJECT="${E4C_DIR}/fixtures/rewarding"
-BUILD_DIR="${PROJECT}/build/dsl"
-MODEL="${BUILD_DIR}/src/evidence/RewardingModel.java"
-
-mkdir -p "$(dirname "${MODEL}")" "${BUILD_DIR}/classes"
-rm -f "${MODEL}"
-"${JULC[@]}" verify dsl-init "${PROJECT}" --validator AuthorizedRewards \
-  --purpose rewarding --package evidence --class RewardingModel --out "${MODEL}"
-javac -cp "${JULC_JAR}" -d "${BUILD_DIR}/classes" \
-  "${MODEL}" "${E4C_DIR}/RewardingSpec.java"
+# Each validator's nested types are named with its class (ADR-068), so each
+# validator's contract schema hash differs and needs its own generated model.
+prepare_model() {
+  local validator="$1"
+  BUILD_DIR="${PROJECT}/build/dsl/${validator}"
+  MODEL="${BUILD_DIR}/src/evidence/RewardingModel.java"
+  mkdir -p "$(dirname "${MODEL}")" "${BUILD_DIR}/classes"
+  rm -f "${MODEL}"
+  "${JULC[@]}" verify dsl-init --optimization baseline "${PROJECT}" --validator "${validator}" \
+    --purpose rewarding --package evidence --class RewardingModel --out "${MODEL}"
+  javac -cp "${JULC_JAR}" -d "${BUILD_DIR}/classes" \
+    "${MODEL}" "${E4C_DIR}/RewardingSpec.java"
+}
 
 run_property() {
   local validator="$1" output="$2" expected_exit="$3" expected_outcome="$4"
+  prepare_model "${validator}"
   set +e
-  "${JULC[@]}" verify dsl "${PROJECT}" --validator "${validator}" \
+  "${JULC[@]}" verify dsl --optimization baseline "${PROJECT}" --validator "${validator}" \
     --purpose rewarding --spec-class evidence.RewardingSpec \
     --spec-classpath "${BUILD_DIR}/classes:${JULC_JAR}" \
     --source "${E4C_DIR}/RewardingSpec.java" --backend "${BACKEND}" \

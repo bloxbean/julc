@@ -1,0 +1,92 @@
+name: Verification Evidence
+
+# ADR-030 R.1: re-run a representative set of committed verification evidence
+# suites against the current compiler, so drift after compiler changes is
+# found on a schedule instead of months later. `blaster-verification.yml`
+# remains the pull-request gate for `verification/blaster`.
+
+on:
+  schedule:
+    - cron: '17 3 * * 1'
+  workflow_dispatch:
+    inputs:
+      suites:
+        description: 'Space-separated suite directories under verification/ (empty = default set)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  select:
+    runs-on: ubuntu-24.04
+    outputs:
+      suites: ${{ steps.pick.outputs.suites }}
+    steps:
+      - id: pick
+        env:
+          REQUESTED: ${{ github.event.inputs.suites }}
+        run: |
+          set -euo pipefail
+          default="c5 c7 e4b e4h"
+          list="${REQUESTED:-$default}"
+          for suite in $list; do
+            [[ "$suite" =~ ^[a-z0-9-]+$ ]] || { echo "invalid suite name: $suite" >&2; exit 1; }
+          done
+          echo "suites=$(printf '%s\n' $list | jq -R . | jq -cs .)" >> "$GITHUB_OUTPUT"
+
+  evidence:
+    needs: select
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: ${{ fromJSON(needs.select.outputs.suites) }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: temurin
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4
+
+      - name: Install verification tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes ripgrep
+
+      - name: Set up pinned Lean toolchain
+        uses: leanprover/lean-action@50fcf42d2e460296f1a34b402e990d1b24f8b596 # v1.6.0
+        with:
+          auto-config: false
+          use-github-cache: false
+          lake-package-directory: verification/blaster
+
+      - name: Run evidence suite
+        env:
+          SUITE: ${{ matrix.suite }}
+        run: |
+          set -euo pipefail
+          script="verification/${SUITE}/scripts/verify.sh"
+          [[ -f "$script" ]] || { echo "no evidence script: $script" >&2; exit 1; }
+          bash "$script"
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verification-evidence-${{ matrix.suite }}
+          path: |
+            verification/${{ matrix.suite }}/generated/**/verification-result.json
+            verification/${{ matrix.suite }}/generated/**/verification-results/*.log
+          if-no-files-found: warn
+          retention-days: 30

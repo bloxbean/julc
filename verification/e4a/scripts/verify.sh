@@ -19,17 +19,17 @@ run_fixture() {
 
   mkdir -p "$(dirname "${model}")" "${classes}" "${workspace}"
   rm -f "${model}"
-  "${JULC[@]}" verify dsl-init "${project}" --validator OneShotPolicy \
+  "${JULC[@]}" verify dsl-init --optimization baseline "${project}" --validator OneShotPolicy \
     --purpose minting --package evidence --class TokenPolicyModel --out "${model}"
   javac -cp "${REPO_DIR}/julc-cli/build/libs/julc.jar" -d "${classes}" \
     "${model}" "${E4A_DIR}/OneShotMintSpec.java"
 
   if [[ "${fixture}" != "authorized" ]]; then
     [[ -d "${workspace}/.lake" ]] || cp -R "${E4A_DIR}/generated/authorized/.lake" "${workspace}/"
-    [[ -d "${workspace}/.julc" ]] || cp -R "${E4A_DIR}/generated/authorized/.julc" "${workspace}/"
+    [[ -d "${workspace}/.julc" ]] || [[ ! -d "${E4A_DIR}/generated/authorized/.julc" ]] || cp -R "${E4A_DIR}/generated/authorized/.julc" "${workspace}/"
   fi
   set +e
-  "${JULC[@]}" verify dsl "${project}" --validator OneShotPolicy \
+  "${JULC[@]}" verify dsl --optimization baseline "${project}" --validator OneShotPolicy \
     --purpose minting --spec-class evidence.OneShotMintSpec \
     --spec-classpath "${classes}" --source OneShotMintSpec.java \
     --backend local --fuel "${fuel}" --out-dir "${workspace}" --force
@@ -60,8 +60,12 @@ run_fixture missing-authority 3 REFUTED 5000
 run_fixture wrong-asset 3 REFUTED 5000
 run_fixture vacuous 2 COULD-NOT-EVALUATE 3000
 
-grep -q 'validMintingContext/v3-pinned' \
+# Schema 1 (ADR-029) records the domain per property in the certificate and the
+# assumption list in the hash-bound manifest.
+grep -q '"domain" : "VALID_MINTING_V3_PINNED"' \
   "${E4A_DIR}/generated/authorized/verification-result.json"
+grep -q 'validMintingContext/v3-pinned' \
+  "${E4A_DIR}/generated/authorized/verification-manifest.json"
 grep -q 'BLASTER_VALID_MINTING_SUPERSET' \
   "${E4A_DIR}/generated/missing-anchor/verification-result.json"
 grep -q '"reason" : "not-evaluated-vacuous"' \
