@@ -28,7 +28,15 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Release gate: the node-diversity uplc-conformance vectors must all give the scenario's expected results on the Java
+  # VM before anything is published (ndc-uplc.yml; ./gradlew :julc-vm-java:ndcUplcConformance). No secrets.
+  uplc-conformance:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ndc-uplc.yml
+
   publish:
+    needs: uplc-conformance
     runs-on: ubuntu-24.04
     # The signing subkey, Central Portal token and bucket credentials are secrets of this environment, which only
     # accepts v* tags (plus the default branch and release/** for the other release workflows). Only the release

@@ -1,0 +1,2 @@
+# The vendored node-diversity corpus must stay byte-identical to the pinned upstream files (UplcConformanceCorpusTest).
+* -text

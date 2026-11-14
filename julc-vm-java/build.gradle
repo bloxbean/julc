@@ -26,6 +26,76 @@ dependencies {
     implementation "org.bouncycastle:bcprov-jdk18on:${bouncyCastleVersion}"
     testImplementation project(':julc-core')
     testRuntimeOnly project(':julc-vm-scalus')
+    // The node-diversity harness (org.julclang.vm.java.ndc): its reports and expectations are JSON, its corpora
+    // tar archives compressed with zstd. Test scope only: nothing here reaches the published artifact.
+    testImplementation 'com.fasterxml.jackson.core:jackson-databind:2.18.2'
+    testImplementation 'org.apache.commons:commons-compress:1.27.1'
+    testImplementation 'com.github.luben:zstd-jni:1.5.6-10'
+}
+
+// The Cardano node-diversity UPLC scenarios (https://github.com/pragma-org/node-diversity-conformance).
+//
+//   uplc-conformance   the vectors are vendored (src/test/resources/ndc/uplc-conformance, README there), so `test`
+//                      runs them: ./gradlew build fails on any result that differs from the scenario's expectations.
+//                      ./gradlew :julc-vm-java:ndcUplcConformance runs them alone (the release workflows' gate).
+//   uplc-turbo         ./gradlew :julc-vm-java:ndcUplcTurbo, on demand only: downloads its pinned corpus and times
+//                      the mainnet scripts; reports scripts over the scenario's thresholds without failing on them.
+//
+// -PndcCacheDir=<dir> keeps turbo's downloads elsewhere (default build/ndc/cache; a relative path is taken from the
+// directory Gradle runs in). The cache holds each download as a file named by its SHA-256, checked on every use;
+// every run unpacks it afresh.
+// Reports: build/reports/ndc (JSON in the scenario's report format, and a text summary).
+def invocationDir = gradle.startParameter.currentDir
+def ndcCacheDir = providers.gradleProperty('ndcCacheDir')
+        .map { new File(it).absolute ? new File(it).absolutePath : new File(invocationDir, it).absolutePath }
+        .orElse(layout.buildDirectory.dir('ndc/cache').map { it.asFile.absolutePath })
+def ndcReportDir = layout.buildDirectory.dir('reports/ndc')
+
+// The version is left out of `test`'s inputs (a snapshot's version changes with every commit): its reports say "dev".
+tasks.withType(Test).configureEach {
+    systemProperty 'ndc.report.dir', ndcReportDir.get().asFile.absolutePath
+}
+
+tasks.named('test', Test) {
+    filter {
+        excludeTestsMatching '*UplcTurboNdcScenario'
+    }
+}
+
+def registerNdcScenario = { String taskName, String testClass, String taskDescription ->
+    tasks.register(taskName, Test) {
+        group = 'verification'
+        description = taskDescription
+        testClassesDirs = sourceSets.test.output.classesDirs
+        classpath = sourceSets.test.runtimeClasspath
+        filter {
+            includeTestsMatching testClass
+        }
+        systemProperty 'ndc.version', project.version.toString()
+        testLogging {
+            events 'passed', 'skipped', 'failed'
+            showStandardStreams = true
+            exceptionFormat = 'full'
+        }
+        // Run on request every time: turbo depends on the machine, and a gate should be seen to run.
+        outputs.upToDateWhen { false }
+        outputs.cacheIf { false }
+    }
+}
+
+registerNdcScenario('ndcUplcConformance', 'org.julclang.vm.java.ndc.UplcConformanceNdcScenario',
+        'Runs the node-diversity uplc-conformance vectors on the Java VM; fails on any result the scenario does not expect.')
+registerNdcScenario('ndcUplcTurbo', 'org.julclang.vm.java.ndc.UplcTurboNdcScenario',
+        'Times the node-diversity uplc-turbo mainnet scripts on the Java VM and writes the report.')
+
+tasks.named('ndcUplcTurbo', Test) {
+    maxHeapSize = '4g'
+    systemProperty 'ndc.cache.dir', ndcCacheDir.get()
+    // -PndcTurboFilter=<prefix> measures only the scripts whose name starts with it (e.g. one outlier).
+    def turboFilter = providers.gradleProperty('ndcTurboFilter')
+    if (turboFilter.present) {
+        systemProperty 'ndc.turbo.filter', turboFilter.get()
+    }
 }
 
 publishing {
