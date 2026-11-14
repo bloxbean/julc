@@ -147,7 +147,7 @@ tasks.register('vmToolsJar', Jar) {
             def files = cp.files.findAll { it.name.endsWith('.jar') }
             if (vmOnly) {
                 files = files.findAll { f ->
-                    ['julc-core-', 'julc-vm-', 'julc-bls-', 'cbor-', 'bcprov-', 'net-i2p-', 'jackson-', 'slf4j-']
+                    ['julc-core-', 'julc-vm-', 'julc-bls-', 'cbor-', 'bcprov-', 'jackson-', 'slf4j-']
                             .any { f.name.startsWith(it) }
                 }
                 files += tasks.named('vmToolsJar').get().archiveFile.get().asFile
