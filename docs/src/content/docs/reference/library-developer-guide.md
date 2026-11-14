@@ -46,13 +46,8 @@ public @interface OnchainLibrary {
 
 **Source:** `julc-stdlib/src/main/java/org/julclang/stdlib/annotation/OnchainLibrary.java`
 
-**JOUST's `@StateContract`.** JuLC treats `org.julclang.state.api.StateContract`, the contract annotation of the JOUST
-framework, exactly like `@OnchainLibrary`. A top-level class carrying it is an on-chain library: it is found the same way
-(in the same project, or in a jar's `META-INF/plutus-sources`) and called the same way (by its simple name from the
-same package, or through an import). JuLC compiles the annotation's own source with the class, however the class names
-it (a single-type or wildcard import, or `@org.julclang.state.api.StateContract`), so that source must be in the library
-pool; JOUST's API jar ships it. No other annotation stands for `@OnchainLibrary`: an annotation of your own
-that carries `@OnchainLibrary` does not make the classes it marks libraries, so mark those classes `@OnchainLibrary`.
+An annotation of your own that carries `@OnchainLibrary` does not make the classes it marks libraries, so mark those
+classes `@OnchainLibrary` directly.
 
 ### 2.2 Basic Structure
 
@@ -526,51 +521,97 @@ Libraries can be tested in two ways:
 
 Write a minimal validator that calls the library method, compile it with the library source, and evaluate the resulting UPLC program. This is the primary integration testing approach.
 
+A Plutus V3 script takes one argument, the script context, which carries the datum and the redeemer. Build it with
+`ScriptContextTestBuilder` and evaluate with `ValidatorTest.evaluate(result, ctx)`, which uses the target the compiler
+recorded.
+
 ```java
+import org.julclang.compiler.JulcCompiler;
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.*;
+import org.julclang.stdlib.StdlibRegistry;
+import org.julclang.testkit.ScriptContextTestBuilder;
+import org.julclang.testkit.TestDataBuilder;
+import org.julclang.testkit.ValidatorTest;
+import org.junit.jupiter.api.Test;
+
+import java.math.BigInteger;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.*;
+
 class TokenUtilsTest {
 
-    private final JulcCompiler compiler = new JulcCompiler();
-    private final JulcVm vm = JulcVm.create();
+    private final JulcCompiler compiler = new JulcCompiler(StdlibRegistry.defaultRegistry());
 
-    @Test
-    void hasTokenReturnsTrueWhenPresent() {
-        var libSource = """
-            import org.julclang.core.PlutusData;
+    static final String LIB = """
+            import java.math.BigInteger;
+            import org.julclang.ledger.PolicyId;
+            import org.julclang.ledger.TokenName;
+            import org.julclang.ledger.Value;
             import org.julclang.stdlib.annotation.OnchainLibrary;
-            import org.julclang.stdlib.Builtins;
 
             @OnchainLibrary
             public class TokenUtils {
-                public static long tokenAmount(PlutusData value, PlutusData policy, PlutusData token) {
-                    // ... implementation ...
-                }
-                public static boolean hasToken(PlutusData value, PlutusData policy,
-                                               PlutusData token, long minAmount) {
-                    var amount = tokenAmount(value, policy, token);
-                    return minAmount <= amount;
+                public static boolean hasToken(Value value, PolicyId policy, TokenName token,
+                                               BigInteger minAmount) {
+                    return value.assetOf(policy, token).compareTo(minAmount) >= 0;
                 }
             }
             """;
 
-        var validatorSource = """
+    static final String VALIDATOR = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.ledger.*;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class TestValidator {
+                record Expected(PolicyId policy, TokenName token, BigInteger minAmount) {}
+
                 @Entrypoint
-                static boolean validate(BigInteger redeemer, PlutusData ctx) {
-                    // Test logic calling TokenUtils
-                    return true;
+                static boolean validate(Expected datum, PlutusData redeemer, ScriptContext ctx) {
+                    boolean found = false;
+                    for (TxOut output : ctx.txInfo().outputs()) {
+                        if (TokenUtils.hasToken(output.value(), datum.policy(), datum.token(),
+                                datum.minAmount())) {
+                            found = true;
+                        }
+                    }
+                    return found;
                 }
             }
             """;
 
-        var result = compiler.compile(validatorSource, List.of(libSource));
+    @Test
+    void hasTokenReturnsTrueWhenPresent() {
+        var result = compiler.compile(VALIDATOR, List.of(LIB));
         assertFalse(result.hasErrors(), "Compilation failed: " + result.diagnostics());
 
-        var program = result.program();
-        var evalResult = vm.evaluateWithArgs(program, List.of(mockCtx));
-        assertTrue(evalResult.isSuccess());
+        var policy = new PolicyId(new byte[28]);
+        var token = new TokenName("GOLD".getBytes());
+        // Expected(policy, token, minAmount) as Data: constructor 0 with the record's components
+        var datum = PlutusData.constr(0, policy.toPlutusData(), token.toPlutusData(), PlutusData.integer(10));
+
+        var owner = new PubKeyHash(new byte[28]);
+        var paid = TestDataBuilder.txOut(TestDataBuilder.pubKeyAddress(owner),
+                Value.singleton(policy, token, BigInteger.valueOf(25)));
+        var ref = new TxOutRef(new TxId(new byte[32]), BigInteger.ZERO);
+        var ctx = ScriptContextTestBuilder.spending(ref, datum)
+                .redeemer(PlutusData.UNIT)
+                .output(paid)
+                .buildPlutusData();
+
+        var evalResult = ValidatorTest.evaluate(result, ctx);
+        assertTrue(evalResult.isSuccess(), evalResult.toString());
+
+        var none = ScriptContextTestBuilder.spending(ref, datum)
+                .redeemer(PlutusData.UNIT)
+                .output(TestDataBuilder.txOut(TestDataBuilder.pubKeyAddress(owner), Value.lovelace(BigInteger.TWO)))
+                .buildPlutusData();
+        assertFalse(ValidatorTest.evaluate(result, none).isSuccess());
     }
 }
 ```

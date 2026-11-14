@@ -1,11 +1,11 @@
 ---
 const modules = [
   { name: 'julc-compiler', desc: 'Java source to UPLC compiler', color: '#D4600E' },
-  { name: 'julc-stdlib', desc: '13 on-chain standard libraries', color: '#f59e0b' },
+  { name: 'julc-stdlib', desc: '15 on-chain standard libraries', color: '#f59e0b' },
   { name: 'julc-testkit', desc: 'Local validator testing & fuzzing', color: '#10b981' },
-  { name: 'julc-vm', desc: 'Pluggable VM with Scalus backend', color: '#6366f1' },
+  { name: 'julc-vm', desc: 'Pluggable VM: pure-Java default, Scalus alternative', color: '#6366f1' },
   { name: 'julc-cli', desc: 'CLI: scaffold, compile, REPL', color: '#8b5cf6' },
-  { name: 'julc-gradle-plugin', desc: 'Build integration & annotation processing', color: '#ec4899' },
+  { name: 'julc-gradle-plugin', desc: 'Build integration: compiles validators, bundles on-chain sources', color: '#ec4899' },
 ]
 ---
 <section class="bg-[#0a0a0f] py-20 sm:py-28 relative overflow-hidden">
@@ -41,7 +41,7 @@ const modules = [
       Modular architecture
     </h2>
     <p class="mt-4 text-center text-[#a1a1aa] max-w-2xl mx-auto">
-      Pick the modules you need. Every component is independently versioned and published to Maven Central.
+      Pick the modules you need. All modules share one version; the libraries and the Gradle plugin are published to Maven Central, and the CLI ships as native binaries.
     </p>
     <div class="mt-14 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {modules.map((m) => (

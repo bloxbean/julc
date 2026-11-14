@@ -10,6 +10,8 @@ Web-based editor for writing, compiling, and testing JuLC (Java) contracts.
 brew install bloxbean/tap/julc-playground
 ```
 
+The macOS binaries are for Apple silicon and, from 0.1.0-pre21, need macOS 15 or later.
+
 ### Direct download
 
 Download from [GitHub Releases](https://github.com/bloxbean/julc/releases).

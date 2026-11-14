@@ -24,7 +24,7 @@ notes must identify the affected shape and migration. `baseline` is not a way to
 every historical miscompile using a newer compiler: retain the original toolchain/artifact.
 An already deployed script never changes merely because JuLC releases a new compiler.
 
-The freeze baseline is merged compiler `539c3f15`; it does not mean pre17 has been published.
+The freeze baseline is merged compiler `539c3f15`, first released in 0.1.0-pre17.
 See [ADR-052](https://github.com/bloxbean/julc/blob/main/adr/052-pre17-profile-freeze-and-release-regressions.md)
 for the complete rule scope and review policy.
 

@@ -20,6 +20,8 @@ and test it locally — all in under 10 minutes.
 brew install bloxbean/tap/julc
 ```
 
+The macOS binaries are for Apple silicon and, from 0.1.0-pre21, need macOS 15 or later.
+
 ### Direct download
 
 Download from [GitHub Releases](https://github.com/bloxbean/julc/releases).

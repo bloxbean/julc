@@ -23,9 +23,11 @@ machine.
 
 ## 2. Project Setup
 
+> **Current release:** `0.1.0-pre21`, on Maven Central. `mavenCentral()` is all a release needs.
+>
 > **Snapshot versions**: Snapshot builds include the Git commit hash in the version string
-> (e.g. `0.1.0-e0f314e-SNAPSHOT`).
-> The snapshot repository configuration below is only needed for snapshot versions available in snapshot repository.
+> (e.g. `0.1.0-pre21-1a2b3c4-SNAPSHOT`).
+> The snapshot repository configuration below is only needed for snapshot versions.
 
 ### Build Artifacts
 After a successful build, for a Gradle project, a validator-specific *.plutus.json file will be generated under the `build/classes/META-INF/plutus` directory.
@@ -46,7 +48,7 @@ group = 'com.example'
 version = '1.0-SNAPSHOT'
 
 ext {
-    julcVersion = '<version>'
+    julcVersion = '0.1.0-pre21'
     cardanoClientLibVersion = '0.8.0-pre7'
 }
 
@@ -94,6 +96,11 @@ test {
 ### Maven
 
 ```xml
+<properties>
+    <julc.version>0.1.0-pre21</julc.version>
+    <ccl.version>0.8.0-pre7</ccl.version>
+</properties>
+
 <!-- Required for snapshot versions only -->
 <repositories>
     <repository>
@@ -133,6 +140,26 @@ test {
         <groupId>com.bloxbean.cardano</groupId>
         <artifactId>cardano-client-lib</artifactId>
         <version>${ccl.version}</version>
+    </dependency>
+
+    <!-- Test: VM for local evaluation -->
+    <dependency>
+        <groupId>org.julclang</groupId>
+        <artifactId>julc-testkit</artifactId>
+        <version>${julc.version}</version>
+        <scope>test</scope>
+    </dependency>
+    <dependency>
+        <groupId>org.julclang</groupId>
+        <artifactId>julc-vm</artifactId>
+        <version>${julc.version}</version>
+        <scope>test</scope>
+    </dependency>
+    <dependency>
+        <groupId>org.julclang</groupId>
+        <artifactId>julc-vm-java</artifactId>
+        <version>${julc.version}</version>
+        <scope>test</scope>
     </dependency>
 </dependencies>
 
@@ -1172,8 +1199,23 @@ loaded at runtime with `JulcScriptLoader`.
 For projects that prefer separate validator source files, apply the Gradle plugin:
 
 ```groovy
+// build.gradle
 plugins {
-    id 'org.julclang.julc' version '0.1.0-SNAPSHOT'
+    id 'org.julclang.julc' version '0.1.0-pre21'
+}
+```
+
+The plugin is published to Maven Central. Gradle's default plugin repository, the Gradle Plugin Portal, forwards
+requests for it to Maven Central, so a build that declares no plugin repositories resolves it. A build that lists
+its plugin repositories in `settings.gradle`, for example to use a mirror, must include `mavenCentral()`:
+
+```groovy
+// settings.gradle
+pluginManagement {
+    repositories {
+        mavenCentral()
+        gradlePluginPortal()
+    }
 }
 ```
 
