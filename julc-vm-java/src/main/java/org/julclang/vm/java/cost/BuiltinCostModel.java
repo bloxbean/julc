@@ -8,6 +8,7 @@ import org.julclang.vm.BuiltinSemanticsVariant;
 import org.julclang.vm.ProtocolFeatureProfile;
 
 import java.math.BigInteger;
+import java.util.ArrayDeque;
 import java.util.Collections;
 import java.util.EnumMap;
 import java.util.EnumSet;
@@ -147,37 +148,56 @@ public final class BuiltinCostModel {
     }
 
     /**
-     * Compute the size of a PlutusData value (recursive).
+     * Compute the size of a PlutusData value: every node in it, at any depth.
      * <p>
      * Every Data node has a 4-word overhead (including IntData and BytesData).
      * This matches the Plutus {@code memoryUsage @Data} implementation.
      * Byte strings are measured by their length, without copying them, and
      * the (immutable, random-access) child lists are walked by index.
+     * <p>
+     * The walk keeps its pending nodes on a heap stack rather than the call
+     * stack, so no nesting depth can overflow the thread's stack while a
+     * builtin is charged. The size is a sum over the nodes, so the order in
+     * which they are visited does not change it.
      */
     public static long sizeOfData(PlutusData data) {
-        return switch (data) {
-            case PlutusData.IntData id -> 4 + integerSize(id.value());
-            case PlutusData.BytesData bd -> 4 + byteStringSize(bd.size());
-            case PlutusData.ConstrData cd -> 4 + sizeOfAll(cd.fields());
-            case PlutusData.ListData ld -> 4 + sizeOfAll(ld.items());
-            case PlutusData.MapData md -> {
-                long size = 4;
-                List<PlutusData.Pair> entries = md.entries();
-                for (int i = 0; i < entries.size(); i++) {
-                    PlutusData.Pair entry = entries.get(i);
-                    size += sizeOfData(entry.key()) + sizeOfData(entry.value());
-                }
-                yield size;
+        switch (data) {
+            case PlutusData.IntData id -> {
+                return 4 + integerSize(id.value());
             }
-        };
-    }
-
-    private static long sizeOfAll(List<PlutusData> items) {
+            case PlutusData.BytesData bd -> {
+                return 4 + byteStringSize(bd.size());
+            }
+            default -> {
+            }
+        }
         long size = 0;
-        for (int i = 0; i < items.size(); i++) {
-            size += sizeOfData(items.get(i));
+        ArrayDeque<PlutusData> pending = new ArrayDeque<>();
+        pending.push(data);
+        while (!pending.isEmpty()) {
+            size += 4;
+            switch (pending.pop()) {
+                case PlutusData.IntData id -> size += integerSize(id.value());
+                case PlutusData.BytesData bd -> size += byteStringSize(bd.size());
+                case PlutusData.ConstrData cd -> pushAll(pending, cd.fields());
+                case PlutusData.ListData ld -> pushAll(pending, ld.items());
+                case PlutusData.MapData md -> {
+                    List<PlutusData.Pair> entries = md.entries();
+                    for (int i = 0; i < entries.size(); i++) {
+                        PlutusData.Pair entry = entries.get(i);
+                        pending.push(entry.key());
+                        pending.push(entry.value());
+                    }
+                }
+            }
         }
         return size;
+    }
+
+    private static void pushAll(ArrayDeque<PlutusData> pending, List<PlutusData> items) {
+        for (int i = 0; i < items.size(); i++) {
+            pending.push(items.get(i));
+        }
     }
 
     /**

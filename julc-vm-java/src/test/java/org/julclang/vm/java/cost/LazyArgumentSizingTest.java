@@ -318,6 +318,52 @@ class LazyArgumentSizingTest {
         assertTrue(eagerOverflowed.get(), "the eager walk was expected to overflow the stack");
     }
 
+    /**
+     * A builtin whose cost reads its Data arguments' sizes must still be
+     * charged, at the exact size, when the Data is nested far deeper than a
+     * recursive walk fits in a small stack: sizing walks the nodes without
+     * using the call stack.
+     */
+    @Test
+    void sizedDataBuiltinChargesDeeplyNestedData() throws Exception {
+        int depth = 200_000;
+        PlutusData deep = PlutusData.UNIT;
+        for (int i = 0; i < depth; i++) {
+            deep = new PlutusData.ConstrData(0, List.of(deep));
+        }
+        // UNIT and every wrapper are Constr nodes with no byte or integer payload: 4 words each
+        long expectedSize = 4L * (depth + 1);
+        var value = new CekValue.VCon(Constant.data(deep));
+        var args = List.<CekValue>of(value, value);
+        var model = shippedModels().getLast();
+        var pair = model.costs().get(DefaultFun.EqualsData);
+        assertTrue(pair.cpu().sizedArguments() != 0,
+                "EqualsData's cost must read its arguments' sizes for this test to mean anything");
+        var failure = new AtomicReference<Throwable>();
+        var size = new AtomicReference<Long>();
+        var charged = new AtomicReference<ExBudget>();
+        PlutusData data = deep;
+        Runnable check = () -> {
+            try {
+                size.set(BuiltinCostModel.sizeOfData(data));
+                var tracker = new CostTracker(DefaultCostModel.defaultMachineCosts(model.profile()),
+                        model.costs(), model.profile(), null);
+                tracker.chargeBuiltin(DefaultFun.EqualsData, args);
+                charged.set(tracker.consumed());
+            } catch (Throwable t) {
+                failure.set(t);
+            }
+        };
+        // The same small stack on which the eager walk overflows in the test above
+        var thread = new Thread(null, check, "lazy-sizing-deep-sized-data", 512 * 1024);
+        thread.start();
+        thread.join();
+        assertNull(failure.get(), () -> "charging failed: " + failure.get());
+        assertEquals(expectedSize, size.get());
+        long[] sizes = {expectedSize, expectedSize};
+        assertEquals(new ExBudget(pair.cpu().apply(sizes), pair.mem().apply(sizes)), charged.get());
+    }
+
     private record ShippedModel(String name, ProtocolFeatureProfile profile, BuiltinCostModel costs) {
     }
 
