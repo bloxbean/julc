@@ -3,7 +3,7 @@
 > Single-file dump of the JuLC docsite, suitable for AI agent ingestion.
 
 julcVersion: 0.1.0-pre21-rc1
-Generated: 2026-11-14T06:14:08.139Z
+Generated: 2026-11-14T07:31:03.095Z
 Site: https://julc.dev
 Repo: https://github.com/bloxbean/julc
 Examples: https://github.com/bloxbean/julc-examples
@@ -1726,6 +1726,8 @@ and test it locally — all in under 10 minutes.
 brew install bloxbean/tap/julc
 ```
 
+The macOS binaries are for Apple silicon and, from 0.1.0-pre21, need macOS 15 or later.
+
 ##### Direct download
 
 Download from [GitHub Releases](https://github.com/bloxbean/julc/releases).
@@ -2092,9 +2094,11 @@ machine.
 
 #### 2. Project Setup
 
+> **Current release:** `0.1.0-pre21`, on Maven Central. `mavenCentral()` is all a release needs.
+>
 > **Snapshot versions**: Snapshot builds include the Git commit hash in the version string
-> (e.g. `0.1.0-e0f314e-SNAPSHOT`).
-> The snapshot repository configuration below is only needed for snapshot versions available in snapshot repository.
+> (e.g. `0.1.0-pre21-1a2b3c4-SNAPSHOT`).
+> The snapshot repository configuration below is only needed for snapshot versions.
 
 ##### Build Artifacts
 After a successful build, for a Gradle project, a validator-specific *.plutus.json file will be generated under the `build/classes/META-INF/plutus` directory.
@@ -2115,7 +2119,7 @@ group = 'com.example'
 version = '1.0-SNAPSHOT'
 
 ext {
-    julcVersion = '<version>'
+    julcVersion = '0.1.0-pre21'
     cardanoClientLibVersion = '0.8.0-pre7'
 }
 
@@ -2163,6 +2167,11 @@ test {
 ##### Maven
 
 ```xml
+<properties>
+    <julc.version>0.1.0-pre21</julc.version>
+    <ccl.version>0.8.0-pre7</ccl.version>
+</properties>
+
 <!-- Required for snapshot versions only -->
 <repositories>
     <repository>
@@ -2202,6 +2211,26 @@ test {
         <groupId>com.bloxbean.cardano</groupId>
         <artifactId>cardano-client-lib</artifactId>
         <version>${ccl.version}</version>
+    </dependency>
+
+    <!-- Test: VM for local evaluation -->
+    <dependency>
+        <groupId>org.julclang</groupId>
+        <artifactId>julc-testkit</artifactId>
+        <version>${julc.version}</version>
+        <scope>test</scope>
+    </dependency>
+    <dependency>
+        <groupId>org.julclang</groupId>
+        <artifactId>julc-vm</artifactId>
+        <version>${julc.version}</version>
+        <scope>test</scope>
+    </dependency>
+    <dependency>
+        <groupId>org.julclang</groupId>
+        <artifactId>julc-vm-java</artifactId>
+        <version>${julc.version}</version>
+        <scope>test</scope>
     </dependency>
 </dependencies>
 
@@ -3241,8 +3270,23 @@ loaded at runtime with `JulcScriptLoader`.
 For projects that prefer separate validator source files, apply the Gradle plugin:
 
 ```groovy
+// build.gradle
 plugins {
-    id 'org.julclang.julc' version '0.1.0-SNAPSHOT'
+    id 'org.julclang.julc' version '0.1.0-pre21'
+}
+```
+
+The plugin is published to Maven Central. Gradle's default plugin repository, the Gradle Plugin Portal, forwards
+requests for it to Maven Central, so a build that declares no plugin repositories resolves it. A build that lists
+its plugin repositories in `settings.gradle`, for example to use a mirror, must include `mavenCentral()`:
+
+```groovy
+// settings.gradle
+pluginManagement {
+    repositories {
+        mavenCentral()
+        gradlePluginPortal()
+    }
 }
 ```
 
@@ -5511,6 +5555,11 @@ JuLC compiles `for (var item : list)` loops into recursive folds over Data lists
 
 This document covers every supported pattern, the compilation strategy behind each, and known limitations.
 
+The snippets are bodies of a validator's methods. They assume `TxInfo txInfo = ctx.txInfo();` and a
+`PubKeyHash owner` taken from the datum, for example `record OwnerDatum(PubKeyHash owner) {}`. Each element of
+`txInfo.signatories()` is a `PubKeyHash`, so `sig.equals(owner)` compares two values of one type. Comparing a
+`PubKeyHash` with a raw `PlutusData` redeemer is rejected (`JULC0078`): decode the redeemer to its record first.
+
 #### How It Works
 
 The compiler analyzes each for-each loop body to determine the compilation path:
@@ -5531,7 +5580,7 @@ When the loop body doesn't assign to any pre-loop variable, the compiler uses a 
 
 ```java
 for (var sig : txInfo.signatories()) {
-    ContextsLib.trace(sig);
+    ContextsLib.trace("signatory");
 }
 ```
 
@@ -5550,7 +5599,7 @@ The most common pattern. A single pre-loop variable is updated inside the loop. 
 ```java
 boolean found = false;
 for (var sig : txInfo.signatories()) {
-    if (sig.equals(redeemer)) {
+    if (sig.equals(owner)) {
         found = true;
     }
 }
@@ -5572,7 +5621,7 @@ return total;
 ```java
 boolean found = false;
 for (var sig : txInfo.signatories()) {
-    found = found || sig.equals(redeemer);
+    found = found || sig.equals(owner);
 }
 return found;
 ```
@@ -5595,7 +5644,7 @@ After the loop, the accumulator is rebound to the fold result for use in subsequ
 ```java
 boolean found = false;
 for (var sig : txInfo.signatories()) {
-    if (sig.equals(redeemer)) {
+    if (sig.equals(owner)) {
         found = true;
         break;
     }
@@ -5610,7 +5659,7 @@ The assignment can be a standalone statement before the `if`:
 ```java
 boolean found = false;
 for (var sig : txInfo.signatories()) {
-    found = sig.equals(redeemer);
+    found = sig.equals(owner);
     if (found) {
         break;
     }
@@ -5621,6 +5670,7 @@ return found;
 ##### Integer accumulator with break
 
 ```java
+// items is a JulcList<BigInteger>
 BigInteger sum = BigInteger.ZERO;
 for (var item : items) {
     sum = sum.add(item);
@@ -5648,7 +5698,7 @@ When two or more pre-loop variables are assigned inside the loop, the compiler p
 boolean found = false;
 BigInteger count = BigInteger.ZERO;
 for (var sig : txInfo.signatories()) {
-    found = found || sig.equals(redeemer);
+    found = found || sig.equals(owner);
     count = count.add(BigInteger.ONE);
 }
 return found;
@@ -5697,7 +5747,7 @@ Combines multi-accumulator tuple packing with break-aware fold generation.
 boolean found = false;
 BigInteger index = BigInteger.ZERO;
 for (var sig : txInfo.signatories()) {
-    found = sig.equals(redeemer);
+    found = sig.equals(owner);
     index = index.add(BigInteger.ONE);
     if (found) {
         break;
@@ -5717,7 +5767,7 @@ BigInteger total = BigInteger.ZERO;
 for (var output : txInfo.outputs()) {
     boolean match = false;
     for (var sig : txInfo.signatories()) {
-        if (sig.equals(redeemer)) {
+        if (sig.equals(owner)) {
             match = true;
             break;
         }
@@ -5894,7 +5944,8 @@ while (i.compareTo(BigInteger.valueOf(3)) < 0) {
 BigInteger matchCount = BigInteger.ZERO;
 for (var output : txInfo.outputs()) {
     for (var sig : txInfo.signatories()) {
-        if (output.address().credential() == sig) {
+        if (output.address().credential() instanceof Credential.PubKeyCredential pk
+                && pk.hash().equals(sig)) {
             matchCount = matchCount.add(BigInteger.ONE);
         }
     }
@@ -5904,16 +5955,15 @@ for (var output : txInfo.outputs()) {
 ##### Mixed Nesting (For-Each with While)
 
 ```java
+// targetPolicy is a byte[] policy ID
 boolean found = false;
 for (var input : txInfo.inputs()) {
-    var pairs = Builtins.unMapData(input.resolved().value());
-    PlutusData cursor = pairs;
-    while (!Builtins.nullList(cursor)) {
-        var pair = Builtins.headList(cursor);
-        if (Builtins.equalsData(Builtins.fstPair(pair), targetPolicy)) {
+    JulcList<AssetEntry> assets = ValuesLib.flattenTyped(input.resolved().value());
+    while (!assets.isEmpty()) {
+        if (Builtins.equalsByteString(assets.head().policyId(), targetPolicy)) {
             found = true;
         }
-        cursor = Builtins.tailList(cursor);
+        assets = assets.tail();
     }
 }
 ```
@@ -5974,6 +6024,7 @@ Instead of `continue`, use an `if` to skip the rest of the body:
 ```java
 // Instead of: if (cond) { continue; }
 // Use:
+// items is a JulcList<BigInteger>
 BigInteger sum = BigInteger.ZERO;
 for (var item : items) {
     if (!skipCondition) {
@@ -6157,6 +6208,8 @@ provides a layered testing approach so you can catch bugs early:
 
 ##### Gradle
 
+`<version>` below is the JuLC release, currently `0.1.0-pre21`, from Maven Central.
+
 Add these test dependencies to your `build.gradle`:
 
 ```groovy
@@ -6169,7 +6222,7 @@ dependencies {
 
     // Test framework
     testImplementation 'org.julclang:julc-testkit:<version>'
-    testRuntimeOnly    'org.julclang:julc-vm-scalus:<version>'
+    testRuntimeOnly    'org.julclang:julc-vm-java:<version>'
 }
 ```
 
@@ -6207,7 +6260,7 @@ test {
 </dependency>
 <dependency>
     <groupId>org.julclang</groupId>
-    <artifactId>julc-vm-scalus</artifactId>
+    <artifactId>julc-vm-java</artifactId>
     <version><version></version>
     <scope>test</scope>
 </dependency>
@@ -7516,6 +7569,8 @@ multiple sources:
 
 ```java
 static final String MATH_LIB = """
+        import java.math.BigInteger;
+
         class MathUtils {
             static BigInteger max(BigInteger a, BigInteger b) {
                 if (a.compareTo(b) > 0) { return a; } else { return b; }
@@ -7524,11 +7579,17 @@ static final String MATH_LIB = """
         """;
 
 static final String VALIDATOR = """
+        import java.math.BigInteger;
+        import org.julclang.core.PlutusData;
+        import org.julclang.stdlib.annotation.Entrypoint;
+        import org.julclang.stdlib.annotation.SpendingValidator;
+
         @SpendingValidator
         class AuctionValidator {
             @Entrypoint
             static boolean validate(BigInteger redeemer, PlutusData ctx) {
-                return MathUtils.max(100, 50) == 100;
+                BigInteger highest = MathUtils.max(BigInteger.valueOf(100), BigInteger.valueOf(50));
+                return highest.equals(BigInteger.valueOf(100));
             }
         }
         """;
@@ -7537,7 +7598,12 @@ static final String VALIDATOR = """
 void multiFileCompilation() {
     // ContractTest.compile() accepts additional library sources
     var program = compile(VALIDATOR, MATH_LIB);
-    assertValidates(program, PlutusData.integer(0), PlutusData.integer(0));
+    // A V3 validator takes one argument, the ScriptContext, which carries the redeemer
+    var ref = new TxOutRef(new TxId(new byte[32]), BigInteger.ZERO);
+    var ctx = ScriptContextTestBuilder.spending(ref)
+            .redeemer(PlutusData.integer(0))
+            .buildPlutusData();
+    assertValidates(program, ctx);
 }
 ```
 
@@ -7593,14 +7659,15 @@ class StdlibDirectTests {
 |--------|----------|
 | `julc-testkit` | `ContractTest`, `ValidatorTest`, `ScriptContextTestBuilder`, `BudgetAssertions`, `TestDataBuilder`, `JulcEval`, `ScriptAnalysis` |
 | `julc-testkit-jqwik` | `CardanoArbitraries`, `ArbitraryScriptContext`, `BudgetCollector`, `CardanoArbitraryProvider` (SPI) |
-| `julc-vm-scalus` | Scalus-based CEK machine (runtime dependency) |
+| `julc-vm-java` | Pure-Java CEK machine, the default VM (runtime dependency) |
+| `julc-vm-scalus` | Scalus-based CEK machine, an alternative VM (runtime dependency) |
 
 ##### Minimal Test Setup (Gradle)
 
 ```groovy
 dependencies {
     testImplementation 'org.julclang:julc-testkit:<version>'
-    testRuntimeOnly    'org.julclang:julc-vm-scalus:<version>'
+    testRuntimeOnly    'org.julclang:julc-vm-java:<version>'
 }
 
 test { useJUnitPlatform() }
@@ -7613,7 +7680,7 @@ dependencies {
     testImplementation 'org.julclang:julc-testkit:<version>'
     testImplementation 'org.julclang:julc-testkit-jqwik:<version>'
     testImplementation 'net.jqwik:jqwik:1.9.2'
-    testRuntimeOnly    'org.julclang:julc-vm-scalus:<version>'
+    testRuntimeOnly    'org.julclang:julc-vm-java:<version>'
 }
 
 test { useJUnitPlatform() }
@@ -11617,8 +11684,8 @@ static boolean anyLargeShare(JulcList<BigInteger> parts) {
 }
 ```
 
-The elements before the answer are tested, so `[0, 5]` fails in both places. Before the
-upcoming preview the compiled `any` and `all` tested every element, and the first case failed
+The elements before the answer are tested, so `[0, 5]` fails in both places. Before
+0.1.0-pre21 the compiled `any` and `all` tested every element, and the first case failed
 the script ([#312](https://github.com/bloxbean/julc/issues/312)).
 
 The result of `map` needs a typed local before a lambda uses its elements:
@@ -14681,7 +14748,50 @@ Source: https://julc.dev/reference/release-notes/
 
 > JuLC release notes and migration guidance
 
-#### Upcoming preview: `JulcList.any` and `all` stop at the deciding element (#312)
+Each section below is a release, newest first.
+
+#### 0.1.0-pre21
+
+##### Ed25519 verification on BouncyCastle; bcprov 1.86 (#322)
+
+The Java VM and the testkit verify Ed25519 signatures (`verifyEd25519Signature`) with libsodium's input checks and
+equation, now computed on BouncyCastle's field arithmetic. The verdicts do not change: they agreed with libsodium
+before and still do. Each verification allocates about 8 KB instead of about 636 KB, and takes about 47 µs instead of
+about 125 µs.
+
+- BouncyCastle `bcprov-jdk18on` is 1.86 in every published module: `julc-vm` (a new dependency), `julc-vm-java`
+  (was 1.78.1), `julc-testkit` and `julc-tools` (were 1.83).
+- Ed25519 verification needs bcprov 1.67 or later. Before its first verification it checks itself against
+  libsodium's verdicts. On an older bcprov, or one that disagrees, every verification throws a `LinkageError` that
+  names the bcprov version and jar. If your build resolves an older bcprov, for example through another library that
+  pins one, make 1.67 or later win; 1.86 is the tested version, and 1.78.1 and 1.83 are also tested.
+
+##### Builtins are charged without sizing arguments their cost ignores (#323)
+
+The Java VM now sizes a builtin's arguments only when its cost function reads them, as Haskell's costing does.
+Constant-cost builtins such as `unConstrData`, `chooseData` and `headList` no longer walk their `Data` argument on
+every call, byte strings are measured without being copied, and a `Data` value of any nesting depth is sized without
+using the call stack. Budgets do not change; scripts that pass large `Data` values to constant-cost builtins run
+faster and allocate less.
+
+##### The macOS binaries need macOS 15 (#316)
+
+The macOS builds of the CLI and the playground are now made on macOS 15, because GitHub retired its macOS 14
+runners. They are Apple-silicon binaries, as before, and need macOS 15.0 or later; 0.1.0-pre20's needed macOS 14.0.
+The artifact names and the Homebrew formulas do not change. On macOS 14, keep using 0.1.0-pre20's binaries or compile
+through Gradle or Maven, which need only a JDK.
+
+##### An attribution query for tools that embed the compiler (#313)
+
+`JavacFrontend.attribute(roots, pool, query)` attributes sources the way a JuLC compilation does, runs `query` over a
+read-only view of javac's model (`Attributed`: `result()`, `roots()`, `trees()`, `elements()`, `types()`), and returns
+what the query returns. It is experimental, for tools that generate validators from attributed source. Use the model
+only inside the query and on the calling thread, and keep no `Element`, `TypeMirror` or `Tree` after it returns. The
+model is null when the roots are rejected before javac runs. `result().diagnostics()` then holds JuLC's rejection;
+otherwise it holds javac's errors, followed by notes on shadowed library sources, and javac's warnings are not kept.
+Compilation does not change.
+
+##### `JulcList.any` and `all` stop at the deciding element (#312)
 
 The compiled `any` and `all` used to test every element of the list, where the JVM's stop at
 the element that decides the answer: `any` at the first that passes, `all` at the first that
@@ -14699,7 +14809,7 @@ the JVM stops, at every optimisation level.
   it did. Scripts are about 5 bytes smaller per `any` or `all` (10 at `NONE`).
 - Blueprint hashes of validators that call `any` or `all` change.
 
-#### Upcoming preview: a cast to a sealed-interface variant is checked (#288, #309)
+##### A cast to a sealed-interface variant is checked (#288, #309)
 
 A downcast from a sealed interface to one of its record variants used to lower to its operand,
 with no check. Where Java throws `ClassCastException`, the script read the other variant's
@@ -14724,7 +14834,7 @@ Withdraw w = (Withdraw) redeemer;                                              /
 - A cast inside a `JulcList.any` or `all` predicate runs on the elements the JVM tests, and no
   further (see the section above).
 
-#### Upcoming preview: `instanceof` pattern variables wherever Java has them in scope (#204)
+##### `instanceof` pattern variables wherever Java has them in scope (#204)
 
 JuLC used to bind an `instanceof` pattern variable only when `x instanceof T v` was the whole
 condition of an `if` outside a loop body with accumulators. Everywhere else a use of the
@@ -14754,7 +14864,7 @@ A bare type test, `x instanceof Bid`, now works wherever an expression may stand
   `JULC0074`. `JULC0077` no longer covers a test of a variant: it is left for record patterns
   and for a test of a type that is no variant, such as the sealed interface itself.
 
-#### Upcoming preview: build native BLS point and scalar lists one element at a time (#240)
+##### Build native BLS point and scalar lists one element at a time (#240)
 
 `Builtins` gains six producers for the native lists that `bls12_381_G1_multiScalarMul`
 and `bls12_381_G2_multiScalarMul` take ([#240](https://github.com/bloxbean/julc/issues/240), ADR-047 amendment):
@@ -14789,7 +14899,7 @@ at runtime; a cast is never a decoder. Most other misuse, such as a G2 point con
 list, is rejected by javac itself (`JULC0085`). A `switch` expression that yields one group's
 native list compiles, with or without a cast to its own type.
 
-#### Upcoming preview: `abs`, `signum`, `max`, `min` and `compareTo` evaluate each operand once (#146)
+##### `abs`, `signum`, `max`, `min` and `compareTo` evaluate each operand once (#146)
 
 These read an operand more than once: `abs` and `signum` their receiver, and `max`, `min` and
 `compareTo` both operands. An operand that was more than a variable or a literal was evaluated
@@ -14812,7 +14922,27 @@ form was already fixed.
   48,000 more CPU units and 300 more memory units. A new hash means a new script address or
   policy ID. `BASELINE` changes too.
 
-#### Upcoming preview: javac is JuLC's only Java reader (ADR-068 M5, M6)
+##### `julc-wasm` and `julc-tools` are published (#252)
+
+`org.julclang:julc-wasm` and `org.julclang:julc-tools` are now on Maven Central, so a language built on JuLC's backend
+can compile its own WebAssembly engine from these jars, without copying JuLC's code. Both are experimental.
+
+- `JsApi.install(ApiRegistry, EngineInfo)` takes the engine's global name, variant, version and operation groups, and
+  checks them. JuLC's own images pass the values they used before.
+- Operation names are `group.operation`; duplicates, groups the engine does not advertise and reserved names are rejected.
+- The JavaScript client refuses an engine whose variant, API version or groups differ from its manifest.
+- The images now carry the cost model parameter files, so `costModel: '<profile-id>'` works; it failed in every image before.
+- `slf4j-nop` is no longer a dependency of the published jar: JuLC's images add it themselves, and an embedder chooses
+  its own logging provider.
+
+No compiler, UPLC, ledger or VM behavior changes. See [JavaScript and WebAssembly](/guides/javascript-wasm/).
+
+##### The playground completes imports (#300)
+
+On an `import` line, the playground editor suggests the next package or class: `import org.julclang.` offers `core`,
+`ledger` and `stdlib`, and choosing a class ends the line with `;`. Type a letter or press Ctrl+Space to open the list.
+
+##### javac is JuLC's only Java reader (ADR-068 M5, M6)
 
 JuLC now reads every Java source with javac, on every host: the compiler API, the Gradle plugin, the annotation processor, the testkit (`JulcEval`, `ValidatorTest`, `ContractTest`), the CLI
 (`julc build`, `julc check`, the REPL, the MCP tools), the playground and `julc-wasm`, and Elci's
@@ -14820,7 +14950,7 @@ JuLC now reads every Java source with javac, on every host: the compiler API, th
 javac's attributed trees. The tools that read Java source without compiling it (lint, test discovery, the MCP tools'
 arity check, the metadata extractor, the verification resolvers) read it with javac's parser too.
 
-##### Script hashes can change
+###### Script hashes can change
 
 A validator whose bytes change gets a new script hash, so a new address or policy ID. Rebuild every validator you have
 deployed, compare its hash with the deployed one, and treat a change as a new script: funds locked at the old address
@@ -14831,7 +14961,7 @@ bytes, each classified in the ADR's ledger (a semantic fix, a cost change or a r
 JavaParser frontend accepted are rejected with a code (below). Of the 102 external example programs in that corpus, 43
 keep their bytes, 11 change them, and 48 are rejected until rewritten; the examples held 125 `byte[].equals` call sites.
 
-##### The JavaParser frontend and the frontend option are gone (ADR-068 M6)
+###### The JavaParser frontend and the frontend option are gone (ADR-068 M6)
 
 There is no way back to the JavaParser frontend: `javaparser-core` is on no class path, and a build that fails on javac is
 fixed by the rewrites below. What opted back is removed:
@@ -14861,7 +14991,7 @@ stays `JULC0080`, and a `@NewType`'s instance call keeps its own rejection where
 `JavaSourceIntrospector`'s methods on JavaParser nodes and `JavaSourceParser` are gone, and `DiagnosticCollector` reports by line
 and column. `JavacProvenance` has no gate. `CompilerFrontend.DEFAULT` is gone.
 
-##### Source javac's frontend rejects
+###### Source javac's frontend rejects
 
 Each of these compiled on the JavaParser frontend, which read it otherwise than Java does or produced a script that fails
 where the Java code returns. Each now stops with a code and a fix:
@@ -14895,7 +15025,7 @@ correctly also stop, failing closed, until a rule for them is written: a for-eac
 `for (Number o : xs)` with `o.longValue()` (`JULC0055`), and `r.a().abs()` where `a` is an integer `@NewType` read from a
 record (`JULC0055`).
 
-##### Programs that now do what their Java does
+###### Programs that now do what their Java does
 
 Each of these compiled on the JavaParser frontend to a script that disagreed with its Java code; on javac it agrees:
 
@@ -14912,7 +15042,7 @@ Each of these compiled on the JavaParser frontend to a script that disagreed wit
 
 The ADR-068 ledger (`adr/evidence/068/lowering-accepted-differences.tsv`) gives each difference its class and test.
 
-##### The narrowing cast costs only where it can change the value
+###### The narrowing cast costs only where it can change the value
 
 `(int) x` of a non-constant `long` computes Java's value, with three builtins at the cast: about 527k CPU, 1.2k memory and
 107 lovelace each time it runs, and about 26 bytes in the script. Where the compiler can show the value is already in
@@ -14927,7 +15057,7 @@ Anything else keeps the builtins: a parameter, a length, arithmetic, a choice, a
 with such a cast has different bytes and a different hash than on the JavaParser frontend, where the cast was erased and the
 value could differ from Java's. `MerklePatriciaForestry`, whose `nibble` writes `(int) ByteStringLib.at(...)`, keeps its bytes.
 
-##### A ledger type's `fromPlutusData` pays for its check
+###### A ledger type's `fromPlutusData` pays for its check
 
 `TxCert.fromPlutusData(d)`, and the same call on the other ledger types, now checks the exact shape of `d` on-chain, as it does on the
 JVM. It used to read `d` as it stood, and so accepted Data the JVM refuses (ADR-068 D6, r15). The check costs +87 to +967 bytes in
@@ -14939,7 +15069,7 @@ the 43 external example validators does, and their bytes do not change.
 - **Skip it** where you already hold the value in its type. `PlutusData.cast(d, T.class)` is a view that checks nothing and costs
   nothing, so a wrong shape is not refused there: it fails or misreads later, where the value is read.
 
-##### Migrating `byte[].equals` (`JULC0087`)
+###### Migrating `byte[].equals` (`JULC0087`)
 
 On the JVM, `byte[].equals` is `Object.equals`: it compares references, so two arrays with the same bytes are not equal.
 The JavaParser frontend compiled it to a byte comparison, so a JVM test of the validator and the script disagreed. javac's
@@ -14988,7 +15118,7 @@ A record or sealed variant with a `byte[]` component has the same problem throug
 the old form stops at compile time, so there is nothing to look for at run time. The diagnostic's fix names the same
 replacements.
 
-##### Also in this release
+###### Also in this release
 
 - **Clearer errors.** Script bytes do not change.
   - An error from the compiler, the CLI, the Gradle plugin or the annotation processor now shows the source line with the problem underlined.
@@ -15014,10 +15144,9 @@ replacements.
 - A sealed interface whose permitted class is a class or a `@NewType` record is `JULC0127` wherever it is declared in
   a unit the compilation reads, whether or not the program uses it: such a variant has no layout, and the compiler
   dropped its value wherever the sum was read (a parameter, a datum and its blueprint schema, a record component, a
-  library's exports). Before, only a `new`, `instanceof` or `case` of the variant was rejected. The JavaParser
-  frontend still accepts these shapes, a reason not to opt back.
+  library's exports). Before, only a `new`, `instanceof` or `case` of the variant was rejected.
 
-#### Upcoming preview: an entry point takes the script context last
+##### An entry point takes the script context last
 
 An `@Entrypoint` method's last parameter is `ScriptContext` or `PlutusData`; anything else is `JULC0103`. The script
 receives the script context there, undecoded, so a last parameter typed `BigInteger`, `int`, a record or a subtype of
@@ -15033,7 +15162,7 @@ several such errors reports each of them. A record that implements two sealed in
 declares any member but a nested type is `JULC0080` (ADR-067), so `record R(BigInteger a) { R { } }`, accepted there before,
 is rejected. See [Troubleshooting](/reference/troubleshooting/).
 
-#### Upcoming preview: `String.length` counts as Java does, and a method with no parameters runs when called
+##### `String.length` counts as Java does, and a method with no parameters runs when called
 
 `s.length()` counts UTF-16 code units, as Java does. It counted the bytes of the string's UTF-8
 encoding, so `"é".length()` was 2 and `"😀".length()` was 4. A constant string folds to Java's value.
@@ -15060,7 +15189,7 @@ not UTF-8. `JulcList.take` and `drop` throw on any negative count, and `JulcList
 `JulcArray.get` on an index past an `int`. These change no script, but a test that relied on the old
 result changes.
 
-#### Upcoming preview: `mod`, `take` and `drop` fail where Java throws
+##### `mod`, `take` and `drop` fail where Java throws
 
 `a.mod(b)` with `b` below 1, and `take(n)` and `drop(n)` with `n` below 0, throw in Java. They now
 fail in the script too. Before this change `mod` took a negative modulus and
@@ -15075,13 +15204,13 @@ Two differences from Java stay. Neither changes what a script accepts, since bot
 `max`, `signum` and `compareTo` outside `compareTo(...) OP 0` can evaluate an operand twice. Only the
 order of traces, which failure shows, and cost differ.
 
-#### Upcoming preview: a `+` of string constants warns (`JULC0102`)
+##### A `+` of string constants warns (`JULC0102`)
 
 `"a" + "b"` of string constants now warns: Java joins them when it compiles, and
 JuLC keeps the `+` as written, so the script joins them when it runs. The warning rejects nothing,
 and script bytes do not change. Write one literal.
 
-#### Upcoming preview: a conditional lowers to `Case` on a proven boolean
+##### A conditional lowers to `Case` on a proven boolean
 
 A conditional lowers to `Case` when the compiler proves its condition produces a real boolean: a
 boolean constant, a comparison or another builtin with a boolean result, a decoded boolean field, a
@@ -15093,7 +15222,7 @@ Recompiling can change script bytes and budgets at `pv11-safe` and `pv11-costed`
 can change: about 4 bytes at each conditional on the builtin, and 188,049 CPU and 701 memory each
 time it runs.
 
-#### Upcoming preview: sources must be Java that javac accepts (ADR-068 M1)
+##### Sources must be Java that javac accepts (ADR-068 M1)
 
 Every compilation now has javac analyze its sources first, on every host (the compiler API,
 the Gradle plugin, the annotation processor, the testkit, the CLI and its REPL, the
@@ -15158,7 +15287,7 @@ JuLC's dialect beyond Java is no longer accepted. Write it as Java:
   a record pattern on `CompileResult` needs the new arity. Generated artifacts are unchanged, so
   `plutus.json` is the same across JDK patch releases.
 
-#### Upcoming preview: comparisons evaluate each operand once, left to right (#146, #295)
+##### Comparisons evaluate each operand once, left to right (#146, #295)
 
 `a.compareTo(b) OP 0` lowered to the three-way `compareTo` result compared with zero, which
 evaluated a non-trivial receiver or argument more than once: a traced operand traced twice,
@@ -15182,7 +15311,7 @@ the script reported a different failure than the Java code
   their locked artifacts and counterexample binding are refreshed with the same property
   outcomes.
 
-#### Upcoming preview: `JulcArray` in a Data-encoded position is rejected (JULC0091, #298)
+##### `JulcArray` in a Data-encoded position is rejected (JULC0091, #298)
 
 A `JulcArray` is a native UPLC array, which has no Data encoding. A record or sealed-variant
 component, a type argument of `Optional`, `Tuple2`, `Tuple3`, `JulcList`, `List`, `JulcMap` or
@@ -15198,7 +15327,7 @@ would be encoded. Store a `JulcList` and build the array where it is used
 `JulcArray<JulcList<BigInteger>>` in a local, stay supported. A datum or redeemer type that
 holds an array, already rejected by strict boundary validation, now reports `JULC0091`.
 
-#### Upcoming preview: diamond tuples encode their components (#299)
+##### Diamond tuples encode their components (#299)
 
 `new Tuple2<>(a, b)` and `new Tuple3<>(a, b, c)` resolved to tuples with Data components, so a
 `BigInteger`, `byte[]`, boolean or `String` component was put into the constructor unencoded and
@@ -15226,7 +15355,7 @@ a return, an argument).
   type, so the call is the integer one and the comparison evaluates correctly, where it used the Data
   representation before.
 
-#### Upcoming preview: JuLC collections compare `byte[]` by content on the JVM
+##### JuLC collections compare `byte[]` by content on the JVM
 
 On-chain, `JulcList`, `JulcMap` and `JulcArray` compare elements and keys by Data equality, so
 an equal `byte[]` is found. Off-chain, `JulcArrayList`, `JulcAssocMap` and `JulcArrayImpl`
@@ -15242,7 +15371,7 @@ collections compare deeply.
   equality and hash.
 - Scripts are unchanged.
 
-#### Upcoming preview: integer literals have Java's value (#270)
+##### Integer literals have Java's value (#270)
 
 Integer literals were decoded by hand, not as the JLS defines them (§3.10.1):
 
@@ -15264,7 +15393,7 @@ type, an octal digit 8 or 9, or a `byte[]` element outside -128 to 127) is rejec
   script address or policy ID. Write `0xFFFFFFFFL` or a `BigInteger` where the unsigned value
   was meant.
 
-#### Upcoming preview: Unicode escapes are read as Java reads them (#268)
+##### Unicode escapes are read as Java reads them (#268)
 
 javac translates Unicode escapes (a backslash, `u` and four hex digits, such as `\u0061`)
 before it reads anything else. So an escape in a comment can be a line break or the end of
@@ -15300,7 +15429,7 @@ and the verification resolvers.
   leniently, and skipped if it declares none. It still fails with its diagnostic if it
   declares one, or if javac could read it differently from the lenient reading.
 
-#### Upcoming preview: string literals are decoded as Java decodes them (#256)
+##### String literals are decoded as Java decodes them (#256)
 
 A string literal compiled to its source text, escapes included, so `"a\nb"` held a
 backslash and an `n` on chain where Java holds a line break. Literals now compile to the
@@ -15327,7 +15456,7 @@ escapes) and Unicode escapes (`\u00e9`) are decoded. The same applies to the arg
   a Unicode escape whose digits are not ASCII hex digits. A Unicode escape with more than
   one `u` (`\uuu0041`) is now accepted (#268, above).
 
-#### Upcoming preview: coded diagnostics for rejected loop and statement forms (#257)
+##### Coded diagnostics for rejected loop and statement forms (#257)
 
 Seven forms outside the on-chain subset were already rejected, but without a diagnostic
 code, and two of the messages named the wrong problem. Each now has a code, the
@@ -15380,7 +15509,7 @@ location of the construct and a remedy:
   inside `while`. Match the code instead. See the
   [troubleshooting guide](/reference/troubleshooting/) for each code's fix.
 
-#### Upcoming preview: loops with `break` continue after an `if` (GHSA-p9v9-f3g2-cqv9)
+##### Loops with `break` continue after an `if` (GHSA-p9v9-f3g2-cqv9)
 
 In a loop body that contains `break`, a path that did not break could leave the loop, or
 skip the statements after its `if`. The script then computed something other than the
@@ -15415,7 +15544,9 @@ iteration, as in Java.
   the field, so it read the wrong component, or failed at run time. Each branch now has its own
   scope, as the method-level `if` already had.
 
-#### Upcoming preview: on-chain `JulcMap.keys()` and `values()` keep map order
+#### 0.1.0-pre20
+
+##### On-chain `JulcMap.keys()` and `values()` keep map order
 
 On chain, `keys()` and `values()` returned the entries in reverse order, while off chain
 `JulcAssocMap` returns them in map order. A test run off chain could therefore pass while
@@ -15431,7 +15562,9 @@ the deployed script read a different first key. Both now return map order on cha
   comparing against an ordered list. Membership checks, `all`/`any` and totals give the
   same answer either way.
 
-#### Upcoming preview: Plutus Data byte decoding is as strict as plutus `decodeData` (#237)
+#### 0.1.0-pre19
+
+##### Plutus Data byte decoding is as strict as plutus `decodeData` (#237)
 
 `PlutusDataCborDecoder` now accepts exactly the CBOR that plutus `decodeData` accepts.
 JuLC used to accept Data that the ledger rejects, so a FLAT program, inline datum or
@@ -15459,7 +15592,7 @@ redeemer could decode in JuLC and fail on chain.
 
 Map order and duplicate keys are still preserved. Encoding is unchanged.
 
-#### Upcoming preview: `NewConstitution` carries the `Constitution` wrapper (#223)
+##### `NewConstitution` carries the `Constitution` wrapper (#223)
 
 `GovernanceAction.NewConstitution` now has the Plutus Data layout of plutus-ledger-api V3,
 `Constr 5 [Maybe GovernanceActionId, Constitution]` with
@@ -15495,7 +15628,7 @@ decoder and rejects the bare layout. Properties about `NewConstitution` proposal
 including `whenNewConstitution`'s script, therefore have the ledger's meaning. The
 adapter goes once the pin carries the wrapper.
 
-#### Upcoming preview: nested types shadow ledger types of the same name
+##### Nested types shadow ledger types of the same name
 
 A record or sealed interface declared inside a validator or library class now shadows a
 bundled ledger type with the same simple name within that class, as javac binds it
@@ -15508,7 +15641,9 @@ qualified name such as `Inner.Constitution` resolves to the type it names, or is
 as unknown; it no longer falls back to a ledger type with the same simple name. Contracts
 without such a name collision compile to the same bytes.
 
-#### Upcoming preview: instanceof pattern variables may not reuse a field name (JULC0059, #207)
+#### 0.1.0-pre17
+
+##### `instanceof` pattern variables may not reuse a field name (JULC0059, #207)
 
 JuLC binds an `instanceof` pattern variable only when the pattern is the whole
 condition of an `if` statement outside a loop ([#204](https://github.com/bloxbean/julc/issues/204)). In every other position (a loop
@@ -15525,12 +15660,12 @@ bound correctly. Rename the variable. `switch` case patterns (`case Sq q ->`) bi
 variables in every position and are not affected. This is validation only: every program
 that still compiles produces the same script bytes and hashes.
 
-Known limitation until [#204](https://github.com/bloxbean/julc/issues/204) (planned for the next preview): a pattern variable with any
+Known limitation until [#204](https://github.com/bloxbean/julc/issues/204), fixed in 0.1.0-pre21: a pattern variable with any
 name that is used outside that one position fails to compile, usually with
 `Undefined variable`. Use a
 `switch` on the sealed type, or the plain `if (x instanceof T v) { ... }` form outside a loop.
 
-#### Upcoming preview: value-oriented contract code guide (#163)
+##### Value-oriented contract code guide (#163)
 
 A new Best Practices page, [Value-Oriented Contract Code](/best-practices/value-oriented-code/),
 shows how to compute values in initializers, switch expressions, helper methods and list
@@ -15549,7 +15684,7 @@ The page records current list-operation behaviour that differs from Java:
 
 No compiler behaviour changes in this entry.
 
-#### Upcoming preview: a source name can never resolve to a compiler-generated binder (ADR-060)
+##### A source name can never resolve to a compiler-generated binder (ADR-060)
 
 The compiler generates variables around your code for switch dispatch, loops, the
 validator wrapper, `@Param` decoding and the list and map builders. Several of
@@ -15616,7 +15751,7 @@ method with `SymbolTable.declareMethod`: a method registered as a variable with
 `SymbolTable.define` is no longer callable. Diagnostic codes `JULC0044`–`JULC0051`
 are reserved for the generic backend work.
 
-#### Upcoming preview: builder binders no longer capture user variables (#186)
+##### Builder binders no longer capture user variables (#186)
 
 A variable referenced inside a lambda or argument could silently resolve to an
 internal variable of the list, map or loop code the compiler generated around it.
@@ -15638,9 +15773,9 @@ script changes its bytes, hash and budget; review it and redeploy if its
 behaviour mattered. Deployed scripts never change. The generated names #186 did
 not reach, such as the loop and switch binders, are covered by ADR-060 below.
 
-#### Upcoming preview: release regression gates and profile freeze (#121)
+##### Release regression gates and profile freeze (#121)
 
-The proposed pre17 [hash-stability policy](/reference/hash-stability/) freezes
+The pre17 [hash-stability policy](/reference/hash-stability/) freezes
 existing optimization profiles, with explicit, reviewed exceptions for correctness
 fixes. It distinguishes script-hash changes from network execution-cost changes.
 
@@ -15651,7 +15786,7 @@ Normal builds run only the offline regressions; node tests remain opt-in.
 This test/documentation change does not alter compiler output or deployed scripts.
 The documentation build dependencies are also updated to resolve known advisories.
 
-#### Upcoming preview: decode boolean and String switch fields (#166)
+##### Decode boolean and String switch fields (#166)
 
 Switch case-pattern access such as `case Sum s -> s.enabled() ? ONE : ZERO`
 now decodes a boolean record field to native Bool. Previously the cached field
@@ -15671,7 +15806,7 @@ optimization levels**, including NONE and BASELINE. Recompile and reassess affec
 scripts before deployment. Existing deployed scripts and ledger encodings do not
 change; switches without these field types retain their existing decoding.
 
-#### Upcoming preview: preserve loop state across enclosing branches (#161)
+##### Preserve loop state across enclosing branches (#161)
 
 A loop inside an `if` at method level or inside a switch-expression arm now
 preserves its accumulator updates for statements following the branch. Previously
@@ -15705,7 +15840,7 @@ change. Public APIs, ledger encoding and the restrictions below remain unchanged
 This was a missed case in the older discarded-result path: #79 added continuations
 for returns and #137 extended them to yields. #157 explicitly left this case open.
 
-#### Upcoming preview: reject lost conditional loop-local updates (#155)
+##### Reject lost conditional loop-local updates (#155)
 
 The compiler now rejects assignments inside an `if`/`else` branch to a variable
 declared in the loop body outside that branch. Previously the update could be
@@ -15735,7 +15870,7 @@ This validation alone preserves accepted programs' generated bytes; the separate
 unchanged. See [conditional loop state](/best-practices/conditionals/#conditional-loop-state)
 for supported patterns.
 
-#### Upcoming preview: independent compiler and evaluation costs (#153)
+##### Independent compiler and evaluation costs (#153)
 
 `pv11-costed` now needs no compiler cost profile. Its list-to-array rule uses
 structural eligibility; its transformations and the default `pv11-safe` level
@@ -15755,7 +15890,7 @@ remain available. Benchmark reports independently retain the model actually
 used for evaluation. Runtime callers continue supplying cost parameters through
 the VM API or `ProtocolParamsSupplier`; no named profile is required there.
 
-#### Upcoming preview: typed BLS12-381 values and multi-scalar multiplication (ADR-047)
+##### Typed BLS12-381 values and multi-scalar multiplication (ADR-047)
 
 BLS12-381 values now have their own types: `JulcG1` and `JulcG2` for points,
 `JulcMlResult` for a Miller-loop result (all in `org.julclang.core.types`).
@@ -15800,7 +15935,7 @@ lists (the old ones compiled but could not evaluate successfully).
 No program in the example corpus or the golden suites uses the BLS surface, so
 no existing script changes bytes or hash at any level.
 
-#### Upcoming preview: array literals and literal folding (ADR-046)
+##### Array literals and literal folding (ADR-046)
 
 `JulcArray.of(a, b, ...)` writes a PV11 array down. On-chain it is
 `JulcList.of(a, b, ...).toArray()`: the elements are Data-encoded as the
@@ -15834,7 +15969,7 @@ every Data-backed container). Spell a negative literal element as
 the elements, as javac does; elements of different types under `var` are rejected
 with `JULC0012` (declare `JulcArray<T>`).
 
-#### Upcoming preview: native Value literals and literal folding (ADR-045)
+##### Native Value literals and literal folding (ADR-045)
 
 `Builtins` gains three native Value literal producers on the PV11 target:
 `emptyValue()` (a UPLC Value constant), `singletonValue(policyId, tokenName,
@@ -15868,7 +16003,7 @@ literal, so existing scripts keep their bytes and hashes at every level.
 Spell a negative literal quantity as `new BigInteger("-5")`
 (`BigInteger.valueOf(-5)` compiles to a runtime subtraction).
 
-#### Upcoming preview: automatic sharing of repeated record field projections (ADR-044)
+##### Automatic sharing of repeated record field projections (ADR-044)
 
 `PV11_SAFE` (the default) and `PV11_COSTED` now share a repeated projection of
 the same record field of the same variable (`txInfo.outputs()` on a `TxInfo`
@@ -15920,7 +16055,7 @@ Each PIR-to-PIR rule can be switched off on its own for review and measurement:
 with `JULC0043`. The optimization level remains the supported rollout control,
 and the Gradle plugin and CLI do not expose the switch.
 
-#### Upcoming preview: list-to-array promotion at `pv11-costed` (ADR-043)
+##### List-to-array promotion at `pv11-costed` (ADR-043)
 
 `PV11_COSTED` (opt-in; `julc { optimization = 'pv11-costed' }`, no cost profile
 required) now converts a `JulcList` variable that its scope indexes at two
@@ -15977,7 +16112,7 @@ showed that a callback's element passed into a helper could then turn acceptance
 into a `ListToArray` failure. That is fixed, and no released artifact was built
 at the costed level.
 
-#### Upcoming preview: automatic sharing of repeated native Value conversions (ADR-042)
+##### Automatic sharing of repeated native Value conversions (ADR-042)
 
 `PV11_SAFE` (the default) and `PV11_COSTED` now share a repeated native Value
 conversion of the same variable, `NativeValueLib.fromData(x)` or
@@ -16007,7 +16142,7 @@ twice changes bytes and hash; no shipped example uses native Values, and
 sinking, adjacent conversion cancellation and Data-side (`ValuesLib`) sharing
 remain deferred (ADR-032 O8/O15).
 
-#### Upcoming preview: integer Case dispatch for sealed-interface switches (ADR-041)
+##### Integer Case dispatch for sealed-interface switches (ADR-041)
 
 `PV11_SAFE` (the default) and `PV11_COSTED` now dispatch every `switch` on a
 sealed interface with two or more constructors through one PV11 integer `Case`
@@ -16044,7 +16179,7 @@ same `DataMatch` HIR node. ADR-041 also closes the O6 unit Case question as
 rejected: JuLC emits no `ChooseUnit`, and a census of shipped artifacts shows no
 typed-unit statement population worth a new PIR surface.
 
-#### Upcoming preview: conditional `yield` in switch case blocks
+##### Conditional `yield` in switch case blocks
 
 A `yield` inside an `if`/`else` branch of a switch-expression case block was
 silently discarded when statements followed the conditional: the block lowered
@@ -16068,7 +16203,7 @@ examples were scanned and do not use the shape. The two Blaster controlled-mint
 verification fixtures do; their locked artifacts and counterexample binding are
 refreshed for the corrected lowering with the same property outcomes.
 
-#### Upcoming preview: `serialiseData` compiled without a force wrapper
+##### `serialiseData` compiled without a force wrapper
 
 `Builtins.serialiseData` and `ByteStringLib.serialiseData` previously compiled
 to a forced `SerialiseData` builtin. `SerialiseData` is monomorphic and takes
@@ -16090,7 +16225,7 @@ Java-source regression matrix for `serialiseData` under `BASELINE` and
 `PV11_SAFE` on Java and Scalus with exact CBOR and BLAKE2b-256 vectors
 (PR #135).
 
-#### Upcoming preview: lossless Data map decoding
+##### Lossless Data map decoding
 
 CBOR decoding now preserves Plutus Data map entry order and duplicate keys,
 including nested maps and Data constants read from serialized FLAT programs.
@@ -16104,7 +16239,7 @@ resource-limits change. Converting an already deduplicated external cbor-java
 `Map` cannot recover its missing entries; use `PlutusDataCborDecoder.decode` when
 starting from bytes. See ADR-037 for design and validation scope.
 
-#### Upcoming preview: typed native Pair Case lowering
+##### Typed native Pair Case lowering
 
 `PV11_SAFE` (the default) and `PV11_COSTED` now destructure proven native pairs
 from strict constructor-boundary checks with a single PV11 `Case`. The compiler
@@ -16132,7 +16267,7 @@ invent Java record schemas. FLAT-erased bindings are recovered from de Bruijn
 indices. External exhaustive HIR visitors must handle the new `DataMatch` node;
 the compiler's output bytes and costs are unaffected by this decompiler change.
 
-#### Upcoming preview: stable typed formal-verification API v1
+##### Stable typed formal-verification API v1
 
 JuLC now provides a stable construction API for exact-artifact formal
 verification. API version 1 uses canonical property schema 1 and supports
@@ -16168,7 +16303,7 @@ See the [formal verification guide](/guides/formal-verification/) for annotation
 and DSL workflows, local/Docker backends, exact certificate scope, outcome
 classification, and CI guidance.
 
-#### Upcoming preview: explicit PV11 compiler target
+##### Explicit PV11 compiler target
 
 JuLC compilation now resolves one explicit, immutable compiler profile:
 `plutus-v3-pv11-uplc-1.1.0`. The profile covers the Plutus language, ledger
@@ -16206,7 +16341,7 @@ and report the same stable profile ID. Supporting a later protocol version will
 add and verify a separate pinned profile; it will not silently change the PV11
 default.
 
-#### Upcoming preview: Scalus protocol-aware evaluation (ADR-033)
+##### Scalus protocol-aware evaluation (ADR-033)
 
 The Scalus adapter now has atomic per-language configurations, target-bound
 V1/V2/V3 VM construction, and one validated explicit-target pipeline. Public
@@ -16230,7 +16365,7 @@ bridge. Unconfigured language-only V3 retains Scalus 1.1.0's PV11/E bundled
 default, which differs from Java/Truffle's PV10 compatibility default. These VM
 changes do not modify compiled UPLC, FLAT bytes, or script hashes.
 
-#### Upcoming preview: strict typed datum/redeemer boundaries
+##### Strict typed datum/redeemer boundaries
 
 Typed validator boundaries now reject non-canonical `Data` before user code
 runs. Records and variants require exact constructor tags and arities;
@@ -16269,10 +16404,10 @@ boundary with a reviewed manual check when full traversal is unsuitable.
 
 Blueprint compiler identities include `+boundary.strict-data-v1`, and formal
 verification certificates record `boundarySemantics: strict-data-v1`. See the
-[strict data boundary guide](../guides/strict-data-boundaries/) for the exact
+[strict data boundary guide](/guides/strict-data-boundaries/) for the exact
 coverage, cost guidance, raw-data escape, and migration checklist.
 
-#### Upcoming preview: purpose-indexed multi-validator blueprints
+##### Purpose-indexed multi-validator blueprints
 
 An explicit `@MultiValidator` with supported `SPEND`, `MINT`, `WITHDRAW`, or
 `CERTIFY` entrypoints now publish one standard CIP-57 validator entry per
@@ -16294,10 +16429,10 @@ or `PROPOSE` validators now also fail strict blueprint generation: older
 previews emitted incomplete purpose-free metadata for these single-purpose
 validators, but the pinned CIP-57 vocabulary cannot name them truthfully. Use
 the blueprint opt-out to compile without metadata when needed. See the
-[purpose-indexed blueprint guide](../guides/purpose-indexed-blueprints/) for
+[purpose-indexed blueprint guide](/guides/purpose-indexed-blueprints/) for
 examples and limitations.
 
-#### Upcoming preview: typed List-case lowering (#110)
+##### Typed List-case lowering (#110)
 
 `pv11-safe` (the default) and `pv11-costed` now use PV11 `Case List` for
 eligible compiler-generated `for-each` loops. The compiler binds the raw head
@@ -16329,7 +16464,7 @@ adds confirmed PV11 spending transactions, direct Haskell/Java budget agreement,
 and malformed-input checks. This completes the bounded rule's node evidence gate
 without enabling additional traversal families.
 
-#### Upcoming preview: target-aware PV11 optimizations
+##### Target-aware PV11 optimizations
 
 ADR-032 adds an explicit optimizer rollout boundary without adding another
 compiler target. The legal output target remains
@@ -16399,7 +16534,9 @@ target starts with ADR-032 rules disabled and enables each rule only after its
 legality and semantics are revalidated; cost-directed rules additionally need
 a new pinned cost profile.
 
-#### Upcoming release: PV11 builtin contract correction
+#### 0.1.0-pre16
+
+##### PV11 builtin contract correction
 
 JuLC's current compiler targets the Plutus V3/PV11 feature set. This contract
 was verified against Plutus 1.63.0.0
@@ -16415,7 +16552,7 @@ The released PV11 Batch 6 is exactly:
 | 92-93 | BLS12-381 G1/G2 multi-scalar multiplication | CIP-133 |
 | 94-100 | Native MaryEraValue operations | CIP-153 |
 
-##### `multiIndexArray` migration warning
+###### `multiIndexArray` migration warning
 
 Earlier JuLC previews exposed `Builtins.multiIndexArray` as if it were a PV11
 builtin and could generate FLAT tag 101. Tag 101 is the future CIP-156 operation;
@@ -16575,13 +16712,8 @@ public @interface OnchainLibrary {
 
 **Source:** `julc-stdlib/src/main/java/org/julclang/stdlib/annotation/OnchainLibrary.java`
 
-**JOUST's `@StateContract`.** JuLC treats `org.julclang.state.api.StateContract`, the contract annotation of the JOUST
-framework, exactly like `@OnchainLibrary`. A top-level class carrying it is an on-chain library: it is found the same way
-(in the same project, or in a jar's `META-INF/plutus-sources`) and called the same way (by its simple name from the
-same package, or through an import). JuLC compiles the annotation's own source with the class, however the class names
-it (a single-type or wildcard import, or `@org.julclang.state.api.StateContract`), so that source must be in the library
-pool; JOUST's API jar ships it. No other annotation stands for `@OnchainLibrary`: an annotation of your own
-that carries `@OnchainLibrary` does not make the classes it marks libraries, so mark those classes `@OnchainLibrary`.
+An annotation of your own that carries `@OnchainLibrary` does not make the classes it marks libraries, so mark those
+classes `@OnchainLibrary` directly.
 
 ##### 2.2 Basic Structure
 
@@ -17055,51 +17187,97 @@ Libraries can be tested in two ways:
 
 Write a minimal validator that calls the library method, compile it with the library source, and evaluate the resulting UPLC program. This is the primary integration testing approach.
 
+A Plutus V3 script takes one argument, the script context, which carries the datum and the redeemer. Build it with
+`ScriptContextTestBuilder` and evaluate with `ValidatorTest.evaluate(result, ctx)`, which uses the target the compiler
+recorded.
+
 ```java
+import org.julclang.compiler.JulcCompiler;
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.*;
+import org.julclang.stdlib.StdlibRegistry;
+import org.julclang.testkit.ScriptContextTestBuilder;
+import org.julclang.testkit.TestDataBuilder;
+import org.julclang.testkit.ValidatorTest;
+import org.junit.jupiter.api.Test;
+
+import java.math.BigInteger;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.*;
+
 class TokenUtilsTest {
 
-    private final JulcCompiler compiler = new JulcCompiler();
-    private final JulcVm vm = JulcVm.create();
+    private final JulcCompiler compiler = new JulcCompiler(StdlibRegistry.defaultRegistry());
 
-    @Test
-    void hasTokenReturnsTrueWhenPresent() {
-        var libSource = """
-            import org.julclang.core.PlutusData;
+    static final String LIB = """
+            import java.math.BigInteger;
+            import org.julclang.ledger.PolicyId;
+            import org.julclang.ledger.TokenName;
+            import org.julclang.ledger.Value;
             import org.julclang.stdlib.annotation.OnchainLibrary;
-            import org.julclang.stdlib.Builtins;
 
             @OnchainLibrary
             public class TokenUtils {
-                public static long tokenAmount(PlutusData value, PlutusData policy, PlutusData token) {
-                    // ... implementation ...
-                }
-                public static boolean hasToken(PlutusData value, PlutusData policy,
-                                               PlutusData token, long minAmount) {
-                    var amount = tokenAmount(value, policy, token);
-                    return minAmount <= amount;
+                public static boolean hasToken(Value value, PolicyId policy, TokenName token,
+                                               BigInteger minAmount) {
+                    return value.assetOf(policy, token).compareTo(minAmount) >= 0;
                 }
             }
             """;
 
-        var validatorSource = """
+    static final String VALIDATOR = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.ledger.*;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class TestValidator {
+                record Expected(PolicyId policy, TokenName token, BigInteger minAmount) {}
+
                 @Entrypoint
-                static boolean validate(BigInteger redeemer, PlutusData ctx) {
-                    // Test logic calling TokenUtils
-                    return true;
+                static boolean validate(Expected datum, PlutusData redeemer, ScriptContext ctx) {
+                    boolean found = false;
+                    for (TxOut output : ctx.txInfo().outputs()) {
+                        if (TokenUtils.hasToken(output.value(), datum.policy(), datum.token(),
+                                datum.minAmount())) {
+                            found = true;
+                        }
+                    }
+                    return found;
                 }
             }
             """;
 
-        var result = compiler.compile(validatorSource, List.of(libSource));
+    @Test
+    void hasTokenReturnsTrueWhenPresent() {
+        var result = compiler.compile(VALIDATOR, List.of(LIB));
         assertFalse(result.hasErrors(), "Compilation failed: " + result.diagnostics());
 
-        var program = result.program();
-        var evalResult = vm.evaluateWithArgs(program, List.of(mockCtx));
-        assertTrue(evalResult.isSuccess());
+        var policy = new PolicyId(new byte[28]);
+        var token = new TokenName("GOLD".getBytes());
+        // Expected(policy, token, minAmount) as Data: constructor 0 with the record's components
+        var datum = PlutusData.constr(0, policy.toPlutusData(), token.toPlutusData(), PlutusData.integer(10));
+
+        var owner = new PubKeyHash(new byte[28]);
+        var paid = TestDataBuilder.txOut(TestDataBuilder.pubKeyAddress(owner),
+                Value.singleton(policy, token, BigInteger.valueOf(25)));
+        var ref = new TxOutRef(new TxId(new byte[32]), BigInteger.ZERO);
+        var ctx = ScriptContextTestBuilder.spending(ref, datum)
+                .redeemer(PlutusData.UNIT)
+                .output(paid)
+                .buildPlutusData();
+
+        var evalResult = ValidatorTest.evaluate(result, ctx);
+        assertTrue(evalResult.isSuccess(), evalResult.toString());
+
+        var none = ScriptContextTestBuilder.spending(ref, datum)
+                .redeemer(PlutusData.UNIT)
+                .output(TestDataBuilder.txOut(TestDataBuilder.pubKeyAddress(owner), Value.lovelace(BigInteger.TWO)))
+                .buildPlutusData();
+        assertFalse(ValidatorTest.evaluate(result, none).isSuccess());
     }
 }
 ```
@@ -17701,31 +17879,40 @@ case Only p -> {
 For `[1, 2, 3]`, this yields `3`; assigning to `p` instead is a compile-time error.
 Otherwise-supported `instanceof` binding reassignment is unaffected.
 
-##### 1.1 `Method must have a body: <name>`
+##### 1.1 `JULC0001` `Method must have a body: <name>`
 
-**Cause:** An abstract or interface method was encountered where the compiler
-expects a concrete method body.
+**Cause:** A method the program calls has no body, such as a `native` method. The compiler
+lowers every method a validator calls, so each one needs a body.
 
-**Fix:** Ensure every method in your validator class has a full body. On-chain code
-cannot contain abstract methods.
+**Fix:** Give the method a body. An `abstract` method that nothing calls is never lowered.
 
 ```java
+import java.math.BigInteger;
 import org.julclang.ledger.ScriptContext;
 import org.julclang.stdlib.annotation.Entrypoint;
 import org.julclang.stdlib.annotation.SpendingValidator;
-// WRONG: abstract method
+
+// WRONG: a method with no body
 @SpendingValidator
-public class MyValidator {
+public class FeeValidator {
+    static native BigInteger fee(BigInteger amount);
+
     @Entrypoint
-    public abstract boolean validate(Data redeemer, ScriptContext ctx);
+    public static boolean validate(BigInteger redeemer, ScriptContext ctx) {
+        return fee(redeemer).signum() > 0;
+    }
 }
 
 // CORRECT: method with body
 @SpendingValidator
-public class MyValidator {
+public class FeeValidator {
+    static BigInteger fee(BigInteger amount) {
+        return amount.divide(BigInteger.valueOf(100));
+    }
+
     @Entrypoint
-    public static boolean validate(Data redeemer, ScriptContext ctx) {
-        return true;
+    public static boolean validate(BigInteger redeemer, ScriptContext ctx) {
+        return fee(redeemer).signum() > 0;
     }
 }
 ```
@@ -17760,8 +17947,8 @@ var total = BigInteger.ZERO;
 
 **Cause:** A `break` statement appeared outside of a for-each or while loop scope.
 A `break` inside a loop that updates no variable declared before it reports
-`JULC0063` instead ([1.22](#122-julc0063-break-is-not-supported-in-a-loop-that-updates-no-variable-declared-before-the-loop)).
-A `break` that names a label reports `JULC0066` ([1.26](#126-julc0066-labels-are-not-supported-on-chain-construct)).
+`JULC0063` instead ([1.25](#125-julc0063-break-is-not-supported-in-a-loop-that-updates-no-variable-declared-before-the-loop)).
+A `break` that names a label reports `JULC0066` ([1.29](#129-julc0066-labels-are-not-supported-on-chain-construct)).
 
 **Fix:** Move the `break` inside a loop body, or restructure your logic to use
 `return` instead.
@@ -17791,8 +17978,8 @@ expression statements are supported on-chain.`
 **Cause:** A Java statement type that has no on-chain equivalent was used.
 Unsupported statements include `switch` statements (as opposed to `switch`
 expressions), `try`/`catch`, `do`/`while`, labeled statements, and others.
-`continue` reports `JULC0060` ([1.25](#125-julc0060-continue-is-not-supported-on-chain)),
-and a labelled statement `JULC0066` ([1.26](#126-julc0066-labels-are-not-supported-on-chain-construct)).
+`continue` reports `JULC0060` ([1.28](#128-julc0060-continue-is-not-supported-on-chain)),
+and a labelled statement `JULC0066` ([1.29](#129-julc0066-labels-are-not-supported-on-chain-construct)).
 
 **Fix:** Rewrite using the supported statement forms: variable declarations, if/else,
 for-each, while, return, and expression statements.
@@ -18128,7 +18315,7 @@ var filtered = items.filter(item -> {
 
 ---
 
-##### 1.15 `Unknown method: <methodName>`
+##### 1.18 `Unknown method: <methodName>`
 
 **Hint (fuzzy match):** `Did you mean '<ClassName.methodName>()'?`
 **Hint (no match):** `Library methods require class qualification (e.g.,
@@ -18155,7 +18342,7 @@ var total = MathLib.abs(value);
 
 ---
 
-##### 1.16 `Unsupported operator: <operator>`
+##### 1.19 `Unsupported operator: <operator>`
 
 **Hint:** `Supported operators: +, -, *, /, %, ==, !=, <, <=, >, >=, &&, ||`
 
@@ -18176,7 +18363,7 @@ var shifted = BitwiseLib.shiftByteString(x, 2);
 
 ---
 
-##### 1.17 `Unsupported unary operator: <operator>`
+##### 1.20 `Unsupported unary operator: <operator>`
 
 **Hint:** `Supported unary operators: ! (logical NOT) and - (negation)`
 
@@ -18196,7 +18383,7 @@ var negative = -amount;
 
 ---
 
-##### 1.18 `JULC0061` `Reassigning '<name>' is not supported outside a loop`
+##### 1.21 `JULC0061` `Reassigning '<name>' is not supported outside a loop`
 
 **Cause:** On-chain variables are single-assignment. Only a loop can update a
 variable declared before it (the loop's accumulator). Anywhere else, assigning to a
@@ -18227,7 +18414,7 @@ var limit = vip ? BigInteger.valueOf(100) : BigInteger.TEN;
 
 ---
 
-##### 1.19 `Unsupported expression: <ExpressionType>`
+##### 1.22 `Unsupported expression: <ExpressionType>`
 
 **Hint:** `This expression type is not supported in on-chain code.`
 
@@ -18239,7 +18426,7 @@ expressions, lambdas, switch expressions, instanceof, and casts.
 
 ---
 
-##### 1.20 `Undefined variable: <name>`
+##### 1.23 `Undefined variable: <name>`
 
 **Cause:** A variable name was used that is not in scope. This is reported by
 lowering when javac's name has no value in the current scope.
@@ -18257,11 +18444,11 @@ return total;
 ```
 
 An `instanceof` pattern variable that JuLC does not bind is reported as `JULC0139`
-([1.28](#128-julc0139-a-pattern-variable-is-used-where-julc-does-not-bind-it)), not as an
+([1.31](#131-julc0139-a-pattern-variable-is-used-where-julc-does-not-bind-it)), not as an
 undefined variable.
 
 `JulcMap.of(...)` used to be reported as `Undefined variable: JulcMap`; it now
-reports `JULC0062` ([1.23](#123-julc0062-julcmapof-is-off-chain-only-and-has-no-on-chain-implementation)).
+reports `JULC0062` ([1.26](#126-julc0062-julcmapof-is-off-chain-only-and-has-no-on-chain-implementation)).
 
 If the undefined name is an on-chain library class, such as `OutputLib`, look for a note earlier in the build output:
 `JuLC skipped an on-chain library source on the processor path: ...`. It names a jar whose `META-INF/plutus-sources`
@@ -18270,7 +18457,7 @@ the build again; JuLC reads the jars from disk each time.
 
 ---
 
-##### 1.21 `JULC0003` `'return' is not supported inside while loop body`
+##### 1.24 `JULC0003` `'return' is not supported inside while loop body`
 
 **Cause:** A `while` loop body cannot `return` from the enclosing method. A `while`
 loop is compiled to a recursive function whose result is the variables the loop
@@ -18300,7 +18487,7 @@ return i;
 
 ---
 
-##### 1.22 `JULC0063` `break is not supported in a loop that updates no variable declared before the loop`
+##### 1.25 `JULC0063` `break is not supported in a loop that updates no variable declared before the loop`
 
 **Cause:** A loop supports `break` only when it updates a variable declared before
 the loop. A loop that updates none compiles its body as plain statements, which
@@ -18311,7 +18498,7 @@ The same applies to such a loop nested inside a loop that does update a variable
 That form used to be accepted, with its `break` ignored, so the inner loop ran to its
 end ([#273](https://github.com/bloxbean/julc/issues/273)); it is now rejected with this
 code too. A loop whose only update is inside a `switch` statement or an expression
-reports `JULC0065` at the update instead ([1.24](#124-julc0065-updating-name-inside-a-switch-statement-is-not-supported-in-this-loop)).
+reports `JULC0065` at the update instead ([1.27](#127-julc0065-updating-name-inside-a-switch-statement-is-not-supported-in-this-loop)).
 
 **Fix:** Declare a variable before the loop and set it where the loop breaks.
 
@@ -18332,7 +18519,7 @@ for (var x : xs) {
 
 ---
 
-##### 1.23 `JULC0062` `JulcMap.of is off-chain only and has no on-chain implementation`
+##### 1.26 `JULC0062` `JulcMap.of is off-chain only and has no on-chain implementation`
 
 **Cause:** `JulcMap.of(...)` builds a `JulcAssocMap` in Java, for tests and
 off-chain code. The compiler has no lowering for it. Before
@@ -18356,7 +18543,7 @@ JulcMap<byte[], BigInteger> two = JulcMap.<byte[], BigInteger>empty()
 
 ---
 
-##### 1.24 `JULC0065` `Updating '<name>' inside a switch statement is not supported in this loop`
+##### 1.27 `JULC0065` `Updating '<name>' inside a switch statement is not supported in this loop`
 
 **Cause:** A loop carries an update of a variable declared before it only when the
 update is a statement of its own, directly in the loop body or in an `if`/`else`
@@ -18402,7 +18589,7 @@ while (x - 1 > 0) {
 
 ---
 
-##### 1.25 `JULC0060` `continue is not supported on-chain`
+##### 1.28 `JULC0060` `continue is not supported on-chain`
 
 **Cause:** `continue` is outside the on-chain subset. Loops are compiled to folds
 and recursive functions whose body runs to its end on every iteration; there is no
@@ -18429,13 +18616,13 @@ for (var x : xs) {
 
 ---
 
-##### 1.26 `JULC0066` `Labels are not supported on-chain: '<construct>'`
+##### 1.29 `JULC0066` `Labels are not supported on-chain: '<construct>'`
 
 **Cause:** Labelled statements are outside the on-chain subset, so no `break` or
 `continue` can name a label. A labelled statement (`outer:`), a `break` that names a
 label (`break outer`) and a `continue` that names one (`continue outer`) report this
 code, at that statement, whether or not a matching label exists. `continue` is not
-supported without a label either ([1.25](#125-julc0060-continue-is-not-supported-on-chain)).
+supported without a label either ([1.28](#128-julc0060-continue-is-not-supported-on-chain)).
 
 Before [#201](https://github.com/bloxbean/julc/issues/201), a `break` that named a
 label was accepted and compiled as a plain `break` of the innermost loop. javac
@@ -18479,7 +18666,7 @@ for (var x : xs) {
 
 ---
 
-##### 1.27 `JULC0076` `Unsupported case pattern '<pattern>'`
+##### 1.30 `JULC0076` `Unsupported case pattern '<pattern>'`
 
 **Cause:** The most common case is a record pattern, which is valid Java but which JuLC does not compile yet. A case pattern must
 also name a permitted variant of the selector's sealed interface. `case S s` on a selector of type `S` is reported with this code too.
@@ -18500,7 +18687,7 @@ next case does.
 
 An `instanceof` with a record pattern is `JULC0077`, and the same rewrite applies: `s instanceof A a`, then `a.v()`.
 
-##### 1.28 `JULC0139` A pattern variable is used where JuLC does not bind it
+##### 1.31 `JULC0139` A pattern variable is used where JuLC does not bind it
 
 **Cause:** JuLC binds an `instanceof` pattern variable wherever Java puts it in scope within
 one statement (`&&`, `||`, `!`, `?:`, the `if` and its branches, lambdas, loop bodies) and
@@ -18523,7 +18710,7 @@ if (s instanceof Circle c) { return c.radius(); }
 If the tested value is a call, store it in a local first, so the second test does not call
 it again.
 
-##### 1.29 `JULC0140` Reassigning pattern variable `<name>` is not supported
+##### 1.32 `JULC0140` Reassigning pattern variable `<name>` is not supported
 
 **Cause:** Java lets a pattern variable that is not `final` be reassigned; JuLC does not. In
 a loop the update could be lost on the path that rejoins the rest of the body. The one form
@@ -18539,6 +18726,138 @@ if (x instanceof Bid b) { if (late) { b = penalised(b); } total = total + b.amou
 // CORRECT
 if (x instanceof Bid b) { Bid bid = late ? penalised(b) : b; total = total + bid.amount(); }
 ```
+
+##### 1.33 `JULC0072` `Invalid guard on '<case>': <reason>`
+
+**Example message:** `Invalid guard on 'case Bid b when b.amount().intValue() > 100': 'b.amount().intValue()' narrows to 32 bits in Java, but JuLC lowers it to the identity; compare the BigInteger value instead`
+
+**Cause:** A `when` guard uses something whose on-chain meaning differs from Java's: `intValue()` or
+`longValue()`, `int` or `long` arithmetic that is not a constant, a cast to a reference type, or a
+`char`, `byte` or `short` value. A guard that is not a `boolean`, or a constant `false`, is
+rejected as well; javac usually reports those first, as `JULC0085`.
+
+**Fix:** Compare the `BigInteger` value itself, or compute the condition in a helper that returns `boolean`.
+
+```java
+// WRONG
+case Bid b when b.amount().intValue() > 100 -> true;
+
+// CORRECT
+case Bid b when b.amount().compareTo(BigInteger.valueOf(100)) > 0 -> true;
+```
+
+---
+
+##### 1.34 `JULC0074` `Guard on '<case>' declares pattern variable '<name>', which is not supported`
+
+**Cause:** A `when` guard declares a pattern variable, as in `when p.target() instanceof ToKey k`.
+Java puts `k` in scope in the arm, but JuLC does not bind a variable that a switch guard declares.
+An `instanceof` without a binding is fine in a guard.
+
+**Fix:** Test the type in the guard, without a binding, and cast in the arm. The switch keeps its
+behaviour: a `Pay` whose target is not a `ToKey` still goes on to the later cases.
+
+```java
+// WRONG
+case Pay p when p.target() instanceof ToKey k -> signers.contains(k.key());
+
+// CORRECT: a type test in the guard, a cast in the arm
+case Pay p when p.target() instanceof ToKey -> {
+    ToKey k = (ToKey) p.target();
+    yield signers.contains(k.key());
+}
+```
+
+Moving the pattern into the arm, `case Pay p -> p.target() instanceof ToKey k && signers.contains(k.key());`,
+also compiles, but it is a different switch: that arm takes every `Pay`, so a `Pay` to any other target returns
+`false` instead of reaching a later case or `default`. Use it only when no later case should see a `Pay`.
+
+---
+
+##### 1.35 `JULC0075` `Unsupported switch group '<case>': <reason>`
+
+**Example message:** `Unsupported switch group 'case Add a': the group can complete normally, so Java would fall through into the next group; JuLC does not implement fall-through. End the group with yield`
+
+**Cause:** In a colon-form switch expression (`case X x:`), a group can fall through into the next
+one, or one group has several labels. JuLC compiles a colon-form group only when it has one label
+and yields on every path.
+
+**Fix:** End every group with `yield`, give each label its own group, or use the arrow form.
+
+```java
+// WRONG: the first group falls through into default
+BigInteger r = switch (step) {
+    case Add a:
+        a.v().negate();
+    default:
+        yield BigInteger.TWO;
+};
+
+// CORRECT
+BigInteger r = switch (step) {
+    case Add a:
+        yield a.v().negate();
+    default:
+        yield BigInteger.TWO;
+};
+```
+
+---
+
+##### 1.36 `JULC0083` `Pattern variable '<name>' is already defined <where>`
+
+**Cause:** A pattern variable has the name of a parameter, a local or another pattern variable in
+scope, or a pattern declares one name twice. javac rejects almost every such source first, as
+`JULC0085` with `compiler.err.already.defined` or `compiler.err.match.binding.exists`; JuLC keeps
+`JULC0083` for a guard that declares the same name twice. A pattern variable may have the name of a
+field, as in Java.
+
+**Fix:** Rename the pattern variable.
+
+```java
+// WRONG: javac reports "variable r is already defined in method size(...)"
+static BigInteger size(BigInteger r, Shape s) {
+    return switch (s) {
+        case Circle r -> r.r();
+        case Square q -> q.side();
+    };
+}
+
+// CORRECT
+static BigInteger size(BigInteger r, Shape s) {
+    return switch (s) {
+        case Circle c -> c.r();
+        case Square q -> q.side();
+    };
+}
+```
+
+---
+
+##### 1.37 `JULC0132` `This switch case block does not yield a value on every path`
+
+**Cause:** A `{ ... }` block in a switch expression can end without a `yield` on some path, by
+JuLC's reading. JuLC does not read a loop as never finishing, so `while (true) { yield x; }`, which
+javac accepts, has a path with no value.
+
+**Fix:** End every path in the block with `yield`.
+
+```java
+// WRONG
+case Add a -> {
+    while (true) {
+        yield a.v();
+    }
+}
+
+// CORRECT
+case Add a -> {
+    BigInteger v = a.v();
+    yield v.signum() > 0 ? v : BigInteger.ZERO;
+}
+```
+
+---
 
 #### 2. Validation Errors (subset rules)
 
@@ -18639,7 +18958,7 @@ while (i < BigInteger.TEN) {
 **Suggestion:** `Use for-each or while with an accumulator and break to exit early`
 
 **Cause:** A `break` statement appeared outside of a for-each or while loop.
-A `break` there that names a label reports `JULC0066` instead ([1.26](#126-julc0066-labels-are-not-supported-on-chain-construct)).
+A `break` there that names a label reports `JULC0066` instead ([1.29](#129-julc0066-labels-are-not-supported-on-chain-construct)).
 
 **Fix:** Place `break` inside a for-each or while loop.
 
@@ -18677,7 +18996,7 @@ while (hasMore) {
 
 ```java
 // WRONG
-Data result = null;
+PlutusData result = null;
 
 // CORRECT
 var result = Optional.empty();
@@ -18808,8 +19127,7 @@ public record Cancel() implements Action {}
 **Cause:** A bitwise, shift or boolean compound assignment (`&=`, `|=`, `^=`, `<<=`, `>>=`,
 `>>>=`) was used. Only `+=`, `-=`, `*=`, `/=` and `%=` on integers, and `+=` on strings, are
 lowered (as `x = x op y`). Java evaluates the right-hand side of `&=` and `|=` even when the
-result is already known; lowering them as `&&` or `||` would skip it, so they are rejected
-([ADR-060](https://github.com/bloxbean/julc/blob/main/adr/060-generated-binder-namespace.md)).
+result is already known; lowering them as `&&` or `||` would skip it, so they are rejected.
 
 **Fix:** Evaluate the check first, then combine it.
 
@@ -18960,7 +19278,7 @@ These errors are raised during compiler setup and pipeline orchestration.
 ##### 3.0 `JULC0085` `<javac's message> (compiler.err.<key>)`
 
 **Cause:** javac rejects the source. Before JuLC compiles anything, javac analyzes the
-sources of the compilation (ADR-068 M1), and an error is reported with javac's message, key
+sources of the compilation, and an error is reported with javac's message, key
 and position. JuLC's dialect beyond Java is rejected this way, for example `a + b` or
 `a > b` on `BigInteger` (`compiler.err.operator.cant.be.applied.1`), an `int` where a
 `BigInteger` is expected (`compiler.err.prob.found.req`), or a ledger or stdlib type used
@@ -19059,19 +19377,19 @@ validator has two `@Entrypoint` methods.
 
 ##### `JULC0103` `Entrypoint <method> of <class> takes <type> as its last parameter; the last parameter is the script context, ScriptContext or PlutusData`
 
-**Cause:** An `@Entrypoint` method of a validator declares its last parameter with a type other than `org.julclang.ledger.ScriptContext` or `org.julclang.core.PlutusData`. The script receives the script context there, undecoded, so a parameter typed `BigInteger`, a record or a subtype of `PlutusData` reads the context as that type, and the method's JVM test does not test the script. A type of your own named `ScriptContext` is not the ledger's. An entry point with a parameter count its purpose does not take is `JULC0008` instead. This rule holds on both frontends.javacGate=report` or `off` turns it off there, as it does the other gate rules. The javac frontend has no gate to turn off.
+**Cause:** An `@Entrypoint` method of a validator declares its last parameter with a type other than `org.julclang.ledger.ScriptContext` or `org.julclang.core.PlutusData`. The script receives the script context there, undecoded, so a parameter typed `BigInteger`, a record or a subtype of `PlutusData` reads the context as that type, and the method's JVM test does not test the script. A type of your own named `ScriptContext` is not the ledger's. An entry point with a parameter count its purpose does not take is `JULC0008` instead.
 
 **Fix:** Declare the last parameter `ScriptContext`, or `PlutusData` to keep the context as Data. Take other values from the redeemer, or, for a spending validator, from the datum: `validate(BigInteger datum, BigInteger redeemer, ScriptContext ctx)`.
 
 ##### `JULC0079` `Record <record> implements sealed interfaces <interface> and <interface>; a record may have at most one sealed parent`
 
-**Cause:** a record implements two sealed interfaces. A Data value has one constructor tag, so one of the two families would read the record as another of its variants (ADR-067 D6). On the javac frontend every sealed interface counts.
+**Cause:** a record implements two sealed interfaces. A Data value has one constructor tag, so one of the two families would read the record as another of its variants.
 
 **Fix:** Give the record one sealed parent. For the second family, wrap it in a variant of its own: `record InT(A a) implements T { }`.
 
 ##### `JULC0080` `Record <record> declares <member>, which JuLC does not compile; a record body may contain only nested type declarations`
 
-**Cause:** a record declares a member other than a nested type: a method, `equals`, `hashCode`, `toString`, a compact or other constructor, a static field or an initializer block. JuLC compiles a record as its components only, so such a member is never what the script runs (ADR-067 D9). A declared accessor or `toPlutusData` is `JULC0101`, and a constructor with a statement `JULC0099`, on both frontends.
+**Cause:** a record declares a member other than a nested type: a method, `equals`, `hashCode`, `toString`, a compact or other constructor, a static field or an initializer block. JuLC compiles a record as its components only, so such a member is never what the script runs. A declared accessor or `toPlutusData` is `JULC0101`, and a constructor with a statement `JULC0099`.
 
 **Fix:** Move the logic into a static method of the enclosing class, which takes the record as a parameter, and let the record hold its components alone.
 
@@ -19080,8 +19398,8 @@ validator has two `@Entrypoint` methods.
 **Cause:** an `equals`, or a collection operation that compares
 elements or keys (`contains`, `get`, `lookup`, `containsKey`, `delete`), at a type whose JVM equality compares a `byte[]`
 by reference: `byte[].equals`, a record or sealed variant with a `byte[]` component, or an `Optional`, tuple or
-`java.util` collection of one. On-chain the comparison is by content, so the script and the method's JVM test disagree
-(ADR-068 D6). A type the check cannot read (a raw collection, `Object`, a type variable) is rejected the same way, as is
+`java.util` collection of one. On-chain the comparison is by content, so the script and the method's JVM test disagree.
+A type the check cannot read (a raw collection, `Object`, a type variable) is rejected the same way, as is
 `equals` between two containers of unrelated arguments, which Java answers both ways.
 
 **Fix:** Compare the bytes with `Builtins.equalsByteString(a, b)`; `ByteStringLib.equals(a, b)` is equivalent, a few bytes larger. For a `@NewType` byte wrapper, compare its
@@ -19098,7 +19416,7 @@ return Builtins.equalsByteString(signer, expected);
 ##### `JULC0086` `<expression> compares <type> by reference; use equals`
 
 **Cause:** `==` or `!=` between references (`BigInteger`, `byte[]`,
-`String`, boxed values, records) is reference equality in Java and value equality on-chain (ADR-068 D6). Constant
+`String`, boxed values, records) is reference equality in Java and value equality on-chain. Constant
 strings built from literals and `+` alone keep their meaning.
 
 **Fix:** `a.equals(b)`, or `Builtins.equalsByteString(a, b)` for bytes.
@@ -19211,15 +19529,15 @@ strings built from literals and `+` alone keep their meaning.
 
 **Fix:** A switch expression exports only its yielded value. Declare an accumulator inside the arm, yield its result, and use the switch value outside the arm instead of mutating an enclosing variable.
 
-##### `JULC0122` `Generic library method <class.method> cannot be called from Java yet: generic @OnchainLibrary methods are specialized only by language-neutral library providers (ADR-059). Provide a concrete overload-free method for Java callers.`
+##### `JULC0122` `Generic library method <class.method> cannot be called from Java yet: generic @OnchainLibrary methods are specialized only by language-neutral library providers. Provide a concrete overload-free method for Java callers.`
 
-**Cause:** a generic @OnchainLibrary method is a template that only a language-neutral producer instantiates (ADR-059), so Java code cannot call it.
+**Cause:** a generic @OnchainLibrary method is a template that only a language-neutral producer instantiates, so Java code cannot call it.
 
 **Fix:** Provide a concrete overload-free method for Java callers.
 
 ##### `JULC0123` `Static call <call> names its class by a qualified name; on-chain code calls a static method through its class's simple name`
 
-**Cause:** JuLC resolves a static call through the simple name of its class, as an import or the enclosing class declares it, so a call through a package-qualified class name, such as `java.math.BigInteger.valueOf(1)`, is not resolved.of`. A nested class's qualified name, `Outer.Inner.f(a)`, is `JULC0011`.
+**Cause:** JuLC resolves a static call through the simple name of its class, as an import or the enclosing class declares it, so a call through a package-qualified class name, such as `java.math.BigInteger.valueOf(1)`, is not resolved. A nested class's qualified name, `Outer.Inner.f(a)`, is `JULC0011`.
 
 **Fix:** Import the class and call the method through its simple name, for example `import java.math.BigInteger;` and `BigInteger.valueOf(1)`.
 
@@ -19284,7 +19602,7 @@ semicolons, unmatched braces, invalid Java 21 syntax.
 
 ---
 
-##### 3.2 `No validator annotation found (e.g. @SpendingValidator, @MintingValidator)`
+##### 3.2 `JULC0010` `No validator annotation found (e.g. @SpendingValidator, @MintingValidator)`
 
 **Cause:** The validator source file does not contain any class annotated with a
 validator annotation.
@@ -19292,10 +19610,14 @@ validator annotation.
 **Fix:** Annotate your validator class with one of the recognized annotations.
 
 ```java
+import org.julclang.core.PlutusData;
 import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 // WRONG: no annotation
 public class MyValidator {
-    public static boolean validate(Data redeemer, ScriptContext ctx) {
+    public static boolean validate(PlutusData redeemer, ScriptContext ctx) {
         return true;
     }
 }
@@ -19304,7 +19626,7 @@ public class MyValidator {
 @SpendingValidator
 public class MyValidator {
     @Entrypoint
-    public static boolean validate(Data datum, Data redeemer, ScriptContext ctx) {
+    public static boolean validate(PlutusData datum, PlutusData redeemer, ScriptContext ctx) {
         return true;
     }
 }
@@ -19315,7 +19637,7 @@ public class MyValidator {
 
 ---
 
-##### 3.3 `No @Entrypoint method found in <ClassName>`
+##### 3.3 `JULC0009` `No @Entrypoint method found in <ClassName>`
 
 **Cause:** The annotated validator class does not contain a method annotated with
 `@Entrypoint`.
@@ -19323,12 +19645,15 @@ public class MyValidator {
 **Fix:** Add `@Entrypoint` to the validator's main method.
 
 ```java
+import org.julclang.core.PlutusData;
 import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.annotation.Entrypoint;
 import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 public class MyValidator {
     // WRONG: missing @Entrypoint
-    public static boolean validate(Data datum, Data redeemer, ScriptContext ctx) {
+    public static boolean validate(PlutusData datum, PlutusData redeemer, ScriptContext ctx) {
         return true;
     }
 }
@@ -19336,7 +19661,7 @@ public class MyValidator {
 @SpendingValidator
 public class MyValidator {
     @Entrypoint  // CORRECT
-    public static boolean validate(Data datum, Data redeemer, ScriptContext ctx) {
+    public static boolean validate(PlutusData datum, PlutusData redeemer, ScriptContext ctx) {
         return true;
     }
 }
@@ -19362,11 +19687,11 @@ public static boolean validate(ScriptContext ctx) { ... }
 
 // CORRECT: 2 parameters (datum in ScriptContext)
 @Entrypoint
-public static boolean validate(Data redeemer, ScriptContext ctx) { ... }
+public static boolean validate(PlutusData redeemer, ScriptContext ctx) { ... }
 
 // CORRECT: 3 parameters (explicit datum)
 @Entrypoint
-public static boolean validate(Data datum, Data redeemer, ScriptContext ctx) { ... }
+public static boolean validate(PlutusData datum, PlutusData redeemer, ScriptContext ctx) { ... }
 ```
 
 ---
@@ -19385,14 +19710,16 @@ If you specified 3 parameters, the compiler asks if you meant to use
 `@SpendingValidator` if you need a datum parameter.
 
 ```java
+import org.julclang.core.PlutusData;
 import org.julclang.ledger.ScriptContext;
 import org.julclang.stdlib.annotation.Entrypoint;
 import org.julclang.stdlib.annotation.MintingValidator;
+
 // WRONG: 3 params on a minting validator
 @MintingValidator
 public class MyPolicy {
     @Entrypoint
-    public static boolean validate(Data datum, Data redeemer, ScriptContext ctx) { ... }
+    public static boolean validate(PlutusData datum, PlutusData redeemer, ScriptContext ctx) { ... }
     // Error: "Did you mean @SpendingValidator?"
 }
 
@@ -19400,7 +19727,7 @@ public class MyPolicy {
 @MintingValidator
 public class MyPolicy {
     @Entrypoint
-    public static boolean validate(Data redeemer, ScriptContext ctx) { ... }
+    public static boolean validate(PlutusData redeemer, ScriptContext ctx) { ... }
 }
 ```
 
@@ -19447,6 +19774,103 @@ call them.
 
 **Fix:** Call the method where the value is needed, or initialise the field with an expression that
 does not call a method of the same class.
+
+---
+
+##### 3.9 `JULC0081` `<source> declares <type>, which JuLC's <owner> owns`
+
+**Example message:** `AmountValidator.java declares org.julclang.ledger.AmountValidator, which JuLC's API package org.julclang.ledger owns`
+
+**Cause:** A source declares a type in one of JuLC's API packages (`org.julclang.core`,
+`org.julclang.ledger`, the stdlib's on-chain packages), or redeclares a bundled library. Those
+types come only from JuLC, so no source can replace or extend them.
+
+**Fix:** Move the type to a package of your own.
+
+```java
+// WRONG
+package org.julclang.ledger;
+
+// CORRECT
+package com.example;
+
+import org.julclang.ledger.ScriptContext;
+```
+
+---
+
+##### 3.10 `JULC0088` `@Param field <name> is a constant variable in Java, so javac would fold it; it is runtime input`
+
+**Cause:** A `static final` `@Param` field of a primitive type or `String` has a constant
+initializer. javac copies a constant into every place that reads it, so the JVM program would use
+the initializer, while the script reads the parameter applied at deployment.
+
+**Fix:** Drop `final`. A `@Param` value is supplied when the script is parameterized.
+
+```java
+// WRONG
+@Param static final String TAG = "v1";
+
+// CORRECT
+@Param static String TAG;
+```
+
+---
+
+##### 3.11 `JULC0133` `No class found in source`
+
+**Cause:** A source given to `compileMethod` (or to `JulcEval`) declares no class, for example
+only an interface or a record.
+
+**Fix:** Put the method in a class.
+
+```java
+// WRONG
+interface Fees {
+    BigInteger fee(BigInteger amount);
+}
+
+// CORRECT
+class Fees {
+    static BigInteger fee(BigInteger amount) {
+        return amount.divide(BigInteger.valueOf(100));
+    }
+}
+```
+
+---
+
+##### 3.12 `JULC0134` `Class <name> must not combine @OnchainLibrary with validator annotation(s): <annotations>`
+
+**Cause:** A class is annotated both as a library (`@OnchainLibrary`) and as a validator. A class is either a library that other code calls or a validator that the
+ledger runs.
+
+**Fix:** Keep one role on the class, and move the other into a class of its own.
+
+```java
+// WRONG
+@OnchainLibrary
+@SpendingValidator
+public class FeeLib { ... }
+
+// CORRECT
+@OnchainLibrary
+public class FeeLib { ... }
+
+@SpendingValidator
+public class FeeValidator { ... }   // calls FeeLib.fee(...)
+```
+
+---
+
+##### 3.13 `JULC0135` `Class <name> has multiple validator annotations: <annotations>`
+
+**Example message:** `Class BadValidator has multiple validator annotations: @SpendingValidator, @MintingValidator`
+
+**Cause:** Each class compiles to one script with one purpose. See also
+[Multiple validator annotations on the same class](#q-multiple-validator-annotations-on-the-same-class).
+
+**Fix:** Keep one validator annotation. For several purposes in one script, use `@MultiValidator`.
 
 ---
 
@@ -19521,7 +19945,7 @@ name.
 **Cause:** The type registrar found a circular dependency when topologically sorting
 types. Type A depends on type B, which depends on type A.
 
-**Fix:** Break the circular dependency by restructuring your types. Use `Data` as
+**Fix:** Break the circular dependency by restructuring your types. Use `PlutusData` as
 an opaque type to break cycles if needed.
 
 ---
@@ -19529,8 +19953,8 @@ an opaque type to break cycles if needed.
 ##### 4.8 `JULC0055` `Cannot resolve <member> on a value whose type is not known here`
 
 **Cause:** `x.name()` or `x.name` was used on a value whose record, ledger or library type the
-compiler does not know, for example a `PlutusData` or an untyped `var`. Before ADR-060 such a call
-was bound to whatever variable or helper method happened to be named `name`, which is not Java's
+compiler does not know, for example a `PlutusData` or an untyped `var`. Earlier releases bound such a call
+to whatever variable or helper method happened to be named `name`, which is not Java's
 meaning.
 
 **Fix:** Give the receiver its record or ledger type, or call a static helper as `helper(x)`.
@@ -19542,6 +19966,147 @@ return d.amount();
 
 // CORRECT
 return amount(d);
+```
+
+---
+
+##### 4.9 `JULC0078` `<call> compares <type> with <type>, which Java keeps distinct: on-chain the two can compare equal`
+
+**Example message:** `PubKeyHash.equals compares org.julclang.ledger.PubKeyHash with org.julclang.core.PlutusData, which Java keeps distinct: on-chain the two can compare equal`
+
+**Cause:** An `equals` call, or a collection operation that compares with `equals`
+(`contains`, `get`, `containsKey`, ...), between two unrelated types. On the JVM the answer is
+always `false`; on-chain a comparison reads representations, so a `PubKeyHash` and a `PlutusData`
+holding the same bytes, or two records with the same fields, could compare equal.
+
+**Fix:** Compare two values of one type: decode the datum or redeemer to its record first, or
+compare the components.
+
+```java
+// WRONG: sig is a PubKeyHash, redeemer a PlutusData
+static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+    boolean found = false;
+    for (var sig : ctx.txInfo().signatories()) {
+        if (sig.equals(redeemer)) {
+            found = true;
+        }
+    }
+    return found;
+}
+
+// CORRECT: the redeemer is a record holding a PubKeyHash
+record Claim(PubKeyHash signer) {}
+
+static boolean validate(Claim redeemer, ScriptContext ctx) {
+    boolean found = false;
+    for (var sig : ctx.txInfo().signatories()) {
+        if (sig.equals(redeemer.signer())) {
+            found = true;
+        }
+    }
+    return found;
+}
+```
+
+---
+
+##### 4.10 `JULC0090` `String concatenation <expression> has a non-String operand of type <type>`
+
+**Example message:** `String concatenation "redeemer: " + redeemer has a non-String operand of type java.math.BigInteger`
+
+**Cause:** `"a" + 1` is valid Java, but JuLC lowers a string `+` to `appendString`, which fails
+at run time on an integer, so the script would fail where the Java code returns.
+
+**Fix:** Concatenate `String`s only.
+
+```java
+// WRONG
+ContextsLib.trace("redeemer: " + redeemer);
+
+// CORRECT
+ContextsLib.trace("checking the redeemer");
+```
+
+---
+
+##### 4.11 `JULC0091` `<position> needs a Data encoding of the native array <type>, which has none`
+
+**Example message:** `Component 'values' of record Prices needs a Data encoding of the native array Array[Integer], which has none`
+
+**Cause:** A `JulcArray` is a native UPLC array, which has no Data encoding. A record or
+sealed-variant component, a type argument of `Optional`, `Tuple2`, `Tuple3`, `JulcList`, `JulcMap`
+or `JulcArray`, and a `@Param` are Data-encoded, so an array cannot be stored there.
+
+**Fix:** Store a `JulcList`, and build the array where it is used.
+
+```java
+// WRONG
+record Prices(JulcArray<BigInteger> values) {}
+Prices p = new Prices(redeemer.toArray());
+return p.values().length() > 0;
+
+// CORRECT
+record Prices(JulcList<BigInteger> values) {}
+Prices p = new Prices(redeemer);
+JulcArray<BigInteger> values = p.values().toArray();
+return values.length() > 0;
+```
+
+---
+
+##### 4.12 `JULC0092` `Sealed interface '<name>' has no permits clause, and its permitted subclasses (<types>) are not exactly the records nested in it`
+
+**Cause:** A variant's Data tag is its position in the `permits` clause. Without one, JuLC uses
+the order of the records nested in the interface. Java also permits other classes of the same
+file implicitly, such as top-level records, and those have no tag under that rule.
+
+**Fix:** Add a `permits` clause listing every variant, in tag order.
+
+```java
+// WRONG
+sealed interface Shape {}
+record Circle(BigInteger r) implements Shape {}
+record Square(BigInteger side) implements Shape {}
+
+// CORRECT
+sealed interface Shape permits Circle, Square {}
+record Circle(BigInteger r) implements Shape {}
+record Square(BigInteger side) implements Shape {}
+```
+
+---
+
+##### 4.13 `JULC0093` `A string literal holds the unpaired surrogate U+<hex>, which a UPLC string cannot hold`
+
+**Cause:** javac accepts a lone UTF-16 surrogate in a string literal, but a UPLC string is
+Unicode text, so the script would hold a different string from the Java program.
+
+**Fix:** Write a supplementary character as its high surrogate followed by its low surrogate,
+or remove it.
+
+```java
+// WRONG
+return redeemer.equals("\uD83D");
+
+// CORRECT
+return redeemer.equals("😀");
+```
+
+---
+
+##### 4.14 `JULC0131` `PlutusData.cast() needs a class literal as its second argument`
+
+**Cause:** The target type of `PlutusData.cast` must be known when the script is compiled, so the
+second argument must be a class literal written directly, not wrapped in parentheses or computed.
+
+**Fix:** Write the class literal directly.
+
+```java
+// WRONG
+Bid bid = PlutusData.cast(redeemer, (Bid.class));
+
+// CORRECT
+Bid bid = PlutusData.cast(redeemer, Bid.class);
 ```
 
 ---
@@ -19560,7 +20125,8 @@ These errors occur when evaluating compiled UPLC programs on the Plutus VM.
 ```groovy
 // build.gradle
 dependencies {
-    implementation 'org.julclang:julc-vm-scalus:<version>'
+    // the default VM; julc-vm-scalus is an alternative
+    testRuntimeOnly 'org.julclang:julc-vm-java:<version>'
 }
 ```
 
@@ -19574,7 +20140,7 @@ contains a description of the failure.
 
 **Fix:** Check the trace messages via `result.traces()` for debugging output.
 Ensure your validator logic returns `true` for valid transactions. Add
-`Builtins.trace("message", ...)` calls to narrow down the failure point.
+`ContextsLib.trace("message")` calls to narrow down the failure point.
 
 ---
 
@@ -19611,25 +20177,32 @@ compiler error but a chain-level constraint.
 
 ##### Q: Why does my validator always return false?
 
-**A:** The most common cause is a missing `return true` at the end of the
-entrypoint method. In UPLC, if your code falls through without returning `true`,
-the default result is unit/void, which is treated as failure.
+**A:** It is not a missing `return`: a method that can end without one does not compile. javac reports
+`JULC0085` `missing return statement (compiler.err.missing.ret.stmt)`.
 
 ```java
+// WRONG: javac rejects this, because the method can end without a return
 @Entrypoint
-public static boolean validate(Data redeemer, ScriptContext ctx) {
-    // Do some checks...
-    var txInfo = ContextsLib.getTxInfo(ctx);
-    // WRONG: forgot to return true
+public static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+    TxInfo txInfo = ctx.txInfo();
+    if (txInfo.signatories().isEmpty()) {
+        return false;
+    }
 }
 
+// CORRECT: every path returns
 @Entrypoint
-public static boolean validate(Data redeemer, ScriptContext ctx) {
-    var txInfo = ContextsLib.getTxInfo(ctx);
-    // checks...
-    return true; // CORRECT: explicit success
+public static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+    TxInfo txInfo = ctx.txInfo();
+    return !txInfo.signatories().isEmpty();
 }
 ```
+
+A validator that compiles and rejects every transaction usually checks something the transaction does not
+hold: a signer missing from `signatories()`, an output paid to another address, or a datum or redeemer whose
+fields are in a different order from the record. Trace each check (see
+[How do I debug a failing validator?](#q-how-do-i-debug-a-failing-validator)) to find the one that fails, and build
+the test's script context with exactly the values that check reads.
 
 ---
 
@@ -19722,39 +20295,45 @@ so it can be auto-discovered from the classpath via
 
 ##### Q: How do I debug a failing validator?
 
-**A:** Use `Builtins.trace()` to emit messages during evaluation. Trace messages
+**A:** Use `ContextsLib.trace()` to emit messages during evaluation. Trace messages
 are collected in `EvalResult.traces()`.
 
 ```java
-@Entrypoint
-public static boolean validate(Data redeemer, ScriptContext ctx) {
-    var txInfo = ContextsLib.getTxInfo(ctx);
-    Builtins.trace("got txInfo");
+static boolean signedBy(TxInfo txInfo, PubKeyHash owner) {
+    return txInfo.signatories().contains(owner);
+}
 
-    if (!checkSomething(txInfo)) {
-        Builtins.trace("checkSomething failed");
+@Entrypoint
+public static boolean validate(OwnerDatum datum, PlutusData redeemer, ScriptContext ctx) {
+    TxInfo txInfo = ctx.txInfo();
+    ContextsLib.trace("got txInfo");
+
+    if (!signedBy(txInfo, datum.owner())) {
+        ContextsLib.trace("owner did not sign");
         return false;
     }
 
-    Builtins.trace("all checks passed");
+    ContextsLib.trace("all checks passed");
     return true;
 }
 ```
+
+`OwnerDatum` is the validator's datum record, for example `record OwnerDatum(PubKeyHash owner) {}`.
 
 ---
 
 ##### Q: Why do I get "Circular type dependency detected"?
 
 **A:** Records that reference each other cannot be topologically sorted. Break the
-cycle by using `Data` as an intermediate opaque type.
+cycle by using `PlutusData` as an intermediate opaque type.
 
 ```java
 // WRONG: circular
 public record A(B other) {}
 public record B(A other) {}
 
-// CORRECT: break cycle with Data
-public record A(Data other) {}  // other is opaque Data, cast as needed
+// CORRECT: break cycle with PlutusData
+public record A(PlutusData other) {}  // other is opaque Data; decode it with PlutusData.cast(other, B.class)
 public record B(A parent) {}
 ```
 
@@ -19908,6 +20487,7 @@ long amount = ValuesLib.assetOf(value, myPolicy, tokenName);
 ##### Q: Duplicate purpose in @MultiValidator
 
 **A:** Two `@Entrypoint` methods in a `@MultiValidator` class have the same `Purpose` value. Each purpose can only have one handler.
+The error is `JULC0138`: `Duplicate purpose MINT in @MultiValidator BadValidator`.
 
 ```java
 import org.julclang.core.PlutusData;
@@ -19941,6 +20521,9 @@ public class GoodValidator {
 ##### Q: Cannot mix DEFAULT and explicit purposes in @MultiValidator
 
 **A:** You are combining `Purpose.DEFAULT` (manual dispatch) with explicit purposes like `Purpose.MINT` (auto-dispatch). Choose one mode.
+The error is `JULC0136`: `@MultiValidator BadValidator mixes DEFAULT and explicit purposes`. Two `@Entrypoint` methods
+that both use `DEFAULT` are `JULC0137`: `@MultiValidator BadValidator has multiple @Entrypoint methods with DEFAULT purpose`;
+keep one, or give each an explicit purpose.
 
 ```java
 import org.julclang.core.PlutusData;
@@ -19974,6 +20557,7 @@ public class GoodValidator {
 ##### Q: Multiple validator annotations on the same class
 
 **A:** A class cannot have both `@MultiValidator` and a single-purpose annotation (like `@SpendingValidator`). Use one or the other.
+The error is `JULC0135`: `Class BadValidator has multiple validator annotations: @SpendingValidator, @MultiValidator`.
 
 ```java
 import org.julclang.core.PlutusData;
@@ -20054,8 +20638,8 @@ load. Use JDK 25.0.3 or later to run your tests, or avoid the shape:
 #### Retired codes
 
 These codes are retired and never reused. No compilation reports them. `JULC0084` said the javac frontend had not ported a
-construct, and `JULC0100` that a name read by its spelling bound to something else; both went with the JavaParser frontend
-(ADR-068 M6). `JULC0005`, `JULC0071`, `JULC0073` and `JULC0082` covered a switch that is not exhaustive, a dominated label, a guard's
+construct, and `JULC0100` that a name read by its spelling bound to something else; both went with the JavaParser frontend,
+which has been removed. `JULC0005`, `JULC0071`, `JULC0073` and `JULC0082` covered a switch that is not exhaustive, a dominated label, a guard's
 variable that is reassigned and a second `default`: javac rejects each of those itself, and you see `JULC0085` with javac's key.
 
 ---
@@ -25230,7 +25814,7 @@ notes must identify the affected shape and migration. `baseline` is not a way to
 every historical miscompile using a newer compiler: retain the original toolchain/artifact.
 An already deployed script never changes merely because JuLC releases a new compiler.
 
-The freeze baseline is merged compiler `539c3f15`; it does not mean pre17 has been published.
+The freeze baseline is merged compiler `539c3f15`, first released in 0.1.0-pre17.
 See [ADR-052](https://github.com/bloxbean/julc/blob/main/adr/052-pre17-profile-freeze-and-release-regressions.md)
 for the complete rule scope and review policy.
 

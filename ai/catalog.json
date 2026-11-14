@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "julcVersion": "0.1.0-pre21-rc1",
-  "generatedAt": "2026-11-14T06:14:08.171Z",
+  "generatedAt": "2026-11-14T07:31:03.128Z",
   "counts": {
     "stdlibClasses": 15,
     "stdlibMethods": 186,
@@ -4237,11 +4237,11 @@
         "category": "VALIDATOR",
         "severity": "error",
         "template": "Method must have a body: {0}",
-        "summary": "A method with no body, such as an abstract or interface method, was found where the compiler lowers a method.",
+        "summary": "A method the program calls has no body, such as a native method.",
         "fix": "Provide a body for every method in your validator class.",
         "example": {
-          "bad": "@SpendingValidator\npublic class MyValidator {\n    @Entrypoint\n    public abstract boolean validate(Data redeemer, ScriptContext ctx);\n}",
-          "good": "@SpendingValidator\npublic class MyValidator {\n    @Entrypoint\n    public static boolean validate(Data redeemer, ScriptContext ctx) {\n        return true;\n    }\n}"
+          "bad": "@SpendingValidator\npublic class FeeValidator {\n    static native BigInteger fee(BigInteger amount);\n\n    @Entrypoint\n    public static boolean validate(BigInteger redeemer, ScriptContext ctx) {\n        return fee(redeemer).signum() > 0;\n    }\n}",
+          "good": "@SpendingValidator\npublic class FeeValidator {\n    static BigInteger fee(BigInteger amount) {\n        return amount.divide(BigInteger.valueOf(100));\n    }\n\n    @Entrypoint\n    public static boolean validate(BigInteger redeemer, ScriptContext ctx) {\n        return fee(redeemer).signum() > 0;\n    }\n}"
         }
       },
       {
@@ -5104,7 +5104,7 @@
         "fix": "Test the type without a binding (`p.t() instanceof C`) and read the value in the arm.",
         "example": {
           "bad": "case P p when p.t() instanceof C c -> c.w();",
-          "good": "case P p when p.t() instanceof C -> ((C) p.t()).w();"
+          "good": "case P p when p.t() instanceof C -> {\n    C c = (C) p.t();\n    yield c.w();\n}"
         }
       },
       {
