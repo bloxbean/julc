@@ -7,6 +7,28 @@ Each section below is a release, newest first.
 
 ## 0.1.0-pre21
 
+### Each validator loads its own script, whatever its simple name (#326)
+
+`JulcScriptLoader.load(Class)` and the annotation processor used to key a compiled script by the class's simple name
+only, so `com.a.VaultValidator` and `com.b.VaultValidator` on one class path both loaded the first copy of
+`META-INF/plutus/VaultValidator.plutus.json`.
+
+- The processor now also writes each script and source map under the class's qualified name, for example
+  `META-INF/plutus/com/b/VaultValidator.plutus.json`, and records the class in the JSON (`"validator":
+  "com.b.VaultValidator"`). It still writes the simple-name copy, for older loaders.
+- `JulcScriptLoader` reads the qualified copy. For a module compiled before this release it falls back to the
+  simple-name copy, but only when one copy is visible and it does not record another class; otherwise it throws an
+  `IllegalArgumentException` that names the copies. The source map now always comes from beside the script that was
+  loaded.
+- `ValidatorOutput` gains a `validator` component, the class's binary name, which is empty for older metadata. The
+  existing constructors are kept, and `toJson()` writes the field only when it is known.
+- Two validators with one simple name in one compilation now fail with an error that names both, instead of a
+  `FilerException`.
+
+Migration: recompile the modules that hold your validators. A class whose package was relocated, for example by a
+shading plugin, no longer loads the simple-name copy recorded for its original name; relocate the
+`META-INF/plutus/<package path>/` resources with it.
+
 ### Ed25519 verification on BouncyCastle; bcprov 1.86 (#322)
 
 The Java VM and the testkit verify Ed25519 signatures (`verifyEd25519Signature`) with libsodium's input checks and

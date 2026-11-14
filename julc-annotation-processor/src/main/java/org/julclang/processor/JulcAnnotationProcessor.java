@@ -3,6 +3,7 @@ package org.julclang.processor;
 import org.julclang.blueprint.BlueprintConfig;
 import org.julclang.blueprint.BlueprintGenerator;
 import org.julclang.clientlib.JulcScriptAdapter;
+import org.julclang.clientlib.ScriptResourcePaths;
 import org.julclang.clientlib.ValidatorOutput;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerOptions;
@@ -37,8 +38,9 @@ import java.util.stream.Collectors;
  * Annotation processor that compiles supported JuLC validator annotations to
  * UPLC scripts during javac.
  * <p>
- * The compiled script is written to {@code META-INF/plutus/<ClassName>.plutus.json}
- * in the class output directory, making it available on the classpath at runtime.
+ * The compiled script is written to {@code META-INF/plutus/<package path>/<ClassName>.plutus.json}, and to
+ * {@code META-INF/plutus/<ClassName>.plutus.json} for older loaders, in the class output directory, making it
+ * available on the classpath at runtime (see {@link ScriptResourcePaths}, issue #326).
  * <p>
  * Library discovery:
  * <ol>
@@ -75,6 +77,9 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
 
     /** Accumulated compiled validators for CIP-57 blueprint generation. */
     private final List<BlueprintGenerator.CompiledValidator> compiledValidators = new ArrayList<>();
+
+    /** This compilation's validators: simple name -> binary name. Each simple name keys a shared resource (#326). */
+    private final Map<String, String> validatorsBySimpleName = new HashMap<>();
 
     /** Same-project @OnchainLibrary sources: FQCN -> source metadata */
     private final Map<String, LibrarySource> sameProjectLibraries = new LinkedHashMap<>();
@@ -240,6 +245,19 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
 
     private void processElement(Element element, TypeElement annotation) {
         String className = element.getSimpleName().toString();
+        String binaryName = processingEnv.getElementUtils().getBinaryName((TypeElement) element).toString();
+        String sameSimpleName = validatorsBySimpleName.putIfAbsent(className, binaryName);
+        if (sameSimpleName != null && !sameSimpleName.equals(binaryName)) {
+            processingFailed = true;
+            processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
+                    "Two validators in this compilation are named " + className + ": " + sameSimpleName + " and "
+                            + binaryName + ". JuLC also writes each script under its simple name, as "
+                            + ScriptResourcePaths.simpleName(className, ScriptResourcePaths.SCRIPT_SUFFIX)
+                            + ", and the blueprint names each validator by it. Rename one of them, or compile them"
+                            + " in separate modules.",
+                    element);
+            return;
+        }
         try {
             // 1. Read source file via Trees API
             var path = trees.getPath(element);
@@ -303,31 +321,21 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
             String sizeStr = result.scriptSizeFormatted();
 
             var output = new ValidatorOutput(scriptType, purpose, className,
-                    script.getCborHex(), scriptHash, paramsStr, sizeBytes);
+                    script.getCborHex(), scriptHash, paramsStr, sizeBytes, binaryName);
 
-            // 5. Write to META-INF/plutus/<ClassName>.plutus.json
-            var filer = processingEnv.getFiler();
-            var resource = filer.createResource(
-                    StandardLocation.CLASS_OUTPUT,
-                    "",
-                    "META-INF/plutus/" + className + ".plutus.json",
-                    element);
-
-            try (Writer writer = resource.openWriter()) {
-                writer.write(output.toJson());
+            // 5. Write under the qualified and the simple name (ScriptResourcePaths)
+            String outputJson = output.toJson();
+            for (String resourcePath : ScriptResourcePaths.written(binaryName, className, ScriptResourcePaths.SCRIPT_SUFFIX)) {
+                writeResource(resourcePath, outputJson, element);
             }
 
-            // 6. Write source map if enabled and available
+            // 6. Write source map if enabled and available, beside each copy of the script
             if (sourceMapEnabled && result.hasSourceMap()) {
                 var indexed = result.sourceMap().toIndexed(program.term());
                 String sourceMapJson = SourceMapSerializer.toJson(indexed, className);
-                var smResource = filer.createResource(
-                        StandardLocation.CLASS_OUTPUT,
-                        "",
-                        "META-INF/plutus/" + className + ".sourcemap.json",
-                        element);
-                try (Writer smWriter = smResource.openWriter()) {
-                    smWriter.write(sourceMapJson);
+                for (String resourcePath : ScriptResourcePaths.written(
+                        binaryName, className, ScriptResourcePaths.SOURCE_MAP_SUFFIX)) {
+                    writeResource(resourcePath, sourceMapJson, element);
                 }
                 processingEnv.getMessager().printMessage(Diagnostic.Kind.NOTE,
                         "Generated source map for " + className
@@ -363,6 +371,13 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
             processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
                     "Unexpected compilation error for " + className + ": " + e.getClass().getSimpleName() + ": " + e.getMessage(),
                     element);
+        }
+    }
+
+    private void writeResource(String path, String content, Element element) throws IOException {
+        var resource = processingEnv.getFiler().createResource(StandardLocation.CLASS_OUTPUT, "", path, element);
+        try (Writer writer = resource.openWriter()) {
+            writer.write(content);
         }
     }
 

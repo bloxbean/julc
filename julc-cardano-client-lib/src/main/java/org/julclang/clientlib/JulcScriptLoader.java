@@ -7,15 +7,30 @@ import org.julclang.core.source.SourceMapSerializer;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.UncheckedIOException;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.stream.Collectors;
+
+import static org.julclang.clientlib.ScriptResourcePaths.SCRIPT_SUFFIX;
+import static org.julclang.clientlib.ScriptResourcePaths.SOURCE_MAP_SUFFIX;
 
 /**
  * Loads pre-compiled Plutus scripts from the classpath.
  * <p>
- * The annotation processor writes compiled scripts to
- * {@code META-INF/plutus/<ClassName>.plutus.json} during javac.
+ * The annotation processor writes each compiled script during javac to
+ * {@code META-INF/plutus/<package path>/<ClassName>.plutus.json}, and to
+ * {@code META-INF/plutus/<ClassName>.plutus.json} for older loaders (see {@link ScriptResourcePaths}).
  * This loader reads them at runtime.
+ * <p>
+ * A class's script is the one under its qualified name. A class compiled before that layout has only the simple-name
+ * copy, which validators in different packages share, so the loader uses that copy only when it is the single one
+ * on the class path and was not recorded for another class (issue #326). Otherwise it refuses: it never returns
+ * another validator's script.
  * <p>
  * Usage:
  * <pre>{@code
@@ -142,19 +157,107 @@ public final class JulcScriptLoader {
      * @throws IllegalArgumentException if no compiled script is found for the class
      */
     public static ValidatorOutput loadOutput(Class<?> validatorClass) {
-        String resourcePath = "META-INF/plutus/" + validatorClass.getSimpleName() + ".plutus.json";
-        try (InputStream is = validatorClass.getClassLoader().getResourceAsStream(resourcePath)) {
-            if (is == null) {
-                throw new IllegalArgumentException(
-                        "No compiled Plutus script found for " + validatorClass.getName()
-                                + ". Ensure the annotation processor ran during compilation. "
-                                + "Expected resource: " + resourcePath);
-            }
-            String json = new String(is.readAllBytes(), StandardCharsets.UTF_8);
-            return ValidatorOutput.fromJson(json);
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to read compiled script for " + validatorClass.getName(), e);
+        return locate(validatorClass).output();
+    }
+
+    /**
+     * A validator's compiled script, and where it was found.
+     *
+     * @param output       the script's metadata
+     * @param resourcePath the class path resource it was read from
+     * @param url          the copy of that resource it was read from
+     */
+    private record LocatedScript(ValidatorOutput output, String resourcePath, URL url) {}
+
+    /** One copy of a class path resource. */
+    private record Copy(URL url, String content) {}
+
+    /**
+     * The class's script: the qualified copy when there is one, else the simple-name copy. Refuses when the chosen
+     * path holds more than one different copy, or when the copy records another class.
+     */
+    private static LocatedScript locate(Class<?> validatorClass) {
+        ClassLoader loader = classLoader(validatorClass);
+        String className = validatorClass.getName();
+        String qualifiedPath = ScriptResourcePaths.qualified(className, SCRIPT_SUFFIX);
+        String simplePath = ScriptResourcePaths.simpleName(validatorClass.getSimpleName(), SCRIPT_SUFFIX);
+
+        String path = qualifiedPath;
+        List<Copy> copies = distinctCopies(loader, qualifiedPath, className);
+        if (copies.isEmpty() && !simplePath.equals(qualifiedPath)) {
+            path = simplePath;
+            copies = distinctCopies(loader, simplePath, className);
         }
+        if (copies.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "No compiled Plutus script found for " + className
+                            + ". Ensure the annotation processor ran during compilation. "
+                            + "Expected resource: " + qualifiedPath);
+        }
+        if (copies.size() > 1) {
+            String urls = copies.stream().map(JulcScriptLoader::describe).collect(Collectors.joining(", "));
+            String fix = path.equals(simplePath)
+                    ? " Validators in different packages with the simple name " + validatorClass.getSimpleName()
+                    + " share this resource. Recompile them with this version of JuLC, which also writes "
+                    + qualifiedPath + ", or keep only one of them on the class path."
+                    : " Keep only one copy of " + className + " on the class path.";
+            throw new IllegalArgumentException(
+                    "Found " + copies.size() + " different compiled Plutus scripts for " + className + " at "
+                            + path + ": " + urls + "." + fix);
+        }
+        Copy copy = copies.getFirst();
+        ValidatorOutput output = parse(copy, className);
+        if (!output.validator().isEmpty() && !output.validator().equals(className)) {
+            throw new IllegalArgumentException(
+                    "The compiled Plutus script at " + copy.url() + " belongs to " + output.validator()
+                            + ", not to " + className + ". No script for " + className
+                            + " is on the class path: ensure the annotation processor ran when it was compiled. "
+                            + "Expected resource: " + qualifiedPath);
+        }
+        return new LocatedScript(output, path, copy.url());
+    }
+
+    private static ValidatorOutput parse(Copy copy, String className) {
+        try {
+            return ValidatorOutput.fromJson(copy.content());
+        } catch (RuntimeException e) {
+            throw new IllegalArgumentException(
+                    "Could not read the compiled Plutus script for " + className + " at " + copy.url()
+                            + ": " + e.getMessage(), e);
+        }
+    }
+
+    /** A copy's location, and the class it records when it records one. */
+    private static String describe(Copy copy) {
+        String recorded;
+        try {
+            recorded = ValidatorOutput.fromJson(copy.content()).validator();
+        } catch (RuntimeException e) {
+            recorded = "";
+        }
+        return recorded.isEmpty() ? copy.url().toString() : copy.url() + " (" + recorded + ")";
+    }
+
+    /** The copies of {@code path} on the class path, in class path order, one per distinct content. */
+    private static List<Copy> distinctCopies(ClassLoader loader, String path, String className) {
+        var byContent = new LinkedHashMap<String, URL>();
+        try {
+            for (URL url : Collections.list(loader.getResources(path))) {
+                try (InputStream is = url.openStream()) {
+                    byContent.putIfAbsent(new String(is.readAllBytes(), StandardCharsets.UTF_8), url);
+                }
+            }
+        } catch (IOException e) {
+            throw new UncheckedIOException("Failed to read compiled script for " + className, e);
+        }
+        var copies = new ArrayList<Copy>();
+        byContent.forEach((content, url) -> copies.add(new Copy(url, content)));
+        return copies;
+    }
+
+    private static ClassLoader classLoader(Class<?> validatorClass) {
+        ClassLoader loader = validatorClass.getClassLoader();
+        return loader != null ? loader : ClassLoader.getSystemClassLoader();
     }
 
     // ---- Source map support ----
@@ -180,7 +283,8 @@ public final class JulcScriptLoader {
      * @throws IllegalArgumentException if the validator is parameterized or no compiled script is found
      */
     public static LoadResult loadWithSourceMap(Class<?> validatorClass) {
-        var output = loadOutput(validatorClass);
+        var located = locate(validatorClass);
+        var output = located.output();
         if (output.isParameterized()) {
             var paramDesc = output.paramList().stream()
                     .map(p -> p.name() + " (" + p.type() + ")")
@@ -192,7 +296,7 @@ public final class JulcScriptLoader {
         }
 
         var program = JulcScriptAdapter.toProgram(output.cborHex());
-        SourceMap sourceMap = loadSourceMapFromClasspath(validatorClass, program);
+        SourceMap sourceMap = loadSourceMapFromClasspath(validatorClass, located, program);
         PlutusV3Script script = JulcScriptAdapter.fromProgram(program);
 
         return new LoadResult(script, sourceMap, program);
@@ -214,7 +318,8 @@ public final class JulcScriptLoader {
         if (params.length == 0) {
             return loadWithSourceMap(validatorClass);
         }
-        var output = loadOutput(validatorClass);
+        var located = locate(validatorClass);
+        var output = located.output();
         if (!output.isParameterized()) {
             throw new IllegalArgumentException(validatorClass.getSimpleName()
                     + " is not parameterized, but " + params.length + " param(s) were provided");
@@ -227,7 +332,7 @@ public final class JulcScriptLoader {
 
         // Decode base program and reconstruct source map from it
         var baseProgram = JulcScriptAdapter.toProgram(output.cborHex());
-        SourceMap sourceMap = loadSourceMapFromClasspath(validatorClass, baseProgram);
+        SourceMap sourceMap = loadSourceMapFromClasspath(validatorClass, located, baseProgram);
 
         // Apply params — inner terms keep identity
         var coreParams = new org.julclang.core.PlutusData[params.length];
@@ -247,24 +352,36 @@ public final class JulcScriptLoader {
      * @return the reconstructed SourceMap, or null if no source map file exists
      */
     public static SourceMap loadSourceMap(Class<?> validatorClass) {
-        var output = loadOutput(validatorClass);
-        var program = JulcScriptAdapter.toProgram(output.cborHex());
-        return loadSourceMapFromClasspath(validatorClass, program);
+        var located = locate(validatorClass);
+        var program = JulcScriptAdapter.toProgram(located.output().cborHex());
+        return loadSourceMapFromClasspath(validatorClass, located, program);
     }
 
     /**
-     * Try to load a .sourcemap.json from classpath and reconstruct the SourceMap.
-     * Returns null if no sourcemap file exists.
+     * The source map written beside the script that was loaded, reconstructed against its program: only that copy's
+     * own {@code .sourcemap.json}, never another class's. Returns null if it has none.
      */
-    private static SourceMap loadSourceMapFromClasspath(Class<?> validatorClass, Program program) {
-        String smPath = "META-INF/plutus/" + validatorClass.getSimpleName() + ".sourcemap.json";
-        try (InputStream is = validatorClass.getClassLoader().getResourceAsStream(smPath)) {
-            if (is == null) {
-                return null;
+    private static SourceMap loadSourceMapFromClasspath(Class<?> validatorClass, LocatedScript located,
+                                                        Program program) {
+        String scriptPath = located.resourcePath();
+        String scriptUrl = located.url().toString();
+        if (!scriptPath.endsWith(SCRIPT_SUFFIX) || !scriptUrl.endsWith(SCRIPT_SUFFIX)) {
+            return null;
+        }
+        String smPath = scriptPath.substring(0, scriptPath.length() - SCRIPT_SUFFIX.length()) + SOURCE_MAP_SUFFIX;
+        String smUrl = scriptUrl.substring(0, scriptUrl.length() - SCRIPT_SUFFIX.length()) + SOURCE_MAP_SUFFIX;
+        try {
+            for (URL url : Collections.list(classLoader(validatorClass).getResources(smPath))) {
+                if (!url.toString().equals(smUrl)) {
+                    continue;
+                }
+                try (InputStream is = url.openStream()) {
+                    String json = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+                    var indexed = SourceMapSerializer.fromJson(json);
+                    return SourceMap.reconstruct(indexed.entries(), program.term());
+                }
             }
-            String json = new String(is.readAllBytes(), StandardCharsets.UTF_8);
-            var indexed = SourceMapSerializer.fromJson(json);
-            return SourceMap.reconstruct(indexed.entries(), program.term());
+            return null;
         } catch (IOException e) {
             return null;
         }

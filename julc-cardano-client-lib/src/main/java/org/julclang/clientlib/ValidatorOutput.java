@@ -13,9 +13,11 @@ import java.util.List;
  * @param hash        script hash (28 bytes hex), empty for parameterized validators
  * @param params      comma-separated param metadata, e.g. "owner:byte[],deadline:BigInteger"
  * @param sizeBytes   FLAT-encoded script size in bytes, or -1 if unknown
+ * @param validator   the validator class's binary name, e.g. "com.b.VaultValidator"; empty when unknown, as in
+ *                    metadata written before issue #326
  */
 public record ValidatorOutput(String type, String purpose, String description, String cborHex,
-                              String hash, String params, int sizeBytes) {
+                              String hash, String params, int sizeBytes, String validator) {
 
     public ValidatorOutput {
         var typeParts = splitLegacyType(type);
@@ -24,6 +26,15 @@ public record ValidatorOutput(String type, String purpose, String description, S
             purpose = typeParts.purpose();
         }
         params = params != null ? params : "";
+        validator = validator != null ? validator : "";
+    }
+
+    /**
+     * Constructor without the validator's class name.
+     */
+    public ValidatorOutput(String type, String purpose, String description, String cborHex,
+                           String hash, String params, int sizeBytes) {
+        this(type, purpose, description, cborHex, hash, params, sizeBytes, "");
     }
 
     /**
@@ -98,20 +109,22 @@ public record ValidatorOutput(String type, String purpose, String description, S
     }
 
     /**
-     * Serialize to JSON text envelope format.
+     * Serialize to JSON text envelope format. The {@code validator} field is written only when it is known, so an
+     * output without it serializes as before issue #326.
      */
     public String toJson() {
+        String validatorField = validator.isEmpty() ? "" : "\n  \"validator\": \"" + validator + "\",";
         return """
                 {
                   "type": "%s",
                   "purpose": "%s",
-                  "description": "%s",
+                  "description": "%s",%s
                   "cborHex": "%s",
                   "hash": "%s",
                   "params": "%s",
                   "sizeBytes": %d
                 }
-                """.formatted(type, purpose != null ? purpose : "", description, cborHex,
+                """.formatted(type, purpose != null ? purpose : "", description, validatorField, cborHex,
                 hash, params != null ? params : "", sizeBytes);
     }
 
@@ -127,7 +140,8 @@ public record ValidatorOutput(String type, String purpose, String description, S
         String hash = extractField(json, "hash");
         String params = extractFieldOptional(json, "params");
         int sizeBytes = extractIntFieldOptional(json, "sizeBytes", -1);
-        return new ValidatorOutput(type, purpose, description, cborHex, hash, params, sizeBytes);
+        String validator = extractFieldOptional(json, "validator");
+        return new ValidatorOutput(type, purpose, description, cborHex, hash, params, sizeBytes, validator);
     }
 
     private static TypeParts splitLegacyType(String type) {

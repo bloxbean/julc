@@ -2376,6 +2376,43 @@ compiler error but a chain-level constraint.
 
 ---
 
+### 5.5 `Found 2 different compiled Plutus scripts for com.b.VaultValidator at META-INF/plutus/VaultValidator.plutus.json`
+
+**Cause:** `JulcScriptLoader` found no script under the class's qualified name,
+`META-INF/plutus/com/b/VaultValidator.plutus.json`, so it looked under its simple
+name. Validators in different packages share that name, and more than one
+different copy is on the class path. It refuses rather than guess, because the
+first copy may be another validator's script. A module compiled by a JuLC
+release older than 0.1.0-pre21 has only the simple-name copy.
+
+**Fix:** Recompile the modules that hold the validators with this version of
+JuLC, which also writes the qualified copy. If the message names the qualified
+path instead, two different builds of the same class are on the class path, such
+as a stale jar beside fresh classes; keep one.
+
+---
+
+### 5.6 `The compiled Plutus script at <url> belongs to com.a.VaultValidator, not to com.b.VaultValidator`
+
+**Cause:** The class has no script of its own on the class path, and the only
+copy under its simple name records another class.
+
+**Fix:** Make sure the JuLC annotation processor ran when the class was
+compiled: the processor is on the annotation processor path and the class
+carries a validator annotation such as `@SpendingValidator`.
+
+---
+
+### 5.7 `Two validators in this compilation are named VaultValidator: com.a.VaultValidator and com.b.VaultValidator`
+
+**Cause:** The annotation processor also writes each script under its simple
+name, and the blueprint names each validator by it, so one compilation cannot
+hold two validators with one simple name.
+
+**Fix:** Rename one of them, or compile them in separate modules.
+
+---
+
 ## 6. Common Mistakes
 
 ### Q: Why does my validator always return false?
