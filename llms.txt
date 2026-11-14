@@ -1,7 +1,7 @@
 # JuLC
 
 julcVersion: 0.1.0-pre21-rc1
-generatedAt: 2026-11-10T00:52:53.570Z
+generatedAt: 2026-11-14T06:14:08.139Z
 
 > JuLC compiles a safe subset of Java to Plutus V3 UPLC for Cardano smart contracts. Java developers write validators as ordinary classes (records, sealed interfaces, switch expressions); the compiler produces efficient Plutus scripts.
 
