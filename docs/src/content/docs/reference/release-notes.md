@@ -7,6 +7,28 @@ Each section below is a release, newest first.
 
 ## 0.1.0-pre21
 
+### Ed25519 verification on BouncyCastle; bcprov 1.86 (#322)
+
+The Java VM and the testkit verify Ed25519 signatures (`verifyEd25519Signature`) with libsodium's input checks and
+equation, now computed on BouncyCastle's field arithmetic. The verdicts do not change: they agreed with libsodium
+before and still do. Each verification allocates about 8 KB instead of about 636 KB, and takes about 47 µs instead of
+about 125 µs.
+
+- BouncyCastle `bcprov-jdk18on` is 1.86 in every published module: `julc-vm` (a new dependency), `julc-vm-java`
+  (was 1.78.1), `julc-testkit` and `julc-tools` (were 1.83).
+- Ed25519 verification needs bcprov 1.67 or later. Before its first verification it checks itself against
+  libsodium's verdicts. On an older bcprov, or one that disagrees, every verification throws a `LinkageError` that
+  names the bcprov version and jar. If your build resolves an older bcprov, for example through another library that
+  pins one, make 1.67 or later win; 1.86 is the tested version, and 1.78.1 and 1.83 are also tested.
+
+### Builtins are charged without sizing arguments their cost ignores (#323)
+
+The Java VM now sizes a builtin's arguments only when its cost function reads them, as Haskell's costing does.
+Constant-cost builtins such as `unConstrData`, `chooseData` and `headList` no longer walk their `Data` argument on
+every call, byte strings are measured without being copied, and a `Data` value of any nesting depth is sized without
+using the call stack. Budgets do not change; scripts that pass large `Data` values to constant-cost builtins run
+faster and allocate less.
+
 ### The macOS binaries need macOS 15 (#316)
 
 The macOS builds of the CLI and the playground are now made on macOS 15, because GitHub retired its macOS 14

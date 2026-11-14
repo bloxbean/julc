@@ -1418,7 +1418,12 @@ static final String VALIDATOR = """
 void multiFileCompilation() {
     // ContractTest.compile() accepts additional library sources
     var program = compile(VALIDATOR, MATH_LIB);
-    assertValidates(program, PlutusData.integer(0), PlutusData.integer(0));
+    // A V3 validator takes one argument, the ScriptContext, which carries the redeemer
+    var ref = new TxOutRef(new TxId(new byte[32]), BigInteger.ZERO);
+    var ctx = ScriptContextTestBuilder.spending(ref)
+            .redeemer(PlutusData.integer(0))
+            .buildPlutusData();
+    assertValidates(program, ctx);
 }
 ```
 

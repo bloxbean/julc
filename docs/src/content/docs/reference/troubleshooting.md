@@ -957,15 +957,12 @@ case Bid b when b.amount().compareTo(BigInteger.valueOf(100)) > 0 -> true;
 Java puts `k` in scope in the arm, but JuLC does not bind a variable that a switch guard declares.
 An `instanceof` without a binding is fine in a guard.
 
-**Fix:** Move the pattern test into the arm, where `instanceof` patterns are bound, or test the
-type in the guard and cast in the arm.
+**Fix:** Test the type in the guard, without a binding, and cast in the arm. The switch keeps its
+behaviour: a `Pay` whose target is not a `ToKey` still goes on to the later cases.
 
 ```java
 // WRONG
 case Pay p when p.target() instanceof ToKey k -> signers.contains(k.key());
-
-// CORRECT: the pattern in the arm
-case Pay p -> p.target() instanceof ToKey k && signers.contains(k.key());
 
 // CORRECT: a type test in the guard, a cast in the arm
 case Pay p when p.target() instanceof ToKey -> {
@@ -973,6 +970,10 @@ case Pay p when p.target() instanceof ToKey -> {
     yield signers.contains(k.key());
 }
 ```
+
+Moving the pattern into the arm, `case Pay p -> p.target() instanceof ToKey k && signers.contains(k.key());`,
+also compiles, but it is a different switch: that arm takes every `Pay`, so a `Pay` to any other target returns
+`false` instead of reaching a later case or `default`. Use it only when no later case should see a `Pay`.
 
 ---
 
