@@ -17,7 +17,7 @@ only, so `com.a.VaultValidator` and `com.b.VaultValidator` on one class path bot
   `META-INF/plutus/com/b/VaultValidator.plutus.json`, and records the class in the JSON (`"validator":
   "com.b.VaultValidator"`). It still writes the simple-name copy, for older loaders.
 - `JulcScriptLoader` reads the qualified copy. For a module compiled before this release, it reads the simple-name
-  copy in the jar or directory that holds the class. It never uses a copy that records another class. When no copy
+  copy that sits beside the class's `.class` file. It never uses a copy that records another class. When no copy
   is the class's own, or two different copies are, it throws an `IllegalArgumentException` that names them. The
   source map always comes from beside the script that was used.
 - `ValidatorOutput` gains a `validator` component, the class's binary name, which is empty for older metadata. The

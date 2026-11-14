@@ -2408,14 +2408,16 @@ class:
 - A copy that names a class, such as `(com.a.VaultValidator)`, was written for
   that class.
 - A copy that names no class was compiled by a JuLC release before 0.1.0-pre21.
-  JuLC uses it only from the jar or directory that holds the class itself.
+  JuLC uses it only when every jar or directory that holds the class's
+  `.class` file holds the same copy.
 
 **Fix:** Make sure the JuLC annotation processor ran when the class was
 compiled: the processor is on the annotation processor path, and the class
 carries a validator annotation such as `@SpendingValidator`. If the class was
 compiled by an older JuLC, recompile it with 0.1.0-pre21 or later.
 
-If the message says the script `was written for com.b.VaultValidator, not for
+If the message says `shaded.com.b.VaultValidator looks relocated`, or that the
+script `was written for com.b.VaultValidator, not for
 shaded.com.b.VaultValidator`, the class was relocated, for example by a shading
 plugin. Exclude its package from relocation, or recompile it in its new package.
 

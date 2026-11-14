@@ -8,12 +8,15 @@ import org.julclang.core.source.SourceMapSerializer;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
+import java.io.ByteArrayOutputStream;
 import java.net.URL;
+import java.net.URLConnection;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import static org.julclang.clientlib.ScriptResourcePaths.SCRIPT_SUFFIX;
@@ -181,9 +184,9 @@ public final class JulcScriptLoader {
      * @param recorded the class it records, or "" when it records none (written before issue #326) or is unreadable
      */
     private record Copy(URL url, String content, String recorded) {
-        /** Whether this copy is {@code path} under the class path root {@code root}. */
+        /** Whether this copy is {@code path} under the class path root {@code root} (a decoded URL). */
         boolean isUnder(String root, String path) {
-            return root != null && url.toString().equals(root + path);
+            return root != null && decode(url.toString()).equals(root + path);
         }
     }
 
@@ -192,8 +195,9 @@ public final class JulcScriptLoader {
      * <ol>
      *   <li>its qualified copy, when there is one;</li>
      *   <li>else a simple-name copy that records the class;</li>
-     *   <li>else a simple-name copy that records no class (written before #326), only from the class path root
-     *       (directory or jar) that holds the class itself.</li>
+     *   <li>else a simple-name copy that records no class (written before #326), only when every class path root
+     *       (directory or jar) that holds the class's {@code .class} file holds an identical one, and no qualified copy
+     *       shows that the class was relocated from another package.</li>
      * </ol>
      * A copy that records another class is never taken, and two different copies at the chosen step are refused.
      * Among identical copies, the one beside the class is preferred, so that its source map is the class's own.
@@ -203,7 +207,8 @@ public final class JulcScriptLoader {
         String className = validatorClass.getName();
         String qualifiedPath = ScriptResourcePaths.qualified(className, SCRIPT_SUFFIX);
         String simplePath = ScriptResourcePaths.simpleName(validatorClass.getSimpleName(), SCRIPT_SUFFIX);
-        String root = classRoot(loader, className);
+        List<String> roots = classRoots(loader, className);
+        String root = roots.isEmpty() ? null : roots.getFirst();
 
         if (!qualifiedPath.equals(simplePath)) {
             List<Copy> qualified = copies(loader, qualifiedPath, className);
@@ -231,10 +236,16 @@ public final class JulcScriptLoader {
                     "Keep only one build of " + className + " on the class path.");
             return located(preferUnder(recorded, root, simplePath), simplePath, className);
         }
-        for (Copy copy : simple) {
-            if (copy.recorded().isEmpty() && copy.isUnder(root, simplePath)) {
-                return located(copy, simplePath, className);
-            }
+        String relocatedFrom = relocatedFrom(loader, className, simple);
+        if (relocatedFrom != null) {
+            throw new IllegalArgumentException(
+                    "No compiled Plutus script for " + className + " is on the class path, but one for "
+                            + relocatedFrom + " is: " + className + " looks relocated, for example by a shading"
+                            + " plugin. Exclude its package from relocation, or recompile it in its new package.");
+        }
+        Copy legacy = besideEveryClassFile(simple, roots, simplePath);
+        if (legacy != null) {
+            return located(legacy, simplePath, className);
         }
 
         if (simple.isEmpty()) {
@@ -251,6 +262,43 @@ public final class JulcScriptLoader {
                         + " compiled before JuLC 0.1.0-pre21, and is used only from the jar or directory that holds "
                         + className + ". Ensure the annotation processor ran when " + className
                         + " was compiled, and recompile it with JuLC 0.1.0-pre21 or later.");
+    }
+
+    /**
+     * The copy that records no class and lies beside the class's {@code .class} file in every root that holds it, all
+     * of them identical; null if there is none. When the class is on the class path more than once, its loader may have
+     * defined it from any of those roots, so each must carry the same script.
+     */
+    private static Copy besideEveryClassFile(List<Copy> copies, List<String> roots, String path) {
+        Copy first = null;
+        for (String root : roots) {
+            Copy beside = copies.stream()
+                    .filter(copy -> copy.recorded().isEmpty() && copy.isUnder(root, path))
+                    .findFirst().orElse(null);
+            if (beside == null || (first != null && !first.content().equals(beside.content()))) {
+                return null;
+            }
+            if (first == null) first = beside;
+        }
+        return first;
+    }
+
+    /**
+     * The original name of a relocated class: the longest proper suffix of {@code className} that still has a package,
+     * such as {@code com.b.Vault} for {@code shaded.com.b.Vault}, and names a script on the class path through its
+     * qualified copy or a simple-name copy recording it. Null if there is none. A bare simple name is not a candidate:
+     * its qualified path is the shared simple-name path.
+     */
+    private static String relocatedFrom(ClassLoader loader, String className, List<Copy> simple) {
+        int last = className.lastIndexOf('.');
+        for (int dot = className.indexOf('.'); dot >= 0 && dot < last; dot = className.indexOf('.', dot + 1)) {
+            String original = className.substring(dot + 1);
+            if (loader.getResource(ScriptResourcePaths.qualified(original, SCRIPT_SUFFIX)) != null
+                    || simple.stream().anyMatch(copy -> copy.recorded().equals(original))) {
+                return original;
+            }
+        }
+        return null;
     }
 
     /** Refuses when {@code copies} hold more than one different script. */
@@ -296,7 +344,7 @@ public final class JulcScriptLoader {
         var copies = new ArrayList<Copy>();
         try {
             for (URL url : Collections.list(loader.getResources(path))) {
-                try (InputStream is = url.openStream()) {
+                try (InputStream is = open(url)) {
                     String content = new String(is.readAllBytes(), StandardCharsets.UTF_8);
                     copies.add(new Copy(url, content, recordedClass(content)));
                 }
@@ -315,16 +363,59 @@ public final class JulcScriptLoader {
         }
     }
 
+    /** A multi-release jar's version directory, {@code jar:file:/app.jar!/META-INF/versions/25/}: its root is the jar's. */
+    private static final Pattern VERSIONED_ROOT = Pattern.compile("^(.*!/)META-INF/versions/\\d+/$");
+
     /**
-     * The class path root that holds the class, such as {@code file:/app/classes/} or {@code jar:file:/app.jar!/}, as
-     * the URL of its {@code .class} file without the class's own path; null when the loader does not serve it.
+     * The class path roots that hold the class's {@code .class} file, in class path order, such as
+     * {@code file:/app/classes/} or {@code jar:file:/app.jar!/}: each URL without the class's own path (and a multi-release
+     * jar's version directory), percent-decoded.
+     * Empty when the loader does not serve the file.
      */
-    private static String classRoot(ClassLoader loader, String className) {
+    private static List<String> classRoots(ClassLoader loader, String className) {
         String classPath = className.replace('.', '/') + ".class";
-        URL url = loader.getResource(classPath);
-        if (url == null) return null;
-        String text = url.toString();
-        return text.endsWith(classPath) ? text.substring(0, text.length() - classPath.length()) : null;
+        var roots = new ArrayList<String>();
+        try {
+            for (URL url : Collections.list(loader.getResources(classPath))) {
+                String text = decode(url.toString());
+                if (text.endsWith(classPath)) {
+                    roots.add(VERSIONED_ROOT.matcher(text.substring(0, text.length() - classPath.length()))
+                            .replaceFirst("$1"));
+                }
+            }
+        } catch (IOException e) {
+            return List.of();
+        }
+        return roots;
+    }
+
+    /**
+     * A URL's text with its {@code %XX} escapes decoded as UTF-8, so that it compares with a resource name. Unlike
+     * {@code URLDecoder}, it keeps {@code +}.
+     */
+    static String decode(String url) {
+        if (url.indexOf('%') < 0) return url;
+        var bytes = new ByteArrayOutputStream();
+        for (int i = 0; i < url.length(); i++) {
+            char c = url.charAt(i);
+            if (c == '%' && i + 2 < url.length() && Character.digit(url.charAt(i + 1), 16) >= 0
+                    && Character.digit(url.charAt(i + 2), 16) >= 0) {
+                bytes.write(Integer.parseInt(url, i + 1, i + 3, 16));
+                i += 2;
+            } else {
+                int codePoint = url.codePointAt(i);
+                bytes.writeBytes(Character.toString(codePoint).getBytes(StandardCharsets.UTF_8));
+                i += Character.charCount(codePoint) - 1;
+            }
+        }
+        return bytes.toString(StandardCharsets.UTF_8);
+    }
+
+    /** Opens a resource without the JVM's jar cache, as {@code getResourceAsStream} does: a jar is not left open. */
+    private static InputStream open(URL url) throws IOException {
+        URLConnection connection = url.openConnection();
+        connection.setUseCaches(false);
+        return connection.getInputStream();
     }
 
     private static ClassLoader classLoader(Class<?> validatorClass) {
@@ -448,7 +539,7 @@ public final class JulcScriptLoader {
                 if (!url.toString().equals(smUrl)) {
                     continue;
                 }
-                try (InputStream is = url.openStream()) {
+                try (InputStream is = open(url)) {
                     String json = new String(is.readAllBytes(), StandardCharsets.UTF_8);
                     var indexed = SourceMapSerializer.fromJson(json);
                     return SourceMap.reconstruct(indexed.entries(), program.term());

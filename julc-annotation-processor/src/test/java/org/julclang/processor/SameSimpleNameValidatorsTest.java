@@ -25,8 +25,10 @@ import java.util.ArrayList;
 import java.util.IntSummaryStatistics;
 import java.util.List;
 import java.util.Map;
+import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
+import java.util.jar.Manifest;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -468,6 +470,183 @@ class SameSimpleNameValidatorsTest {
             assertEveryEntryPointRefuses(loader.loadClass("shaded.com.b.VaultValidator"),
                     "was written for com.b.VaultValidator, not for shaded.com.b.VaultValidator. If"
                             + " shaded.com.b.VaultValidator was relocated");
+        }
+    }
+
+    /** A relocated class whose resources stayed under the original package is refused as relocated. */
+    @Test
+    void aRelocatedValidatorWithUnmovedResourcesIsRefusedAsRelocated() throws Exception {
+        Path b = moduleB();
+        Path shaded = compile("shaded", Map.of("shaded/com/b/VaultValidator.java",
+                "package shaded.com.b; public class VaultValidator {}"), List.of()).classes();
+        copyTree(b.resolve("META-INF"), shaded.resolve("META-INF"));
+        try (var loader = classPath(shaded)) {
+            assertEveryEntryPointRefuses(loader.loadClass("shaded.com.b.VaultValidator"),
+                    "but one for com.b.VaultValidator is: shaded.com.b.VaultValidator looks relocated");
+        }
+    }
+
+    /**
+     * A fat jar that holds an old validator's simple-name copy and a relocated new one of the same name: the relocated
+     * class does not take the old validator's script.
+     */
+    @Test
+    void aRelocatedValidatorDoesNotTakeAnOldValidatorsCopyInItsJar() throws Exception {
+        Path a = moduleA();
+        makeLegacy(a, A_SCRIPT);
+        Path b = moduleB();
+        Path fat = compile("fat", Map.of("shaded/com/b/VaultValidator.java",
+                "package shaded.com.b; public class VaultValidator {}"), List.of()).classes();
+        copyTree(b.resolve("META-INF/plutus/com"), fat.resolve("META-INF/plutus/com"));
+        copyTree(a, fat);
+        assertEquals(json(a, SIMPLE_SCRIPT), json(fat, SIMPLE_SCRIPT), "the merge kept the old validator's copy");
+        try (var loader = classPath(jar(fat))) {
+            assertEquals(cbor(a, SIMPLE_SCRIPT),
+                    JulcScriptLoader.load(loader.loadClass("com.a.VaultValidator")).getCborHex());
+            assertEveryEntryPointRefuses(loader.loadClass("shaded.com.b.VaultValidator"), "looks relocated");
+        }
+    }
+
+    static void copyTree(Path from, Path to) throws IOException {
+        try (var files = Files.walk(from)) {
+            for (Path file : files.filter(Files::isRegularFile).toList()) {
+                Path target = to.resolve(from.relativize(file).toString());
+                Files.createDirectories(target.getParent());
+                Files.copy(file, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            }
+        }
+    }
+
+    /** Two copies of a class's script that both record it, with no qualified copy, are refused when they differ. */
+    @Test
+    void twoDifferentRecordedSimpleNameCopiesAreRefused() throws Exception {
+        Path b = moduleB();
+        Path stale = compile("stale", Map.of("com/b/VaultValidator.java",
+                VAULT_B.replace("signum() > 0", "signum() < 0")), List.of()).classes();
+        Files.delete(b.resolve(B_SCRIPT));
+        Files.delete(stale.resolve(B_SCRIPT));
+        try (var loader = classPath(b, stale)) {
+            assertEveryEntryPointRefuses(loader.loadClass("com.b.VaultValidator"),
+                    "2 different compiled Plutus scripts for com.b.VaultValidator at " + SIMPLE_SCRIPT);
+        }
+    }
+
+    /** An old module on the class path twice, as a directory and as its jar, still loads its script. */
+    @Test
+    void aLegacyModuleTwiceStillLoadsItsScript() throws Exception {
+        Path b = moduleB();
+        makeLegacy(b, B_SCRIPT);
+        Path bJar = jar(b);
+        Path a = moduleA();
+        makeLegacy(a, A_SCRIPT);
+        try (var loader = classPath(a, b, bJar)) {
+            var classB = loader.loadClass("com.b.VaultValidator");
+            assertEquals(cbor(b, SIMPLE_SCRIPT), JulcScriptLoader.load(classB).getCborHex());
+            assertLinesWithin(JulcScriptLoader.loadWithSourceMap(classB), B_FIRST_LINE, 2 * B_FIRST_LINE);
+        }
+    }
+
+    /**
+     * A loader that defines classes from its own roots first, while it looks resources up in its parent first. The
+     * parent holds another build of {@code com.b.VaultValidator} without a script, beside {@code com.a}'s old copy: the
+     * loader may have defined the class from either root, so the old copy is refused.
+     */
+    @Test
+    void aChildFirstLoaderDoesNotTakeAnOldCopyBesideAnotherBuildOfTheClass() throws Exception {
+        Path parentRoot = moduleA();
+        makeLegacy(parentRoot, A_SCRIPT);
+        compile("parent-b", Map.of("com/b/VaultValidator.java", "package com.b; public class VaultValidator {}"),
+                List.of());
+        copyTree(tempDir.resolve("parent-b/com"), parentRoot.resolve("com"));
+        Path child = moduleB();
+        removeScripts(child, B_SCRIPT);
+        try (var parent = classPath(parentRoot); var loader = new ChildFirstClassLoader(child, parent)) {
+            var classB = loader.loadClass("com.b.VaultValidator");
+            assertSame(loader, classB.getClassLoader(), "precondition: defined by the child");
+            assertEveryEntryPointRefuses(classB, "No compiled Plutus script for com.b.VaultValidator");
+        }
+    }
+
+    /** Defines classes from its own root before asking its parent; resources keep the default parent-first order. */
+    static final class ChildFirstClassLoader extends URLClassLoader {
+        ChildFirstClassLoader(Path root, ClassLoader parent) throws IOException {
+            super(new URL[] {root.toUri().toURL()}, parent);
+        }
+
+        @Override
+        protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
+            synchronized (getClassLoadingLock(name)) {
+                Class<?> loaded = findLoadedClass(name);
+                if (loaded == null && name.startsWith("com.")) {
+                    try {
+                        loaded = findClass(name);
+                    } catch (ClassNotFoundException e) {
+                        // not ours
+                    }
+                }
+                return loaded != null ? loaded : super.loadClass(name, resolve);
+            }
+        }
+    }
+
+    /** An old module packaged as a multi-release jar, its class in a version directory, still loads its script. */
+    @Test
+    void aLegacyModuleInAMultiReleaseJarStillLoadsItsScript() throws Exception {
+        Path b = moduleB();
+        makeLegacy(b, B_SCRIPT);
+        Path jar = tempDir.resolve("multi-release.jar");
+        var manifest = new Manifest();
+        manifest.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().put(Attributes.Name.MULTI_RELEASE, "true");
+        String classFile = "com/b/VaultValidator.class";
+        try (var out = new JarOutputStream(Files.newOutputStream(jar), manifest); var files = Files.walk(b)) {
+            for (Path file : files.filter(Files::isRegularFile).sorted().toList()) {
+                String name = b.relativize(file).toString().replace('\\', '/');
+                for (String entry : name.equals(classFile)
+                        ? List.of(name, "META-INF/versions/" + Runtime.version().feature() + "/" + name)
+                        : List.of(name)) {
+                    out.putNextEntry(new JarEntry(entry));
+                    out.write(Files.readAllBytes(file));
+                    out.closeEntry();
+                }
+            }
+        }
+        try (var loader = classPath(jar)) {
+            var classB = loader.loadClass("com.b.VaultValidator");
+            assertEquals(cbor(b, SIMPLE_SCRIPT), JulcScriptLoader.load(classB).getCborHex());
+            assertLinesWithin(JulcScriptLoader.loadWithSourceMap(classB), B_FIRST_LINE, 2 * B_FIRST_LINE);
+        }
+    }
+
+    /** Names outside ASCII are percent-encoded in resource URLs; old and new modules still load their own scripts. */
+    @Test
+    void validatorsWithNonAsciiNamesLoadTheirOwnScripts() throws Exception {
+        String source = VAULT_B.replace("package com.b;", "package com.b\u00e4.\u65e5;")
+                .replace("class VaultValidator", "class V\u00e4ultValidator");
+        Path root = module("unicode", "com/b\u00e4/\u65e5/V\u00e4ultValidator.java", source);
+        String qualified = "META-INF/plutus/com/b\u00e4/\u65e5/V\u00e4ultValidator.plutus.json";
+        String simple = "META-INF/plutus/V\u00e4ultValidator.plutus.json";
+        Path moved = module("unicode-moved", "com/b\u00e4/\u65e5/V\u00e4ultValidator.java",
+                shifted(2 * B_FIRST_LINE, source));
+        String name = "com.b\u00e4.\u65e5.V\u00e4ultValidator";
+        // New modules: the source map of the class's own root, after a root that holds only a copy of the script.
+        Path copyOnly = tempDir.resolve("unicode-copy-only");
+        Files.createDirectories(copyOnly.resolve(qualified).getParent());
+        Files.copy(moved.resolve(qualified), copyOnly.resolve(qualified));
+        try (var loader = classPath(copyOnly, root)) {
+            assertLinesWithin(JulcScriptLoader.loadWithSourceMap(loader.loadClass(name)), B_FIRST_LINE, 2 * B_FIRST_LINE);
+        }
+        // An old module alone, as a directory and as a jar.
+        for (var path : List.of(qualified, sourceMapOf(qualified))) Files.delete(root.resolve(path));
+        var output = ValidatorOutput.fromJson(json(root, simple));
+        Files.writeString(root.resolve(simple), new ValidatorOutput(output.type(), output.purpose(),
+                output.description(), output.cborHex(), output.hash(), output.params(), output.sizeBytes()).toJson());
+        for (Path entry : List.of(root, jar(root))) {
+            try (var loader = classPath(entry)) {
+                var validator = loader.loadClass(name);
+                assertEquals(cbor(root, simple), JulcScriptLoader.load(validator).getCborHex(), entry.toString());
+                assertLinesWithin(JulcScriptLoader.loadWithSourceMap(validator), B_FIRST_LINE, 2 * B_FIRST_LINE);
+            }
         }
     }
 }

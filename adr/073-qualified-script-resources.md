@@ -1,6 +1,6 @@
 # ADR-073: Compiled scripts keyed by the validator's qualified name
 
-**Status:** Proposed (r2: review round 1 on the implementation)
+**Status:** Proposed (r2, r3: review rounds 1 and 2 on the implementation)
 **Date:** 2026-11-14
 **Label:** `joust`
 **Risk class:** low. No compiler, lowering or VM change: no script's bytes change. It changes which class path
@@ -41,8 +41,10 @@ that name. Inside one compilation the second `Filer.createResource` fails with a
    `IllegalArgumentException`:
    1. a copy of `C`'s qualified resource. All its copies must be identical, and it must record `C` or no class;
    2. a copy of `C`'s simple-name resource that records `C`. All such copies must be identical;
-   3. a copy of `C`'s simple-name resource that records no class, located in the class path root (directory or jar)
-      that holds `C.class`.
+   3. a copy of `C`'s simple-name resource that records no class. It is used only when every class path root
+      (directory or jar) that holds `C.class` holds such a copy, all of them identical. It is also refused when a
+      script for a shorter name that still has a package is on the class path, such as `com.b.Vault` for
+      `shaded.com.b.Vault`: the class looks relocated.
 
    A copy that records another class is never used.
 2. **I2.** A source map is read only from beside the copy of the script that was used (the same URL with the
@@ -67,9 +69,14 @@ that name. Inside one compilation the second `Filer.createResource` fails with a
 3. **Lookup** (I1). The loader reads every copy of a path from the class's class loader, or from the system loader
    when the class has none. Every public entry point goes through it: `load`, `loadOutput`, `scriptHash`,
    `loadWithSourceMap` and `loadSourceMap`, with and without parameters.
-   - The class's root is the URL of `<binary path>.class` from the same loader, with that path removed, for example
-     `file:/app/classes/` or `jar:file:/app.jar!/`. A copy is in the root when its URL is the root followed by its
-     resource path.
+   - The class's roots are the URLs of every `<binary path>.class` from the same loader, with that path removed, for
+     example `file:/app/classes/` or `jar:file:/app.jar!/`. A multi-release jar's `META-INF/versions/<n>/` is removed
+     too. URLs are compared after their `%XX` escapes are decoded, because a class loader escapes names outside
+     ASCII. A copy is in a root when its URL is the root followed by its resource path. The first root is the one
+     preferred for source maps (I2).
+   - Step 3 asks every root, not just the first. A loader can define a class from one root while it looks resources
+     up in another order, for example child-first for classes and parent-first for resources, so the first `.class`
+     resource does not prove where the class came from.
    - When the class path holds two different copies at step 1 or 2, the error lists each URL with the class it
      records.
 4. **Source map pairing** (I2): the loader takes the source-map resource whose URL is the chosen script's URL with the
@@ -87,6 +94,9 @@ that name. Inside one compilation the second `Filer.createResource` fails with a
 - **Read from the class's `CodeSource`** (JOUST's workaround). Not adopted as stated. `CodeSource` URLs differ from
   resource URLs (`file:/app.jar` against `jar:file:/app.jar!/`), and some loaders do not set them. Step 3 instead
   uses the class's own `.class` resource URL from the same loader as the script, so both URLs have the same form.
+- **Use the first root that holds `C.class` only** (r2). Rejected in review round 2: a loader that is child-first for
+  classes but parent-first for resources defines `C` from the child, while the first `.class` resource is the
+  parent's.
 - **Scan the class's root for another class with the same simple name** (JOUST does this for jars). Rejected for
   now. It needs code for each URL scheme (directories, jars, nested jars), and it serves only modules compiled before
   this change. That case is listed under Risks instead.
@@ -120,20 +130,22 @@ that name. Inside one compilation the second `Filer.createResource` fails with a
   seven-argument constructor remains. Record patterns that deconstruct `ValidatorOutput`, and `equals`, now include
   the new component.
 - **Relocated (shaded) validator classes:** a relocated class has no qualified copy under its new name, and its
-  copies record the original name, so it is refused, with an error that names relocation as the cause. Exclude
-  validator packages from relocation, or recompile them in their new package.
+  copies record the original name, so it is refused, with an error that names relocation as the cause, whether or not
+  its resources were moved with it. Exclude validator packages from relocation, or recompile them in their new
+  package.
 - **One compilation with two same-named validators:** failed before (`FilerException`) and still fails, now with a
   diagnostic that names both.
 
 ## Risks
 
-- **Undetected:** a fat or shaded jar built from two modules compiled before this change, each with a validator of
-  one simple name, keeps one simple-name copy. Both classes sit in that jar's root, so both read it. The jar build had
-  already dropped the other script. Recompiling either module with this version writes the qualified copies, which
-  fixes it.
+- **Undetected:** a root that holds a simple-name copy written before this change serves it to every class with that
+  simple name in the same root that has no script of its own and does not look relocated. Examples: a fat jar
+  merging two such older modules, which keeps one copy, or a class in the jar that the processor skipped. origin/main
+  did the same. Recompiling the older module with this version writes the qualified copies, which fixes it.
 - Two different builds of one class's script on the class path, such as a stale jar beside fresh classes, used to
   pick one silently and now fail; the error names both URLs. When the stale jar predates this change, it has no
-  qualified copy, so the fresh build's qualified copy is used.
+  qualified copy, so the fresh build's qualified copy is used, even when the class itself was loaded from the stale
+  jar. origin/main used the first copy in class path order. Either way the setup holds two builds of one class.
 - Tools that list `META-INF/plutus/` without recursing see only the simple-name files. That list is still complete
   for every compilation, because one compilation cannot hold two validators with one simple name.
 
@@ -157,18 +169,37 @@ that name. Inside one compilation the second `Filer.createResource` fails with a
   - the processor rejects one compilation that holds both classes;
   - an unnamed-package validator is written once, and loads beside a packaged validator of the same name;
   - a nested validator loads by its binary name;
-  - a relocated class is refused, and the error names relocation.
+  - a relocated class is refused, and the error names relocation, whether its resources were moved or not, including
+    in a fat jar that also holds an older same-named validator's copy;
+  - two different copies that both record the class, with no qualified copy, are refused;
+  - an old module twice on the class path (directory and jar) still loads;
+  - a loader that is child-first for classes and parent-first for resources does not take an old copy that sits
+    beside another build of the class;
+  - an old module in a multi-release jar, with its class in a version directory, still loads;
+  - non-ASCII package and class names, old and new, as directories and jars, load their own scripts and source
+    maps.
 - Mutations of the lookup, each caught by at least one of those tests:
   - an unrecorded copy accepted from any root;
   - the own-root preference dropped;
   - a copy that records another class counted as the class's own;
-  - the recorded-class check on the qualified path dropped.
+  - the recorded-class check on the qualified path dropped;
+  - step 3 asking only the first root;
+  - URLs compared without decoding;
+  - the relocation check dropped;
+  - the multi-release version directory kept in the root.
 - `ValidatorOutputTest`: the field round-trips, older JSON reads as empty, output without the field is
   byte-identical, and a value that spells a key is not read as that key.
-- `ScriptResourcePathsTest`: packaged, nested and unnamed-package paths.
+- `ScriptResourcePathsTest`: packaged, nested and unnamed-package paths. `JulcScriptLoaderDecodeTest`: `%XX`
+  decoding as UTF-8, `+` kept, malformed escapes kept.
 - Module suites (`julc-cardano-client-lib`, `julc-annotation-processor`), the full `./gradlew build`, and the external
   `julc-examples` build against the local snapshot.
 
 ## Open questions
 
 - Whether a future release should stop writing the simple-name copy, once no supported loader needs it.
+- Follow-ups from review, not done here:
+  - The processor's duplicate check is case-sensitive. `com.a.Vault` and `com.b.vault` in one compilation write
+    `Vault.plutus.json` and `vault.plutus.json`, which overwrite each other on a case-insensitive file system. That
+    affects only older loaders. Making the check case-insensitive would fail builds that pass today.
+  - "Different copies" compares the whole JSON. Two builds of one script whose metadata differs, for example after a
+    future field is added, count as different.
