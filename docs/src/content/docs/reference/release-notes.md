@@ -7,6 +7,22 @@ Each section below is a release, newest first.
 
 ## 0.1.0-pre21
 
+### The script no longer depends on import order (#328)
+
+A validator binds the library methods it uses with `let`s, each method's dependencies outside it. Their order used to
+follow the order the methods were found in. That came from the validator's `import` declarations and from the order
+of the library sources passed to the compiler. So reordering imports, passing libraries in another order, or moving a
+library class to another package could change the script hash although nothing else changed.
+
+The order is now fixed by the methods themselves: by their dependencies, then by a digest of each method's body that
+leaves out names, packages and types (ADR-075). Imports, library order, a library class's package and its name no
+longer reach the script.
+
+- **Script hashes change** on recompilation for most validators that use two or more library methods. Redeploy, or
+  pin the compiler version, if a script hash matters to you.
+- What a script computes, where it fails, what it traces and its execution budget do not change: only the order of
+  bindings that are closed functions or total values moves.
+
 ### Ed25519 verification on BouncyCastle; bcprov 1.86 (#322)
 
 The Java VM and the testkit verify Ed25519 signatures (`verifyEd25519Signature`) with libsodium's input checks and

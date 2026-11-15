@@ -53,6 +53,9 @@ class Adr060ByteSnapshotTest {
             for (var row : List.of("NONE-false", "NONE-true", "BASELINE-true", "PV11_SAFE-true", "PV11_COSTED-true"))
                 EXPLAINED.putIfAbsent(entry.id() + "-" + row, compareTo + " in the stdlib's unused methods");
         }
+        // ADR-075 (issue #328): library methods are bound in an order fixed by their content, not by the order they
+        // were found in. These BLS fixtures bind several library methods, so their order, and the bytes, moved.
+        for (var id : List.of("o11-1", "o11-16")) EXPLAINED.put(id + "-", "ADR-075: library methods bound in canonical order");
         // ADR-068 F904: an entry point's last parameter is the script context, so this golden validator reads its second
         // integer as its datum, as a spending entry point of three parameters.
         EXPLAINED.put("golden-0-", "ADR-068 F904: the golden validator's second integer is its datum");

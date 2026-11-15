@@ -18,12 +18,10 @@ import org.julclang.core.source.SourceLocation;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.UnaryOperator;
@@ -405,60 +403,11 @@ public final class ValidatorAssembly {
     }
 
     /**
-     * Topologically sort library methods so dependencies are outermost in the Let chain.
-     * Methods with no library dependencies come last (outermost); dependent methods come first (innermost).
-     * The iteration order of the result is suitable for direct use in the Let wrapping loop:
-     * first item = innermost, last item = outermost.
+     * The library methods in binding order: dependencies outermost, and otherwise an order fixed by the methods
+     * themselves, not by the order they were found in (issue #328, {@link LibraryBindingOrder}). The first item is
+     * bound innermost, the last outermost.
      */
     private static List<LibraryMethod> topoSortLibraryMethods(Collection<LibraryMethod> methods) {
-        var methodList = new ArrayList<>(methods);
-        var methodMap = new LinkedHashMap<String, LibraryMethod>();
-        for (var m : methodList) methodMap.put(m.qualifiedName(), m);
-
-        // Build dependency graph: name -> set of library method names referenced in body
-        var deps = new LinkedHashMap<String, Set<String>>();
-        for (var m : methodList) {
-            var myDeps = new LinkedHashSet<String>();
-            for (var other : methodList) {
-                if (!other.qualifiedName().equals(m.qualifiedName())
-                        && containsVarRef(m.body(), other.qualifiedName())) {
-                    myDeps.add(other.qualifiedName());
-                }
-            }
-            deps.put(m.qualifiedName(), myDeps);
-        }
-
-        // Kahn's algorithm: emit methods whose dependencies are already emitted
-        var emitted = new LinkedHashSet<String>();
-        var result = new ArrayList<LibraryMethod>();
-        var remaining = new LinkedHashSet<>(deps.keySet());
-        while (!remaining.isEmpty()) {
-            String next = null;
-            for (String name : remaining) {
-                var d = new LinkedHashSet<>(deps.get(name));
-                d.removeAll(emitted);
-                if (d.isEmpty()) {
-                    next = name;
-                    break;
-                }
-            }
-            if (next == null) {
-                // Cycle — add remaining in original order
-                for (var m : methodList) {
-                    if (remaining.contains(m.qualifiedName())) {
-                        result.add(m);
-                    }
-                }
-                break;
-            }
-            remaining.remove(next);
-            emitted.add(next);
-            result.add(methodMap.get(next));
-        }
-
-        // Kahn's produces dependencies-first order (leaves first).
-        // For Let wrapping, we need dependents first (innermost), dependencies last (outermost).
-        Collections.reverse(result);
-        return result;
+        return LibraryBindingOrder.innermostFirst(methods);
     }
 }
