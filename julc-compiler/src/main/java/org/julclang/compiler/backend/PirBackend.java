@@ -58,11 +58,16 @@ public final class PirBackend {
     }
 
     /**
-     * The binders of a program's methods and static fields, which {@link DelayedMethodPass} reads. A term that comes
-     * with none, as a linked program does, has no method to delay.
+     * The binders of a program's methods and static fields, which {@link DelayedMethodPass} reads, and for a
+     * multi-validator the methods its handlers may share (ADR-076 D1). A term that comes with none, as a linked program
+     * does, has no method to delay.
      */
-    public record Bindings(Set<String> methods, Set<String> fields) {
+    public record Bindings(Set<String> methods, Set<String> fields, HandlerBindings handlers) {
         static final Bindings NONE = new Bindings(Set.of(), Set.of());
+
+        public Bindings(Set<String> methods, Set<String> fields) {
+            this(methods, fields, HandlerBindings.NONE);
+        }
     }
 
     /** {@link #lower} without the stage log lines: {@code compileMethod} has never written them. */
@@ -116,7 +121,7 @@ public final class PirBackend {
                 context.logf("Source map generated: %d entries (optimization skipped)", sourceMap.size());
             }
         } else if (optimize) {
-            var optimized = new UplcOptimizer(context).optimizeWithReport(uplc);
+            var optimized = new UplcOptimizer(context).optimizeWithReport(uplc, bindings.handlers());
             uplc = optimized.term();
             context.recordOptimizationRules(optimized.appliedPasses());
             stage =

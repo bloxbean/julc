@@ -8,9 +8,11 @@ import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.OptimizationLevel;
 import org.julclang.compiler.pir.PirHelpers;
 import org.julclang.compiler.pir.PirTerm;
+import org.julclang.compiler.uplc.InlinedMethods;
 import org.julclang.compiler.uplc.SharedClosedValues;
 import org.julclang.compiler.uplc.UplcOptimizer;
 import org.julclang.core.PlutusData;
+import org.julclang.core.Term;
 import org.julclang.core.flat.UplcFlatEncoder;
 import org.julclang.ledger.Credential;
 import org.julclang.ledger.PolicyId;
@@ -26,6 +28,7 @@ import org.junit.jupiter.api.Test;
 import java.math.BigInteger;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -178,6 +181,75 @@ class SharedBindingsTest {
             }
             """;
 
+    private static final String EDGE_HEAD_WITH_ARRAYS = EDGE_HEAD.replace("import org.julclang.core.PlutusData;",
+            "import org.julclang.core.PlutusData;\nimport org.julclang.core.types.JulcArray;");
+
+    /**
+     * Codex round 5: {@code table} is bound in each handler's copy of {@code plusOne}, so the array literal fold sees the
+     * name bound twice and leaves it; one copy, bound around the dispatch, would fold to {@code addInteger 1}. D1 runs on
+     * the optimizer's output, so the handlers keep what they compiled to. {@code local} reads a static and stays in each
+     * handler.
+     */
+    static final String EDGE_ARRAY = EDGE_HEAD_WITH_ARRAYS + """
+                static final BigInteger K = BigInteger.valueOf(50);
+                @Entrypoint(purpose = Purpose.MINT)
+                public static boolean mint(PlutusData redeemer, ScriptContext ctx) {
+                    BigInteger r = Builtins.unIData(redeemer);
+                    if (r.signum() == 0) return local(r);
+                    return r.signum() < 0 && plusOne(r).signum() <= 0;
+                }
+                @Entrypoint(purpose = Purpose.SPEND)
+                public static boolean spend(Optional<PlutusData> datum, PlutusData redeemer, ScriptContext ctx) {
+                    BigInteger r = Builtins.unIData(redeemer);
+                    if (r.signum() == 0) return local(r);
+                    return r.signum() < 0 && plusOne(r).signum() <= 0;
+                }
+                static boolean local(BigInteger x) { return x.multiply(x).compareTo(K) < 0; }
+                static BigInteger plusOne(BigInteger x) {
+                    JulcArray<BigInteger> table = JulcArray.of(BigInteger.ONE);
+                    return table.get(0).add(x);
+                }
+            }
+            """;
+
+    /**
+     * Codex round 5: six {@code nullList} checks in a helper both handlers call three times. Closed-value sharing binds
+     * the forced builtin once only if it occurs often enough; D1 runs after it, so its choice is the one without D1.
+     */
+    static final String EDGE_NULL_LIST = EDGE_HEAD + """
+                @Entrypoint(purpose = Purpose.MINT)
+                public static boolean mint(PlutusData redeemer, ScriptContext ctx) {
+                    return empty(redeemer) && empty(redeemer) && empty(redeemer);
+                }
+                @Entrypoint(purpose = Purpose.SPEND)
+                public static boolean spend(Optional<PlutusData> datum, PlutusData redeemer, ScriptContext ctx) {
+                    return empty(redeemer) && empty(redeemer) && empty(redeemer);
+                }
+                static boolean empty(PlutusData d) {
+                    PlutusData.ListData xs = Builtins.unListData(d);
+                    return Builtins.nullList(xs) && Builtins.nullList(xs) && Builtins.nullList(xs)
+                            && Builtins.nullList(xs) && Builtins.nullList(xs) && Builtins.nullList(xs);
+                }
+            }
+            """;
+
+    /**
+     * Codex round 5: mint and withdraw take an integer redeemer and share {@code square}. A mint run with a bytes
+     * redeemer fails at mint's boundary check, before mint's own bindings; with D1 it evaluates the shared binding first.
+     */
+    static final String BOUNDARY = EDGE_HEAD + """
+                @Entrypoint(purpose = Purpose.MINT)
+                public static boolean mint(BigInteger redeemer, ScriptContext ctx) {
+                    return square(redeemer).compareTo(BigInteger.TEN) > 0;
+                }
+                @Entrypoint(purpose = Purpose.WITHDRAW)
+                public static boolean withdraw(BigInteger redeemer, ScriptContext ctx) {
+                    return square(redeemer).compareTo(BigInteger.TWO) > 0;
+                }
+                static BigInteger square(BigInteger x) { return x.multiply(x).add(x); }
+            }
+            """;
+
     /** A helper mint reaches only under {@code if (never())}, a use constant folding removes from that handler. */
     static final String EDGE_DEAD = EDGE_HEAD + """
                 @Entrypoint(purpose = Purpose.MINT)
@@ -202,7 +274,13 @@ class SharedBindingsTest {
      * The machine steps a run with no handler pays with D1 on: the shared binding of {@code underLimit} is evaluated
      * before the dispatch fails. Nothing is shared with three handlers.
      */
-    private static final Map<String, Integer> SHARED_BINDING_STEPS = Map.of("two", 3, "three", 0);
+    private static final Map<String, Integer> SHARED_BINDING_STEPS = Map.of("two", 15, "three", 0);
+
+    /** The methods of {@link #TWO} bound once around the dispatch. */
+    private static final List<String> SHARED_IN_TWO = List.of("underLimit", "odd");
+
+    /** The steps a run failing at {@link #BOUNDARY}'s boundary check pays for the shared {@code square}. */
+    private static final int BOUNDARY_SHARED_BINDING_STEPS = 3;
 
     private static final List<String> METHODS = List.of("body", "boom", "loud", "five", "underLimit", "even", "odd", "withK");
 
@@ -221,6 +299,9 @@ class SharedBindingsTest {
                     // D2 is a beta-expansion of the program it runs on, with D1 on or off.
                     assertEquals(d1Only.program().term(), SharedClosedValues.unshare(bothOn.program().term()), label);
                     assertEquals(bothOff.program().term(), SharedClosedValues.unshare(d2Only.program().term()), label);
+                    // D1 only moves method bindings: with every one inlined, the programs are the same term.
+                    assertSameInlined(bothOff.program().term(), d1Only.program().term(), label);
+                    assertSameInlined(d2Only.program().term(), bothOn.program().term(), label);
                     int sharedWithD1 = SharedClosedValues.count(bothOn.program().term());
                     int sharedWithoutD1 = SharedClosedValues.count(d2Only.program().term());
                     for (long limit : List.of(5L, 1_000L)) {
@@ -233,13 +314,14 @@ class SharedBindingsTest {
                             for (var result : List.of(withBoth, withD1, withD2)) assertSameOutcome(without, result, run);
                             assertEquals(context.accepts(name(source), limit), without.isSuccess(), run);
                             boolean sharing = bothOn.optimizationReport().appliedRules().contains(SharedBindings.RULE);
+                            assertEquals(sharing, d1Only.optimizationReport().appliedRules().contains(SharedBindings.RULE), run);
                             if (context.handledBy(name(source))) {
                                 // A run that reaches a handler costs what it did: D1 adds nothing and saves nothing.
                                 assertEquals(withD2.budgetConsumed(), withBoth.budgetConsumed(), run + ": D1 with D2 on");
                                 assertEquals(without.budgetConsumed(), withD1.budgetConsumed(), run + ": D1 with D2 off");
                             } else {
                                 // A run with no handler fails at the dispatch, after evaluating the shared bindings.
-                                int steps = SHARED_BINDING_STEPS.get(name(source));
+                                int steps = maps ? 0 : SHARED_BINDING_STEPS.get(name(source));
                                 assertEquals(sharing, steps > 0, run);
                                 assertWholeSteps(steps, withD2.budgetConsumed(), withBoth.budgetConsumed(), run + ": D1 with D2 on");
                                 assertWholeSteps(steps, without.budgetConsumed(), withD1.budgetConsumed(), run + ": D1 with D2 off");
@@ -262,24 +344,31 @@ class SharedBindingsTest {
                 String label = level + "/" + maps;
                 var on = compile(TWO, level, maps, true, false);
                 var off = compile(TWO, level, maps, false, false);
-                assertTrue(on.optimizationReport().appliedRules().contains(SharedBindings.RULE), label);
                 assertFalse(off.optimizationReport().appliedRules().contains(SharedBindings.RULE), label);
-                var shared = binders(on.pirTerm());
-                var unshared = binders(off.pirTerm());
-                for (String method : METHODS) assertEquals(2, unshared.get(method).size(), label + " " + method);
-                // underLimit reads the @Param, which is bound outside the dispatch.
-                assertEquals(1, shared.get("underLimit").size(), label);
+                // D1 rewrites the optimizer's output: the PIR is what it is without D1.
+                assertEquals(off.pirTerm(), on.pirTerm(), label);
+                if (maps) {
+                    // With source maps the optimizer does not run, and neither does D1.
+                    assertFalse(on.optimizationReport().appliedRules().contains(SharedBindings.RULE), label);
+                    assertEquals(off.program(), on.program(), label);
+                    continue;
+                }
+                assertTrue(on.optimizationReport().appliedRules().contains(SharedBindings.RULE), label);
+                var shared = uplcBindings(on.program().term());
+                var unshared = uplcBindings(off.program().term());
+                // underLimit reads the @Param, bound outside the dispatch; odd, of the mutually recursive pair, is bound
+                // with the copy of even that Bekic's lowering nests in it. Each is bound once instead of once per handler.
+                for (String method : SHARED_IN_TWO) {
+                    assertEquals(2, unshared.getOrDefault(method, 0), label + " " + method);
+                    assertEquals(1, shared.getOrDefault(method, 0), label + " " + method);
+                }
                 // withK reads the static K, and body reaches withK; five is a constant the optimizer inlines; boom and
-                // loud have no parameters. even and odd are mutually recursive, which UPLC lowers by Bekic's theorem
-                // into bindings nested in each other, not one function per handler. Each handler keeps its own.
-                for (String method : List.of("body", "withK", "five", "boom", "loud", "even", "odd")) {
-                    assertEquals(2, shared.get(method).size(), label + " " + method);
+                // loud have no parameters. Whatever each handler binds of them, it still binds.
+                for (String method : List.of("body", "withK", "five", "boom", "loud")) {
+                    assertEquals(unshared.getOrDefault(method, 0), shared.getOrDefault(method, 0), label + " " + method);
                 }
-                // boom and loud are never bound as values that run where they are bound.
-                for (String method : List.of("boom", "loud")) {
-                    assertEquals(List.of("Lam", "Lam"), shared.get(method), label + " " + method);
-                    assertEquals(List.of("Lam", "Lam"), unshared.get(method), label + " " + method);
-                }
+                // even's own bindings stay in each handler, less the one that moved inside odd's shared value.
+                assertEquals(unshared.get("even") - 1, shared.get("even"), label);
             }
         }
     }
@@ -302,36 +391,33 @@ class SharedBindingsTest {
     }
 
     /**
-     * Helpers whose PIR shape differs from what the optimizer leaves of them. D1 decides from the PIR before the UPLC
-     * optimizer runs, and the optimizer then treats a binding around the dispatch differently from one inside each
-     * handler:
+     * Helpers the optimizer treats differently from their PIR shape, and the review's budget scenarios. D1 runs on the
+     * optimizer's output, so each handler's code is what it is without D1, and a method is shared only where every
+     * handler binds the same function:
      * <ul>
-     *   <li>{@link #EDGE_LET_ETA} and {@link #EDGE_ALIAS_ADD}: a {@code let} that renames a parameter before a builtin.
-     *       The optimizer beta-reduces it and eta-reduces what is left to the builtin, which it inlines and folds in
-     *       each handler; D1 reads through the rename, shares nothing, and the program is the one without D1.</li>
-     *   <li>{@link #EDGE_UNUSED_LOCAL}: an unused local the optimizer drops before eta-reducing to the builtin (Codex
-     *       round 3), and {@link #EDGE_NARROWED}: a cast a PIR pass removes, after which the method is the builtin (Codex
-     *       round 4). The PIR shape looks like a kept function; the program compiled without D1 shows each handler
-     *       inlined it, so it is not shared. With source maps the optimizer does not run, each handler keeps the same
-     *       binding, and it is shared: the script is smaller and no run's budget moves.</li>
-     *   <li>{@link #EDGE_DEAD}: mint reaches {@code m} only under {@code if (never())}, a use constant folding removes.
-     *       The binding stays in both handlers, the same function, so {@code m} is shared, and both handled paths come
-     *       out cheaper (six and nine machine steps) and the script smaller: pinned as measured.</li>
+     *   <li>{@link #EDGE_LET_ETA}, {@link #EDGE_ALIAS_ADD}, {@link #EDGE_UNUSED_LOCAL} (Codex round 3) and
+     *       {@link #EDGE_NARROWED} (round 4): each handler inlines the method, a builtin once optimized; nothing is
+     *       bound to share.</li>
+     *   <li>{@link #EDGE_DEAD}: mint's only use of {@code m} folds away under {@code if (never())}, but both handlers
+     *       keep the same binding: shared.</li>
+     *   <li>{@link #EDGE_ARRAY} (round 5): {@code plusOne} stays as each handler compiled it.</li>
+     *   <li>{@link #EDGE_NULL_LIST} (round 5): closed-value sharing decides before D1, on the counts without it.</li>
      * </ul>
-     * D1 decides from the program compiled without it, so where it shares nothing the program, the optimization report
-     * and the diagnostics are those without D1. With source maps the optimizer does not run, and D1 changes no budget. Outcomes, traces, results and failure
-     * text are identical throughout, at both levels and with D2 on or off.
+     * Every run of every program costs exactly what it does without D1, at both levels and with D2 on or off; with
+     * every method binding inlined, the programs are the same term. With source maps D1 does not run.
      */
     @Test
-    void edgeProgramsKeepTheirOutcomesAndMoveTheBudgetByThePinnedSteps() {
-        record Pin(String source, boolean shares, boolean sharesWithMaps, int bytes, int bytesWithMaps, Map<String, Integer> steps) {}
-        var unchanged = Map.of("mint", 0, "spend", 0);
-        var pins = Map.of(
-                "let-eta", new Pin(EDGE_LET_ETA, false, false, 0, 0, unchanged),
-                "alias-add", new Pin(EDGE_ALIAS_ADD, false, false, 0, 0, unchanged),
-                "unused-local", new Pin(EDGE_UNUSED_LOCAL, false, true, 0, -10, unchanged),
-                "narrowed", new Pin(EDGE_NARROWED, false, true, 0, -7, unchanged),
-                "dead", new Pin(EDGE_DEAD, true, true, -52, -40, Map.of("mint", -6, "spend", -9)));
+    void edgeProgramsKeepEveryHandledRunsBudgetExactly() {
+        record Pin(String source, boolean shares, int bytes, int bytesWithoutD2, List<Context> contexts) {}
+        var pins = new LinkedHashMap<String, Pin>();
+        pins.put("let-eta", new Pin(EDGE_LET_ETA, false, 0, 0, edgeContexts()));
+        pins.put("alias-add", new Pin(EDGE_ALIAS_ADD, false, 0, 0, edgeContexts()));
+        pins.put("unused-local", new Pin(EDGE_UNUSED_LOCAL, false, 0, 0, edgeContexts()));
+        pins.put("narrowed", new Pin(EDGE_NARROWED, false, 0, 0, edgeContexts()));
+        pins.put("dead", new Pin(EDGE_DEAD, true, -39, -39, edgeContexts()));
+        pins.put("array", new Pin(EDGE_ARRAY, true, -19, -19, edgeContexts()));
+        // Closed-value sharing binds the forced nullList at the root, which the shared copy then reads.
+        pins.put("null-list", new Pin(EDGE_NULL_LIST, true, -38, -40, listContexts()));
         for (var entry : pins.entrySet()) {
             var pin = entry.getValue();
             for (var level : LEVELS) {
@@ -340,24 +426,55 @@ class SharedBindingsTest {
                         String label = entry.getKey() + "/" + level + "/" + maps + "/d2=" + d2;
                         var on = compile(pin.source(), level, maps, true, d2);
                         var off = compile(pin.source(), level, maps, false, d2);
-                        boolean shares = maps ? pin.sharesWithMaps() : pin.shares();
+                        boolean shares = !maps && pin.shares();
                         assertEquals(shares, on.optimizationReport().appliedRules().contains(SharedBindings.RULE), label);
                         if (!shares) {
                             assertEquals(off.program(), on.program(), label);
                             assertEquals(off.optimizationReport(), on.optimizationReport(), label + ": report");
                             assertEquals(off.diagnostics(), on.diagnostics(), label + ": diagnostics");
                         }
-                        assertEquals(maps ? pin.bytesWithMaps() : pin.bytes(), UplcFlatEncoder.encodeProgram(on.program()).length
+                        assertSameInlined(off.program().term(), on.program().term(), label);
+                        assertEquals(shares ? (d2 ? pin.bytes() : pin.bytesWithoutD2()) : 0, UplcFlatEncoder.encodeProgram(on.program()).length
                                 - UplcFlatEncoder.encodeProgram(off.program()).length, label + ": size");
-                        for (var context : edgeContexts()) {
+                        for (var context : pin.contexts()) {
                             String run = label + "/" + context.name();
                             var shared = CompilerTestVm.pv11().evaluateWithArgs(on.program(), List.of(context.data()));
                             var unshared = CompilerTestVm.pv11().evaluateWithArgs(off.program(), List.of(context.data()));
                             assertSameOutcome(unshared, shared, run);
-                            assertWholeSteps(maps ? 0 : pin.steps().get(context.purpose()), unshared.budgetConsumed(),
-                                    shared.budgetConsumed(), run);
+                            assertEquals(unshared.budgetConsumed(), shared.budgetConsumed(), run);
                         }
                     }
+                }
+            }
+        }
+    }
+
+    /**
+     * Codex round 5: a run that fails at its handler's boundary check, before that handler's own bindings, evaluates
+     * the shared bindings first and pays for them, like a run with no handler (ADR-076 I3). Runs that pass the check
+     * cost the same.
+     */
+    @Test
+    void aRunThatFailsAtItsBoundaryPaysForTheSharedBindings() {
+        var policy = new PolicyId(new byte[28]);
+        var credential = new Credential.PubKeyCredential(new PubKeyHash(new byte[28]));
+        for (var level : LEVELS) {
+            var on = compile(BOUNDARY, level, false, true, true);
+            var off = compile(BOUNDARY, level, false, false, true);
+            assertTrue(on.optimizationReport().appliedRules().contains(SharedBindings.RULE), level.toString());
+            assertSameInlined(off.program().term(), on.program().term(), level.toString());
+            for (var redeemer : List.of(PlutusData.integer(5), PlutusData.integer(1), PlutusData.bytes(new byte[]{1}))) {
+                boolean failsAtBoundary = redeemer instanceof PlutusData.BytesData;
+                for (var context : List.of(
+                        ScriptContextTestBuilder.minting(policy).redeemer(redeemer).buildPlutusData(),
+                        ScriptContextTestBuilder.rewarding(credential).redeemer(redeemer).buildPlutusData())) {
+                    String run = level + "/" + redeemer;
+                    var shared = CompilerTestVm.pv11().evaluateWithArgs(on.program(), List.of(context));
+                    var unshared = CompilerTestVm.pv11().evaluateWithArgs(off.program(), List.of(context));
+                    assertSameOutcome(unshared, shared, run);
+                    if (failsAtBoundary) assertFalse(unshared.isSuccess(), run);
+                    assertWholeSteps(failsAtBoundary ? BOUNDARY_SHARED_BINDING_STEPS : 0, unshared.budgetConsumed(),
+                            shared.budgetConsumed(), run);
                 }
             }
         }
@@ -500,6 +617,55 @@ class SharedBindingsTest {
             PirHelpers.children(next).forEach(pending::push);
         }
         return binders;
+    }
+
+    /** Mint and spend contexts whose redeemer is an empty list, and one that is not, for {@link #EDGE_NULL_LIST}. */
+    private static List<Context> listContexts() {
+        var contexts = new ArrayList<Context>();
+        var policy = new PolicyId(new byte[28]);
+        var reference = new TxOutRef(new TxId(new byte[32]), BigInteger.ZERO);
+        for (var value : List.of(PlutusData.list(), PlutusData.list(PlutusData.integer(1)))) {
+            long size = ((PlutusData.ListData) value).items().size();
+            contexts.add(new Context("mint", size, ScriptContextTestBuilder.minting(policy).redeemer(value).buildPlutusData()));
+            contexts.add(new Context("spend", size,
+                    ScriptContextTestBuilder.spending(reference, PlutusData.integer(1)).redeemer(value).buildPlutusData()));
+        }
+        return contexts;
+    }
+
+    /** How many times {@code term} binds each method, {@code [(\Owner.m. body) value]}, by its name without the class. */
+    private static Map<String, Integer> uplcBindings(Term term) {
+        var bindings = new TreeMap<String, Integer>();
+        var pending = new ArrayDeque<Term>();
+        pending.push(term);
+        while (!pending.isEmpty()) {
+            switch (pending.pop()) {
+                case Term.Apply(var function, var argument) -> {
+                    if (function instanceof Term.Lam(var name, var _) && name.contains(".")) bindings.merge(simpleName(name), 1, Integer::sum);
+                    pending.push(function);
+                    pending.push(argument);
+                }
+                case Term.Lam(var _, var body) -> pending.push(body);
+                case Term.Force(var inner) -> pending.push(inner);
+                case Term.Delay(var inner) -> pending.push(inner);
+                case Term.Constr(var _, var fields) -> fields.forEach(pending::push);
+                case Term.Case(var scrutinee, var branches) -> {
+                    pending.push(scrutinee);
+                    branches.forEach(pending::push);
+                }
+                default -> {
+                }
+            }
+        }
+        return bindings;
+    }
+
+    /**
+     * {@code expected} and {@code actual} are the same program once every method binding is inlined, compared as FLAT,
+     * which keeps no binder names: two handlers' copies of a method can name their binders differently.
+     */
+    private static void assertSameInlined(Term expected, Term actual, String label) {
+        assertEquals(InlinedMethods.flat(expected), InlinedMethods.flat(actual), label);
     }
 
     private static CompileResult compile(String source, OptimizationLevel level, boolean maps, boolean d1, boolean d2) {

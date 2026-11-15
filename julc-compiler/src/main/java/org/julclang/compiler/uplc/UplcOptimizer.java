@@ -53,6 +53,9 @@ public class UplcOptimizer {
 
     /** ADR-076 D2: repeated forced builtins and Z combinators bound once at the root ({@link ClosedValueSharing}). */
     public static final String SHARED_CLOSED_VALUES_RULE = "pv11.o17.shared-closed-values";
+
+    /** ADR-076 D1: the methods every handler of a multi-validator binds the same way, bound once ({@link HandlerBindingSharing}). */
+    public static final String SHARED_HANDLER_BINDINGS_RULE = "pv11.o16.shared-handler-bindings";
     private static final int MAX_ITERATIONS = 20;
     private final CompilationContext context;
 
@@ -80,6 +83,11 @@ public class UplcOptimizer {
     }
 
     public OptimizationResult optimizeWithReport(Term term) {
+        return optimizeWithReport(term, HandlerBindings.NONE);
+    }
+
+    /** {@link #optimizeWithReport(Term)} of a multi-validator whose handlers may share {@code handlers}' methods. */
+    public OptimizationResult optimizeWithReport(Term term, HandlerBindings handlers) {
         if (!context.optimizationLevel().baselineOptimizerEnabled()) {
             return new OptimizationResult(term, List.of());
         }
@@ -95,6 +103,13 @@ public class UplcOptimizer {
         // After the fixpoint, so that no pass inlines a shared value back into its uses.
         if (context.optimizationLevel().pv11SafeRulesEnabled() && context.ruleEnabled(SHARED_CLOSED_VALUES_RULE)) {
             current = applyPass(SHARED_CLOSED_VALUES_RULE, current, ClosedValueSharing::share, appliedPasses);
+        }
+        // Last: each handler's code is then what it is without D1, closed-value sharing included, and only its
+        // duplicate method bindings are replaced by one.
+        if (context.optimizationLevel().pv11SafeRulesEnabled() && context.ruleEnabled(SHARED_HANDLER_BINDINGS_RULE)
+                && handlers.any()) {
+            current = applyPass(SHARED_HANDLER_BINDINGS_RULE, current, t -> HandlerBindingSharing.share(t, handlers),
+                    appliedPasses);
         }
         return new OptimizationResult(current, List.copyOf(appliedPasses));
     }
@@ -697,8 +712,7 @@ public class UplcOptimizer {
 
     /**
      * Whether beta reduction replaces a binding used once by {@code value}: a constant, a variable, or a builtin forced
-     * no more than its type arity. ADR-076's handler sharing asks this of a method's binding in the program compiled
-     * without it, since sharing a binding the optimizer would have inlined keeps it bound.
+     * no more than its type arity. ADR-076's handler sharing leaves such a binding alone.
      */
     public static boolean inlinesWhenUsedOnce(Term value) {
         return isSimple(value);

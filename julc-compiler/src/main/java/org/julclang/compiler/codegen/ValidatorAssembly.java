@@ -13,12 +13,12 @@ import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.resolve.LibraryMethodRegistry.LibraryMethod;
 import org.julclang.compiler.resolve.TypeRegistry;
+import org.julclang.compiler.uplc.HandlerBindings;
 import org.julclang.compiler.util.MethodDependencyResolver;
 import org.julclang.core.source.SourceLocation;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -166,12 +166,11 @@ public final class ValidatorAssembly {
     /** Assembles a validator and lowers it. */
     public static Assembled validator(Validator validator, TypeRegistry types, CompilationContext context,
                                       Frontend frontend, boolean captureDetails) {
-        var shared = sharedBindings(validator, types, context, frontend);
-        PirTerm wrapped = frontend.bindProgram(wrap(validator, types, context, frontend, shared));
+        PirTerm wrapped = frontend.bindProgram(wrap(validator, types, context, frontend));
         wrapped = bindParams(validator.params(), wrapped, frontend);
         frontend.finalCheck().accept(wrapped);
         var lowered = PirBackend.lower(wrapped, context, frontend.positions(), true, frontend.provenance(),
-                bindings(validator.helpers(), validator.statics(), validator.libraries()));
+                bindings(validator.helpers(), validator.statics(), validator.libraries(), handlerBindings(validator)));
         var program = lowered.program();
         var result = new CompileResult(
                 program, context.diagnostics(), paramInfos(validator.params()),
@@ -181,47 +180,26 @@ public final class ValidatorAssembly {
     }
 
     /**
-     * ADR-076 D1: under auto-dispatch, the methods every handler needs, bound once around the dispatch (15c). The
-     * candidates read from the PIR are checked against a trial: the program as assembled without D1, lowered by the whole
-     * backend in a context of its own, with a copy of the positions and none of the frontend's callbacks, so the trial
-     * leaves nothing in this compilation. A trial that fails shares nothing; the real lowering then reports the failure.
+     * ADR-076 D1: under auto-dispatch, the methods each handler binds that every handler may share. The optimizer shares
+     * those its output binds the same way in every handler, once it has optimized each handler as it would without D1.
      */
-    private static SharedBindings sharedBindings(Validator validator, TypeRegistry types, CompilationContext context,
-                                                 Frontend frontend) {
-        if (!validator.autoDispatch() || !context.optimizationLevel().pv11SafeRulesEnabled()
-                || !context.ruleEnabled(SharedBindings.RULE)) {
-            return SharedBindings.NONE;
-        }
-        var candidates = SharedBindings.candidates(validator.entries().stream().map(Entry::function).toList(),
-                validator.helpers(), validator.statics(), validator.libraries());
-        if (!candidates.any()) return candidates;
-        var trialFrontend = new Frontend(new IdentityHashMap<>(frontend.positions()), null, null, term -> {}, null, null,
-                frontend.programBound());
-        try {
-            var trialContext = context.trial();
-            PirTerm wrapped = trialFrontend.bindProgram(wrap(validator, types, trialContext, trialFrontend, SharedBindings.NONE));
-            wrapped = bindParams(validator.params(), wrapped, trialFrontend);
-            var lowered = PirBackend.lowerQuietly(wrapped, trialContext, trialFrontend.positions(),
-                    bindings(validator.helpers(), validator.statics(), validator.libraries()));
-            return candidates.keptIn(lowered.program().term(), validator.entries().size());
-        } catch (RuntimeException e) {
-            return SharedBindings.NONE;
-        }
+    private static HandlerBindings handlerBindings(Validator validator) {
+        if (!validator.autoDispatch()) return HandlerBindings.NONE;
+        return new HandlerBindings(SharedBindings.candidates(validator.entries().stream().map(Entry::function).toList(),
+                validator.helpers(), validator.statics(), validator.libraries()), validator.entries().size());
     }
 
     /** Steps 13 to 15b: the bindings around each entry point, and the wrapper. */
-    private static PirTerm wrap(Validator validator, TypeRegistry types, CompilationContext context, Frontend frontend,
-                                SharedBindings shared) {
+    private static PirTerm wrap(Validator validator, TypeRegistry types, CompilationContext context, Frontend frontend) {
         // 13. Wrap helper methods as Let bindings
         // For auto-dispatch, wrap each handler; for single entrypoint, wrap the single body
         var handlers = new LinkedHashMap<Integer, PirTerm>();
         PirTerm body = null;
         if (validator.autoDispatch()) {
-            // Wrap the helper methods each handler needs alone around it (dependency-ordered)
-            var ownHelpers = validator.helpers().stream().filter(helper -> !shared.isShared(helper.name())).toList();
+            // Wrap helper methods around each handler (dependency-ordered)
             for (var entry : validator.entries()) {
                 handlers.put(entry.tag(), bindStatics(validator.statics(),
-                        wrapMethodBindings(ownHelpers, entry.function(), frontend), frontend));
+                        wrapMethodBindings(validator.helpers(), entry.function(), frontend), frontend));
             }
         } else {
             body = bindStatics(validator.statics(),
@@ -231,8 +209,7 @@ public final class ValidatorAssembly {
         // 14. Wrap library methods as Let bindings (topologically sorted: dependencies outermost)
         var sortedLibMethods = topoSortLibraryMethods(validator.libraries());
         if (validator.autoDispatch()) {
-            var ownLibMethods = sortedLibMethods.stream().filter(method -> !shared.isShared(method.qualifiedName())).toList();
-            handlers.replaceAll((tag, handler) -> bindLibraries(ownLibMethods, handler, frontend));
+            handlers.replaceAll((tag, handler) -> bindLibraries(sortedLibMethods, handler, frontend));
         } else {
             body = bindLibraries(sortedLibMethods, body, frontend);
         }
@@ -259,20 +236,6 @@ public final class ValidatorAssembly {
             }
             wrappedTerm = wrapper.wrapMultiValidator(handlers, multiParamCounts,
                     multiDatumOptional, multiDatumTypes, multiRedeemerTypes);
-            // 15c. The shared methods, once, around the dispatch: helpers inside the library methods they call. They are
-            // bound inside the script-context lambda, so the program keeps its \ctx shape (the decompiler reads its arity
-            // from it), and are evaluated once per run either way.
-            if (shared.any()) {
-                context.recordOptimizationRule(SharedBindings.RULE);
-                var sharedHelpers = validator.helpers().stream().filter(helper -> shared.isShared(helper.name())).toList();
-                var sharedLibMethods = sortedLibMethods.stream()
-                        .filter(method -> shared.isShared(method.qualifiedName())).toList();
-                if (!(wrappedTerm instanceof PirTerm.Lam contextLambda)) {
-                    throw new IllegalStateException("a multi-validator's wrapper is a lambda of its script context");
-                }
-                wrappedTerm = new PirTerm.Lam(contextLambda.param(), contextLambda.paramType(), bindLibraries(sharedLibMethods,
-                        wrapMethodBindings(sharedHelpers, contextLambda.body(), frontend), frontend));
-            }
         } else if (validator.purpose() == ScriptPurpose.SPENDING) {
             var entry = validator.entries().getFirst();
             PirType datumType = null;
@@ -392,12 +355,17 @@ public final class ValidatorAssembly {
 
     /** The binders {@link org.julclang.compiler.pir.DelayedMethodPass} reads: a method with no parameters that may fail runs at each call. */
     private static PirBackend.Bindings bindings(List<Method> methods, List<StaticField> statics, Collection<LibraryMethod> libraries) {
+        return bindings(methods, statics, libraries, HandlerBindings.NONE);
+    }
+
+    private static PirBackend.Bindings bindings(List<Method> methods, List<StaticField> statics, Collection<LibraryMethod> libraries,
+                                                HandlerBindings handlers) {
         var binders = new LinkedHashSet<String>();
         methods.forEach(method -> binders.add(method.name()));
         libraries.forEach(method -> binders.add(method.qualifiedName()));
         var fields = new LinkedHashSet<String>();
         statics.forEach(field -> fields.add(field.name()));
-        return new PirBackend.Bindings(binders, fields);
+        return new PirBackend.Bindings(binders, fields, handlers);
     }
 
     private static boolean containsVarRef(PirTerm term, String name) {

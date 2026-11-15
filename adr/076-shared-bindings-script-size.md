@@ -54,68 +54,58 @@ Each `let` of the compiled UPLC was listed with the FLAT size of its value, and 
 
 ## Decision
 
-### D1. Methods every handler needs are bound once, around the dispatch (`pv11.o16.shared-handler-bindings`)
+### D1. Methods every handler binds the same way are bound once, where the handlers branch (`pv11.o16.shared-handler-bindings`)
 
-Under auto-dispatch, `SharedBindings` shares a helper or library method when all three hold:
-- **every handler needs it:** its entry point reaches it through the methods and static fields it names, read as free
-  variables;
-- **nothing it reaches is a validator static field**, since static fields stay bound inside each handler, where their
-  initializers have always run;
-- **it, and everything it reaches, is a function the optimizer keeps.** In the program compiled without D1, through
-  the whole backend, every handler still binds it, each to the same function, and that function is not a value the
-  inliner inlines into a single use.
+D1 is a UPLC pass (`HandlerBindingSharing`), the last one the optimizer runs: after the fixpoint, and after D2. Its
+input is the program as it is compiled without D1, so every handler's code is what it would be without D1. D1 only
+replaces the duplicate bindings of a method with one.
 
-`ValidatorAssembly` binds the shared methods once, inside the multi-validator's context lambda and its `@Param`
-lambdas, around the preamble and the dispatch. So the program keeps its `\ctx` root. Everything else stays inside each
-handler, as before.
+**Candidates, from the PIR (`SharedBindings`).** Under auto-dispatch, `ValidatorAssembly` hands the backend the
+helpers and library methods that:
+- **every handler needs:** its entry point reaches the method through the methods and static fields it names, read as
+  free variables;
+- **reach no validator static field**, since static fields stay bound inside each handler, where their initializers have
+  always run;
+- **are functions, as is everything they reach:** a lambda with parameters, not a builtin wrapper the optimizer would
+  inline. A function is total and has no effect, so evaluating its binding earlier changes no result, failure or trace.
 
-**Why only kept functions.** The UPLC inliner replaces a binding used once by its value only when that value is a
-constant, a variable or a (forced) builtin. A lambda over a builtin becomes a builtin by eta reduction. A handler that
-called such a method once had it inlined, and could fold it further. Bound around the dispatch, it would be used twice
-and kept, so the handler would do more work. A review measured that on a `five()` helper: +157,290 CPU per accepting
-run, an extra `lessThanInteger` that no longer folded. A lambda is never inlined, so sharing one moves its binding
-without changing what any handler evaluates.
+**What is shared, from the optimizer's output.** One walk finds each candidate's bindings, `[(\m. body) value]`, by
+name. A method's binder is `Owner.name`, which no local and no generated `#` binder can be. A candidate is shared when:
+- it is bound exactly once per handler;
+- each binding is the same function: the same term, where a variable bound inside it has the same index and one bound
+  outside it names the same binder;
+- that function is not a value `UplcOptimizer.inlinesWhenUsedOnce` accepts; and
+- every variable it reads is bound above the point where the handlers branch, or is another shared method.
 
-The decision is read from what the backend does, because the PIR shape cannot show it. Review found helpers that
-are lambdas in PIR but builtins once compiled:
-- `PlutusData e = d; return Builtins.unIData(e);`;
-- `BigInteger c = a; return c.add(b);`;
-- `BigInteger unused = BigInteger.ZERO; return a.add(b);`: the optimizer drops the local;
-- `return (int) Builtins.indexByteString(bytes, index);`: `NarrowingElisionPass`, a PIR pass, removes the cast.
+A method that reads one that is not shared is not shared either. The shared bindings wrap the smallest term that holds
+every binding of every shared method, in dependency order, and are removed from each handler. Their variables are
+rebuilt for the new binders. The result is kept only if its FLAT encoding is smaller.
 
-Shared, each stayed bound, and `add(ONE, ONE)` stopped folding: 377,541 CPU more per run. A check on the method alone
-missed the last one: it ran the UPLC generator and optimizer but not the PIR passes before them, and those passes read
-the other methods' bodies, which a method alone does not have. So D1 decides in two steps:
-1. **Candidates, from the PIR.** Every handler reaches the method, it reaches no static field, and a fast shape check
-   rejects methods with no parameters and plain builtin wrappers. A method that reaches a rejected one is rejected
-   too, by one walk back along the dependencies.
-2. **A trial.** The validator is assembled without D1 and lowered by the whole backend (`PirBackend.lowerQuietly`), in
-   a context of its own (`CompilationContext.trial()`: the same target, level, cost profile, source-map setting and
-   disabled rules, with diagnostics, rule records and logging of its own, and D2 off) and with a copy of the source
-   positions and none of the frontend's callbacks, so it leaves nothing in the compilation. One walk of its program
-   finds each candidate's bindings by name: a method's binder is `Owner.name`, which no local and no generated `#`
-   binder can be. A candidate stays only if there are exactly as many as there are handlers, each is the same term
-   (a variable bound outside it naming the same binder), and it is not a value `UplcOptimizer.inlinesWhenUsedOnce`
-   accepts. A candidate that reaches one that fails is dropped with it. A trial that throws shares nothing.
+**Why the program means the same.** Each value is the same function the handlers bound, reading the same binders, and
+it is total and has no effect. Evaluating it once, before the handlers branch, instead of in the handler that runs,
+gives the same results, failures and traces.
 
-The trial is the program the compilation would have produced with D1 off, so what it shows is what each handler did.
-Each handler bound each shared method to the same function and kept it. D1 binds that function once, outside the
-dispatch, and the optimizer keeps it there too, since a lambda used several times is not inlined. A handler's run
-evaluates the same binding, now before the dispatch, and nothing inside the handler changes. The trial costs one more
-backend lowering per multi-validator with candidates, and one walk; nothing per method.
+**Why each handled run costs the same.** No handler's code is re-optimized. A handler evaluated each of its bindings,
+an application, a lambda and the value, once, and now the same bindings are evaluated once on the way to it. A run
+that fails before its handler's bindings now evaluates the shared ones first and pays for them. That happens when no
+handler takes the purpose, or when the purpose's boundary check fails before its handler.
 
-The helpers above are pinned in `SharedBindingsTest` as not shared, with identical programs, optimization reports,
-diagnostics and budgets. With source maps the optimizer does not run, every handler keeps the binding, and they are
-shared, with no budget change. A helper whose only use in one handler folds away under `if (never())` keeps its binding
-in both handlers, the same function. It is shared and costs 6 to 9 steps less. A mutually recursive group is lowered by
-Bekić's theorem into bindings nested in each other, not one function per handler, so it is not shared. A chain of 300
-methods every handler reaches is shared whole.
+**Why on the optimizer's output.** Three reviews found ways a decision made earlier, in the PIR, could raise a handled
+run's budget, because the optimizer then works on one copy where it had worked on one per handler:
+- **A helper that becomes a builtin once compiled.** Examples are `PlutusData e = d; return Builtins.unIData(e);`,
+  `BigInteger unused = BigInteger.ZERO; return a.add(b);`, and `(int) Builtins.indexByteString(bytes, index)`, whose
+  cast `NarrowingElisionPass` removes. Each handler inlined it, and folded `add(ONE, ONE)`; shared, it stayed bound,
+  at 377,541 CPU more per run.
+- **A fold that depends on how often a name is bound.** `JulcArray.of` bound in each copy of a helper is not folded,
+  while one shared copy would fold to a partial application that costs two steps more to bind.
+- **D2's profitability.** It counts the uses of a forced builtin, and sharing a method's copies before D2 lowers that
+  count.
 
-A shared method's dependencies are shared too, so every name stays in scope. Each binding is a function, so evaluating
-it before the dispatch instead of after it keeps every value, failure and trace. A run that reaches a handler takes the
-same steps, since that handler bound the same methods. A run whose purpose has no handler fails at the dispatch.
-Before, it evaluated no handler's bindings; now it evaluates the shared ones first. Its outcome, a failure, is the
-same. Binding the shared methods inside each branch instead would bring back the copies D1 removes.
+Optimizing each handler first and merging only identical bindings removes all three by construction. A trial lowering
+of the program without D1, tried in review, settles the first two but not the third, and it lowered every
+multi-validator twice.
+
+With source maps the optimizer does not run, and neither does D1.
 
 ### D2. Repeated closed values are bound once, at the root (`pv11.o17.shared-closed-values`)
 
@@ -153,9 +143,10 @@ builtins and the Z shape. `SharedRootBindings` substitutes a script's shared roo
 
 ## Affected stages and modules
 
-- **PIR assembly:** `ValidatorAssembly` and the new `SharedBindings` (julc-compiler, codegen).
-- **UPLC optimizer:** `UplcOptimizer` and the new `ClosedValueSharing`, which runs after the fixpoint (julc-compiler,
-  uplc).
+- **PIR assembly:** `ValidatorAssembly` and the new `SharedBindings`, which finds D1's candidates (julc-compiler,
+  codegen); `PirBackend.Bindings` carries them to the optimizer.
+- **UPLC optimizer:** `UplcOptimizer` and the new `ClosedValueSharing` (D2) and `HandlerBindingSharing` (D1), which run
+  after the fixpoint, in that order (julc-compiler, uplc).
 - **Rule registry:** `CompilationContext` registers both rules as switchable.
 - **Decompiler:** the new `SharedRootBindings` (julc-decompiler).
 - **Tests:** compiler goldens and frozen answers at the PV11 levels, the julc-benchmark budget tests, and the new tests
@@ -168,10 +159,10 @@ builtins and the Z shape. `SharedRootBindings` substitutes a script's shared roo
 - **I2.** D2 changes the budget only by whole machine steps. Each executed use of a shared forced builtin saves one step
   per force: one for `headList`, two for `sndPair`. Each shared value adds its binding once, at most 5 steps: an
   application, a lambda and the value.
-- **I3.** D1 evaluates on a handled run the bindings that handler evaluated before: the program compiled without D1
-  bound each shared method in that handler, to the same function, and kept it. So the budget is unchanged, or lower
-  where a handler's use of a shared method folds away. A run with no handler pays for evaluating the shared bindings before it fails, a fixed number of whole steps
-  per program.
+- **I3.** With D1, every run that reaches its handler's bindings takes exactly the steps it takes without D1, with D2
+  on or off. A run that fails before them pays for evaluating the shared bindings first: three steps for each, an
+  application, a lambda and the value. That is a run whose purpose has no handler, or one whose boundary check fails.
+  Inlining every method binding gives the same program with D1 as without it, as FLAT.
 - **I4.** Below `PV11_SAFE`, or with a rule disabled, the output is what it was.
 
 ## Results
@@ -181,8 +172,8 @@ builtins and the Z shape. `SharedRootBindings` substitutes a script's shared roo
 | Build | Bytes | Against Aiken |
 |---|---|---|
 | Before (both rules off) | 3,862 | 2.18× |
-| D1 only | 3,090 | 1.75× |
-| D2 only | 3,402 | 1.92× |
+| D1 only | 3,091 | 1.75× |
+| D2 only | 3,403 | 1.92× |
 | Both | **2,749** | **1.55×** |
 | Aiken v1.1.23 | 1,769 | 1× |
 
@@ -216,6 +207,12 @@ the guard only removes sharing that did not shrink a program.
 
 ## Alternatives rejected
 
+- **Decide D1 before the optimizer.** Binding the shared methods once in the PIR assembly, and then optimizing,
+  was the first design. Review showed the optimizer then treats one copy differently from one per handler (D1, "Why on
+  the optimizer's output"). Each patch fell short:
+  - a PIR shape check;
+  - a check of each method optimized alone, which missed the PIR passes and cost a lowering per method and dependency;
+  - a trial lowering of the whole program without D1, which missed D2's counts and lowered every multi-validator twice.
 - **Share a method used by at least two handlers, not all.** This saves more bytes in validators with three or more
   purposes, but a purpose that does not use a shared method would evaluate its binding. Sharing what every handler
   needs keeps each handler's work.
@@ -241,13 +238,15 @@ the guard only removes sharing that did not shrink a program.
 
 - **A value that is not closed or not a value.**
   - D2 checks closedness and force counts, and matches the Z combinator exactly.
-  - D1 shares only what the program compiled without it binds the same way in every handler. It finds those bindings
-    by the method's binder name, so a change that renames a method's binder in UPLC, or binds methods some other
-    way, makes D1 share less, not more.
+  - D1 shares only what the optimizer's output binds the same way in every handler, reading only what is bound above
+    the handlers, and only candidates the PIR shows to be functions. It finds the bindings by the method's binder name,
+    so a change that renames a method's binder in UPLC, or binds methods some other way, makes D1 share less, not more.
 - **Budget.** D2 can raise a run's budget by up to 5 steps per shared value, on a run that uses few of them (I2). D1
-  raises the budget of a run that fails for having no handler (I3). It asks the optimizer's own inlining rule,
-  `inlinesWhenUsedOnce`, so the two cannot drift apart.
-- **Compile time.** A multi-validator with candidates is lowered twice.
+  raises only the budget of a run that fails before its handler's bindings (I3). On Cardano a failing script forfeits
+  its collateral, whatever budget it used.
+- **A mutually recursive group.** Bekić's lowering nests copies of the methods in each other, so a group is shared only
+  where its bindings line up as one function per handler. The two-handler fixture shares `odd`, with the copy of `even`
+  nested in it, and keeps `even`'s own bindings.
 
 ## Implementation milestones
 
@@ -255,7 +254,8 @@ the guard only removes sharing that did not shrink a program.
 2. The counter benchmark against Aiken.
 3. Reconciliation of goldens and other rules' cost tests, each held to its own guarantee with these rules off.
 4. Review fixes: D1 inside the context lambda, D2's closed and size guards, D4.
-5. Review fixes: D1 decided from a trial lowering without it, through the whole backend (Codex rounds 3 and 4).
+5. Review fixes (Codex rounds 3 to 5): D1 moved from the PIR assembly to a UPLC pass after D2, sharing only the
+   bindings every handler compiled to the same function.
 
 ## Verification
 
@@ -266,13 +266,29 @@ the guard only removes sharing that did not shrink a program.
     grows the encoding.
   - The same check over the whole corpus covers 24,652 programs, every one equal after substitution
     (`adr/evidence/076/SharingCorpusReplayTest.java.txt`).
-- **D1, budget.**
-  - `SharedBindingsTest` compiles a multi-validator with a `@Param`, a static, failing, tracing and constant zero-argument
-    helpers, mutual recursion, and two-handler and three-handler variants.
-  - It checks identical outcomes, traces, results and failure text with the rule on and off, on every context, at both
-    levels, with and without source maps.
-  - On every run that reaches a handler, the budget is identical too. The contexts with no handler cost exactly 30
-    steps more in the two-handler variant, the shared bindings, and are pinned.
+- **D1, exact.**
+  - `HandlerBindingSharingFuzzTest` builds 3,000 random programs shaped as multi-validators. They have two to four
+    handlers, a failing last branch, methods that differ in some handlers or read a handler's own binder, and calls
+    between methods. On each it checks four things:
+    - the shared methods are exactly those the generator knows to be the same function, reading nothing bound in a
+      handler;
+    - with every method binding inlined, the programs are equal as FLAT;
+    - the script never grows;
+    - every input gives the same result and traces, the same budget when a handler takes it, and exactly 3 steps more per
+      shared method when none does.
+
+    Disabling the same-function check, or the in-scope check, makes it fail.
+  - `SharedBindingsTest` compiles a multi-validator with a `@Param`, a static, failing, tracing and constant
+    zero-argument helpers, mutual recursion, and two-handler and three-handler variants. It checks:
+    - identical outcomes, traces, results and failure text with the rule on and off, on every context, at both levels,
+      with and without source maps and with D2 on and off;
+    - the inlined-program oracle;
+    - the same budget on every run that reaches a handler;
+    - in the two-handler variant, exactly 15 steps more on the contexts with no handler.
+  - The review's scenarios are pinned with identical budgets on every run: the helpers that become builtins, the
+    `JulcArray.of` helper and six `nullList` checks under D2. So is a run that fails at its boundary check, at exactly
+    3 steps more.
+  - A chain of 300 methods every handler reaches is shared whole.
   - `CounterBenchmarkTest` asserts identical budgets on all twelve transactions.
 - **Semantics.** `CounterBenchmarkTest`'s twelve transactions agree across every rule combination and with Aiken.
 - **Goldens.** Every golden that moved is at `PV11_SAFE` or `PV11_COSTED`. With both rules forced off, every frozen
