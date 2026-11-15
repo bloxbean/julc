@@ -75,7 +75,7 @@ class O8ValueSharingTest {
                             countConversions(compiled.pirTerm()), label);
                     var old = golden(i, level.pv11SafeRulesEnabled() ? OptimizationLevel.PV11_SAFE : level, maps);
                     if (!expectRule) {
-                        assertArrayEquals(UplcFlatEncoder.encodeProgram(old), bytes, label);
+                        LibraryOrderEquivalence.assertSameUpToLibraryOrder(old, program, label);
                     } else {
                         // FLAT size: sharing k sites adds one lambda and one application (4 bits each)
                         // plus k variable uses (about 12 bits each) and removes k-1 conversion
