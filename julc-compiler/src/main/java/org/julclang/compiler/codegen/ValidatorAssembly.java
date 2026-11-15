@@ -186,11 +186,18 @@ public final class ValidatorAssembly {
         // For auto-dispatch, wrap each handler; for single entrypoint, wrap the single body
         var handlers = new LinkedHashMap<Integer, PirTerm>();
         PirTerm body = null;
+        // ADR-076 D1: under auto-dispatch, the methods every handler needs are bound once around the dispatch (15c).
+        SharedBindings shared = !validator.autoDispatch() ? null
+                : context.optimizationLevel().pv11SafeRulesEnabled() && context.ruleEnabled(SharedBindings.RULE)
+                ? SharedBindings.of(validator.entries().stream().map(Entry::function).toList(), validator.helpers(),
+                        validator.statics(), validator.libraries())
+                : SharedBindings.NONE;
         if (validator.autoDispatch()) {
-            // Wrap helper methods around each handler (dependency-ordered)
+            // Wrap the helper methods each handler needs alone around it (dependency-ordered)
+            var ownHelpers = validator.helpers().stream().filter(helper -> !shared.isShared(helper.name())).toList();
             for (var entry : validator.entries()) {
                 handlers.put(entry.tag(), bindStatics(validator.statics(),
-                        wrapMethodBindings(validator.helpers(), entry.function(), frontend), frontend));
+                        wrapMethodBindings(ownHelpers, entry.function(), frontend), frontend));
             }
         } else {
             body = bindStatics(validator.statics(),
@@ -200,7 +207,8 @@ public final class ValidatorAssembly {
         // 14. Wrap library methods as Let bindings (topologically sorted: dependencies outermost)
         var sortedLibMethods = topoSortLibraryMethods(validator.libraries());
         if (validator.autoDispatch()) {
-            handlers.replaceAll((tag, handler) -> bindLibraries(sortedLibMethods, handler, frontend));
+            var ownLibMethods = sortedLibMethods.stream().filter(method -> !shared.isShared(method.qualifiedName())).toList();
+            handlers.replaceAll((tag, handler) -> bindLibraries(ownLibMethods, handler, frontend));
         } else {
             body = bindLibraries(sortedLibMethods, body, frontend);
         }
@@ -227,6 +235,15 @@ public final class ValidatorAssembly {
             }
             wrappedTerm = wrapper.wrapMultiValidator(handlers, multiParamCounts,
                     multiDatumOptional, multiDatumTypes, multiRedeemerTypes);
+            // 15c. The shared methods, once, around the dispatch: helpers inside the library methods they call.
+            if (shared.any()) {
+                context.recordOptimizationRule(SharedBindings.RULE);
+                var sharedHelpers = validator.helpers().stream().filter(helper -> shared.isShared(helper.name())).toList();
+                var sharedLibMethods = sortedLibMethods.stream()
+                        .filter(method -> shared.isShared(method.qualifiedName())).toList();
+                wrappedTerm = bindLibraries(sharedLibMethods,
+                        wrapMethodBindings(sharedHelpers, wrappedTerm, frontend), frontend);
+            }
         } else if (validator.purpose() == ScriptPurpose.SPENDING) {
             var entry = validator.entries().getFirst();
             PirType datumType = null;

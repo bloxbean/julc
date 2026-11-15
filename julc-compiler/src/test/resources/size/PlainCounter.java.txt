@@ -1,0 +1,165 @@
+package probe.counter;
+
+import java.math.BigInteger;
+import java.util.Optional;
+import org.julclang.core.PlutusData;
+import org.julclang.core.types.JulcList;
+import org.julclang.ledger.Credential;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.ScriptInfo;
+import org.julclang.ledger.TxInInfo;
+import org.julclang.ledger.TxInfo;
+import org.julclang.ledger.TxOut;
+import org.julclang.ledger.TxOutRef;
+import org.julclang.ledger.Value;
+import org.julclang.stdlib.Builtins;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.MultiValidator;
+import org.julclang.stdlib.annotation.Purpose;
+import org.julclang.stdlib.lib.AddressLib;
+import org.julclang.stdlib.lib.ByteStringLib;
+import org.julclang.stdlib.lib.ContextsLib;
+import org.julclang.stdlib.lib.OutputLib;
+import org.julclang.stdlib.lib.ValuesLib;
+
+/** A hand-written JuLC counter with exactly the checks of the hand-written Aiken counter (size comparison only). */
+@MultiValidator
+public class PlainCounter {
+
+    public record State(BigInteger count, byte[] owner) {}
+
+    public sealed interface MintAction permits Create, Burn {}
+    public record Create(TxOutRef seed, byte[] caller) implements MintAction {}
+    public record Burn() implements MintAction {}
+
+    public sealed interface Action permits Increment, Reset, Close {}
+    public record Increment(BigInteger by) implements Action {}
+    public record Reset(byte[] caller) implements Action {}
+    public record Close(byte[] caller) implements Action {}
+
+    @Entrypoint(purpose = Purpose.MINT)
+    public static boolean mint(MintAction redeemer, ScriptContext ctx) {
+        TxInfo tx = ctx.txInfo();
+        ScriptInfo.MintingScript mi = (ScriptInfo.MintingScript) ctx.scriptInfo();
+        byte[] policy = (byte[]) (Object) mi.policyId();
+        return switch (redeemer) {
+            case Create c -> create(c, tx, policy);
+            case Burn b -> onlyBurns(tx.mint(), policy);
+        };
+    }
+
+    static boolean create(Create c, TxInfo tx, byte[] policy) {
+        byte[] name = ValuesLib.uniqueTokenName(c.seed());
+        PlutusData expected = Builtins.mapData(Builtins.mkCons(Builtins.mkPairData(Builtins.bData(name), Builtins.iData(1L)), Builtins.mkNilPairData()));
+        boolean minted = Builtins.equalsData(tokensOf(tx.mint(), policy), expected);
+        boolean seedSpent = false;
+        for (var in : tx.inputs()) {
+            if (Builtins.equalsData(in.outRef(), c.seed())) {
+                seedSpent = true;
+            }
+        }
+        TxOut out = holder(tx.outputs(), policy, name);
+        boolean atScript = AddressLib.isScriptAddress(out.address()) && ByteStringLib.equals(AddressLib.credentialHash(out.address()), policy);
+        State first = new State(BigInteger.ZERO, c.caller());
+        PlutusData d = OutputLib.getInlineDatum(out);
+        return minted && seedSpent && atScript && Builtins.equalsData(d, (PlutusData) (Object) first) && small(d)
+                && ContextsLib.signedBy(tx, c.caller());
+    }
+
+    @Entrypoint(purpose = Purpose.SPEND)
+    public static boolean spend(Optional<PlutusData> datum, Action redeemer, ScriptContext ctx) {
+        TxInfo tx = ctx.txInfo();
+        TxInInfo own = ContextsLib.findOwnInput(ctx).get();
+        TxOut ownOut = own.resolved();
+        byte[] policy = AddressLib.credentialHash(ownOut.address());
+        byte[] name = onlyToken(ownOut.value(), policy);
+        State state = (State) (Object) OutputLib.getInlineDatum(ownOut);
+        return switch (redeemer) {
+            case Increment r -> r.by().compareTo(BigInteger.ZERO) > 0
+                    && continuing(tx, ownOut, policy, name, new State(state.count().add(r.by()), state.owner()));
+            case Reset r -> ByteStringLib.equals(r.caller(), state.owner()) && ContextsLib.signedBy(tx, r.caller())
+                    && continuing(tx, ownOut, policy, name, new State(BigInteger.ZERO, state.owner()));
+            case Close r -> close(r, state, tx, ownOut, policy, name);
+        };
+    }
+
+    static boolean close(Close r, State state, TxInfo tx, TxOut ownOut, byte[] policy, byte[] name) {
+        BigInteger balance = ValuesLib.lovelaceOf(ownOut.value());
+        boolean paid = false;
+        for (var o : tx.outputs()) {
+            if (paysKey(o, state.owner()) && ValuesLib.lovelaceOf(o.value()).compareTo(balance) >= 0) {
+                paid = true;
+            }
+        }
+        return ByteStringLib.equals(r.caller(), state.owner()) && ContextsLib.signedBy(tx, r.caller())
+                && ValuesLib.assetOf(tx.mint(), policy, name).compareTo(BigInteger.valueOf(-1)) == 0 && paid;
+    }
+
+    static boolean continuing(TxInfo tx, TxOut own, byte[] policy, byte[] name, State next) {
+        TxOut out = holder(tx.outputs(), policy, name);
+        PlutusData d = OutputLib.getInlineDatum(out);
+        return Builtins.equalsData(out.address(), own.address())
+                && Builtins.equalsData((PlutusData) (Object) out.value(), (PlutusData) (Object) own.value())
+                && Builtins.equalsData(d, (PlutusData) (Object) next) && small(d)
+                && Builtins.nullList(Builtins.unMapData(tokensOf(tx.mint(), policy)));
+    }
+
+    static PlutusData.MapData tokensOf(Value v, byte[] policy) {
+        return ValuesLib._tokensOf(Builtins.unMapData((PlutusData) (Object) v), Builtins.bData(policy));
+    }
+
+    static boolean small(PlutusData d) {
+        return Builtins.lengthOfByteString(Builtins.serialiseData(d)) <= 128;
+    }
+
+    static boolean paysKey(TxOut o, byte[] pkh) {
+        return switch (o.address().credential()) {
+            case Credential.PubKeyCredential pk -> ByteStringLib.equals((byte[]) (Object) pk.hash(), pkh);
+            case Credential.ScriptCredential sc -> false;
+        };
+    }
+
+    static boolean onlyBurns(Value mint, byte[] policy) {
+        PlutusData rest = Builtins.unMapData(tokensOf(mint, policy));
+        boolean ok = true;
+        while (!Builtins.nullList(rest)) {
+            if (Builtins.unIData(Builtins.sndPair(Builtins.headList(rest))).compareTo(BigInteger.valueOf(-1)) != 0) {
+                ok = false;
+            }
+            rest = Builtins.tailList(rest);
+        }
+        return ok;
+    }
+
+    /** The single token (quantity 1) under the policy; fails otherwise. */
+    static byte[] onlyToken(Value v, byte[] policy) {
+        PlutusData tokens = Builtins.unMapData(tokensOf(v, policy));
+        PlutusData pair = Builtins.headList(tokens);
+        if (!Builtins.nullList(Builtins.tailList(tokens)) || Builtins.unIData(Builtins.sndPair(pair)).compareTo(BigInteger.ONE) != 0) {
+            Builtins.error();
+            return ByteStringLib.empty();
+        } else {
+            return Builtins.unBData(Builtins.fstPair(pair));
+        }
+    }
+
+    /** Exactly one output holds the token; returns it. */
+    static TxOut holder(JulcList<TxOut> outputs, byte[] policy, byte[] name) {
+        PlutusData.BytesData p = Builtins.bData(policy);
+        PlutusData.BytesData n = Builtins.bData(name);
+        long count = 0;
+        TxOut hit = outputs.head();
+        for (var o : outputs) {
+            if (ValuesLib._assetOf(o.value(), p, n).compareTo(BigInteger.ONE) == 0) {
+                count = count + 1;
+                hit = o;
+            }
+        }
+        if (count != 1) {
+            Builtins.error();
+            return hit;
+        } else {
+            return hit;
+        }
+    }
+}

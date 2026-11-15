@@ -1,5 +1,6 @@
 package org.julclang.compiler;
 
+import org.julclang.compiler.codegen.SharedBindings;
 import org.julclang.compiler.error.CompilerDiagnostic;
 import org.julclang.compiler.frontend.javac.JavacProvenance;
 import org.julclang.compiler.pir.ArrayLiteralFoldPass;
@@ -8,6 +9,7 @@ import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.pir.ValueConversionSharingPass;
 import org.julclang.compiler.pir.ValueLiteralFoldPass;
+import org.julclang.compiler.uplc.UplcOptimizer;
 import org.julclang.vm.OptimizationCostProfile;
 import org.julclang.vm.ProtocolCapability;
 
@@ -35,16 +37,18 @@ public final class CompilationContext {
 
     /**
      * The rules that {@link CompilerOptions#disableOptimizationRule(String)} accepts: the
-     * PIR-to-PIR passes, each of which checks {@link #ruleEnabled(String)} before it rewrites.
-     * Rules implemented inside {@code UplcGenerator} and {@code UplcOptimizer} are selected by
-     * the optimization level only.
+     * PIR-to-PIR passes, the assembly's handler sharing and the optimizer's closed-value sharing (ADR-076), each of
+     * which checks {@link #ruleEnabled(String)} before it rewrites. The other rules implemented inside
+     * {@code UplcGenerator} and {@code UplcOptimizer} are selected by the optimization level only.
      */
     private static final Set<String> SWITCHABLE_OPTIMIZATION_RULES = Set.of(
             ValueConversionSharingPass.RULE,
             ValueConversionSharingPass.PROJECTION_RULE,
             ListIndexPromotionPass.RULE,
             ValueLiteralFoldPass.RULE,
-            ArrayLiteralFoldPass.RULE);
+            ArrayLiteralFoldPass.RULE,
+            SharedBindings.RULE,
+            UplcOptimizer.SHARED_CLOSED_VALUES_RULE);
 
     private final ResolvedCompilerTarget resolvedTarget;
     private final boolean verbose;

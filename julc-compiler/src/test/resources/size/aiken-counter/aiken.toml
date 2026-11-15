@@ -1,0 +1,9 @@
+name = "probe/counter"
+version = "0.0.0"
+compiler = "v1.1.23"
+plutus = "v3"
+
+[[dependencies]]
+name = "aiken-lang/stdlib"
+version = "v3.0.0"
+source = "github"

@@ -50,6 +50,9 @@ public class UplcOptimizer {
 
     public static final String PV11_EXP_MOD_LITERAL_RULE =
             "pv11.o13.exp-mod-literal-fold";
+
+    /** ADR-076 D2: repeated forced builtins and Z combinators bound once at the root ({@link ClosedValueSharing}). */
+    public static final String SHARED_CLOSED_VALUES_RULE = "pv11.o17.shared-closed-values";
     private static final int MAX_ITERATIONS = 20;
     private final CompilationContext context;
 
@@ -88,6 +91,10 @@ public class UplcOptimizer {
                 break; // Fixpoint reached
             }
             current = optimized;
+        }
+        // After the fixpoint, so that no pass inlines a shared value back into its uses.
+        if (context.optimizationLevel().pv11SafeRulesEnabled() && context.ruleEnabled(SHARED_CLOSED_VALUES_RULE)) {
+            current = applyPass(SHARED_CLOSED_VALUES_RULE, current, ClosedValueSharing::share, appliedPasses);
         }
         return new OptimizationResult(current, List.copyOf(appliedPasses));
     }
