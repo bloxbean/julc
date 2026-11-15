@@ -57,6 +57,8 @@ public final class PirHelpers {
      * {@link #mapChildren}, for a {@code map} that is itself a stack-safe walk (issue #327, ADR-074): the children are
      * mapped one after another, in {@link #mapChildren}'s order, and the term is rebuilt from the results. A pass
      * that recursed through {@link #mapChildren} recurses through this instead, and so needs no Java stack per level.
+     * {@code map} is called while the steps are built, so it must return a computation that has not yet done its work
+     * (one that starts with {@link Trampoline#defer}); a {@code map} that works eagerly brings the recursion back.
      */
     public static Trampoline<PirTerm> traverseChildren(PirTerm term, Function<PirTerm, Trampoline<PirTerm>> map) {
         return switch (term) {

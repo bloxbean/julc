@@ -1,6 +1,6 @@
 package org.julclang.compiler.pir;
 
-import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
@@ -9,7 +9,8 @@ import java.util.Objects;
  * instead of recursion, so that comparing two deep terms needs no more Java stack than comparing two shallow ones
  * (issue #327). A record compares its components and a list its elements; which pair is compared first cannot change
  * whether all are equal, so this gives the same answer. The components that hold no term (names, types, constants,
- * tags) are compared as the record compares them.
+ * tags) are compared as the record compares them, and a null component, which the records allow, is equal only to
+ * null.
  */
 final class PirTermEquality {
 
@@ -17,12 +18,14 @@ final class PirTermEquality {
     }
 
     static boolean equal(PirTerm left, PirTerm right) {
-        var pending = new ArrayDeque<PirTerm>();
+        var pending = new ArrayList<PirTerm>();
         push(pending, left, right);
         while (!pending.isEmpty()) {
-            PirTerm a = pending.pop();
-            PirTerm b = pending.pop();
+            PirTerm a = pending.removeLast();
+            PirTerm b = pending.removeLast();
             if (a == b) continue;
+            // A record compares a null component by Objects.equals: equal only to null.
+            if (a == null || b == null) return false;
             if (a.getClass() != b.getClass()) return false;
             boolean same = switch (a) {
                 case PirTerm.Let let -> {
@@ -117,12 +120,12 @@ final class PirTermEquality {
     }
 
     /** Pushes the pair so that {@code a} and {@code b} are popped together, {@code a} first. */
-    private static void push(ArrayDeque<PirTerm> pending, PirTerm a, PirTerm b) {
-        pending.push(b);
-        pending.push(a);
+    private static void push(List<PirTerm> pending, PirTerm a, PirTerm b) {
+        pending.add(b);
+        pending.add(a);
     }
 
-    private static boolean pushAll(ArrayDeque<PirTerm> pending, List<PirTerm> a, List<PirTerm> b) {
+    private static boolean pushAll(List<PirTerm> pending, List<PirTerm> a, List<PirTerm> b) {
         if (a.size() != b.size()) return false;
         for (int i = a.size() - 1; i >= 0; i--) push(pending, a.get(i), b.get(i));
         return true;

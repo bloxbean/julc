@@ -11,6 +11,7 @@ import org.julclang.core.source.SourceLocation;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
@@ -266,9 +267,10 @@ public final class DelayedMethodPass {
         var terms = new ArrayList<PirTerm>();
         PirTerm head = app;
         while (head instanceof PirTerm.App next) {
-            terms.addFirst(next.argument());
+            terms.add(next.argument());
             head = next.function();
         }
+        Collections.reverse(terms);
         PirTerm function = head;
         return arguments(terms, 0, bound, reading, new ArrayList<>(), 1).then(read -> {
             if (read == null) return Trampoline.<Known>done(null);

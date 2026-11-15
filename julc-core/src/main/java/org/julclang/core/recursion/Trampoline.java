@@ -3,6 +3,7 @@ package org.julclang.core.recursion;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
 import java.util.function.BiFunction;
 import java.util.function.Function;
@@ -73,18 +74,20 @@ public abstract sealed class Trampoline<T> {
 
     /**
      * {@code step} applied to each item, in order, each finishing before the next starts; the results in an unmodifiable
-     * list of the same order. {@code step} is called when the item's turn comes, not before.
+     * list of the same order. {@code step} is called when the item's turn comes, not before, and must itself return a
+     * computation that has not yet done its work (one that starts with {@link #defer}), or the walk is not stack-safe.
+     * The items are read through one iterator per run, so any {@code List} is walked in linear time.
      */
     public static <A, R> Trampoline<List<R>> each(List<? extends A> items, Function<? super A, Trampoline<R>> step) {
-        return defer(() -> eachFrom(items, 0, step, new ArrayList<>(items.size())));
+        return defer(() -> eachFrom(items.iterator(), step, new ArrayList<>(items.size())));
     }
 
-    private static <A, R> Trampoline<List<R>> eachFrom(List<? extends A> items, int index,
+    private static <A, R> Trampoline<List<R>> eachFrom(Iterator<? extends A> items,
                                                         Function<? super A, Trampoline<R>> step, List<R> results) {
-        if (index == items.size()) return done(Collections.unmodifiableList(results));
-        return step.apply(items.get(index)).then(result -> {
+        if (!items.hasNext()) return done(Collections.unmodifiableList(results));
+        return step.apply(items.next()).then(result -> {
             results.add(result);
-            return eachFrom(items, index + 1, step, results);
+            return eachFrom(items, step, results);
         });
     }
 
@@ -92,26 +95,26 @@ public abstract sealed class Trampoline<T> {
      * Whether {@code test} holds for some item, tested in order and stopping at the first that holds, as {@code ||} does.
      */
     public static <A> Trampoline<Boolean> any(List<? extends A> items, Function<? super A, Trampoline<Boolean>> test) {
-        return defer(() -> anyFrom(items, 0, test));
+        return defer(() -> anyFrom(items.iterator(), test));
     }
 
-    private static <A> Trampoline<Boolean> anyFrom(List<? extends A> items, int index,
+    private static <A> Trampoline<Boolean> anyFrom(Iterator<? extends A> items,
                                                    Function<? super A, Trampoline<Boolean>> test) {
-        if (index == items.size()) return done(false);
-        return test.apply(items.get(index)).then(holds -> holds ? done(true) : anyFrom(items, index + 1, test));
+        if (!items.hasNext()) return done(false);
+        return test.apply(items.next()).then(holds -> holds ? done(true) : anyFrom(items, test));
     }
 
     /**
      * Whether {@code test} holds for every item, tested in order and stopping at the first that fails, as {@code &&} does.
      */
     public static <A> Trampoline<Boolean> all(List<? extends A> items, Function<? super A, Trampoline<Boolean>> test) {
-        return defer(() -> allFrom(items, 0, test));
+        return defer(() -> allFrom(items.iterator(), test));
     }
 
-    private static <A> Trampoline<Boolean> allFrom(List<? extends A> items, int index,
+    private static <A> Trampoline<Boolean> allFrom(Iterator<? extends A> items,
                                                    Function<? super A, Trampoline<Boolean>> test) {
-        if (index == items.size()) return done(true);
-        return test.apply(items.get(index)).then(holds -> holds ? allFrom(items, index + 1, test) : done(false));
+        if (!items.hasNext()) return done(true);
+        return test.apply(items.next()).then(holds -> holds ? allFrom(items, test) : done(false));
     }
 
     /** Runs the computation to its result, using a bounded amount of Java stack whatever its depth. */
