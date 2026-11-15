@@ -155,7 +155,7 @@ are four:
   - per-walk tests comparing against the recursive reference on random terms.
 - **A walk that still recurses.** A missed walk stays a limit. `DeepProgramCompileTest` covers the shapes the issue
   names and others; a new pass must follow D1.
-- **Compile time.** Each converted walk now allocates on the heap. This is measured in Verification.
+- **Compile time.** Each converted walk now allocates on the heap: about 12 % on the replayed corpus (Verification).
 
 ## Verification
 
@@ -225,10 +225,11 @@ are four:
 
 **Suites.** `:julc-core:test`, `:julc-compiler:test` and `:julc-compiler:pairCaseTest` pass. The full `./gradlew build` and the external `julc-examples` are recorded in the PR.
 
-**Cost.** Compile time on ordinary programs is within noise of `main` on the replayed corpus. A reviewer measured 1.35–1.5× on 1,000 to 2,000 interleaved guards, inside a curve that was already superlinear on `main`:
+**Cost.** The heap continuations cost time. Replaying the whole corpus took 67 to 68 s on `main` and 76 to 77 s with this change (two runs each, four threads, wall time including Gradle's start-up of about 15 s). That is about 12 % on the run, and somewhat more on compilation alone. A reviewer measured 1.35 to 1.5 times on 1,000 to 2,000 interleaved guards, inside a curve that was already superlinear on `main`:
 - `freeVariables` of the rest of a block, per statement;
 - `isFree` per `Apply(Lam)` in the optimizer;
-- `remember`'s structural comparison down a changed path.
+- `remember`'s structural comparison down a changed path;
+- indexed reads of javac's linked statement lists in `Statements`, `LoopBody` and `SubsetScan`.
 
 None of these is new, and they are recorded as follow-ups.
 
@@ -236,5 +237,5 @@ None of these is new, and they are recorded as follow-ups.
 
 - A lint that rejects new direct recursion over `PirTerm` or `Term` in the passes.
 - `ValueConverter` (deep result values in the Java VM) and `UplcParser`'s nesting limit.
-- The superlinear costs named under Cost. Making `remember` test identity first would remove the largest, but it
+- The superlinear costs named under Cost, and the remaining indexed reads of javac's linked lists. Making `remember` test identity first would remove the largest, but it
   changes when positions and provenance move, so it needs its own byte check.
