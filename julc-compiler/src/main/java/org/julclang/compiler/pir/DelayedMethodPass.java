@@ -5,11 +5,11 @@ import org.julclang.core.Constant;
 import org.julclang.core.DefaultFun;
 import org.julclang.core.DefaultUni;
 import org.julclang.core.cbor.PlutusDataCborEncoder;
+import org.julclang.core.recursion.Trampoline;
 import org.julclang.core.source.SourceLocation;
 
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -172,7 +172,7 @@ public final class DelayedMethodPass {
     public static boolean mayFail(PirTerm term, Map<String, Constant> env) {
         var bound = new HashMap<String, Known>();
         env.forEach((name, constant) -> bound.put(name, Known.of(constant)));
-        return known(term, bound, new Reading()) == null;
+        return known(term, bound, new Reading()).run() == null;
     }
 
     /** {@link #mayFail(PirTerm, Map)} of a term that takes no argument. */
@@ -199,36 +199,36 @@ public final class DelayedMethodPass {
      *
      * @param bound the variables bound to a total term in scope, and what is known of each
      */
-    private static Known known(PirTerm term, Map<String, Known> bound, Reading reading) {
-        var value = evaluated(term, bound, reading);
-        return value == null || value.work() > WORK_LIMIT ? null : value;
+    private static Trampoline<Known> known(PirTerm term, Map<String, Known> bound, Reading reading) {
+        return evaluated(term, bound, reading).map(value -> value == null || value.work() > WORK_LIMIT ? null : value);
     }
 
-    private static Known evaluated(PirTerm term, Map<String, Known> bound, Reading reading) {
-        return switch (term) {
-            case PirTerm.Const constant -> Known.of(constant.value()).after(1);
-            case PirTerm.Var variable -> bound.containsKey(variable.name()) ? bound.get(variable.name()).after(1) : null;
-            case PirTerm.Lam lam -> Known.of(lam, bound).after(1);
-            case PirTerm.Builtin _ -> Known.of(Kind.OTHER, 0);
-            case PirTerm.Let let -> {
-                var value = known(let.value(), bound, reading);
-                var body = value == null ? null : known(let.body(), with(bound, let.name(), value), reading);
-                yield body == null ? null : body.after(value.work() + 1);
-            }
-            case PirTerm.IfThenElse branch -> {
-                var condition = known(branch.cond(), bound, reading);
-                if (condition == null || condition.kind() != Kind.BOOL) yield null;
-                var then = known(branch.thenBranch(), bound, reading);
-                if (then == null) yield null;
-                var otherwise = known(branch.elseBranch(), bound, reading);
-                if (otherwise == null) yield null;
-                yield Known.of(then.kind() == otherwise.kind() ? then.kind() : Kind.OTHER, Math.max(then.size(), otherwise.size()))
-                        .after(condition.work() + Math.max(then.work(), otherwise.work()) + 1);
-            }
+    /** Stack-safe: a method's body can nest as deeply as it is long (issue #327, ADR-074). */
+    private static Trampoline<Known> evaluated(PirTerm term, Map<String, Known> bound, Reading reading) {
+        return Trampoline.defer(() -> switch (term) {
+            case PirTerm.Const constant -> Trampoline.done(Known.of(constant.value()).after(1));
+            case PirTerm.Var variable -> Trampoline.done(bound.containsKey(variable.name())
+                    ? bound.get(variable.name()).after(1) : null);
+            case PirTerm.Lam lam -> Trampoline.done(Known.of(lam, bound).after(1));
+            case PirTerm.Builtin _ -> Trampoline.done(Known.of(Kind.OTHER, 0));
+            case PirTerm.Let let -> known(let.value(), bound, reading).then(value -> value == null
+                    ? Trampoline.<Known>done(null)
+                    : known(let.body(), with(bound, let.name(), value), reading)
+                            .map(body -> body == null ? null : body.after(value.work() + 1)));
+            case PirTerm.IfThenElse branch -> known(branch.cond(), bound, reading).then(condition -> {
+                if (condition == null || condition.kind() != Kind.BOOL) return Trampoline.<Known>done(null);
+                return known(branch.thenBranch(), bound, reading).then(then -> {
+                    if (then == null) return Trampoline.<Known>done(null);
+                    return known(branch.elseBranch(), bound, reading).map(otherwise -> otherwise == null ? null
+                            : Known.of(then.kind() == otherwise.kind() ? then.kind() : Kind.OTHER,
+                                    Math.max(then.size(), otherwise.size()))
+                            .after(condition.work() + Math.max(then.work(), otherwise.work()) + 1));
+                });
+            });
             case PirTerm.App app -> called(app, bound, reading);
             case PirTerm.DataConstr constr -> constructed(constr, bound, reading);
-            default -> null;
-        };
+            default -> Trampoline.done(null);
+        });
     }
 
     private static Map<String, Known> with(Map<String, Known> bound, String name, Known value) {
@@ -262,28 +262,40 @@ public final class DelayedMethodPass {
     }
 
     /** A builtin in the table, or a bound function, applied to all its arguments, each total. */
-    private static Known called(PirTerm.App app, Map<String, Known> bound, Reading reading) {
-        var terms = new ArrayDeque<PirTerm>();
+    private static Trampoline<Known> called(PirTerm.App app, Map<String, Known> bound, Reading reading) {
+        var terms = new ArrayList<PirTerm>();
         PirTerm head = app;
         while (head instanceof PirTerm.App next) {
             terms.addFirst(next.argument());
             head = next.function();
         }
-        var arguments = new ArrayList<Known>();
-        long work = 1;
-        for (var term : terms) {
-            var argument = known(term, bound, reading);
-            if (argument == null) return null;
-            work += argument.work();
+        PirTerm function = head;
+        return arguments(terms, 0, bound, reading, new ArrayList<>(), 1).then(read -> {
+            if (read == null) return Trampoline.<Known>done(null);
+            if (function instanceof PirTerm.Builtin builtin) {
+                var result = builtinResult(builtin.fun(), read.arguments());
+                return Trampoline.done(result == null ? null : result.after(read.work()));
+            }
+            if (function instanceof PirTerm.Var variable && bound.get(variable.name()) instanceof Known callee
+                    && callee.function() != null) {
+                return functionResult(variable.name(), callee, read.arguments(), reading)
+                        .map(result -> result == null ? null : result.after(read.work()));
+            }
+            return Trampoline.done(null);
+        });
+    }
+
+    /** The arguments of a call read in order, with the work they took; null once one of them may fail. */
+    private record Arguments(List<Known> arguments, long work) {}
+
+    private static Trampoline<Arguments> arguments(List<PirTerm> terms, int index, Map<String, Known> bound,
+                                                   Reading reading, List<Known> arguments, long work) {
+        if (index == terms.size()) return Trampoline.done(new Arguments(arguments, work));
+        return known(terms.get(index), bound, reading).then(argument -> {
+            if (argument == null) return Trampoline.done(null);
             arguments.add(argument.asArgument());
-        }
-        Known result = null;
-        if (head instanceof PirTerm.Builtin builtin) {
-            result = builtinResult(builtin.fun(), arguments);
-        } else if (head instanceof PirTerm.Var function && bound.get(function.name()) instanceof Known callee && callee.function() != null) {
-            result = functionResult(function.name(), callee, arguments, reading);
-        }
-        return result == null ? null : result.after(work);
+            return arguments(terms, index + 1, bound, reading, arguments, work + argument.work());
+        });
     }
 
     private static Known builtinResult(DefaultFun fun, List<Known> arguments) {
@@ -294,42 +306,49 @@ public final class DelayedMethodPass {
     }
 
     /** The result of a function's body, with each parameter bound to its argument: all of them, or the call may fail. */
-    private static Known functionResult(String name, Known callee, List<Known> arguments, Reading reading) {
-        if (!reading.calling().add(name)) return null;
+    private static Trampoline<Known> functionResult(String name, Known callee, List<Known> arguments, Reading reading) {
+        if (!reading.calling().add(name)) return Trampoline.done(null);
         var results = reading.results().computeIfAbsent(callee, ignored -> new HashMap<>());
-        var result = results.get(arguments);
-        if (result == null) {
-            result = Optional.ofNullable(bodyResult(callee, arguments, reading));
-            results.put(arguments, result);
-        }
-        reading.calling().remove(name);
-        return result.orElse(null);
+        var cached = results.get(arguments);
+        Trampoline<Optional<Known>> result = cached != null ? Trampoline.done(cached)
+                : bodyResult(callee, arguments, reading).map(body -> {
+                    var computed = Optional.ofNullable(body);
+                    results.put(arguments, computed);
+                    return computed;
+                });
+        return result.map(known -> {
+            reading.calling().remove(name);
+            return known.orElse(null);
+        });
     }
 
-    private static Known bodyResult(Known callee, List<Known> arguments, Reading reading) {
+    private static Trampoline<Known> bodyResult(Known callee, List<Known> arguments, Reading reading) {
         var scope = callee.scope();
         PirTerm body = callee.function();
         for (var argument : arguments) {
-            if (!(body instanceof PirTerm.Lam lam)) return null;
+            if (!(body instanceof PirTerm.Lam lam)) return Trampoline.done(null);
             scope = with(scope, lam.param(), argument);
             body = lam.body();
         }
-        return body instanceof PirTerm.Lam ? null : known(body, scope, reading);
+        return body instanceof PirTerm.Lam ? Trampoline.done(null) : known(body, scope, reading);
     }
 
     /** A constructor is Data when each field is total and of the kind its declared type encodes. A string field encodes each byte it holds. */
-    private static Known constructed(PirTerm.DataConstr constr, Map<String, Known> bound, Reading reading) {
+    private static Trampoline<Known> constructed(PirTerm.DataConstr constr, Map<String, Known> bound, Reading reading) {
         var fields = fieldTypes(constr);
-        if (fields == null || fields.size() != constr.fields().size() || constr.tag() < 0) return null;
-        long size = 1;   // Held at the limit: past it any builtin that reads the value ends the reading, and sharing cannot wrap it round.
-        long work = 1;
-        for (int i = 0; i < fields.size(); i++) {
-            var field = known(constr.fields().get(i), bound, reading);
-            if (field == null || field.kind() != encoded(fields.get(i))) return null;
-            size = Math.min(size + field.size(), WORK_LIMIT + 1);
-            work += field.work() + (field.kind() == Kind.STRING ? field.size() : 0);
-        }
-        return Known.of(Kind.DATA, size).after(work);
+        if (fields == null || fields.size() != constr.fields().size() || constr.tag() < 0) return Trampoline.done(null);
+        // Held at the limit: past it any builtin that reads the value ends the reading, and sharing cannot wrap it round.
+        return fieldsFrom(constr, fields, 0, bound, reading, 1, 1);
+    }
+
+    private static Trampoline<Known> fieldsFrom(PirTerm.DataConstr constr, List<PirType> fields, int index,
+                                                Map<String, Known> bound, Reading reading, long size, long work) {
+        if (index == fields.size()) return Trampoline.done(Known.of(Kind.DATA, size).after(work));
+        return known(constr.fields().get(index), bound, reading).then(field -> {
+            if (field == null || field.kind() != encoded(fields.get(index))) return Trampoline.<Known>done(null);
+            return fieldsFrom(constr, fields, index + 1, bound, reading, Math.min(size + field.size(), WORK_LIMIT + 1),
+                    work + field.work() + (field.kind() == Kind.STRING ? field.size() : 0));
+        });
     }
 
     private static List<PirType> fieldTypes(PirTerm.DataConstr constr) {
@@ -382,38 +401,47 @@ public final class DelayedMethodPass {
 
     public Result lower(PirTerm term) {
         if (methods.isEmpty()) return new Result(term, positions);
-        return new Result(walk(term, Map.of(), Set.of()), positions);
+        return new Result(walk(term, Map.of(), Set.of()).run(), positions);
     }
 
     /**
-     * @param total   the fields and methods in scope that are bound to a total term, as {@link #known} reads them
-     * @param delayed the delayed binders in scope
+     * Stack-safe (issue #327, ADR-074): a program's term nests as deeply as it has methods and statements.
      */
-    private PirTerm walk(PirTerm term, Map<String, Known> total, Set<String> delayed) {
-        return remember(term, switch (term) {
-            case PirTerm.Var read when delayed.contains(read.name()) -> call(read);
-            case PirTerm.Let let -> walkLet(let, total, delayed);
-            case PirTerm.LetRec rec -> walkLetRec(rec, total, delayed);
-            // A binder of the same name hides a delayed or total one in its scope: PIR is scoped by name, so a read there is not
-            // of the method (two binders of one name: a root's helper and its library copy).
-            case PirTerm.Lam lam when hides(total, delayed, List.of(lam.param())) -> new PirTerm.Lam(lam.param(), lam.paramType(),
-                    walk(lam.body(), without(total, List.of(lam.param())), minus(delayed, List.of(lam.param()))));
-            case PirTerm.PairMatch match when hides(total, delayed, List.of(match.firstName(), match.secondName())) -> {
-                var names = List.of(match.firstName(), match.secondName());
-                yield new PirTerm.PairMatch(walk(match.scrutinee(), total, delayed), match.pairType(), match.firstName(),
-                        match.secondName(), walk(match.body(), without(total, names), minus(delayed, names)));
-            }
-            case PirTerm.ListMatch match when hides(total, delayed, List.of(match.headName(), match.tailName())) -> {
-                var names = List.of(match.headName(), match.tailName());
-                yield new PirTerm.ListMatch(walk(match.scrutinee(), total, delayed), match.headName(), match.tailName(),
-                        walk(match.nilBranch(), total, delayed), walk(match.consBranch(), without(total, names), minus(delayed, names)));
-            }
-            case PirTerm.DataMatch match when match.branches().stream().anyMatch(branch -> hides(total, delayed, bound(branch))) ->
-                    new PirTerm.DataMatch(walk(match.scrutinee(), total, delayed), match.branches().stream().map(branch ->
-                            new PirTerm.MatchBranch(branch.constructorName(), branch.bindings(), branch.bindingTypes(),
-                                    walk(branch.body(), without(total, bound(branch)), minus(delayed, bound(branch))),
-                                    branch.patternVar())).toList());
-            default -> PirHelpers.mapChildren(term, child -> walk(child, total, delayed));
+    private Trampoline<PirTerm> walk(PirTerm term, Map<String, Known> total, Set<String> delayed) {
+        return Trampoline.defer(() -> {
+            Trampoline<PirTerm> rebuilt = switch (term) {
+                case PirTerm.Var read when delayed.contains(read.name()) -> Trampoline.done(call(read));
+                case PirTerm.Let let -> walkLet(let, total, delayed);
+                case PirTerm.LetRec rec -> walkLetRec(rec, total, delayed);
+                // A binder of the same name hides a delayed or total one in its scope: PIR is scoped by name, so a read there is not
+                // of the method (two binders of one name: a root's helper and its library copy).
+                case PirTerm.Lam lam when hides(total, delayed, List.of(lam.param())) ->
+                        walk(lam.body(), without(total, List.of(lam.param())), minus(delayed, List.of(lam.param())))
+                                .map(body -> new PirTerm.Lam(lam.param(), lam.paramType(), body));
+                case PirTerm.PairMatch match when hides(total, delayed, List.of(match.firstName(), match.secondName())) -> {
+                    var names = List.of(match.firstName(), match.secondName());
+                    yield walk(match.scrutinee(), total, delayed).then(scrutinee ->
+                            walk(match.body(), without(total, names), minus(delayed, names))
+                                    .map(body -> new PirTerm.PairMatch(scrutinee, match.pairType(), match.firstName(),
+                                            match.secondName(), body)));
+                }
+                case PirTerm.ListMatch match when hides(total, delayed, List.of(match.headName(), match.tailName())) -> {
+                    var names = List.of(match.headName(), match.tailName());
+                    yield walk(match.scrutinee(), total, delayed).then(scrutinee ->
+                            walk(match.nilBranch(), total, delayed).then(nil ->
+                                    walk(match.consBranch(), without(total, names), minus(delayed, names))
+                                            .map(cons -> new PirTerm.ListMatch(scrutinee, match.headName(),
+                                                    match.tailName(), nil, cons))));
+                }
+                case PirTerm.DataMatch match when match.branches().stream().anyMatch(branch -> hides(total, delayed, bound(branch))) ->
+                        walk(match.scrutinee(), total, delayed).then(scrutinee -> Trampoline.each(match.branches(), branch ->
+                                        walk(branch.body(), without(total, bound(branch)), minus(delayed, bound(branch)))
+                                                .map(body -> new PirTerm.MatchBranch(branch.constructorName(), branch.bindings(),
+                                                        branch.bindingTypes(), body, branch.patternVar())))
+                                .map(branches -> new PirTerm.DataMatch(scrutinee, branches)));
+                default -> PirHelpers.traverseChildren(term, child -> walk(child, total, delayed));
+            };
+            return rebuilt.map(replacement -> remember(term, replacement));
         });
     }
 
@@ -444,23 +472,31 @@ public final class DelayedMethodPass {
         return new PirTerm.App(function, new PirTerm.Const(Constant.unit()));
     }
 
-    private PirTerm walkLet(PirTerm.Let let, Map<String, Known> total, Set<String> delayed) {
-        var value = walk(let.value(), total, delayed);
-        var name = List.of(let.name());
-        // In the body this binder hides any outer one of its name, delayed or total.
-        var visible = minus(delayed, name);
-        if (!methods.contains(let.name()) && !fields.contains(let.name())) {
-            return new PirTerm.Let(let.name(), value, walk(let.body(), without(total, name), visible));
-        }
-        var known = known(value, total, new Reading());
-        if (known != null) return new PirTerm.Let(let.name(), value, walk(let.body(), with(total, let.name(), known), visible));
-        var inner = without(total, name);
-        if (!methods.contains(let.name())) return new PirTerm.Let(let.name(), value, walk(let.body(), inner, visible));
-        return new PirTerm.Let(let.name(), delayedBody(value), walk(let.body(), inner, plus(visible, let.name())));
+    private Trampoline<PirTerm> walkLet(PirTerm.Let let, Map<String, Known> total, Set<String> delayed) {
+        return walk(let.value(), total, delayed).then(value -> {
+            var name = List.of(let.name());
+            // In the body this binder hides any outer one of its name, delayed or total.
+            var visible = minus(delayed, name);
+            if (!methods.contains(let.name()) && !fields.contains(let.name())) {
+                return walk(let.body(), without(total, name), visible).map(body -> new PirTerm.Let(let.name(), value, body));
+            }
+            var known = known(value, total, new Reading()).run();
+            if (known != null) {
+                return walk(let.body(), with(total, let.name(), known), visible)
+                        .map(body -> new PirTerm.Let(let.name(), value, body));
+            }
+            var inner = without(total, name);
+            if (!methods.contains(let.name())) {
+                return walk(let.body(), inner, visible).map(body -> new PirTerm.Let(let.name(), value, body));
+            }
+            var delayedValue = delayedBody(value);
+            return walk(let.body(), inner, plus(visible, let.name()))
+                    .map(body -> new PirTerm.Let(let.name(), delayedValue, body));
+        });
     }
 
     /** A binding of a recursive group that is not a function can only be a method that reads itself, which is not total. */
-    private PirTerm walkLetRec(PirTerm.LetRec rec, Map<String, Known> total, Set<String> delayed) {
+    private Trampoline<PirTerm> walkLetRec(PirTerm.LetRec rec, Map<String, Known> total, Set<String> delayed) {
         var names = rec.bindings().stream().map(PirTerm.Binding::name).toList();
         var inner = minus(delayed, names);
         total = without(total, names);
@@ -469,11 +505,9 @@ public final class DelayedMethodPass {
         }
         var scope = inner;
         var visible = total;
-        var bindings = rec.bindings().stream().map(binding -> {
-            var value = walk(binding.value(), visible, scope);
-            return new PirTerm.Binding(binding.name(), scope.contains(binding.name()) ? delayedBody(value) : value);
-        }).toList();
-        return new PirTerm.LetRec(bindings, walk(rec.body(), visible, scope));
+        return Trampoline.each(rec.bindings(), binding -> walk(binding.value(), visible, scope).map(value ->
+                        new PirTerm.Binding(binding.name(), scope.contains(binding.name()) ? delayedBody(value) : value)))
+                .then(bindings -> walk(rec.body(), visible, scope).map(body -> new PirTerm.LetRec(bindings, body)));
     }
 
     private static PirTerm delayedBody(PirTerm body) {

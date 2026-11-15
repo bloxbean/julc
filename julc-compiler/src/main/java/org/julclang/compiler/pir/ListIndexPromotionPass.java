@@ -4,9 +4,11 @@ import org.julclang.compiler.CompilationContext;
 import org.julclang.compiler.CompilerTarget;
 import org.julclang.compiler.debug.PirDebugProvenance;
 import org.julclang.core.DefaultFun;
+import org.julclang.core.recursion.Trampoline;
 import org.julclang.core.source.SourceLocation;
 import org.julclang.vm.ProtocolCapability;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -15,7 +17,7 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.UnaryOperator;
+import java.util.function.Function;
 
 /**
  * ADR-043 (O9): promote a repeatedly indexed list variable to a PV11 array.
@@ -88,7 +90,7 @@ public final class ListIndexPromotionPass {
         collectNames(term);
         var root = new Method(chain(term));
         analyse(term, root);
-        var rewritten = rewrite(term, Map.of(), new Chain(root, 0));
+        var rewritten = rewrite(term, Map.of(), new Chain(root, 0)).run();
         if (applied) context.recordOptimizationRule(RULE);
         return new Result(rewritten, positions);
     }
@@ -298,7 +300,7 @@ public final class ListIndexPromotionPass {
         analysing = true;
         do {
             refuted = false;
-            visit(term, Map.of(), new Chain(root, 0));
+            visit(term, Map.of(), new Chain(root, 0)).run();
         } while (refuted);
         analysing = false;
     }
@@ -309,62 +311,68 @@ public final class ListIndexPromotionPass {
      * constrains them all, and the chain's body (the first sub-term that is not a lambda, a let
      * or a recursive binding) decides its result.
      */
-    private void visit(PirTerm term, Map<String, Binding> env, Chain chain) {
-        var here = chain;
-        if (here != null && !(term instanceof PirTerm.Lam) && !(term instanceof PirTerm.Let) && !(term instanceof PirTerm.LetRec)) {
-            if (here.method().returns && !producesList(term, env)) {
-                here.method().returns = false;
-                refuted = true;
-            }
-            here = null;
-        }
-        var next = here;
-        switch (term) {
-            case PirTerm.Lam lam -> {
-                boolean list = next != null && next.trusts();
-                visit(lam.body(), list ? bind(env, lam.param(), PROVEN) : unbind(env, lam.param()),
-                        next == null ? null : next.next());
-            }
-            case PirTerm.Let let -> {
-                var method = methodOf(let.name(), let.value());
-                visit(let.value(), env, method == null ? null : new Chain(method, 0));
-                visit(let.body(), bindLet(env, let.name(), method, method == null && producesList(let.value(), env)), next);
-            }
-            case PirTerm.LetRec rec -> {
-                var inner = bindRec(env, rec);
-                rec.bindings().forEach(b -> visit(b.value(), inner, chainOf(inner, b.name())));
-                visit(rec.body(), inner, next);
-            }
-            case PirTerm.App app -> {
-                var arguments = new ArrayList<PirTerm>();
-                PirTerm head = app;
-                while (head instanceof PirTerm.App spine) { arguments.add(spine.argument()); head = spine.function(); }
-                var ordered = arguments.reversed();
-                if (head instanceof PirTerm.Var function) {
-                    if (env.get(function.name()) instanceof Binding.Callable callable) constrain(callable.method(), ordered, env);
-                } else {
-                    visit(head, env, chain(head).isEmpty() ? null : redex(ordered, env));
+    private Trampoline<Void> visit(PirTerm term, Map<String, Binding> env, Chain chain) {
+        return Trampoline.defer(() -> {
+            var here = chain;
+            if (here != null && !(term instanceof PirTerm.Lam) && !(term instanceof PirTerm.Let) && !(term instanceof PirTerm.LetRec)) {
+                if (here.method().returns && !producesList(term, env)) {
+                    here.method().returns = false;
+                    refuted = true;
                 }
-                ordered.forEach(argument -> visit(argument, env, null));
+                here = null;
             }
-            case PirTerm.Var v -> {
-                if (env.get(v.name()) instanceof Binding.Callable callable) constrain(callable.method(), List.of(), env);
-            }
-            case PirTerm.DataMatch match -> {
-                visit(match.scrutinee(), env, null);
-                match.branches().forEach(branch -> visit(branch.body(), matchEnv(env, branch), null));
-            }
-            case PirTerm.ListMatch match -> {
-                visit(match.scrutinee(), env, null);
-                visit(match.nilBranch(), env, null);
-                visit(match.consBranch(), consEnv(env, match), null);
-            }
-            case PirTerm.PairMatch match -> {
-                visit(match.scrutinee(), env, null);
-                visit(match.body(), unbind(env, List.of(match.firstName(), match.secondName())), null);
-            }
-            default -> PirHelpers.mapChildren(term, child -> { visit(child, env, null); return child; });
-        }
+            var next = here;
+            return switch (term) {
+                case PirTerm.Lam lam -> {
+                    boolean list = next != null && next.trusts();
+                    yield visit(lam.body(), list ? bind(env, lam.param(), PROVEN) : unbind(env, lam.param()),
+                            next == null ? null : next.next());
+                }
+                case PirTerm.Let let -> {
+                    var method = methodOf(let.name(), let.value());
+                    yield visit(let.value(), env, method == null ? null : new Chain(method, 0)).then(ignored ->
+                            visit(let.body(), bindLet(env, let.name(), method,
+                                    method == null && producesList(let.value(), env)), next));
+                }
+                case PirTerm.LetRec rec -> {
+                    var inner = bindRec(env, rec);
+                    yield Trampoline.each(rec.bindings(), b -> visit(b.value(), inner, chainOf(inner, b.name())))
+                            .then(ignored -> visit(rec.body(), inner, next));
+                }
+                case PirTerm.App app -> {
+                    var arguments = new ArrayList<PirTerm>();
+                    PirTerm head = app;
+                    while (head instanceof PirTerm.App spine) { arguments.add(spine.argument()); head = spine.function(); }
+                    var ordered = arguments.reversed();
+                    Trampoline<Void> function;
+                    if (head instanceof PirTerm.Var variable) {
+                        if (env.get(variable.name()) instanceof Binding.Callable callable) constrain(callable.method(), ordered, env);
+                        function = Trampoline.done(null);
+                    } else {
+                        function = visit(head, env, chain(head).isEmpty() ? null : redex(ordered, env));
+                    }
+                    yield function.then(ignored -> visitAll(ordered, env));
+                }
+                case PirTerm.Var v -> {
+                    if (env.get(v.name()) instanceof Binding.Callable callable) constrain(callable.method(), List.of(), env);
+                    yield Trampoline.done(null);
+                }
+                case PirTerm.DataMatch match -> visit(match.scrutinee(), env, null).then(ignored ->
+                        Trampoline.each(match.branches(), branch -> visit(branch.body(), matchEnv(env, branch), null))
+                                .map(done -> (Void) null));
+                case PirTerm.ListMatch match -> visit(match.scrutinee(), env, null)
+                        .then(ignored -> visit(match.nilBranch(), env, null))
+                        .then(ignored -> visit(match.consBranch(), consEnv(env, match), null));
+                case PirTerm.PairMatch match -> visit(match.scrutinee(), env, null).then(ignored ->
+                        visit(match.body(), unbind(env, List.of(match.firstName(), match.secondName())), null));
+                default -> visitAll(PirHelpers.children(term), env);
+            };
+        });
+    }
+
+    /** Each term visited in order, off any parameter chain. */
+    private Trampoline<Void> visitAll(List<PirTerm> terms, Map<String, Binding> env) {
+        return Trampoline.each(terms, term -> visit(term, env, null)).map(done -> null);
     }
 
     /** A call with these arguments (evaluated in {@code env}) refutes every parameter it does not feed a proven list. */
@@ -401,60 +409,71 @@ public final class ListIndexPromotionPass {
      * callback in argument position, applied by a list operation to its raw Data elements) is
      * never trusted whatever type it carries.
      */
-    private PirTerm rewrite(PirTerm term, Map<String, Binding> env, Chain chain) {
-        var result = switch (term) {
-            case PirTerm.Let let -> {
-                var method = methodOf(let.name(), let.value());
-                boolean proves = method == null && producesList(let.value(), env);
-                yield new PirTerm.Let(let.name(), rewrite(let.value(), env, method == null ? null : new Chain(method, 0)),
-                        rewrite(proves ? promote(let.body(), let.name()) : let.body(),
-                                bindLet(env, let.name(), method, proves), chain));
-            }
-            case PirTerm.Lam lam -> {
-                boolean list = chain != null && chain.trusts();
-                yield new PirTerm.Lam(lam.param(), lam.paramType(),
-                        rewrite(list ? promote(lam.body(), lam.param()) : lam.body(),
-                                list ? bind(env, lam.param(), PROVEN) : unbind(env, lam.param()),
-                                chain == null ? null : chain.next()));
-            }
-            case PirTerm.App app when appliedChain(app) != null -> {
-                var spine = new ArrayList<PirTerm.App>();   // outermost application first
-                PirTerm head = app;
-                while (head instanceof PirTerm.App node) { spine.add(node); head = node.function(); }
-                var arguments = new ArrayList<PirTerm>(spine.reversed().stream().map(PirTerm.App::argument).toList());
-                PirTerm rebuilt = rewrite(head, env, redex(arguments, env));
-                for (int i = spine.size() - 1; i >= 0; i--) {
-                    var node = spine.get(i);
-                    rebuilt = remember(node, new PirTerm.App(rebuilt, rewrite(node.argument(), env, null)));
+    private Trampoline<PirTerm> rewrite(PirTerm term, Map<String, Binding> env, Chain chain) {
+        return Trampoline.defer(() -> {
+            Trampoline<PirTerm> result = switch (term) {
+                case PirTerm.Let let -> {
+                    var method = methodOf(let.name(), let.value());
+                    boolean proves = method == null && producesList(let.value(), env);
+                    yield rewrite(let.value(), env, method == null ? null : new Chain(method, 0)).then(value ->
+                            rewrite(proves ? promote(let.body(), let.name()) : let.body(),
+                                    bindLet(env, let.name(), method, proves), chain)
+                                    .map(body -> new PirTerm.Let(let.name(), value, body)));
                 }
-                yield rebuilt;
-            }
-            case PirTerm.LetRec rec -> {
-                var inner = bindRec(env, rec);
-                yield new PirTerm.LetRec(rec.bindings().stream()
-                        .map(b -> new PirTerm.Binding(b.name(), rewrite(b.value(), inner, chainOf(inner, b.name())))).toList(),
-                        rewrite(rec.body(), inner, chain));
-            }
-            case PirTerm.DataMatch match -> new PirTerm.DataMatch(rewrite(match.scrutinee(), env, null),
-                    match.branches().stream().map(branch -> {
-                        var body = branch.body();
-                        for (int i = 0; i < branch.bindings().size(); i++) {
-                            if (branch.bindingTypes().get(i) instanceof PirType.ListType) {
-                                body = promote(body, branch.bindings().get(i));
+                case PirTerm.Lam lam -> {
+                    boolean list = chain != null && chain.trusts();
+                    yield rewrite(list ? promote(lam.body(), lam.param()) : lam.body(),
+                            list ? bind(env, lam.param(), PROVEN) : unbind(env, lam.param()),
+                            chain == null ? null : chain.next())
+                            .map(body -> new PirTerm.Lam(lam.param(), lam.paramType(), body));
+                }
+                case PirTerm.App app when appliedChain(app) != null -> {
+                    var spine = new ArrayList<PirTerm.App>();   // outermost application first
+                    PirTerm head = app;
+                    while (head instanceof PirTerm.App node) { spine.add(node); head = node.function(); }
+                    var arguments = new ArrayList<PirTerm>(spine.reversed().stream().map(PirTerm.App::argument).toList());
+                    yield rewrite(head, env, redex(arguments, env))
+                            .then(rebuilt -> rewriteArguments(spine, spine.size() - 1, rebuilt, env));
+                }
+                case PirTerm.LetRec rec -> {
+                    var inner = bindRec(env, rec);
+                    yield Trampoline.each(rec.bindings(), b -> rewrite(b.value(), inner, chainOf(inner, b.name()))
+                                    .map(value -> new PirTerm.Binding(b.name(), value)))
+                            .then(bindings -> rewrite(rec.body(), inner, chain).map(body -> new PirTerm.LetRec(bindings, body)));
+                }
+                case PirTerm.DataMatch match -> rewrite(match.scrutinee(), env, null).then(scrutinee ->
+                        Trampoline.each(match.branches(), branch -> {
+                            var body = branch.body();
+                            for (int i = 0; i < branch.bindings().size(); i++) {
+                                if (branch.bindingTypes().get(i) instanceof PirType.ListType) {
+                                    body = promote(body, branch.bindings().get(i));
+                                }
                             }
-                        }
-                        return new PirTerm.MatchBranch(branch.constructorName(), branch.bindings(),
-                                branch.bindingTypes(), rewrite(body, matchEnv(env, branch), null), branch.patternVar());
-                    }).toList());
-            case PirTerm.ListMatch match -> new PirTerm.ListMatch(rewrite(match.scrutinee(), env, null),
-                    match.headName(), match.tailName(), rewrite(match.nilBranch(), env, null),
-                    rewrite(match.consBranch(), consEnv(env, match), null));
-            case PirTerm.PairMatch match -> new PirTerm.PairMatch(rewrite(match.scrutinee(), env, null),
-                    match.pairType(), match.firstName(), match.secondName(),
-                    rewrite(match.body(), unbind(env, List.of(match.firstName(), match.secondName())), null));
-            default -> PirHelpers.mapChildren(term, child -> rewrite(child, env, null));
-        };
-        return remember(term, result);
+                            return rewrite(body, matchEnv(env, branch), null).map(rewritten ->
+                                    new PirTerm.MatchBranch(branch.constructorName(), branch.bindings(),
+                                            branch.bindingTypes(), rewritten, branch.patternVar()));
+                        }).map(branches -> new PirTerm.DataMatch(scrutinee, branches)));
+                case PirTerm.ListMatch match -> rewrite(match.scrutinee(), env, null).then(scrutinee ->
+                        rewrite(match.nilBranch(), env, null).then(nil ->
+                                rewrite(match.consBranch(), consEnv(env, match), null).map(cons ->
+                                        new PirTerm.ListMatch(scrutinee, match.headName(), match.tailName(), nil, cons))));
+                case PirTerm.PairMatch match -> rewrite(match.scrutinee(), env, null).then(scrutinee ->
+                        rewrite(match.body(), unbind(env, List.of(match.firstName(), match.secondName())), null)
+                                .map(body -> new PirTerm.PairMatch(scrutinee, match.pairType(), match.firstName(),
+                                        match.secondName(), body)));
+                default -> PirHelpers.traverseChildren(term, child -> rewrite(child, env, null));
+            };
+            return result.map(rewritten -> remember(term, rewritten));
+        });
+    }
+
+    /** The applications of a spine rebuilt innermost first, from {@code index} outwards, each argument rewritten in turn. */
+    private Trampoline<PirTerm> rewriteArguments(List<PirTerm.App> spine, int index, PirTerm rebuilt,
+                                                 Map<String, Binding> env) {
+        if (index < 0) return Trampoline.done(rebuilt);
+        var node = spine.get(index);
+        return rewrite(node.argument(), env, null).then(argument ->
+                rewriteArguments(spine, index - 1, remember(node, new PirTerm.App(rebuilt, argument)), env));
     }
 
     /**
@@ -478,50 +497,62 @@ public final class ListIndexPromotionPass {
      * application are not followed.
      */
     boolean producesList(PirTerm term, Map<String, Binding> env) {
-        return switch (term) {
-            case PirTerm.Var v -> env.get(v.name()) instanceof Binding.Proven;
-            case PirTerm.App app -> {
-                PirTerm head = app;
-                int arguments = 0;
-                while (head instanceof PirTerm.App spine) { head = spine.function(); arguments++; }
-                if (head instanceof PirTerm.Builtin builtin) {
-                    yield switch (builtin.fun()) {
-                        case UnListData, TailList, MkCons, MkNilData, DropList -> true;
-                        default -> false;
-                    };
-                }
-                if (head instanceof PirTerm.Var function) {
-                    if (!(env.get(function.name()) instanceof Binding.Callable callable)
-                            || callable.method().proven.length != arguments || !callable.method().returns) {
-                        yield false;
-                    }
-                    PirType type = function.type();
-                    for (int i = 0; i < arguments; i++) {
-                        if (!(type instanceof PirType.FunType fun)) yield false;
-                        type = fun.returnType();
-                    }
-                    yield type instanceof PirType.ListType;
-                }
-                yield false;
-            }
+        return produces(term, env).run();
+    }
+
+    /** {@link #producesList}, stack-safe: a chain of lets or branches can be long (issue #327, ADR-074). */
+    private Trampoline<Boolean> produces(PirTerm term, Map<String, Binding> env) {
+        return Trampoline.defer(() -> switch (term) {
+            case PirTerm.Var v -> Trampoline.done(env.get(v.name()) instanceof Binding.Proven);
+            case PirTerm.App app -> Trampoline.done(callProducesList(app, env));
             case PirTerm.Let let -> {
                 var method = methodOf(let.name(), let.value());
-                yield producesList(let.body(), bindLet(env, let.name(), method, method == null && producesList(let.value(), env)));
+                yield (method == null ? produces(let.value(), env) : Trampoline.done(false))
+                        .then(proves -> produces(let.body(), bindLet(env, let.name(), method, proves)));
             }
-            case PirTerm.LetRec rec -> producesList(rec.body(), bindRec(env, rec));
-            case PirTerm.IfThenElse ite -> (ite.thenBranch() instanceof PirTerm.Error || producesList(ite.thenBranch(), env))
-                    && (ite.elseBranch() instanceof PirTerm.Error || producesList(ite.elseBranch(), env));
-            case PirTerm.Trace trace -> producesList(trace.body(), env);
-            case PirTerm.ListMatch match -> (match.nilBranch() instanceof PirTerm.Error || producesList(match.nilBranch(), env))
-                    && (match.consBranch() instanceof PirTerm.Error || producesList(match.consBranch(), consEnv(env, match)));
-            case PirTerm.PairMatch match -> producesList(match.body(),
+            case PirTerm.LetRec rec -> produces(rec.body(), bindRec(env, rec));
+            case PirTerm.IfThenElse ite -> producesOrFails(ite.thenBranch(), env).then(then -> then
+                    ? producesOrFails(ite.elseBranch(), env) : Trampoline.done(false));
+            case PirTerm.Trace trace -> produces(trace.body(), env);
+            case PirTerm.ListMatch match -> producesOrFails(match.nilBranch(), env).then(nil -> nil
+                    ? producesOrFails(match.consBranch(), consEnv(env, match)) : Trampoline.done(false));
+            case PirTerm.PairMatch match -> produces(match.body(),
                     unbind(env, List.of(match.firstName(), match.secondName())));
-            case PirTerm.DataMatch match -> match.branches().stream().allMatch(b ->
-                    b.body() instanceof PirTerm.Error || producesList(b.body(), matchEnv(env, b)));
-            case PirTerm.IntegerCase c -> c.branches().stream()
-                    .allMatch(b -> b instanceof PirTerm.Error || producesList(b, env));
-            case PirTerm.Const _, PirTerm.Builtin _, PirTerm.Lam _, PirTerm.Error _, PirTerm.DataConstr _ -> false;
-        };
+            case PirTerm.DataMatch match -> Trampoline.all(match.branches(), b -> producesOrFails(b.body(), matchEnv(env, b)));
+            case PirTerm.IntegerCase c -> Trampoline.all(c.branches(), b -> producesOrFails(b, env));
+            case PirTerm.Const _, PirTerm.Builtin _, PirTerm.Lam _, PirTerm.Error _, PirTerm.DataConstr _ -> Trampoline.done(false);
+        });
+    }
+
+    /** A branch that fails, or one that produces a list. */
+    private Trampoline<Boolean> producesOrFails(PirTerm branch, Map<String, Binding> env) {
+        return branch instanceof PirTerm.Error ? Trampoline.done(true) : produces(branch, env);
+    }
+
+    /** {@link #producesList} of an application: a list builtin, or a full call of a method proved to return a list. */
+    private static boolean callProducesList(PirTerm.App app, Map<String, Binding> env) {
+        PirTerm head = app;
+        int arguments = 0;
+        while (head instanceof PirTerm.App spine) { head = spine.function(); arguments++; }
+        if (head instanceof PirTerm.Builtin builtin) {
+            return switch (builtin.fun()) {
+                case UnListData, TailList, MkCons, MkNilData, DropList -> true;
+                default -> false;
+            };
+        }
+        if (head instanceof PirTerm.Var function) {
+            if (!(env.get(function.name()) instanceof Binding.Callable callable)
+                    || callable.method().proven.length != arguments || !callable.method().returns) {
+                return false;
+            }
+            PirType type = function.type();
+            for (int i = 0; i < arguments; i++) {
+                if (!(type instanceof PirType.FunType fun)) return false;
+                type = fun.returnType();
+            }
+            return type instanceof PirType.ListType;
+        }
+        return false;
     }
 
     /**
@@ -542,14 +573,14 @@ public final class ListIndexPromotionPass {
 
     private PirTerm promote(PirTerm scope, String list) {
         var sites = new Sites();
-        collectSites(scope, list, false, sites);
+        collectSites(scope, list, sites);
         if (sites.count == 0 || (sites.count < 2 && !sites.underRecursion)) return scope;
         String array = fresh();
         var arrayType = new PirType.ArrayType(sites.list.type() instanceof PirType.ListType lt
                 ? lt.elemType() : new PirType.DataType());
-        var replaced = replaceSites(scope, list, array, arrayType);
+        var replaced = replaceSites(scope, list, array, arrayType).run();
         applied = true;
-        return place(replaced, sites.list, array, countUses(replaced, array), true);
+        return place(replaced, sites.list, array, countUses(replaced, array), true).run();
     }
 
     /**
@@ -564,91 +595,107 @@ public final class ListIndexPromotionPass {
      * leaves such scopes opaque they cannot hold uses of {@code array}, so those guards are
      * defensive and unreachable, kept so the invariant is explicit at every descent.
      */
-    private PirTerm place(PirTerm term, PirTerm.Var list, String array, int total, boolean chain) {
-        String name = list.name();
-        var result = switch (term) {
-            case PirTerm.Lam lam when chain && !lam.param().equals(name) && countUses(lam.body(), array) == total ->
-                    new PirTerm.Lam(lam.param(), lam.paramType(), place(lam.body(), list, array, total, true));
-            case PirTerm.Let let when countUses(let.value(), array) == total ->
-                    new PirTerm.Let(let.name(), place(let.value(), list, array, total, false), let.body());
-            case PirTerm.Let let when (!let.name().equals(name) || isSelfAlias(let)) && countUses(let.body(), array) == total ->
-                    new PirTerm.Let(let.name(), let.value(), place(let.body(), list, array, total, chain));
-            case PirTerm.App app when countUses(app.function(), array) == total ->
-                    new PirTerm.App(place(app.function(), list, array, total, false), app.argument());
-            case PirTerm.App app when countUses(app.argument(), array) == total ->
-                    new PirTerm.App(app.function(), place(app.argument(), list, array, total, false));
-            case PirTerm.IfThenElse ite when countUses(ite.cond(), array) == total ->
-                    new PirTerm.IfThenElse(place(ite.cond(), list, array, total, false), ite.thenBranch(), ite.elseBranch());
-            case PirTerm.IfThenElse ite when countUses(ite.thenBranch(), array) == total ->
-                    new PirTerm.IfThenElse(ite.cond(), place(ite.thenBranch(), list, array, total, false), ite.elseBranch());
-            case PirTerm.IfThenElse ite when countUses(ite.elseBranch(), array) == total ->
-                    new PirTerm.IfThenElse(ite.cond(), ite.thenBranch(), place(ite.elseBranch(), list, array, total, false));
-            case PirTerm.Trace trace when countUses(trace.message(), array) == total ->
-                    new PirTerm.Trace(place(trace.message(), list, array, total, false), trace.body());
-            case PirTerm.Trace trace when countUses(trace.body(), array) == total ->
-                    new PirTerm.Trace(trace.message(), place(trace.body(), list, array, total, false));
-            case PirTerm.LetRec rec when rec.bindings().stream().noneMatch(b -> b.name().equals(name))
-                    && countUses(rec.body(), array) == total ->
-                    new PirTerm.LetRec(rec.bindings(), place(rec.body(), list, array, total, false));
-            case PirTerm.DataMatch match when countUses(match.scrutinee(), array) == total ->
-                    new PirTerm.DataMatch(place(match.scrutinee(), list, array, total, false), match.branches());
-            case PirTerm.DataMatch match -> {
-                var branches = match.branches();
-                for (int i = 0; i < branches.size(); i++) {
-                    var branch = branches.get(i);
-                    if (branch.bindings().contains(name) || name.equals(branch.patternVar())) continue;
-                    if (countUses(branch.body(), array) != total) continue;
-                    var rebuilt = new ArrayList<>(branches);
-                    rebuilt.set(i, new PirTerm.MatchBranch(branch.constructorName(), branch.bindings(),
-                            branch.bindingTypes(), place(branch.body(), list, array, total, false), branch.patternVar()));
-                    yield new PirTerm.DataMatch(match.scrutinee(), rebuilt);
+    private Trampoline<PirTerm> place(PirTerm term, PirTerm.Var list, String array, int total, boolean chain) {
+        return Trampoline.defer(() -> {
+            String name = list.name();
+            Trampoline<PirTerm> result = switch (term) {
+                case PirTerm.Lam lam when chain && !lam.param().equals(name) && countUses(lam.body(), array) == total ->
+                        place(lam.body(), list, array, total, true).map(body -> new PirTerm.Lam(lam.param(), lam.paramType(), body));
+                case PirTerm.Let let when countUses(let.value(), array) == total ->
+                        place(let.value(), list, array, total, false).map(value -> new PirTerm.Let(let.name(), value, let.body()));
+                case PirTerm.Let let when (!let.name().equals(name) || isSelfAlias(let)) && countUses(let.body(), array) == total ->
+                        place(let.body(), list, array, total, chain).map(body -> new PirTerm.Let(let.name(), let.value(), body));
+                case PirTerm.App app when countUses(app.function(), array) == total ->
+                        place(app.function(), list, array, total, false).map(function -> new PirTerm.App(function, app.argument()));
+                case PirTerm.App app when countUses(app.argument(), array) == total ->
+                        place(app.argument(), list, array, total, false).map(argument -> new PirTerm.App(app.function(), argument));
+                case PirTerm.IfThenElse ite when countUses(ite.cond(), array) == total ->
+                        place(ite.cond(), list, array, total, false)
+                                .map(cond -> new PirTerm.IfThenElse(cond, ite.thenBranch(), ite.elseBranch()));
+                case PirTerm.IfThenElse ite when countUses(ite.thenBranch(), array) == total ->
+                        place(ite.thenBranch(), list, array, total, false)
+                                .map(then -> new PirTerm.IfThenElse(ite.cond(), then, ite.elseBranch()));
+                case PirTerm.IfThenElse ite when countUses(ite.elseBranch(), array) == total ->
+                        place(ite.elseBranch(), list, array, total, false)
+                                .map(otherwise -> new PirTerm.IfThenElse(ite.cond(), ite.thenBranch(), otherwise));
+                case PirTerm.Trace trace when countUses(trace.message(), array) == total ->
+                        place(trace.message(), list, array, total, false).map(message -> new PirTerm.Trace(message, trace.body()));
+                case PirTerm.Trace trace when countUses(trace.body(), array) == total ->
+                        place(trace.body(), list, array, total, false).map(body -> new PirTerm.Trace(trace.message(), body));
+                case PirTerm.LetRec rec when rec.bindings().stream().noneMatch(b -> b.name().equals(name))
+                        && countUses(rec.body(), array) == total ->
+                        place(rec.body(), list, array, total, false).map(body -> new PirTerm.LetRec(rec.bindings(), body));
+                case PirTerm.DataMatch match when countUses(match.scrutinee(), array) == total ->
+                        place(match.scrutinee(), list, array, total, false)
+                                .map(scrutinee -> new PirTerm.DataMatch(scrutinee, match.branches()));
+                case PirTerm.DataMatch match -> {
+                    var branches = match.branches();
+                    for (int i = 0; i < branches.size(); i++) {
+                        var branch = branches.get(i);
+                        if (branch.bindings().contains(name) || name.equals(branch.patternVar())) continue;
+                        if (countUses(branch.body(), array) != total) continue;
+                        int index = i;
+                        yield place(branch.body(), list, array, total, false).map(body -> {
+                            var rebuilt = new ArrayList<>(branches);
+                            rebuilt.set(index, new PirTerm.MatchBranch(branch.constructorName(), branch.bindings(),
+                                    branch.bindingTypes(), body, branch.patternVar()));
+                            return new PirTerm.DataMatch(match.scrutinee(), rebuilt);
+                        });
+                    }
+                    yield Trampoline.done(bind(term, list, array));
                 }
-                yield bind(term, list, array);
-            }
-            case PirTerm.ListMatch match when countUses(match.scrutinee(), array) == total ->
-                    new PirTerm.ListMatch(place(match.scrutinee(), list, array, total, false), match.headName(),
-                            match.tailName(), match.nilBranch(), match.consBranch());
-            case PirTerm.ListMatch match when countUses(match.nilBranch(), array) == total ->
-                    new PirTerm.ListMatch(match.scrutinee(), match.headName(), match.tailName(),
-                            place(match.nilBranch(), list, array, total, false), match.consBranch());
-            case PirTerm.ListMatch match when !match.headName().equals(name) && !match.tailName().equals(name)
-                    && countUses(match.consBranch(), array) == total ->
-                    new PirTerm.ListMatch(match.scrutinee(), match.headName(), match.tailName(),
-                            match.nilBranch(), place(match.consBranch(), list, array, total, false));
-            case PirTerm.PairMatch match when countUses(match.scrutinee(), array) == total ->
-                    new PirTerm.PairMatch(place(match.scrutinee(), list, array, total, false), match.pairType(),
-                            match.firstName(), match.secondName(), match.body());
-            case PirTerm.PairMatch match when !match.firstName().equals(name) && !match.secondName().equals(name)
-                    && countUses(match.body(), array) == total ->
-                    new PirTerm.PairMatch(match.scrutinee(), match.pairType(), match.firstName(),
-                            match.secondName(), place(match.body(), list, array, total, false));
-            case PirTerm.IntegerCase c when countUses(c.scrutinee(), array) == total ->
-                    new PirTerm.IntegerCase(place(c.scrutinee(), list, array, total, false), c.branches());
-            case PirTerm.IntegerCase c -> {
-                var branches = c.branches();
-                for (int i = 0; i < branches.size(); i++) {
-                    if (countUses(branches.get(i), array) != total) continue;
-                    var rebuilt = new ArrayList<>(branches);
-                    rebuilt.set(i, place(branches.get(i), list, array, total, false));
-                    yield new PirTerm.IntegerCase(c.scrutinee(), rebuilt);
+                case PirTerm.ListMatch match when countUses(match.scrutinee(), array) == total ->
+                        place(match.scrutinee(), list, array, total, false).map(scrutinee -> new PirTerm.ListMatch(scrutinee,
+                                match.headName(), match.tailName(), match.nilBranch(), match.consBranch()));
+                case PirTerm.ListMatch match when countUses(match.nilBranch(), array) == total ->
+                        place(match.nilBranch(), list, array, total, false).map(nil -> new PirTerm.ListMatch(match.scrutinee(),
+                                match.headName(), match.tailName(), nil, match.consBranch()));
+                case PirTerm.ListMatch match when !match.headName().equals(name) && !match.tailName().equals(name)
+                        && countUses(match.consBranch(), array) == total ->
+                        place(match.consBranch(), list, array, total, false).map(cons -> new PirTerm.ListMatch(match.scrutinee(),
+                                match.headName(), match.tailName(), match.nilBranch(), cons));
+                case PirTerm.PairMatch match when countUses(match.scrutinee(), array) == total ->
+                        place(match.scrutinee(), list, array, total, false).map(scrutinee -> new PirTerm.PairMatch(scrutinee,
+                                match.pairType(), match.firstName(), match.secondName(), match.body()));
+                case PirTerm.PairMatch match when !match.firstName().equals(name) && !match.secondName().equals(name)
+                        && countUses(match.body(), array) == total ->
+                        place(match.body(), list, array, total, false).map(body -> new PirTerm.PairMatch(match.scrutinee(),
+                                match.pairType(), match.firstName(), match.secondName(), body));
+                case PirTerm.IntegerCase c when countUses(c.scrutinee(), array) == total ->
+                        place(c.scrutinee(), list, array, total, false)
+                                .map(scrutinee -> new PirTerm.IntegerCase(scrutinee, c.branches()));
+                case PirTerm.IntegerCase c -> {
+                    var branches = c.branches();
+                    for (int i = 0; i < branches.size(); i++) {
+                        if (countUses(branches.get(i), array) != total) continue;
+                        int index = i;
+                        yield place(branches.get(i), list, array, total, false).map(branch -> {
+                            var rebuilt = new ArrayList<>(branches);
+                            rebuilt.set(index, branch);
+                            return new PirTerm.IntegerCase(c.scrutinee(), rebuilt);
+                        });
+                    }
+                    yield Trampoline.done(bind(term, list, array));
                 }
-                yield bind(term, list, array);
-            }
-            case PirTerm.DataConstr constr -> {
-                var fields = constr.fields();
-                for (int i = 0; i < fields.size(); i++) {
-                    if (countUses(fields.get(i), array) != total) continue;
-                    var rebuilt = new ArrayList<>(fields);
-                    rebuilt.set(i, place(fields.get(i), list, array, total, false));
-                    yield new PirTerm.DataConstr(constr.tag(), constr.dataType(), rebuilt);
+                case PirTerm.DataConstr constr -> {
+                    var fields = constr.fields();
+                    for (int i = 0; i < fields.size(); i++) {
+                        if (countUses(fields.get(i), array) != total) continue;
+                        int index = i;
+                        yield place(fields.get(i), list, array, total, false).map(field -> {
+                            var rebuilt = new ArrayList<>(fields);
+                            rebuilt.set(index, field);
+                            return new PirTerm.DataConstr(constr.tag(), constr.dataType(), rebuilt);
+                        });
+                    }
+                    yield Trampoline.done(bind(term, list, array));
                 }
-                yield bind(term, list, array);
-            }
-            // A callback lambda may run any number of times; a bare use, constant or error is
-            // the tightest scope there is.
-            default -> bind(term, list, array);
-        };
-        return remember(term, result);
+                // A callback lambda may run any number of times; a bare use, constant or error is
+                // the tightest scope there is.
+                default -> Trampoline.done(bind(term, list, array));
+            };
+            return result.map(placed -> remember(term, placed));
+        });
     }
 
     private PirTerm bind(PirTerm body, PirTerm.Var list, String array) {
@@ -672,103 +719,140 @@ public final class ListIndexPromotionPass {
         return ((PirTerm.App) ((PirTerm.LetRec) site).body()).argument();
     }
 
-    private void collectSites(PirTerm term, String list, boolean underRecursion, Sites sites) {
-        var indexed = indexedList(term);
-        if (indexed != null && indexed.name().equals(list)) {
-            sites.count++;
-            sites.underRecursion |= underRecursion;
-            if (sites.list == null) sites.list = indexed;
-            collectSites(indexOf(term), list, underRecursion, sites);
-            return;
-        }
-        switch (term) {
-            case PirTerm.Lam lam when lam.param().equals(list) -> { }
-            case PirTerm.Let let when let.name().equals(list) && !isSelfAlias(let) ->
-                    collectSites(let.value(), list, underRecursion, sites);
-            case PirTerm.LetRec rec -> {
-                if (rec.bindings().stream().anyMatch(b -> b.name().equals(list))) return;
-                rec.bindings().forEach(b -> collectSites(b.value(), list, true, sites));
-                collectSites(rec.body(), list, underRecursion, sites);
+    /**
+     * The sites of this binding of {@code list} in {@code scope}, in pre-order (the first fixes {@link Sites#list}). A work
+     * list, not recursion (issue #327).
+     */
+    private void collectSites(PirTerm scope, String list, Sites sites) {
+        record Visit(PirTerm term, boolean underRecursion) {}
+        var pending = new ArrayDeque<Visit>();
+        pending.push(new Visit(scope, false));
+        while (!pending.isEmpty()) {
+            var visit = pending.pop();
+            var term = visit.term();
+            boolean underRecursion = visit.underRecursion();
+            var indexed = indexedList(term);
+            if (indexed != null && indexed.name().equals(list)) {
+                sites.count++;
+                sites.underRecursion |= underRecursion;
+                if (sites.list == null) sites.list = indexed;
+                pending.push(new Visit(indexOf(term), underRecursion));
+                continue;
             }
-            case PirTerm.ListMatch match -> {
-                collectSites(match.scrutinee(), list, underRecursion, sites);
-                collectSites(match.nilBranch(), list, underRecursion, sites);
-                if (!match.headName().equals(list) && !match.tailName().equals(list)) {
-                    collectSites(match.consBranch(), list, underRecursion, sites);
-                }
-            }
-            case PirTerm.PairMatch match -> {
-                collectSites(match.scrutinee(), list, underRecursion, sites);
-                if (!match.firstName().equals(list) && !match.secondName().equals(list)) {
-                    collectSites(match.body(), list, underRecursion, sites);
-                }
-            }
-            case PirTerm.DataMatch match -> {
-                collectSites(match.scrutinee(), list, underRecursion, sites);
-                match.branches().forEach(b -> {
-                    if (!b.bindings().contains(list) && !list.equals(b.patternVar())) {
-                        collectSites(b.body(), list, underRecursion, sites);
+            var next = new ArrayList<Visit>();
+            switch (term) {
+                case PirTerm.Lam lam when lam.param().equals(list) -> { }
+                case PirTerm.Let let when let.name().equals(list) && !isSelfAlias(let) ->
+                        next.add(new Visit(let.value(), underRecursion));
+                case PirTerm.LetRec rec -> {
+                    if (rec.bindings().stream().noneMatch(b -> b.name().equals(list))) {
+                        rec.bindings().forEach(b -> next.add(new Visit(b.value(), true)));
+                        next.add(new Visit(rec.body(), underRecursion));
                     }
-                });
+                }
+                case PirTerm.ListMatch match -> {
+                    next.add(new Visit(match.scrutinee(), underRecursion));
+                    next.add(new Visit(match.nilBranch(), underRecursion));
+                    if (!match.headName().equals(list) && !match.tailName().equals(list)) {
+                        next.add(new Visit(match.consBranch(), underRecursion));
+                    }
+                }
+                case PirTerm.PairMatch match -> {
+                    next.add(new Visit(match.scrutinee(), underRecursion));
+                    if (!match.firstName().equals(list) && !match.secondName().equals(list)) {
+                        next.add(new Visit(match.body(), underRecursion));
+                    }
+                }
+                case PirTerm.DataMatch match -> {
+                    next.add(new Visit(match.scrutinee(), underRecursion));
+                    match.branches().forEach(b -> {
+                        if (!b.bindings().contains(list) && !list.equals(b.patternVar())) {
+                            next.add(new Visit(b.body(), underRecursion));
+                        }
+                    });
+                }
+                default -> PirHelpers.children(term).forEach(child -> next.add(new Visit(child, underRecursion)));
             }
-            default -> PirHelpers.mapChildren(term, child -> { collectSites(child, list, underRecursion, sites); return child; });
+            for (int i = next.size() - 1; i >= 0; i--) pending.push(next.get(i));
         }
     }
 
     /** Rewrite every site of this binding of {@code list} to {@code IndexArray(array, index)}; rebindings are opaque. */
-    private PirTerm replaceSites(PirTerm term, String list, String array, PirType arrayType) {
-        var indexed = indexedList(term);
-        if (indexed != null && indexed.name().equals(list)) {
-            var index = replaceSites(indexOf(term), list, array, arrayType);
-            return remember(term, PirHelpers.builtinApp2(DefaultFun.IndexArray, new PirTerm.Var(array, arrayType), index));
-        }
-        UnaryOperator<PirTerm> recurse = child -> replaceSites(child, list, array, arrayType);
-        var result = switch (term) {
-            case PirTerm.Lam lam when lam.param().equals(list) -> term;
-            case PirTerm.Let let when let.name().equals(list) && !isSelfAlias(let) ->
-                    new PirTerm.Let(let.name(), recurse.apply(let.value()), let.body());
-            case PirTerm.LetRec rec when rec.bindings().stream().anyMatch(b -> b.name().equals(list)) -> term;
-            case PirTerm.ListMatch match -> new PirTerm.ListMatch(recurse.apply(match.scrutinee()),
-                    match.headName(), match.tailName(), recurse.apply(match.nilBranch()),
-                    match.headName().equals(list) || match.tailName().equals(list)
-                            ? match.consBranch() : recurse.apply(match.consBranch()));
-            case PirTerm.PairMatch match -> new PirTerm.PairMatch(recurse.apply(match.scrutinee()), match.pairType(),
-                    match.firstName(), match.secondName(),
-                    match.firstName().equals(list) || match.secondName().equals(list)
-                            ? match.body() : recurse.apply(match.body()));
-            case PirTerm.DataMatch match -> new PirTerm.DataMatch(recurse.apply(match.scrutinee()),
-                    match.branches().stream().map(b -> new PirTerm.MatchBranch(b.constructorName(), b.bindings(),
-                            b.bindingTypes(), b.bindings().contains(list) || list.equals(b.patternVar())
-                                    ? b.body() : recurse.apply(b.body()), b.patternVar())).toList());
-            default -> PirHelpers.mapChildren(term, recurse);
-        };
-        return remember(term, result);
+    private Trampoline<PirTerm> replaceSites(PirTerm term, String list, String array, PirType arrayType) {
+        return Trampoline.defer(() -> {
+            var indexed = indexedList(term);
+            if (indexed != null && indexed.name().equals(list)) {
+                return replaceSites(indexOf(term), list, array, arrayType).map(index -> remember(term,
+                        PirHelpers.builtinApp2(DefaultFun.IndexArray, new PirTerm.Var(array, arrayType), index)));
+            }
+            Function<PirTerm, Trampoline<PirTerm>> recurse = child -> replaceSites(child, list, array, arrayType);
+            Trampoline<PirTerm> result = switch (term) {
+                case PirTerm.Lam lam when lam.param().equals(list) -> Trampoline.done(term);
+                case PirTerm.Let let when let.name().equals(list) && !isSelfAlias(let) ->
+                        recurse.apply(let.value()).map(value -> new PirTerm.Let(let.name(), value, let.body()));
+                case PirTerm.LetRec rec when rec.bindings().stream().anyMatch(b -> b.name().equals(list)) -> Trampoline.done(term);
+                case PirTerm.ListMatch match -> recurse.apply(match.scrutinee()).then(scrutinee ->
+                        recurse.apply(match.nilBranch()).then(nil ->
+                                (match.headName().equals(list) || match.tailName().equals(list)
+                                        ? Trampoline.done(match.consBranch()) : recurse.apply(match.consBranch()))
+                                        .map(cons -> new PirTerm.ListMatch(scrutinee, match.headName(), match.tailName(),
+                                                nil, cons))));
+                case PirTerm.PairMatch match -> recurse.apply(match.scrutinee()).then(scrutinee ->
+                        (match.firstName().equals(list) || match.secondName().equals(list)
+                                ? Trampoline.done(match.body()) : recurse.apply(match.body()))
+                                .map(body -> new PirTerm.PairMatch(scrutinee, match.pairType(), match.firstName(),
+                                        match.secondName(), body)));
+                case PirTerm.DataMatch match -> recurse.apply(match.scrutinee()).then(scrutinee ->
+                        Trampoline.each(match.branches(), b ->
+                                        (b.bindings().contains(list) || list.equals(b.patternVar())
+                                                ? Trampoline.done(b.body()) : recurse.apply(b.body()))
+                                                .map(body -> new PirTerm.MatchBranch(b.constructorName(), b.bindings(),
+                                                        b.bindingTypes(), body, b.patternVar())))
+                                .map(branches -> new PirTerm.DataMatch(scrutinee, branches)));
+                default -> PirHelpers.traverseChildren(term, recurse);
+            };
+            return result.map(replaced -> remember(term, replaced));
+        });
     }
 
-    /** Occurrences of the fresh array variable (never shadowed, so a plain count). */
+    /** Occurrences of the fresh array variable (never shadowed, so a plain count). A work list, not recursion. */
     private static int countUses(PirTerm term, String array) {
-        if (term instanceof PirTerm.Var var) return var.name().equals(array) ? 1 : 0;
-        int[] count = {0};
-        PirHelpers.mapChildren(term, child -> { count[0] += countUses(child, array); return child; });
-        return count[0];
+        int count = 0;
+        var pending = new ArrayDeque<PirTerm>();
+        pending.push(term);
+        while (!pending.isEmpty()) {
+            var next = pending.pop();
+            if (next instanceof PirTerm.Var var) {
+                if (var.name().equals(array)) count++;
+                continue;
+            }
+            PirHelpers.children(next).forEach(pending::push);
+        }
+        return count;
     }
 
-    private void collectNames(PirTerm term) {
-        switch (term) {
-            case PirTerm.Var v -> names.add(v.name());
-            case PirTerm.Lam l -> names.add(l.param());
-            case PirTerm.Let l -> names.add(l.name());
-            case PirTerm.LetRec r -> r.bindings().forEach(b -> names.add(b.name()));
-            case PirTerm.ListMatch m -> { names.add(m.headName()); names.add(m.tailName()); }
-            case PirTerm.PairMatch m -> { names.add(m.firstName()); names.add(m.secondName()); }
-            case PirTerm.DataMatch m -> m.branches().forEach(b -> {
-                names.addAll(b.bindings());
-                if (b.patternVar() != null) names.add(b.patternVar());
-            });
-            case PirTerm.IntegerCase _, PirTerm.App _, PirTerm.Const _, PirTerm.Builtin _, PirTerm.Error _,
-                 PirTerm.IfThenElse _, PirTerm.Trace _, PirTerm.DataConstr _ -> { }
+    /** Every name the term binds or reads. A work list, not recursion (issue #327). */
+    private void collectNames(PirTerm root) {
+        var pending = new ArrayDeque<PirTerm>();
+        pending.push(root);
+        while (!pending.isEmpty()) {
+            var term = pending.pop();
+            switch (term) {
+                case PirTerm.Var v -> names.add(v.name());
+                case PirTerm.Lam l -> names.add(l.param());
+                case PirTerm.Let l -> names.add(l.name());
+                case PirTerm.LetRec r -> r.bindings().forEach(b -> names.add(b.name()));
+                case PirTerm.ListMatch m -> { names.add(m.headName()); names.add(m.tailName()); }
+                case PirTerm.PairMatch m -> { names.add(m.firstName()); names.add(m.secondName()); }
+                case PirTerm.DataMatch m -> m.branches().forEach(b -> {
+                    names.addAll(b.bindings());
+                    if (b.patternVar() != null) names.add(b.patternVar());
+                });
+                case PirTerm.IntegerCase _, PirTerm.App _, PirTerm.Const _, PirTerm.Builtin _, PirTerm.Error _,
+                     PirTerm.IfThenElse _, PirTerm.Trace _, PirTerm.DataConstr _ -> { }
+            }
+            PirHelpers.children(term).forEach(pending::push);
         }
-        PirHelpers.mapChildren(term, child -> { collectNames(child); return child; });
     }
 
     private String fresh() {
