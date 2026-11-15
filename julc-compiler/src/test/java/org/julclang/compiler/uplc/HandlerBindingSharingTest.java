@@ -24,8 +24,10 @@ import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 /**
  * The guards of ADR-076 D1 that {@link HandlerBindingSharingFuzzTest}'s programs do not reach: a value that is not
- * total, the fixpoint closed-value sharing leaves behind, a binding inside another's value, an open term, and a long
- * chain, which must be decided in time near linear in the program.
+ * total, the fixpoint closed-value sharing leaves behind (and a binder that only looks like it), a binding inside
+ * another's value or under a lambda, an open term, and a long chain. The decision walks the program a bounded number of
+ * times per round of exclusions; finding the branch point and rebuilding each shared value's scope are linear in the
+ * program's depth for each method, so a chain of n methods costs O(n * depth) at worst: 4,000 take well under a second.
  */
 class HandlerBindingSharingTest {
 
@@ -124,6 +126,13 @@ class HandlerBindingSharingTest {
         // The same shape over a binder that is not the Z combinator is not a value known to be total.
         Term withOther = Term.apply(Term.lam("#z", twoHandlers(handler)), Term.lam("#f", Term.error()));
         assertSame(withOther, HandlerBindingSharing.share(withOther, candidates("A.f")));
+
+        // Codex round 7: let #z = (let #z = Z in \f. trace "boom" (#z f)) in ...: the inner #z is Z and has the outer's
+        // name and depth, but the handlers read the outer, which traces. A binder is known by its declaration.
+        Term wrapper = Term.apply(Term.lam("#z", Term.lam("#f", Term.apply(Term.apply(Term.force(Term.builtin(DefaultFun.Trace)),
+                Term.const_(Constant.string("boom"))), Term.apply(Term.var(2), Term.var(1))))), ClosedValueSharing.Z);
+        Term shadowed = Term.apply(Term.lam("#z", twoHandlers(handler)), wrapper);
+        assertSame(shadowed, HandlerBindingSharing.share(shadowed, candidates("A.f")));
     }
 
     @Test
@@ -166,7 +175,7 @@ class HandlerBindingSharingTest {
     }
 
     @Test
-    void aLongChainIsDecidedInTimeNearLinearInTheProgram() {
+    void aLongChainIsDecidedQuickly() {
         int methods = 4_000;
         var names = new LinkedHashSet<String>();
         for (int m = 0; m < methods; m++) names.add("A.m" + m);

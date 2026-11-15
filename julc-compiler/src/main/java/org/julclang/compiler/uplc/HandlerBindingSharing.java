@@ -17,6 +17,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 
 /**
  * Binds once, where a multi-purpose validator's handlers branch apart, a method every handler binds to the same function
@@ -60,10 +61,24 @@ final class HandlerBindingSharing {
     private HandlerBindingSharing() {
     }
 
-    /** The binders around a term, innermost first, and how many there are. */
-    private record Scope(String name, Scope outer, int depth) {
-        static Scope push(Scope outer, String name) {
-            return new Scope(name, outer, depth(outer) + 1);
+    /**
+     * The binders around a term, innermost first, and how many there are. One {@code Scope} per binder the walk meets,
+     * shared by every term in its scope, so a binder is known by the object, not by its name and depth, which two
+     * binders can share. {@code fixpoint} marks the binder of a {@code let} whose value is the Z combinator.
+     */
+    private record Scope(String name, Scope outer, int depth, boolean fixpoint) {
+        static Scope push(Scope outer, String name, boolean fixpoint) {
+            return new Scope(name, outer, depth(outer) + 1, fixpoint);
+        }
+
+        @Override
+        public boolean equals(Object other) {
+            return this == other;
+        }
+
+        @Override
+        public int hashCode() {
+            return System.identityHashCode(this);
         }
 
         static int depth(Scope scope) {
@@ -121,13 +136,19 @@ final class HandlerBindingSharing {
      * that a deferring step (into a delay, a case branch or a lambda other than a {@code let}'s) follows.
      */
     private record Visit(Term term, Scope scope, Path path, int spine, int lambdas, boolean letFunction,
-                         int lastValue, int deferredInValue) {
+                         int lastValue, int deferredInValue, String binds, boolean fixpoint) {
         /** The visit of a child at {@code path}, reached by a step that defers it or not, or enters a let's value. */
         Visit child(Term term, Scope scope, Path path, int spine, int lambdas, boolean letFunction, boolean deferred,
                     boolean value) {
+            return child(term, scope, path, spine, lambdas, letFunction, deferred, value, null, false);
+        }
+
+        /** {@link #child}, for a let's lambda: the method it binds, if a candidate, and whether its value is Z. */
+        Visit child(Term term, Scope scope, Path path, int spine, int lambdas, boolean letFunction, boolean deferred,
+                    boolean value, String binds, boolean fixpoint) {
             int position = Path.length(path);
             return new Visit(term, scope, path, spine, lambdas, letFunction, value ? position : lastValue,
-                    deferred ? Math.max(deferredInValue, lastValue) : deferredInValue);
+                    deferred ? Math.max(deferredInValue, lastValue) : deferredInValue, binds, fixpoint);
         }
     }
 
@@ -141,18 +162,10 @@ final class HandlerBindingSharing {
         Term value() {
             return binding.argument();
         }
-
-        /** The binder's own depth: one more than the binders around the binding. */
-        int binderDepth() {
-            return Scope.depth(scope) + 1;
-        }
     }
 
-    private record Binder(String name, int depth) {
-    }
-
-    /** What one walk of the term finds. */
-    private record Census(Map<String, List<Occurrence>> occurrences, Set<Binder> fixpoints) {
+    /** What one walk of the term finds: each candidate's bindings, and the binder each binding declares. */
+    private record Census(Map<String, List<Occurrence>> occurrences, Map<Scope, String> methodBinders) {
     }
 
     /** Where the shared bindings go: the term's steps from the root, the binders around it, and what lies above it. */
@@ -184,7 +197,7 @@ final class HandlerBindingSharing {
             var spines = new HashSet<Integer>();
             for (var occurrence : found) spines.add(occurrence.spine());
             if (found.size() == handlers.handlers() && spines.size() == found.size()
-                    && isTotalValue(first.value(), first.scope(), census.fixpoints())
+                    && isTotalValue(first.value(), first.scope())
                     && !UplcOptimizer.inlinesWhenUsedOnce(first.value())
                     && found.stream().allMatch(other -> sameFunction(first, other, handlers.names()))) {
                 shared.add(entry.getKey());
@@ -197,10 +210,6 @@ final class HandlerBindingSharing {
             if (shared.isEmpty()) return term;
             point = point(term, occurrences, shared);
             if (point == null) return term;
-            var binders = new HashSet<Binder>();
-            for (String name : shared) {
-                for (var occurrence : occurrences.get(name)) binders.add(new Binder(name, occurrence.binderDepth()));
-            }
             dependencies = new HashMap<>();
             var excluded = new HashSet<String>();
             for (String name : shared) {
@@ -211,7 +220,7 @@ final class HandlerBindingSharing {
                     // method's value, which a binding inside it moves with.
                     boolean onItsSpine = occurrence.lambdas() == point.lambdas()
                             && occurrence.deferredInValue() <= point.steps().length;
-                    if (!onItsSpine || !readsOnlyWhatIsInScope(occurrence, point.depth(), shared, binders, reads)) {
+                    if (!onItsSpine || !readsOnlyWhatIsInScope(occurrence, point.depth(), shared, census.methodBinders(), reads)) {
                         excluded.add(name);
                     }
                 }
@@ -253,9 +262,9 @@ final class HandlerBindingSharing {
      */
     private static Census census(Term term, Set<String> names) {
         var occurrences = new LinkedHashMap<String, List<Occurrence>>();
-        var fixpoints = new HashSet<Binder>();
+        var methodBinders = new HashMap<Scope, String>();
         var pending = new ArrayDeque<Visit>();
-        pending.push(new Visit(term, null, null, 0, 0, false, 0, 0));
+        pending.push(new Visit(term, null, null, 0, 0, false, 0, 0, null, false));
         // Each step that does not continue a let spine starts a new one, with a number of its own.
         int spines = 1;
         while (!pending.isEmpty()) {
@@ -268,22 +277,24 @@ final class HandlerBindingSharing {
                 }
                 case Term.Apply apply -> {
                     boolean let = apply.function() instanceof Term.Lam;
-                    if (apply.function() instanceof Term.Lam(var name, var _)) {
-                        if (names.contains(name)) {
-                            occurrences.computeIfAbsent(name, n -> new ArrayList<>()).add(new Occurrence(name, apply, visit));
-                        }
-                        if (UplcOptimizer.alphaEquals(apply.argument(), ClosedValueSharing.Z)) {
-                            fixpoints.add(new Binder(name, Scope.depth(scope) + 1));
-                        }
+                    String binds = null;
+                    if (apply.function() instanceof Term.Lam(var name, var _) && names.contains(name)) {
+                        occurrences.computeIfAbsent(name, n -> new ArrayList<>()).add(new Occurrence(name, apply, visit));
+                        binds = name;
                     }
+                    boolean fixpoint = let && UplcOptimizer.alphaEquals(apply.argument(), ClosedValueSharing.Z);
                     pending.push(visit.child(apply.argument(), scope, Path.child(path, 1), spines++, visit.lambdas(), false,
                             false, let));
                     pending.push(visit.child(apply.function(), scope, Path.child(path, 0), let ? visit.spine() : spines++,
-                            visit.lambdas(), let, false, false));
+                            visit.lambdas(), let, false, false, binds, fixpoint));
                 }
-                case Term.Lam(var name, var body) -> pending.push(visit.child(body, Scope.push(scope, name), Path.child(path, 0),
-                        visit.letFunction() ? visit.spine() : spines++, visit.lambdas() + (visit.letFunction() ? 0 : 1),
-                        false, !visit.letFunction(), false));
+                case Term.Lam(var name, var body) -> {
+                    var inner = Scope.push(scope, name, visit.fixpoint());
+                    if (visit.binds() != null) methodBinders.put(inner, visit.binds());
+                    pending.push(visit.child(body, inner, Path.child(path, 0),
+                            visit.letFunction() ? visit.spine() : spines++, visit.lambdas() + (visit.letFunction() ? 0 : 1),
+                            false, !visit.letFunction(), false));
+                }
                 case Term.Force(var inner) -> pending.push(visit.child(inner, scope, Path.child(path, 0), spines++,
                         visit.lambdas(), false, false, false));
                 case Term.Delay(var inner) -> pending.push(visit.child(inner, scope, Path.child(path, 0), spines++,
@@ -306,7 +317,7 @@ final class HandlerBindingSharing {
                 }
             }
         }
-        return new Census(occurrences, fixpoints);
+        return new Census(occurrences, methodBinders);
     }
 
     /** The spines {@code occurrences} are on. */
@@ -320,11 +331,11 @@ final class HandlerBindingSharing {
      * Whether evaluating {@code value} cannot fail or trace: a value, a pure term, or the fixpoint of a lambda over a
      * value, the Z combinator read from a binder of it, as closed-value sharing binds it at the root.
      */
-    private static boolean isTotalValue(Term value, Scope scope, Set<Binder> fixpoints) {
+    private static boolean isTotalValue(Term value, Scope scope) {
         if (UplcOptimizer.isPure(value)) return true;
         if (value instanceof Term.Apply(Term.Var(var z), Term.Lam(var _, var body)) && UplcOptimizer.isValue(body)) {
             var binder = Scope.at(scope, z.index());
-            return binder != null && fixpoints.contains(new Binder(binder.name(), binder.depth()));
+            return binder != null && binder.fixpoint();
         }
         return false;
     }
@@ -355,7 +366,8 @@ final class HandlerBindingSharing {
         Term node = term;
         for (int step : steps) {
             if (node instanceof Term.Lam(var name, var _)) {
-                scope = Scope.push(scope, name);
+                // Only the depths of this scope are read: the point's binders are not looked up by object.
+                scope = Scope.push(scope, name, false);
                 if (!letFunction) lambdas++;
             }
             letFunction = node instanceof Term.Apply(Term.Lam _, var _) && step == 0;
@@ -368,8 +380,8 @@ final class HandlerBindingSharing {
      * Whether every variable {@code occurrence}'s value reads from outside it is bound at {@code depth} or above, where
      * the shared bindings go, or is the binder of another shared method; those it reads go into {@code reads}.
      */
-    private static boolean readsOnlyWhatIsInScope(Occurrence occurrence, int depth, Set<String> shared, Set<Binder> binders,
-                                                  Set<String> reads) {
+    private static boolean readsOnlyWhatIsInScope(Occurrence occurrence, int depth, Set<String> shared,
+                                                  Map<Scope, String> methodBinders, Set<String> reads) {
         record Read(Term term, int local) {}
         var pending = new ArrayDeque<Read>();
         pending.push(new Read(occurrence.value(), 0));
@@ -382,10 +394,10 @@ final class HandlerBindingSharing {
                         var binder = Scope.at(occurrence.scope(), variable.index() - local);
                         if (binder == null) return false;
                         if (binder.depth() > depth) {
-                            if (!shared.contains(binder.name()) || !binders.contains(new Binder(binder.name(), binder.depth()))) {
-                                return false;
-                            }
-                            reads.add(binder.name());
+                            // Below the point, only the binder a shared method's own binding declares.
+                            String method = methodBinders.get(binder);
+                            if (method == null || !shared.contains(method)) return false;
+                            reads.add(method);
                         }
                     }
                 }
@@ -431,23 +443,31 @@ final class HandlerBindingSharing {
         return kept;
     }
 
-    /** {@code names} with each after those it reads, ties in the order given; null if they read each other in a cycle. */
+    /**
+     * {@code names} with each after those it reads, by Kahn's algorithm, ties in the order given; null if they read
+     * each other in a cycle.
+     */
     private static List<String> dependencyOrder(Set<String> names, Map<String, Set<String>> dependencies) {
-        var order = new ArrayList<String>();
-        var placed = new HashSet<String>();
-        while (order.size() < names.size()) {
-            String next = null;
-            for (String name : names) {
-                if (!placed.contains(name) && placed.containsAll(dependencies.get(name))) {
-                    next = name;
-                    break;
-                }
-            }
-            if (next == null) return null;
-            order.add(next);
-            placed.add(next);
+        var rank = new HashMap<String, Integer>();
+        for (String name : names) rank.put(name, rank.size());
+        var waiting = new HashMap<String, Integer>();
+        var dependents = new HashMap<String, List<String>>();
+        var ready = new TreeSet<String>((a, b) -> Integer.compare(rank.get(a), rank.get(b)));
+        for (String name : names) {
+            var reads = dependencies.get(name);
+            waiting.put(name, reads.size());
+            for (String read : reads) dependents.computeIfAbsent(read, r -> new ArrayList<>()).add(name);
+            if (reads.isEmpty()) ready.add(name);
         }
-        return order;
+        var order = new ArrayList<String>();
+        while (!ready.isEmpty()) {
+            String next = ready.pollFirst();
+            order.add(next);
+            for (String dependent : dependents.getOrDefault(next, List.of())) {
+                if (waiting.merge(dependent, -1, Integer::sum) == 0) ready.add(dependent);
+            }
+        }
+        return order.size() == names.size() ? order : null;
     }
 
     /**
@@ -554,7 +574,8 @@ final class HandlerBindingSharing {
     /**
      * Whether two of a method's bindings are the same function: the same term, where a variable bound inside it is read
      * by the same index and one bound outside it names the same binder. A candidate's binder carries the method's name,
-     * which no other binder has; any other binder must also be at the same depth, as one bound above both handlers is.
+     * and {@link #readsOnlyWhatIsInScope} checks it is that method's binding; any other must be the very binder, as one
+     * bound above both handlers is.
      */
     private static boolean sameFunction(Occurrence a, Occurrence b, Set<String> candidates) {
         record Pair(Term a, Term b, int depth) {}
@@ -573,7 +594,9 @@ final class HandlerBindingSharing {
                         var outerA = Scope.at(a.scope(), i - depth);
                         var outerB = Scope.at(b.scope(), j - depth);
                         if (outerA == null || outerB == null || !outerA.name().equals(outerB.name())) return false;
-                        if (!candidates.contains(outerA.name()) && outerA.depth() != outerB.depth()) return false;
+                        // A method's binder in each handler, checked later to be its binding's; any other must be one
+                        // binder, above both.
+                        if (!candidates.contains(outerA.name()) && outerA != outerB) return false;
                     }
                 }
                 case Term.Lam(var _, var body) -> {
