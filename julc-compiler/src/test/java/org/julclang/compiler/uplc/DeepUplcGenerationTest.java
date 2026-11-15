@@ -287,6 +287,9 @@ class DeepUplcGenerationTest {
         var failure = assertThrows(CompilerException.class, () -> onSmallStack(() -> generator.generate(brokenTerm)));
         assertTrue(failure.getMessage().contains("Unbound variable: unbound"), failure.getMessage());
 
+        // The failed run's binders are gone: x0 is bound nowhere now, so it must not resolve to one of them.
+        var leftover = assertThrows(CompilerException.class, () -> generator.generate(var("x0")));
+        assertTrue(leftover.getMessage().contains("Unbound variable: x0"), leftover.getMessage());
         var closed = new PirTerm.Lam("a", INT, var("a"));
         assertEquals(Term.lam("a", Term.var(1)), generator.generate(closed));
     }

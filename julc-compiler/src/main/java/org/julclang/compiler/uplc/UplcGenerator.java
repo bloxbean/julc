@@ -103,18 +103,23 @@ public class UplcGenerator {
     /**
      * The UPLC of {@code pir}. The lowering keeps its pending work on the heap ({@link Trampoline}), so a term of any
      * depth, such as a validator's long chain of method bindings, needs a bounded amount of Java stack (issue #327,
-     * ADR-074). If the lowering fails, the binder scope and the inherited source locations are restored to what they
-     * were, and the exception is rethrown.
+     * ADR-074). If the lowering throws anything, the binder scope and the inherited source locations are restored to
+     * what they were, and the throw propagates.
      */
     public Term generate(PirTerm pir) {
         var entryScope = scope;
         int entryLocations = locationStack.size();
+        boolean lowered = false;
         try {
-            return lower(pir).run();
-        } catch (RuntimeException e) {
-            scope = entryScope;
-            while (locationStack.size() > entryLocations) locationStack.pop();
-            throw e;
+            var term = lower(pir).run();
+            lowered = true;
+            return term;
+        } finally {
+            // Whatever was thrown, Error or exception, the scope and locations go back to what they were.
+            if (!lowered) {
+                scope = entryScope;
+                while (locationStack.size() > entryLocations) locationStack.pop();
+            }
         }
     }
 
