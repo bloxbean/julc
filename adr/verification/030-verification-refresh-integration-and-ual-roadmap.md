@@ -1,6 +1,6 @@
 # ADR-030: Verification Refresh, Build Integration, AI-Agent Support and UAL Export Roadmap
 
-- **Status:** Proposed; R.1 implemented on this branch
+- **Status:** Proposed; R.1 and R.1b implemented on this branch
 - **Date:** 2026-11-14
 - **Related:**
   [ADR-001 — IOG Blaster Verification Strategy](001-iog-blaster-verification-strategy.md),
@@ -231,8 +231,8 @@ never mixed.
   - a changed proof outcome: stop and investigate as a possible miscompile or
     verification bug before refreshing anything.
 - Add a scheduled CI job (weekly, plus manual dispatch) that runs a
-  representative set: `c5`, `c7`, `e4b` and `e4h`. `c6`, `e3` and
-  `strict-boundaries` join the set when R.1b lands. `verification/blaster` stays
+  representative set: `e3`, `e4b`, `e4h` and `strict-boundaries`, which
+  itself runs `c3`, `c5`, `c6` and `c7`. `verification/blaster` stays
   on pull requests.
 - Record a per-suite table (outcome, runtime, refresh reason) in this ADR.
 
@@ -393,6 +393,107 @@ changes: 18,019 tests, 543 skipped, 0 failures.
 
 Exit: e3 and c6 reproduce all their classifications at `baseline` within
 the runner's default timeout, on Linux and macOS, and c2 completes.
+
+#### R.1b findings and fix (2026-11-15)
+
+**Cause.** The typed DSL renderer (`TypedPropertyLeanRenderer`, introduced
+with E.4b and E.4e on 2026-08-20/21) renders list and map quantifiers as
+`List.any xs (fun x => …)`. E.6 (`4ba114f4`) also changed the workspace's
+`julcContinuingOutputs` helper from `Recursor.findAll` to
+`List.filter (fun …)`. The August profile templates used CardanoLedgerApi's
+first-order `Recursor.any` and `Recursor.findAll` macros. Those expand to a
+local recursive function with the predicate inlined, which Blaster's SMT
+translation handles directly.
+
+**Measured** on the same VM, same artifact, same pins and Z3, by editing
+only the rendered property in a scratch copy of the generated workspace:
+
+| Fixture | Property shape | Proof step | Counterexample step |
+|---|---|---|---|
+| e3 `unpaid` | `List.any … (fun …)` (current) | over 300 s | over 300 s |
+| e3 `unpaid` | `Recursor.any` | falsified, 4 s | found, 5 s |
+| e3 `unpaid` | `Recursor.any` and `==` for the seller | falsified, 5 s | found, 4 s |
+| c6 `missing-signer` | `List.filter` in `julcContinuingOutputs` (current) | over 1800 s | not reached |
+| c6 `missing-signer` | `Recursor.findAll` | falsified, 2 s | found, 1 s |
+
+The equality helper makes no difference; the higher-order traversal is the
+whole cause.
+
+**Fix.**
+- `TypedPropertyLeanRenderer` renders list and map `exists`, `all` and `none`
+  as `Recursor.any` or `Recursor.all`, and the two address-filter selections
+  as `Recursor.findAll`.
+- `PropertyLeanRenderer` renders `exists` as `Recursor.any` and puts the type
+  annotation on the collection instead of the binder.
+- The workspace preamble defines `julcListContains`, `julcMapContainsKey`
+  and `julcIsKnownVoter` with `Recursor.any`, and `julcContinuingOutputs`
+  with `Recursor.findAll`.
+- Each generated `GenericCollectionsSemanticsTests.lean` now contains
+  `recursorAny_eq`, `recursorAll_eq` and `recursorFindAll_eq`. These prove,
+  by induction and checked by the Lean kernel, that each recursor equals
+  `List.any`, `List.all` or `List.filter` for every predicate and list. The
+  first two use no axioms; the third uses only `propext`. The rendered
+  properties therefore state exactly what they stated before.
+- The `julcListContains` control example is now proved with `native_decide`
+  (as its neighbours already are), because `simp` cannot unfold the macro's
+  local function. A negative example was added.
+- `GenericContractCollectionsDslTest` and `TypedMetamodelV4Test` assert that
+  quantifiers render as recursors and never as `List.any` or `List.all`.
+
+Not changed: `julcListCount`, `julcMapLookupFirst` (`find?`) and
+`julcMapLookupAll` (`filterMap`) still take a function argument. No suite
+showed them slow. They should get the same treatment if one does.
+
+**c2 container workspace.** `verify init` defaults to fuel 20000, while
+`julc verify` defaults to 1000 and `verify dsl` to 1500. The same c2
+workspace module compiled in 10 s at fuel 1000 and 337 s at 3000, and was
+still running after 4,500 s at 20000. The August artifact, smaller before
+strict container decoding, compiled at 20000 in 14 s. The c2 evidence script
+now passes `--fuel 1000`. The public `verify init` default is unchanged (open
+question 10).
+
+**Multi-satisfaction disclosure.** The composed-DSL workspace README had
+lost the seller-payment template's warning that one script execution's
+property does not protect against several inputs sharing one output. e3's
+`multi-satisfaction` fixture exists to show exactly that gap, and its
+script checks the warning. The composed README now carries the warning for
+every property.
+
+**Results after the fix** (`baseline`, same VM, regenerated from the fixed
+generator; `verification/blaster` is unchanged because it uses its own
+committed Lean):
+
+| Suite | Result | Time (s) | Before R.1b |
+|---|---|---:|---|
+| `c2` | passes | 482 | no result in 4,500+ s |
+| `c3` | passes | 105 | passes |
+| `c5` | passes | 175 | passes |
+| `c6` | passes | 591 | `missing-signer` timed out |
+| `c7` | passes | 340 | passes |
+| `e3` | passes | 173 | `unpaid` timed out |
+| `e4a` | passes | 175 | passes |
+| `e4b` | passes | 3847 | passes |
+| `e4c` | passes | 1344 | passes |
+| `e4d` | passes | 1267 | passes |
+| `e4f` | passes | 890 | passes |
+| `e4g` | passes | 890 | passes |
+| `e4h` | passes | 747 | passes |
+| `e4i` | passes | 958 | passes |
+| `e4j` | passes | 1378 | passes |
+| `e4k` | passes | 855 | passes |
+| `e4l` | passes | 1025 | passes |
+| `p4` | passes | 74 | passes |
+| `strict-boundaries` | passes | 1177 | failed on c6 |
+
+Every committed classification reproduces, including every refuted
+negative control. The suites that already passed stayed within their
+earlier run times, so the recursor form costs nothing on the proving side.
+
+Repository-wide `./gradlew build` passed on the same VM (18,020 tests, 543
+skipped, 0 failures). `:julc-verification:test` and `:julc-cli:test` were
+then re-run with `--rerun-tasks`: 98 and 496 tests, 0 failures.
+
+Exit: met.
 
 ### R.2a: Make PV11 lowering shapes practical in Blaster
 
@@ -800,6 +901,10 @@ No compiler, core, ledger API, stdlib or VM source changes are expected.
    tests; the test source set is more familiar. Lean: a separate source set.
 8. Which mutation operators to ship first, and the default mutant budget.
 9. Whether CI should fail on unapproved properties by default, or only warn.
+10. Whether `julc verify init` should default to fuel 1000 like `julc
+    verify`. Its default of 20000 makes preprocessing of strictly decoded
+    container validators take over an hour. Lowering it changes the bound
+    every new init workspace records. Lean: lower it, with a release note.
 
 ## Revision history
 
@@ -814,3 +919,10 @@ No compiler, core, ledger API, stdlib or VM source changes are expected.
   from the E.4b–E.6 generator and added milestone R.1b; recorded the
   per-validator DSL model, optional `.julc` cache and schema-1 certificate
   check fixes.
+- r4 (2026-11-15, R.1b implementation): found the cause (higher-order
+  `List.any`/`List.filter` rendering) and switched the renderers and
+  workspace helpers to the first-order recursors, with kernel-checked
+  equivalence lemmas in every workspace; c2 runs at fuel 1000; the
+  composed README restores the multi-satisfaction warning; all 20 suites
+  reproduce at `baseline`; c6, e3 and strict-boundaries join the scheduled
+  CI set; open question 10 added.

@@ -2307,8 +2307,9 @@ public final class VerificationProjectGenerator {
                 example : julcListCount (fun value : Int => value == 1)
                     [1, 2, 1] = 2 := by simp [julcListCount]
                 example : julcListContains ([1, 2] : List Int) 2 = true := by
-                  simp [julcListContains, julcStructuralEq,
-                    CardanoLedgerApi.IsData.Class.instIsDataInteger]
+                  native_decide
+                example : julcListContains ([1, 2] : List Int) 3 = false := by
+                  native_decide
 
                 example : julcMapCountKey ([(1, 10), (1, 20), (2, 30)] :
                     List (Int × Int)) 1 = 2 := by
@@ -2331,6 +2332,45 @@ public final class VerificationProjectGenerator {
                     (Data.Map [(Data.I 1, Data.I 10), (Data.I 1, Data.I 20)])
                     (Data.Map [(Data.I 1, Data.I 20), (Data.I 1, Data.I 10)]) = false := by
                   simp [julcStructuralEq, CardanoLedgerApi.IsData.Class.instIsDataData]
+
+                /- ADR-030 R.1b: generated properties traverse lists with the first-order
+                   CardanoLedgerApi recursors because Blaster refutes that form quickly.
+                   The kernel checks here that each recursor means its List function. -/
+                open CardanoLedgerApi.Recursors
+
+                def recursorAny (p : α → Bool) (xs : List α) : Bool :=
+                  Recursor.any x in xs => p x
+                def recursorAll (p : α → Bool) (xs : List α) : Bool :=
+                  Recursor.all x in xs => p x
+                def recursorFindAll (p : α → Bool) (xs : List α) : List α :=
+                  Recursor.findAll x in xs => p x
+
+                theorem recursorAny_eq (p : α → Bool) :
+                    ∀ xs : List α, recursorAny p xs = xs.any p := by
+                  intro xs; induction xs with
+                  | nil => rfl
+                  | cons h t ih =>
+                      simp only [recursorAny, List.any] at *
+                      rw [← ih]
+                      rfl
+
+                theorem recursorAll_eq (p : α → Bool) :
+                    ∀ xs : List α, recursorAll p xs = xs.all p := by
+                  intro xs; induction xs with
+                  | nil => rfl
+                  | cons h t ih =>
+                      simp only [recursorAll, List.all] at *
+                      rw [← ih]
+                      rfl
+
+                theorem recursorFindAll_eq (p : α → Bool) :
+                    ∀ xs : List α, recursorFindAll p xs = xs.filter p := by
+                  intro xs; induction xs with
+                  | nil => rfl
+                  | cons h t ih =>
+                      simp only [recursorFindAll] at *
+                      rw [List.filter_cons, ← ih]
+                      rfl
 
                 end JulcGenerated.GenericCollectionsSemanticsTests
                 """;
@@ -3843,7 +3883,7 @@ public final class VerificationProjectGenerator {
                       IsData.toData left == IsData.toData right
 
                     def julcListContains [IsData α] (items : List α) (value : α) : Bool :=
-                      items.any (fun candidate => julcStructuralEq candidate value)
+                      Recursor.any candidate in items => julcStructuralEq candidate value
 
                     def julcListCount (predicate : α → Bool) : List α → Int
                       | [] => 0
@@ -3855,7 +3895,7 @@ public final class VerificationProjectGenerator {
 
                     def julcMapContainsKey [IsData κ]
                         (entries : List (κ × υ)) (key : κ) : Bool :=
-                      entries.any (fun entry => julcStructuralEq entry.1 key)
+                      Recursor.any entry in entries => julcStructuralEq entry.1 key
 
                     def julcMapCountKey [IsData κ]
                         (entries : List (κ × υ)) (key : κ) : Int :=
@@ -3882,10 +3922,8 @@ public final class VerificationProjectGenerator {
                         JulcList CardanoLedgerApi.V2.TxOut :=
                       match findOwnInput ctx with
                       | some own =>
-                          ⟨List.filter (fun output : CardanoLedgerApi.V2.TxOut =>
-                            output.txOutAddress ==
-                              own.txInInfoResolved.txOutAddress)
-                            ctx.scriptContextTxInfo.txInfoOutputs⟩
+                          ⟨Recursor.findAll output in ctx.scriptContextTxInfo.txInfoOutputs =>
+                            output.txOutAddress == own.txInInfoResolved.txOutAddress⟩
                       | none => ⟨[]⟩
 
                     """);
@@ -3899,7 +3937,7 @@ public final class VerificationProjectGenerator {
 
                     def julcIsKnownVoter (voter : Voter)
                         (votes : JulcMap Voter (JulcMap GovernanceActionId Vote)) : Bool :=
-                      votes.entries.any (fun entry => entry.1 == voter)
+                      Recursor.any entry in votes.entries => entry.1 == voter
 
                     /- Reviewed adapter adapter.new-constitution.ledger-wrapper: the ledger encodes
                        NewConstitution as Constr 5 [prior, Constr 0 [Maybe ScriptHash]], but the
@@ -5914,7 +5952,11 @@ public final class VerificationProjectGenerator {
                 concrete ledger-valid witness is recorded.
 
                 The result proves only the explicitly named normalized formulas. It does
-                not claim that the complete validator or protocol is safe.
+                not claim that the complete validator or protocol is safe. In particular,
+                a property about one script execution does not establish
+                global protection against multi-satisfaction: several inputs spent in
+                the same transaction may be satisfied by one shared output unless a
+                transaction-level property says otherwise.
                 """.formatted(validatorTitle, property.claims().size(), property.sourcePath())
                 + valueSemantics;
     }

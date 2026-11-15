@@ -147,10 +147,11 @@ public final class PropertyLeanRenderer {
                 default -> throw new IllegalArgumentException(
                         "No Lean binder type for " + exists.collection().resultType());
             };
-            return "List.any " + parenthesize(renderNode(exists.collection(), rootBindings))
-                    + " (fun (" + exists.variable()
-                    + " : " + binderType + ") => "
-                    + renderNode(exists.predicate(), rootBindings) + ")";
+            // First-order recursor, typed through the collection (ADR-030 R.1b).
+            return TypedPropertyLeanRenderer.recursorAny(exists.variable(),
+                    "(" + renderNode(exists.collection(), rootBindings)
+                            + " : List (" + binderType + "))",
+                    renderNode(exists.predicate(), rootBindings));
         }
         if (node instanceof LiteralNode literal) return literal.value();
         if (node instanceof BytesLiteralNode literal) return leanByteString(literal.hex());

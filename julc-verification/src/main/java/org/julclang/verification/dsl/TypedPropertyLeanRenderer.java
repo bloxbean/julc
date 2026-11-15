@@ -309,13 +309,12 @@ public final class TypedPropertyLeanRenderer {
                         + arguments.getFirst() + ".items";
                 case AGGREGATE_OUTPUT_VALUES -> "julcAggregateOutputValues "
                         + arguments.getFirst() + ".items";
-                case FILTER_ADDRESS_OUTPUTS -> "⟨List.filter (fun output => "
-                        + "output.txOutAddress == " + arguments.get(1) + ") "
-                        + arguments.getFirst() + ".items⟩";
-                case FILTER_PAYMENT_CREDENTIAL_OUTPUTS ->
-                        "⟨List.filter (fun output => output.txOutAddress.addressCredential == "
-                                + arguments.get(1) + ") "
-                                + arguments.getFirst() + ".items⟩";
+                case FILTER_ADDRESS_OUTPUTS -> "⟨" + recursorFindAll("output",
+                        arguments.getFirst() + ".items",
+                        "output.txOutAddress == " + arguments.get(1)) + "⟩";
+                case FILTER_PAYMENT_CREDENTIAL_OUTPUTS -> "⟨" + recursorFindAll("output",
+                        arguments.getFirst() + ".items",
+                        "output.txOutAddress.addressCredential == " + arguments.get(1)) + "⟩";
                 case IS_BALANCED -> "isBalanced " + arguments.getFirst();
                 case DECODE_GOVERNANCE_ACTION ->
                         "julcDecodeGovernanceAction " + arguments.getFirst()
@@ -499,13 +498,11 @@ public final class TypedPropertyLeanRenderer {
         }
         if (node instanceof ListQuantifierNode list) {
             String items = listItems(list.list(), definitions, variantFields);
-            String predicate = "(fun " + list.variable() + " => "
-                    + render(list.predicate(), definitions, variantFields) + ")";
+            String body = render(list.predicate(), definitions, variantFields);
             return switch (list.quantifier()) {
-                case EXISTS -> "List.any " + parenthesize(items) + " " + predicate;
-                case ALL -> "List.all " + parenthesize(items) + " " + predicate;
-                case NONE -> "!" + parenthesize(
-                        "List.any " + parenthesize(items) + " " + predicate);
+                case EXISTS -> recursorAny(list.variable(), items, body);
+                case ALL -> recursorAll(list.variable(), items, body);
+                case NONE -> "!" + recursorAny(list.variable(), items, body);
             };
         }
         if (node instanceof ListSingletonWhenNode list) {
@@ -532,13 +529,12 @@ public final class TypedPropertyLeanRenderer {
         }
         if (node instanceof MapQuantifierNode map) {
             String entries = mapEntries(map.map(), definitions, variantFields);
-            String predicate = mapPredicate(map.keyVariable(), map.valueVariable(),
+            String body = mapEntryBody(map.keyVariable(), map.valueVariable(),
                     map.predicate(), definitions, variantFields);
             return switch (map.quantifier()) {
-                case EXISTS -> "List.any " + parenthesize(entries) + " " + predicate;
-                case ALL -> "List.all " + parenthesize(entries) + " " + predicate;
-                case NONE -> "!" + parenthesize(
-                        "List.any " + parenthesize(entries) + " " + predicate);
+                case EXISTS -> recursorAny(MAP_ENTRY, entries, body);
+                case ALL -> recursorAll(MAP_ENTRY, entries, body);
+                case NONE -> "!" + recursorAny(MAP_ENTRY, entries, body);
             };
         }
         if (node instanceof MapCountEntryNode map) {
@@ -624,14 +620,47 @@ public final class TypedPropertyLeanRenderer {
         return parenthesize(render(map, definitions, variantFields)) + ".entries";
     }
 
+    /** Binder for one association-map entry in a rendered map traversal. */
+    private static final String MAP_ENTRY = "entry";
+
     private static String mapPredicate(
             String key,
             String value,
             PropertyNode predicate,
             Map<String, ProjectedContractTypes.NominalDefinition> definitions,
             Map<String, String> variantFields) {
-        return "(fun entry => let " + key + " := entry.1; let " + value
-                + " := entry.2; " + render(predicate, definitions, variantFields) + ")";
+        return "(fun " + MAP_ENTRY + " => "
+                + mapEntryBody(key, value, predicate, definitions, variantFields) + ")";
+    }
+
+    private static String mapEntryBody(
+            String key,
+            String value,
+            PropertyNode predicate,
+            Map<String, ProjectedContractTypes.NominalDefinition> definitions,
+            Map<String, String> variantFields) {
+        return "let " + key + " := " + MAP_ENTRY + ".1; let " + value
+                + " := " + MAP_ENTRY + ".2; " + render(predicate, definitions, variantFields);
+    }
+
+    /*
+     * Quantifiers and filters are rendered with the first-order CardanoLedgerApi
+     * recursors, not `List.any xs (fun ...)`. Blaster finds counterexamples for the
+     * recursor form in seconds but did not finish within 30 minutes for the
+     * higher-order form (ADR-030 R.1b). Every generated workspace kernel-checks that
+     * each recursor equals its List function (`RecursorEquivalence.lean`).
+     */
+    static String recursorAny(String variable, String items, String body) {
+        return "(Recursor.any " + variable + " in " + parenthesize(items) + " => " + body + ")";
+    }
+
+    static String recursorAll(String variable, String items, String body) {
+        return "(Recursor.all " + variable + " in " + parenthesize(items) + " => " + body + ")";
+    }
+
+    static String recursorFindAll(String variable, String items, String body) {
+        return "(Recursor.findAll " + variable + " in " + parenthesize(items) + " => "
+                + body + ")";
     }
 
     private static String fieldKey(

@@ -142,6 +142,9 @@ class TypedMetamodelV4Test {
         assertTrue(lean.contains("julcListAt"), lean);
         assertTrue(lean.contains("julcMapLookupFirst"), lean);
         assertTrue(lean.contains("julcMapLookupAll"), lean);
+        // ADR-030 R.1b: map traversals use the first-order recursor, never List.any.
+        assertTrue(lean.contains("(Recursor.any entry in "), lean);
+        assertFalse(lean.contains("List.any"), lean);
         assertFalse(generated.contains(" asUpdate("));
         assertFalse(generated.contains(" parameter()"));
     }

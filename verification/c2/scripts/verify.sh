@@ -51,9 +51,12 @@ verify_workspace() {
   local output="${VERIFY_DIR}/generated/${purpose}"
 
   java -jar "${JULC_JAR}" build --optimization baseline "${VERIFY_DIR}/fixtures/${fixture}"
+  # Fuel 1000 matches `julc verify`. With strict container decoding, the init
+  # default of 20000 keeps #prep_uplc busy for over 75 minutes (ADR-030 R.1b).
   java -jar "${JULC_JAR}" verify init "${VERIFY_DIR}/fixtures/${fixture}" \
     --validator "${validator}" \
     --purpose "${purpose}" \
+    --fuel 1000 \
     --out-dir "${output}" \
     --force
 

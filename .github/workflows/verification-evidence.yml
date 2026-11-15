@@ -29,7 +29,7 @@ jobs:
           REQUESTED: ${{ github.event.inputs.suites }}
         run: |
           set -euo pipefail
-          default="c5 c7 e4b e4h"
+          default="e3 e4b e4h strict-boundaries"
           list="${REQUESTED:-$default}"
           for suite in $list; do
             [[ "$suite" =~ ^[a-z0-9-]+$ ]] || { echo "invalid suite name: $suite" >&2; exit 1; }
