@@ -11,6 +11,7 @@ import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.pir.PirHelpers;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
+import org.julclang.core.recursion.Trampoline;
 
 import javax.lang.model.element.Element;
 import java.util.ArrayList;
@@ -59,8 +60,11 @@ final class Ifs {
         this.typing = typing;
     }
 
-    /** The {@code if} at {@code index}, which continues with what follows it, then {@code cont}. */
-    PirTerm inSequence(IfTree tree, List<? extends StatementTree> following, int index, Frame frame, PirTerm cont) {
+    /**
+     * The {@code if} at {@code index}, which continues with what follows it, then {@code cont}: a step of
+     * {@link Statements#rest}, stack-safe in what follows (issue #327).
+     */
+    Trampoline<PirTerm> inSequence(IfTree tree, List<? extends StatementTree> following, int index, Frame frame, PirTerm cont) {
         var introduced = lowering.conditions().introducedBy(tree, frame);
         if (!introduced.isEmpty()) return introducing(tree, introduced, following, index, frame, cont);
         if (Exits.holdsLoop(tree.getThenStatement()) || holdsLoopInElse(tree)) return ifWithLoop(tree, following, index, frame, cont);
@@ -75,22 +79,24 @@ final class Ifs {
      * today's routing. The other outcome's branch cannot complete normally, which javac has proved, so its end is an
      * {@code Error} no path reaches.
      */
-    private PirTerm introducing(IfTree tree, List<Element> introduced, List<? extends StatementTree> following, int index, Frame frame,
-                                PirTerm cont) {
+    private Trampoline<PirTerm> introducing(IfTree tree, List<Element> introduced, List<? extends StatementTree> following, int index,
+                                            Frame frame, PirTerm cont) {
         var rest = following.subList(index + 1, following.size());
         var falling = new PirTerm[1];
-        Function<Frame, PirTerm> then = inner -> Conditions.bindsAll(inner, introduced)
-                ? (falling[0] = statements.sequence(spliced(tree.getThenStatement(), rest), 0, inner, cont))
-                : statements.branch(tree.getThenStatement(), inner, unreachable(frame));
-        Function<Frame, PirTerm> otherwise = inner -> Conditions.bindsAll(inner, introduced)
-                ? (falling[0] = statements.sequence(spliced(tree.getElseStatement(), rest), 0, inner, cont))
-                : tree.getElseStatement() == null ? unreachable(frame) : statements.branch(tree.getElseStatement(), inner, unreachable(frame));
-        var result = lowering.conditions().branch(condition(tree), frame, then, otherwise);
-        // No outcome bound them: a defect here, refused at the first use rather than compiled to a script that fails (M3-C7).
-        if (falling[0] == null) throw Conditions.unboundAfter(facts, tree, introduced);
-        // Typed by what falls through: in a lambda block the unreachable end's own type is only a placeholder (review M3-S4).
-        typing.typedAs(result, typing.ofTerm(falling[0]));
-        return terms.at(tree, result);
+        Function<Frame, Trampoline<PirTerm>> then = inner -> Conditions.bindsAll(inner, introduced)
+                ? statements.rest(spliced(tree.getThenStatement(), rest), 0, inner, cont).map(term -> falling[0] = term)
+                : Trampoline.done(statements.branch(tree.getThenStatement(), inner, unreachable(frame)));
+        Function<Frame, Trampoline<PirTerm>> otherwise = inner -> Conditions.bindsAll(inner, introduced)
+                ? statements.rest(spliced(tree.getElseStatement(), rest), 0, inner, cont).map(term -> falling[0] = term)
+                : Trampoline.done(tree.getElseStatement() == null ? unreachable(frame)
+                        : statements.branch(tree.getElseStatement(), inner, unreachable(frame)));
+        return lowering.conditions().branchDeep(condition(tree), frame, then, otherwise).map(result -> {
+            // No outcome bound them: a defect here, refused at the first use rather than compiled to a script that fails (M3-C7).
+            if (falling[0] == null) throw Conditions.unboundAfter(facts, tree, introduced);
+            // Typed by what falls through: in a lambda block the unreachable end's own type is only a placeholder (review M3-S4).
+            typing.typedAs(result, typing.ofTerm(falling[0]));
+            return terms.at(tree, result);
+        });
     }
 
     /** A branch's statements, none for a missing one, then {@code rest}. */
@@ -116,8 +122,8 @@ final class Ifs {
      * A branch leaves the method, or the {@code switch} arm. What follows becomes each branch's continuation, so a path that returns skips it and a
      * path that falls through runs it. It is placed in both branches, and {@code let}s nothing, as the reference does.
      */
-    private PirTerm ifWithExit(IfTree tree, List<? extends StatementTree> following, int index, Frame frame, PirTerm cont) {
-        return terms.at(tree, withContinuation(tree, statements.sequence(following, index + 1, frame, cont), frame));
+    private Trampoline<PirTerm> ifWithExit(IfTree tree, List<? extends StatementTree> following, int index, Frame frame, PirTerm cont) {
+        return statements.rest(following, index + 1, frame, cont).map(after -> terms.at(tree, withContinuation(tree, after, frame)));
     }
 
     /** The {@code if} with {@code after} placed in each branch that falls through. */
@@ -145,8 +151,11 @@ final class Ifs {
      * guarded loops in a row do not grow as 2^N. It closes over what no loop changes, and what the branches' loops update
      * is its argument, read where the branch ends: there the loop's result has been bound to that variable.
      */
-    private PirTerm ifWithLoop(IfTree tree, List<? extends StatementTree> following, int index, Frame frame, PirTerm cont) {
-        var after = statements.sequence(following, index + 1, frame, cont);
+    private Trampoline<PirTerm> ifWithLoop(IfTree tree, List<? extends StatementTree> following, int index, Frame frame, PirTerm cont) {
+        return statements.rest(following, index + 1, frame, cont).map(after -> joinedLoop(tree, after, frame));
+    }
+
+    private PirTerm joinedLoop(IfTree tree, PirTerm after, Frame frame) {
         var join = "#if-join-" + ++joins;
         var updated = accumulators.ofBranches(tree, frame);
         PirTerm joinBody = after;
@@ -170,11 +179,11 @@ final class Ifs {
      * No branch leaves: the {@code if} runs for its effect, under a {@code let}, and what follows runs after it.
      * As the last thing a statement list does, it is the list's value.
      */
-    private PirTerm ifForEffect(IfTree tree, List<? extends StatementTree> following, int index, Frame frame, PirTerm cont) {
+    private Trampoline<PirTerm> ifForEffect(IfTree tree, List<? extends StatementTree> following, int index, Frame frame, PirTerm cont) {
         boolean hasFollowing = index + 1 < following.size();
         var effect = terms.at(tree, nested(tree, frame));
-        if (!hasFollowing && cont == null) return effect;
-        return terms.afterEffect(effect, statements.sequence(following, index + 1, frame, cont));
+        if (!hasFollowing && cont == null) return Trampoline.done(effect);
+        return statements.rest(following, index + 1, frame, cont).map(after -> terms.afterEffect(effect, after));
     }
 
     /** An {@code if} that is a value: a branch of another for its effect, or the term {@link #ifForEffect} binds. */

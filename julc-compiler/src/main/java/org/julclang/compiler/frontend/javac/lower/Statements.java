@@ -23,6 +23,7 @@ import org.julclang.compiler.frontend.javac.subset.FieldUpdates;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.core.Constant;
+import org.julclang.core.recursion.Trampoline;
 
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.type.TypeKind;
@@ -118,23 +119,35 @@ final class Statements {
 
     /** The statements from {@code index}, then {@code cont}. */
     PirTerm sequence(List<? extends StatementTree> statements, int index, Frame frame, PirTerm cont) {
-        if (index >= statements.size()) return cont == null ? unit() : cont;
-        return switch (statements.get(index)) {
-            // javac rejects a statement after a return.
-            case ReturnTree tree -> ret(tree, frame);
-            // A yield is a switch arm's value, and leaves the arm as a return leaves the method.
-            case YieldTree tree -> lowering.expr(tree.getValue(), frame);
-            case VariableTree tree -> local(tree, frame, inner -> sequence(statements, index + 1, inner, cont));
-            case ExpressionStatementTree tree -> {
-                var effect = lowering.expr(tree.getExpression(), frame);
-                yield new PirTerm.Let("#_", effect, sequence(statements, index + 1, frame, cont));
-            }
-            case IfTree tree -> ifs.inSequence(tree, statements, index, frame, cont);
-            case EnhancedForLoopTree tree -> loops.loop(tree, statements, index, frame, cont);
-            case WhileLoopTree tree -> loops.loop(tree, statements, index, frame, cont);
-            case LabeledStatementTree tree -> throw label(tree);
-            case StatementTree tree -> throw unsupported(tree);
-        };
+        return rest(statements, index, frame, cont).run();
+    }
+
+    /**
+     * {@link #sequence}, stack-safe (issue #327, ADR-074): each statement holds the ones after it, so a block is as deep
+     * as it is long, which javac's own walk of it is not. Each step is the recursive form's, in its order; what follows a
+     * statement is lowered where that form lowered it. A statement's own parts (an expression, a branch, a loop body)
+     * follow source nesting and recurse as before.
+     */
+    Trampoline<PirTerm> rest(List<? extends StatementTree> statements, int index, Frame frame, PirTerm cont) {
+        return Trampoline.defer(() -> {
+            if (index >= statements.size()) return Trampoline.done(cont == null ? unit() : cont);
+            return switch (statements.get(index)) {
+                // javac rejects a statement after a return.
+                case ReturnTree tree -> Trampoline.done(ret(tree, frame));
+                // A yield is a switch arm's value, and leaves the arm as a return leaves the method.
+                case YieldTree tree -> Trampoline.done(lowering.expr(tree.getValue(), frame));
+                case VariableTree tree -> localDeep(tree, frame, inner -> rest(statements, index + 1, inner, cont));
+                case ExpressionStatementTree tree -> {
+                    var effect = lowering.expr(tree.getExpression(), frame);
+                    yield rest(statements, index + 1, frame, cont).map(after -> new PirTerm.Let("#_", effect, after));
+                }
+                case IfTree tree -> ifs.inSequence(tree, statements, index, frame, cont);
+                case EnhancedForLoopTree tree -> loops.loop(tree, statements, index, frame, cont);
+                case WhileLoopTree tree -> loops.loop(tree, statements, index, frame, cont);
+                case LabeledStatementTree tree -> throw label(tree);
+                case StatementTree tree -> throw unsupported(tree);
+            };
+        });
     }
 
     /** A branch that falls through to {@code cont}. A block's locals end with it, since {@code frame} is the branch's. */
@@ -187,6 +200,11 @@ final class Statements {
 
     /** {@code let x = value in ...}. The type is what the source wrote; for {@code var}, javac's type of the value. */
     PirTerm local(VariableTree tree, Frame frame, Function<Frame, PirTerm> rest) {
+        return localDeep(tree, frame, inner -> Trampoline.done(rest.apply(inner))).run();
+    }
+
+    /** {@link #local}, with {@code rest} a stack-safe walk: {@code rest} runs where it did, and the {@code let} is built after it. */
+    Trampoline<PirTerm> localDeep(VariableTree tree, Frame frame, Function<Frame, Trampoline<PirTerm>> rest) {
         String name = tree.getName().toString();
         var initializer = tree.getInitializer();
         if (initializer == null) {
@@ -204,9 +222,11 @@ final class Statements {
             scope = frame.scope().bind(element, type);
         }
         var binder = scope.lookup(element);
-        var binding = terms.let(binder, value, rest.apply(frame.in(scope)));
-        terms.declared(element, binding, binder.type());
-        return binding;
+        return rest.apply(frame.in(scope)).map(after -> {
+            var binding = terms.let(binder, value, after);
+            terms.declared(element, binding, binder.type());
+            return binding;
+        });
     }
 
     /**

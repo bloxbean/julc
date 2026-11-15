@@ -22,6 +22,7 @@ import org.julclang.compiler.frontend.javac.subset.LoopRules;
 import org.julclang.compiler.pir.PirHelpers;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
+import org.julclang.core.recursion.Trampoline;
 
 import org.julclang.vm.ProtocolCapability;
 
@@ -100,8 +101,12 @@ final class Loops {
         methods.clear();
     }
 
-    /** The loop at {@code index} of {@code following}, which continues with what follows it, then {@code cont}. */
-    PirTerm loop(StatementTree loop, List<? extends StatementTree> following, int index, Frame frame, PirTerm cont) {
+    /**
+     * The loop at {@code index} of {@code following}, which continues with what follows it, then {@code cont}: a step of
+     * {@link Statements#rest}, stack-safe in what follows (issue #327). The loop itself is lowered as before, and what
+     * follows it after.
+     */
+    Trampoline<PirTerm> loop(StatementTree loop, List<? extends StatementTree> following, int index, Frame frame, PirTerm cont) {
         return switch (loop) {
             case EnhancedForLoopTree tree -> forEach(tree, following, index, frame, cont);
             case WhileLoopTree tree -> whileLoop(tree, following, index, frame, cont);
@@ -111,7 +116,7 @@ final class Loops {
 
     /** A loop with nothing after it, in a body or a branch: its term is its value. */
     PirTerm alone(StatementTree loop, Frame frame) {
-        return loop(loop, List.of(loop), 0, frame, null);
+        return loop(loop, List.of(loop), 0, frame, null).run();
     }
 
     /** {@code loop}'s accumulators. A field among them meets {@code JULC0056} here, at the first assignment to it. */
@@ -143,7 +148,7 @@ final class Loops {
 
     // --- For-each ---
 
-    private PirTerm forEach(EnhancedForLoopTree tree, List<? extends StatementTree> following, int index, Frame frame, PirTerm cont) {
+    private Trampoline<PirTerm> forEach(EnhancedForLoopTree tree, List<? extends StatementTree> following, int index, Frame frame, PirTerm cont) {
         rules.check(tree);
         boolean breaks = LoopRules.firstExit(tree.getStatement(), BreakTree.class) != null;
         if (breaks && accumulators.of(tree, frame).isEmpty()) rules.requireNoUpdateOfTheIterable(tree);
@@ -163,9 +168,9 @@ final class Loops {
             var result = (PirTerm.LetRec) desugarer.desugarForEach(iterable, item.name(), NO_ACCUMULATOR, Statements.unit(),
                     new PirType.UnitType(), bodyTerm, held);
             terms.loop(result, null, item);
-            if (index + 1 >= following.size() && cont == null) return result;
-            var rest = statements.sequence(following, index + 1, frame, cont);
-            return terms.generatedLet(PirHelpers.hygienicName("#_forEach", PirHelpers.freeVariables(rest)), result, rest);
+            if (index + 1 >= following.size() && cont == null) return Trampoline.done(result);
+            return statements.rest(following, index + 1, frame, cont).map(rest ->
+                    terms.generatedLet(PirHelpers.hygienicName("#_forEach", PirHelpers.freeVariables(rest)), result, rest));
         }
 
         var typed = travelling(elements, tree, List.of(), frame);
@@ -242,7 +247,7 @@ final class Loops {
 
     // --- While ---
 
-    private PirTerm whileLoop(WhileLoopTree tree, List<? extends StatementTree> following, int index, Frame frame, PirTerm cont) {
+    private Trampoline<PirTerm> whileLoop(WhileLoopTree tree, List<? extends StatementTree> following, int index, Frame frame, PirTerm cont) {
         rules.check(tree);
         var condition = ((ParenthesizedTree) tree.getCondition()).getExpression();
         boolean breaks = LoopRules.firstExit(tree.getStatement(), BreakTree.class) != null;
@@ -253,16 +258,16 @@ final class Loops {
             var test = lowering.expr(condition, frame);
             var bodyTerm = statements.single(tree.getStatement(), frame);
             var result = desugarer.desugarWhile(test, bodyTerm);
-            if (index + 1 >= following.size() && cont == null) return result;
-            var rest = statements.sequence(following, index + 1, frame, cont);
-            return terms.generatedLet(PirHelpers.hygienicName("#_while", PirHelpers.freeVariables(rest)), result, rest);
+            if (index + 1 >= following.size() && cont == null) return Trampoline.done(result);
+            return statements.rest(following, index + 1, frame, cont).map(rest ->
+                    terms.generatedLet(PirHelpers.hygienicName("#_while", PirHelpers.freeVariables(rest)), result, rest));
         }
 
         return elements.size() == 1 ? single(tree, condition, carried(elements, tree, frame), breaks, following, index, frame, cont)
                 : several(tree, condition, elements, breaks, following, index, frame, cont);
     }
 
-    private PirTerm single(WhileLoopTree tree, ExpressionTree condition, Carried carried, boolean breaks,
+    private Trampoline<PirTerm> single(WhileLoopTree tree, ExpressionTree condition, Carried carried, boolean breaks,
                            List<? extends StatementTree> following, int index, Frame frame, PirTerm cont) {
         var accumulator = carried.only();
         var inner = frame.updating();
@@ -309,7 +314,7 @@ final class Loops {
     }
 
     /** A {@code while} of several accumulators: the condition reads them at the types they travel at. */
-    private PirTerm several(WhileLoopTree tree, ExpressionTree condition, List<Element> elements, boolean breaks,
+    private Trampoline<PirTerm> several(WhileLoopTree tree, ExpressionTree condition, List<Element> elements, boolean breaks,
                             List<? extends StatementTree> following, int index, Frame frame, PirTerm cont) {
         var typed = travelling(elements, tree, following.subList(0, index), frame);
         var carried = carried(elements, tree, typed);
@@ -331,10 +336,11 @@ final class Loops {
     // --- What follows ---
 
     /** {@code result} bound for what follows it. As the last thing its list does, it is the list's value. */
-    private PirTerm after(PirTerm result, Carried carried, List<? extends StatementTree> following, int index, Frame frame, PirTerm cont) {
-        if (index + 1 >= following.size() && cont == null) return result;
-        var rest = statements.sequence(following, index + 1, frame, cont);
-        return carried.rebound(result, rebindPreLoopVariables(rest, frame, carried));
+    private Trampoline<PirTerm> after(PirTerm result, Carried carried, List<? extends StatementTree> following, int index, Frame frame,
+                                      PirTerm cont) {
+        if (index + 1 >= following.size() && cont == null) return Trampoline.done(result);
+        return statements.rest(following, index + 1, frame, cont)
+                .map(rest -> carried.rebound(result, rebindPreLoopVariables(rest, frame, carried)));
     }
 
     /**

@@ -3,11 +3,14 @@ package org.julclang.compiler.frontend.javac.lower;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.core.Constant;
 import org.julclang.core.DefaultFun;
+import org.julclang.core.recursion.Trampoline;
 
 import javax.lang.model.element.Element;
 import java.math.BigInteger;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 /**
  * ADR-069 I1's check, enabled in tests beside {@link BindingCheck}: an {@code instanceof} pattern variable is bound only
@@ -29,93 +32,85 @@ public final class PatternBindingCheck {
 
     /** @throws IllegalStateException for the first introduction out of place, or a rebinding outside every introduction */
     public static void check(PirTerm program, Provenance provenance) {
-        new PatternBindingCheck(provenance).walk(program, null);
+        new PatternBindingCheck(provenance).walk(program, null).run();
     }
 
-    /** @param test the {@code IfThenElse} whose then-branch {@code term} is, or null */
-    private void walk(PirTerm term, PirTerm.IfThenElse test) {
-        switch (term) {
+    /**
+     * @param test the {@code IfThenElse} whose then-branch {@code term} is, or null. Stack-safe (issue #327): a program is
+     *             as deep as it is long. Terms are visited, and binders required, in the recursive form's order.
+     */
+    private Trampoline<Void> walk(PirTerm term, PirTerm.IfThenElse test) {
+        return Trampoline.defer(() -> switch (term) {
             case PirTerm.Let let -> let(let, test);
-            case PirTerm.IfThenElse branch -> {
-                walk(branch.cond(), null);
-                walk(branch.thenBranch(), branch);
-                walk(branch.elseBranch(), null);
-            }
+            case PirTerm.IfThenElse branch -> walk(branch.cond(), null).then(ignored -> walk(branch.thenBranch(), branch))
+                    .then(ignored -> walk(branch.elseBranch(), null));
             case PirTerm.LetRec rec -> {
                 rec.bindings().forEach(binding -> requireInside(rec, binding.name()));
-                rec.bindings().forEach(binding -> walk(binding.value(), null));
-                walk(rec.body(), null);
+                yield all(rec.bindings(), binding -> walk(binding.value(), null)).then(ignored -> walk(rec.body(), null));
             }
             case PirTerm.Lam lam -> {
                 requireInside(lam, lam.param());
-                walk(lam.body(), null);
+                yield walk(lam.body(), null);
             }
-            case PirTerm.App app -> {
-                walk(app.function(), null);
-                walk(app.argument(), null);
-            }
-            case PirTerm.IntegerCase select -> {
-                walk(select.scrutinee(), null);
-                select.branches().forEach(branch -> walk(branch, null));
-            }
-            case PirTerm.PairMatch pair -> {
-                walk(pair.scrutinee(), null);
+            case PirTerm.App app -> walk(app.function(), null).then(ignored -> walk(app.argument(), null));
+            case PirTerm.IntegerCase select -> walk(select.scrutinee(), null)
+                    .then(ignored -> all(select.branches(), branch -> walk(branch, null)));
+            case PirTerm.PairMatch pair -> walk(pair.scrutinee(), null).then(ignored -> {
                 requireInside(pair, pair.firstName());
                 requireInside(pair, pair.secondName());
-                walk(pair.body(), null);
-            }
-            case PirTerm.ListMatch list -> {
-                walk(list.scrutinee(), null);
-                walk(list.nilBranch(), null);
-                requireInside(list, list.headName());
-                requireInside(list, list.tailName());
-                walk(list.consBranch(), null);
-            }
-            case PirTerm.DataConstr constr -> constr.fields().forEach(field -> walk(field, null));
-            case PirTerm.DataMatch match -> {
-                walk(match.scrutinee(), null);
-                for (var branch : match.branches()) {
-                    branch.bindings().forEach(name -> requireInside(branch, name));
-                    if (branch.patternVar() != null) requireInside(branch, branch.patternVar());
-                    walk(branch.body(), null);
-                }
-            }
-            case PirTerm.Trace trace -> {
-                walk(trace.message(), null);
-                walk(trace.body(), null);
-            }
-            case PirTerm.Var ignored -> { }
-            case PirTerm.Const ignored -> { }
-            case PirTerm.Builtin ignored -> { }
-            case PirTerm.Error ignored -> { }
-        }
+                return walk(pair.body(), null);
+            });
+            case PirTerm.ListMatch list -> walk(list.scrutinee(), null).then(ignored -> walk(list.nilBranch(), null))
+                    .then(ignored -> {
+                        requireInside(list, list.headName());
+                        requireInside(list, list.tailName());
+                        return walk(list.consBranch(), null);
+                    });
+            case PirTerm.DataConstr constr -> all(constr.fields(), field -> walk(field, null));
+            case PirTerm.DataMatch match -> walk(match.scrutinee(), null).then(ignored -> all(match.branches(), branch -> {
+                branch.bindings().forEach(name -> requireInside(branch, name));
+                if (branch.patternVar() != null) requireInside(branch, branch.patternVar());
+                return walk(branch.body(), null);
+            }));
+            case PirTerm.Trace trace -> walk(trace.message(), null).then(ignored -> walk(trace.body(), null));
+            case PirTerm.Var ignored -> DONE;
+            case PirTerm.Const ignored -> DONE;
+            case PirTerm.Builtin ignored -> DONE;
+            case PirTerm.Error ignored -> DONE;
+        });
     }
 
-    private void let(PirTerm.Let let, PirTerm.IfThenElse test) {
-        walk(let.value(), null);
-        var introduction = provenance.introductionOf(let);
-        if (introduction != null) {
-            var operand = test == null ? null : testedOperand(test.cond(), introduction.tag());
-            if (operand == null) {
-                throw new IllegalStateException("I1: pattern variable '" + let.name() + "' is bound outside the test of its operand's tag "
-                        + introduction.tag());
+    private static final Trampoline<Void> DONE = Trampoline.done(null);
+
+    private static <T> Trampoline<Void> all(List<T> items, Function<T, Trampoline<Void>> step) {
+        return Trampoline.each(items, step).map(ignored -> null);
+    }
+
+    /** A failure ends the check, so a count opened here needs no closing after one. */
+    private Trampoline<Void> let(PirTerm.Let let, PirTerm.IfThenElse test) {
+        return walk(let.value(), null).then(ignored -> {
+            var introduction = provenance.introductionOf(let);
+            if (introduction != null) {
+                var operand = test == null ? null : testedOperand(test.cond(), introduction.tag());
+                if (operand == null) {
+                    throw new IllegalStateException("I1: pattern variable '" + let.name() + "' is bound outside the test of its operand's tag "
+                            + introduction.tag());
+                }
+                if (!let.value().equals(operand)) {
+                    throw new IllegalStateException("I1: pattern variable '" + let.name() + "' binds another term than its tested operand");
+                }
+                if (!operand.equals(introduction.operand())) {
+                    throw new IllegalStateException("I1: pattern variable '" + let.name() + "' is tested and bound on another operand than its own");
+                }
+                open.merge(introduction.variable(), 1, Integer::sum);
+                return walk(let.body(), null).map(done -> {
+                    open.merge(introduction.variable(), -1, Integer::sum);
+                    return null;
+                });
             }
-            if (!let.value().equals(operand)) {
-                throw new IllegalStateException("I1: pattern variable '" + let.name() + "' binds another term than its tested operand");
-            }
-            if (!operand.equals(introduction.operand())) {
-                throw new IllegalStateException("I1: pattern variable '" + let.name() + "' is tested and bound on another operand than its own");
-            }
-            open.merge(introduction.variable(), 1, Integer::sum);
-            try {
-                walk(let.body(), null);
-            } finally {
-                open.merge(introduction.variable(), -1, Integer::sum);
-            }
-            return;
-        }
-        requireInside(let, let.name());
-        walk(let.body(), null);
+            requireInside(let, let.name());
+            return walk(let.body(), null);
+        });
     }
 
     /** A binder of an introduced pattern variable that is no introduction lies inside one of its introductions. */
