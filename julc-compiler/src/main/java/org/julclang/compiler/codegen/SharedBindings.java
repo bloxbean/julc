@@ -32,7 +32,12 @@ import java.util.Set;
  * <p>
  * This keeps what each purpose runs. Every handler bound each shared method before; a binding is a function value, or
  * one of the total, cheap values the delayed-method pass leaves bound, so evaluating it before the dispatch instead of
- * after it gives the same values, failures, traces and budget. Only the copies go.
+ * after it gives the same values, failures and traces.
+ * <p>
+ * The budget can move a little either way, because the optimizer treats a binding outside the dispatch differently
+ * from one inside a handler: a helper a handler calls once was inlined into it, and once shared it is bound instead,
+ * a few machine steps more on that handler's path; other paths can come out cheaper. The counter benchmark of issue
+ * #325 measures and pins these (ADR-076).
  */
 public final class SharedBindings {
 
