@@ -62,7 +62,7 @@ final class Ifs {
 
     /**
      * The {@code if} at {@code index}, which continues with what follows it, then {@code cont}: a step of
-     * {@link Statements#rest}, stack-safe in what follows (issue #327).
+     * {@link Statements#sequence}, stack-safe in what follows (issue #327).
      */
     Trampoline<PirTerm> inSequence(IfTree tree, List<? extends StatementTree> following, int index, Frame frame, PirTerm cont) {
         var introduced = lowering.conditions().introducedBy(tree, frame);
