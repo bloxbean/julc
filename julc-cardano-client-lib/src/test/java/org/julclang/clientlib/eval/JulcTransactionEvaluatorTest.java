@@ -1057,6 +1057,21 @@ class JulcTransactionEvaluatorTest {
     }
 
     @Test
+    void guardingRedeemer_hasNoPlutusV3Purpose_andFailsEvaluation() throws Exception {
+        // CCL 0.8.0-pre8 reads the Dijkstra era's guard-script redeemer tag; a Plutus V3 context has no purpose for it.
+        var tx = mintTx(List.of(new TransactionInput(DUMMY_TX_HASH, 0)), List.of());
+        var redeemer = tx.getWitnessSet().getRedeemers().getFirst();
+        redeemer.setTag(RedeemerTag.Guarding);
+        var converter = TestConverters.of(tx, Set.of(dummyUtxo(DUMMY_TX_HASH)), 10);
+        var error = assertThrows(IllegalArgumentException.class, () -> converter.redeemerToScriptPurpose(redeemer));
+        assertTrue(error.getMessage().contains("Guarding redeemer 0"), error.getMessage());
+
+        var result = createEvaluator(null, 10).evaluateTx(tx.serialize(), Set.of(dummyUtxo(DUMMY_TX_HASH)));
+        assertFalse(result.isSuccessful(), String.valueOf(result.getResponse()));
+        assertTrue(String.valueOf(result.getResponse()).contains("Guarding"), String.valueOf(result.getResponse()));
+    }
+
+    @Test
     void nativeAndPlutusReferenceScriptOutputs_encodeTheirHashesInV2AndV3Contexts() throws Exception {
         var tx = mintTx(List.of(new TransactionInput(DUMMY_TX_HASH, 0)), List.of(
                 refScriptOutput(new ScriptPubkey("11".repeat(28)).scriptRefBytes()),
