@@ -2,6 +2,7 @@ package org.julclang.compiler.codegen;
 
 import org.julclang.compiler.pir.PirHelpers;
 import org.julclang.compiler.pir.PirTerm;
+import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.resolve.LibraryMethodRegistry.LibraryMethod;
 import org.julclang.core.Constant;
 import org.julclang.core.cbor.PlutusDataCborEncoder;
@@ -37,7 +38,9 @@ import java.util.Set;
  *   <li>a variable bound inside the body is its de Bruijn index, so the names of locals and parameters do not count;</li>
  *   <li>a call of another library method is that method's content key, so neither its name, its class nor its package
  *       counts, and a call of the method itself is a fixed token;</li>
- *   <li>types and constructor names, which spell class names, are left out.</li>
+ *   <li>types are written as their structure, which decides how values are encoded, without the names that spell a
+ *       class: a record as its fields' types, a sum as its constructors' tags and fields' types. Constructor and field
+ *       names are left out.</li>
  * </ul>
  * So moving a library class to another package, renaming it, or reordering imports or library sources leaves the
  * order, and the script, as they were. Changing what a method does can move it, as it changes the bytes anyway.
@@ -162,12 +165,13 @@ final class LibraryBindingOrder {
                                  List<String> scope, ArrayDeque<Step> pending, StringBuilder text) {
         var children = new ArrayList<Step>();
         switch (term) {
-            case PirTerm.Var variable -> text.append(variable(variable.name(), method, keys, libraryMethods, scope));
+            case PirTerm.Var variable -> text.append(variable(variable.name(), method, keys, libraryMethods, scope))
+                    .append(type(variable.type()));
             case PirTerm.Const constant -> text.append("(c ").append(constant(constant.value())).append(')');
             case PirTerm.Builtin builtin -> text.append("(b ").append(builtin.fun().name()).append(')');
-            case PirTerm.Error _ -> text.append("(error)");
+            case PirTerm.Error error -> text.append("(error ").append(type(error.type())).append(')');
             case PirTerm.Lam lam -> {
-                text.append("(lam");
+                text.append("(lam ").append(type(lam.paramType()));
                 bound(children, List.of(lam.param()), lam.body());
             }
             case PirTerm.Let let -> {
@@ -200,7 +204,8 @@ final class LibraryBindingOrder {
                 children.add(new Step.Visit(trace.body()));
             }
             case PirTerm.DataConstr constr -> {
-                text.append("(constr ").append(constr.tag()).append(' ').append(constr.fields().size());
+                text.append("(constr ").append(constr.tag()).append(' ').append(type(constr.dataType()))
+                        .append(' ').append(constr.fields().size());
                 for (var field : constr.fields()) children.add(new Step.Visit(field));
             }
             case PirTerm.DataMatch match -> {
@@ -210,6 +215,7 @@ final class LibraryBindingOrder {
                     var names = new ArrayList<>(branch.bindings());
                     if (branch.patternVar() != null) names.add(branch.patternVar());
                     text.append(' ').append(branch.bindings().size()).append(branch.patternVar() == null ? "" : "+");
+                    for (var bindingType : branch.bindingTypes()) text.append(type(bindingType));
                     bound(children, names, branch.body());
                 }
             }
@@ -220,7 +226,7 @@ final class LibraryBindingOrder {
                 bound(children, List.of(match.headName(), match.tailName()), match.consBranch());
             }
             case PirTerm.PairMatch match -> {
-                text.append("(pairmatch");
+                text.append("(pairmatch ").append(type(match.pairType()));
                 children.add(new Step.Visit(match.scrutinee()));
                 bound(children, List.of(match.firstName(), match.secondName()), match.body());
             }
@@ -251,6 +257,49 @@ final class LibraryBindingOrder {
             return key == null ? "(group)" : "(call " + key + ")";
         }
         return "(free " + name.length() + ":" + name + ")";
+    }
+
+    /**
+     * A type's structure, without the names that spell a class: a record is its fields' types, a sum its constructors'
+     * tags and fields' types, and a reference to a named type only its kind. Two types that encode differently are
+     * written differently. Types nest as deeply as the source declares them, so this recurses.
+     */
+    private static String type(PirType type) {
+        return switch (type) {
+            case null -> "_";
+            case PirType.IntegerType _ -> "I";
+            case PirType.ByteStringType _ -> "B";
+            case PirType.StringType _ -> "S";
+            case PirType.BoolType _ -> "O";
+            case PirType.UnitType _ -> "U";
+            case PirType.DataType _ -> "D";
+            case PirType.NativeValueType _ -> "V";
+            case PirType.NativeG1Type _ -> "G1";
+            case PirType.NativeG2Type _ -> "G2";
+            case PirType.NativeMlResultType _ -> "ML";
+            case PirType.NativeListType list -> "NL<" + type(list.elemType()) + ">";
+            case PirType.ListType list -> "L<" + type(list.elemType()) + ">";
+            case PirType.PairType pair -> "P<" + type(pair.first()) + "," + type(pair.second()) + ">";
+            case PirType.MapType map -> "M<" + type(map.keyType()) + "," + type(map.valueType()) + ">";
+            case PirType.OptionalType optional -> "Opt<" + type(optional.elemType()) + ">";
+            case PirType.ArrayType array -> "A<" + type(array.elemType()) + ">";
+            case PirType.FunType function -> "F<" + type(function.paramType()) + "," + type(function.returnType()) + ">";
+            case PirType.RecordType record -> "R<" + fields(record.fields()) + ">";
+            case PirType.SumType sum -> {
+                var text = new StringBuilder("Sum<");
+                for (var constructor : sum.constructors()) {
+                    text.append(constructor.tag()).append('(').append(fields(constructor.fields())).append(')');
+                }
+                yield text.append('>').toString();
+            }
+            case PirType.NamedTypeRef reference -> "Ref<" + reference.kind() + ">";
+        };
+    }
+
+    private static String fields(List<PirType.Field> fields) {
+        var text = new StringBuilder();
+        for (var field : fields) text.append(type(field.type())).append(';');
+        return text.toString();
     }
 
     /** A constant as a string that only an equal constant has. */

@@ -131,4 +131,25 @@ class LibraryBindingOrderTest {
         assertEquals(expected, LibraryBindingOrder.innermostFirst(List.of(b, c, a)));
         assertEquals(3, expected.size());
     }
+
+    /** A method that wraps its argument in a one-field record of {@code fieldType}. */
+    private static LibraryMethod boxing(String owner, PirType fieldType) {
+        var record = new PirType.RecordType(owner + "Box", List.of(new PirType.Field("value", fieldType)));
+        return new LibraryMethod(owner, "box", new PirType.FunType(fieldType, record), new PirTerm.Lam("x", fieldType,
+                new PirTerm.DataConstr(0, record, List.of(new PirTerm.Var("x", fieldType)))));
+    }
+
+    /**
+     * Two bodies that differ only in their fields' types encode differently (IData against BData), so their keys
+     * differ, and which is bound first does not follow their classes' names (issue #328 review).
+     */
+    @Test
+    void bodiesThatEncodeDifferentlyAreOrderedByContentNotByName() {
+        var integerFirst = LibraryBindingOrder.innermostFirst(List.of(
+                boxing("a.A", new PirType.IntegerType()), boxing("z.Z", new PirType.ByteStringType())));
+        var integerSecond = LibraryBindingOrder.innermostFirst(List.of(
+                boxing("z.Z", new PirType.IntegerType()), boxing("a.A", new PirType.ByteStringType())));
+        assertEquals(integerFirst.stream().map(m -> m.body().toString().contains("IntegerType")).toList(),
+                integerSecond.stream().map(m -> m.body().toString().contains("IntegerType")).toList());
+    }
 }

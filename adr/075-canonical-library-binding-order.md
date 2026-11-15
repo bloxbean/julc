@@ -35,8 +35,8 @@ A probe on `main` (`a2bfc683`, a validator using four stdlib libraries and two u
 ## Goals
 
 - The script does not depend on the order of `import` declarations or of library sources.
-- The script does not depend on the package or the name of a library class, or on the names of a library method's
-  parameters and locals. A package move then changes the script only where the package itself reaches it, such as a
+- The order of the bindings does not depend on the package or the name of a library class, or on the names of a
+  library method's parameters and locals (I2 names the exceptions). A package move then changes the script only where the package itself reaches it, such as a
   string constant.
 - The order is deterministic and cheap to compute.
 
@@ -60,17 +60,29 @@ A probe on `main` (`a2bfc683`, a validator using four stdlib libraries and two u
   - a call of another library method is written as that method's content key, so the key is a Merkle hash over the
     dependency DAG;
   - a call of the method itself is a fixed token;
-  - types and constructor names, which spell class names, are left out;
+  - a type is written as its structure, which decides how a value is encoded: a record as its fields' types, a sum
+    as its constructors' tags and fields' types, a reference to a named type as its kind. The names of classes,
+    constructors and fields are left out;
   - constants are written exactly: bytes as hex, `Data` as its CBOR.
 - **Recursive groups:** methods that call each other are keyed with their calls inside the group as a fixed token. Their
-  qualified names then decide where their bodies agree.
-- **Stack safety:** the key is computed with a work list, not recursion.
+  qualified names then decide where their bodies agree. Library methods that call each other are not supported by the
+  assembly, as before: each is bound alone, so such a program still fails to compile.
+- **Stack safety:** the walk over a method's body uses a work list, not recursion. A constant nests as deeply as its
+  data, and a type as deeply as its declaration; these recurse, as everywhere else in the compiler (ADR-074 non-goals).
 
 ## Invariants
 
 - **I1.** Permuting imports or library sources leaves the script's bytes unchanged.
-- **I2.** Moving library classes to other packages, or renaming them, leaves the bytes unchanged. Two methods with
-  identical bodies are the one exception: they are told apart by name.
+- **I2.** Moving library classes to other packages, or renaming them, leaves the order of the bindings unchanged, with
+  two exceptions:
+  - two methods with identical bodies are told apart by name;
+  - the shared strict-boundary shape checker numbers the types it checks in the order the libraries are lowered,
+    which is their qualified-name order. Its numbers are constants in the library methods' bodies. So a program whose
+    libraries call the shape checks of two or more types, such as `Credential.fromPlutusData` and
+    `TxOutRef.fromPlutusData` from different classes, can still change when a library class is renamed or moved
+    across another.
+
+  Neither depends on imports or on the order of library sources.
 - **I3.** Every library method is bound inside the methods it calls, so each dependency is in scope where it is used.
 - **I4.** The program computes the same results, failures and traces with the same budget as before. Only the order of
   closed or total bindings changes, and with it the de Bruijn indices that reach them.
@@ -90,12 +102,16 @@ A probe on `main` (`a2bfc683`, a validator using four stdlib libraries and two u
 
 ## Compatibility
 
-- The bytes change for programs whose library methods had more than one valid order. On `main`'s own goldens this
+- The bytes change for programs whose library methods had more than one valid order. On `main`'s own tests this
   moved:
-  - 156 rows of the ADR-068 frozen reference;
-  - four rows of the ADR-060 byte snapshot (fixtures `o11-1` and `o11-16`).
+  - 161 rows of the ADR-068 frozen reference, which were re-recorded;
+  - the BLS fixture pin `G2_CONS` in `O11BlsTypesTest`, which keeps its size;
+  - rows of the byte oracles captured before this change. These are the ADR-060 snapshot and the O8, O9 and O15
+    pre-change goldens.
 
-  Both tables were re-recorded and explained.
+  Those oracles now compare with `LibraryOrderEquivalence`. It accepts a program that differs from its capture
+  only in the order of the bindings of a run of `let`s, every binding and dependency kept, and still fails every
+  other difference. FLAT keeps no names, so each binder of a run is named by a digest of its value.
 - `JavacLibrariesTest.theOrderOfTheLetsIsTheReferencesRegistration` asserted the old behaviour, that two library
   orders give two programs. It is now `theOrderOfTheLetsDoesNotFollowThePool` and asserts the opposite.
 - Script hashes of deployed validators change on recompilation. This is a preview change; release notes say so.
@@ -118,13 +134,26 @@ A probe on `main` (`a2bfc683`, a validator using four stdlib libraries and two u
   - The validator uses four stdlib libraries and two user library classes, one recursive and one calling the other.
   - Every variant gives the same bytes. With the old order in place, the test fails at every level.
   - The reordered method is evaluated on the VM against Java's results.
-- `LibraryBindingOrderTest` checks, on 500 random dependency DAGs including recursive methods:
+- `LibraryBindingOrderTest` checks two typed constructor bodies that differ only in their fields' types, and so in how
+  they encode, get different keys. It also checks, on 500 random dependency DAGs including recursive methods:
   - the order is the same for every permutation of the input;
   - every method is bound inside the methods it calls;
   - moving and renaming classes and locals keeps the order;
   - methods that call each other are ordered canonically.
+- **Evaluation differential against `main`.** I took every `compileMethod` case of the ADR-074 corpus that uses the
+  default library lookup: 15,097 of its 20,407 recorded cases. Each was compiled on `main` and on
+  this change at every level it was recorded at, then evaluated on seven argument vectors under a transaction's
+  budget. That is 272,462 evaluations: 98,422 succeed, 167,907 fail and 112 exhaust the budget.
+  - In every one the outcome, the CPU and memory consumed, and the traces are identical.
+  - 822 results differ in the term they print, and every one of them is a lambda: a partial application whose
+    closure shows the new order of its bindings.
+  - The harness is `adr/evidence/075/EvalDiffReplayTest.java.txt`.
 - The full suites, the difftest JVM/UPLC agreement and the external examples are recorded in the PR.
 
 ## Open questions
+
+- Number the shared shape checker's types canonically, so that I2 holds without its second exception. The numbers
+  are written into the bodies as the libraries are lowered, so this needs the registry to change, not the binding
+  order.
 
 - Canonical order for a validator's own helper methods, independent of their declaration order.

@@ -15,8 +15,9 @@ of the library sources passed to the compiler. So reordering imports, passing li
 library class to another package could change the script hash although nothing else changed.
 
 The order is now fixed by the methods themselves: by their dependencies, then by a digest of each method's body that
-leaves out names, packages and types (ADR-075). Imports, library order, a library class's package and its name no
-longer reach the script.
+leaves out names and packages (ADR-075). Imports and the order of library sources no longer reach the script. A
+library class's package and name no longer decide the order either, except between methods whose bodies are equal,
+and in the numbering of shared strict-boundary shape checks (ADR-075 I2).
 
 - **Script hashes change** on recompilation for most validators that use two or more library methods. Redeploy, or
   pin the compiler version, if a script hash matters to you.

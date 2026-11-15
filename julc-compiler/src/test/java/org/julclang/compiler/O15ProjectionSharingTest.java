@@ -100,12 +100,12 @@ class O15ProjectionSharingTest {
 
                     var old = golden(i, level, maps);
                     var oldBytes = UplcFlatEncoder.encodeProgram(old);
-                    // The golden is reproducible at this commit with the rule switched off.
-                    assertArrayEquals(oldBytes, UplcFlatEncoder.encodeProgram(
-                            compile(fixture.source(), fixture.method(), level, maps, ValueConversionSharingPass.PROJECTION_RULE).program()),
+                    // The golden is reproducible at this commit with the rule switched off, up to ADR-075's library order.
+                    LibraryOrderEquivalence.assertSameUpToLibraryOrder(old,
+                            compile(fixture.source(), fixture.method(), level, maps, ValueConversionSharingPass.PROJECTION_RULE).program(),
                             label + " with the rule off");
                     if (!expectRule) {
-                        assertArrayEquals(oldBytes, bytes, label);
+                        LibraryOrderEquivalence.assertSameUpToLibraryOrder(old, program, label);
                     } else {
                         // Sharing k sites of a chain of n builtin applications removes (k-1)·n
                         // applications (and their forces) for one lambda, one application and k
