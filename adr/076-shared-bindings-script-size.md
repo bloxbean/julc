@@ -70,12 +70,22 @@ helpers and library methods that:
   inline. A function is total and has no effect, so evaluating its binding earlier changes no result, failure or trace.
 
 **What is shared, from the optimizer's output.** One walk finds each candidate's bindings, `[(\m. body) value]`, by
-name. A method's binder is `Owner.name`, which no local and no generated `#` binder can be. A candidate is shared when:
-- it is bound exactly once per handler;
-- each binding is the same function: the same term, where a variable bound inside it has the same index and one bound
-  outside it names the same binder;
-- that function is not a value `UplcOptimizer.inlinesWhenUsedOnce` accepts; and
-- every variable it reads is bound above the point where the handlers branch, or is another shared method.
+name. A method's binder is `Owner.name`, which no local and no generated `#` binder can be. A candidate is shared when
+all of these hold:
+- **One per handler.** It is bound once in each of as many *let spines* as there are handlers. A let spine is a run of
+  nested `let`s. Every shared method is bound in the same spines.
+- **Run once.** Between the point where the handlers branch and the binding there is no lambda but `let`s'. Once the path
+  below that point enters a `let`'s value, it passes no `Delay`, `Case` branch or lambda. Any of those could run the
+  binding zero or many times. Another method's value is such a value, so a binding inside it moves with it and is not
+  shared out of it.
+- **The same function.** Each binding is the same term, where a variable bound inside it has the same index and one bound
+  outside it names the same binder.
+- **Total, no effect.** The value is pure (`UplcOptimizer.isPure`: a value, a pure term or a fixpoint of a lambda), or
+  the fixpoint of a lambda over a value read from a binder of the Z combinator, as D2 leaves it. It is not a value
+  `UplcOptimizer.inlinesWhenUsedOnce` accepts.
+- **In scope.** Every variable it reads is bound above that point, or is another shared method.
+
+A term that reads a variable nothing binds is left as it is.
 
 A method that reads one that is not shared is not shared either. The shared bindings wrap the smallest term that holds
 every binding of every shared method, in dependency order, and are removed from each handler. Their variables are
@@ -85,10 +95,14 @@ rebuilt for the new binders. The result is kept only if its FLAT encoding is sma
 it is total and has no effect. Evaluating it once, before the handlers branch, instead of in the handler that runs,
 gives the same results, failures and traces.
 
-**Why each handled run costs the same.** No handler's code is re-optimized. A handler evaluated each of its bindings,
-an application, a lambda and the value, once, and now the same bindings are evaluated once on the way to it. A run
-that fails before its handler's bindings now evaluates the shared ones first and pays for them. That happens when no
-handler takes the purpose, or when the purpose's boundary check fails before its handler.
+**Why each handled run costs the same.** No handler's code is re-optimized. `ValidatorAssembly` binds a handler's
+methods at the start of the handler, after its dispatch branch and boundary check, so each handled run passes through
+exactly one handler's spine, once. That is the one fact about the program D1 takes from the assembly and does not check
+itself. The checks above rule out every other way a binding could run more or less often. A run evaluated each of its
+handler's bindings once, and now evaluates the same bindings once on the way to it.
+
+A run that fails before its handler's bindings now evaluates the shared ones first and pays for them. That is a run
+where no handler takes the purpose, where the purpose's boundary check fails, or where a static initializer fails.
 
 **Why on the optimizer's output.** Three reviews found ways a decision made earlier, in the PIR, could raise a handled
 run's budget, because the optimizer then works on one copy where it had worked on one per handler:
@@ -160,9 +174,13 @@ builtins and the Z shape. `SharedRootBindings` substitutes a script's shared roo
   per force: one for `headList`, two for `sndPair`. Each shared value adds its binding once, at most 5 steps: an
   application, a lambda and the value.
 - **I3.** With D1, every run that reaches its handler's bindings takes exactly the steps it takes without D1, with D2
-  on or off. A run that fails before them pays for evaluating the shared bindings first: three steps for each, an
-  application, a lambda and the value. That is a run whose purpose has no handler, or one whose boundary check fails.
-  Inlining every method binding gives the same program with D1 as without it, as FLAT.
+  on or off. A run that fails before them pays for the shared bindings first. Each costs an application, a lambda and
+  its value's own steps: one for a lambda, three for a partial application of a builtin, more for a recursive method's
+  fixpoint. Such a run is one with no handler, a failed boundary check or a failed static initializer. Inlining every
+  method binding gives the same program with or without D1, as FLAT.
+
+  As for D2, results and traces are the same whenever the budget suffices. Under a budget cut short between the
+  shared bindings and a trace, a run can stop before the trace.
 - **I4.** Below `PV11_SAFE`, or with a rule disabled, the output is what it was.
 
 ## Results
@@ -244,6 +262,10 @@ the guard only removes sharing that did not shrink a program.
 - **Budget.** D2 can raise a run's budget by up to 5 steps per shared value, on a run that uses few of them (I2). D1
   raises only the budget of a run that fails before its handler's bindings (I3). On Cardano a failing script forfeits
   its collateral, whatever budget it used.
+- **The assembly's shape.** D1 checks what it can from the term: one binding per spine and handler, no lambda,
+  delay or branch that could run it other than once. It trusts the assembly that each handled run passes through its
+  own handler's spine once. `HandlerBindingSharingFuzzTest` and `SharedBindingsTest` check the budgets on every
+  fixture, and `HandlerBindingSharingTest` the shapes that must not be shared.
 - **A mutually recursive group.** Bekić's lowering nests copies of the methods in each other, so a group is shared only
   where its bindings line up as one function per handler. The two-handler fixture shares `odd`, with the copy of `even`
   nested in it, and keeps `even`'s own bindings.
@@ -267,24 +289,36 @@ the guard only removes sharing that did not shrink a program.
   - The same check over the whole corpus covers 24,652 programs, every one equal after substitution
     (`adr/evidence/076/SharingCorpusReplayTest.java.txt`).
 - **D1, exact.**
-  - `HandlerBindingSharingFuzzTest` builds 3,000 random programs shaped as multi-validators. They have two to four
-    handlers, a failing last branch, methods that differ in some handlers or read a handler's own binder, and calls
-    between methods. On each it checks four things:
-    - the shared methods are exactly those the generator knows to be the same function, reading nothing bound in a
-      handler;
+  - `HandlerBindingSharingFuzzTest` builds 3,000 random programs shaped as multi-validators. They have:
+    - two to four handlers and a failing last branch;
+    - methods that are lambdas or partial builtin applications;
+    - methods that differ in some handlers or read a handler's own binder;
+    - calls between methods;
+    - in some programs, part of one handler's chain under a lambda that is not a `let`'s, or behind a `force (delay ...)`.
+
+    On each it checks four things:
+    - the shared methods are exactly those the generator knows to qualify;
     - with every method binding inlined, the programs are equal as FLAT;
     - the script never grows;
-    - every input gives the same result and traces, the same budget when a handler takes it, and exactly 3 steps more per
-      shared method when none does.
-
-    Disabling the same-function check, or the in-scope check, makes it fail.
+    - every input gives the same result and traces, the same budget when a handler takes it, and exactly the shared
+      bindings' steps more when none does.
+  - `HandlerBindingSharingTest` covers the shapes the generator does not:
+    - a value that traces;
+    - a fixpoint over D2's `#z`, and the same shape over a binder that is not Z;
+    - a binding inside another method's delayed value;
+    - a binding under a lambda passed as an argument;
+    - an open term;
+    - a chain of 4,000 methods per handler, decided in under a second.
+  - Each guard was disabled in turn, and a test fails each time: totality, same function, scope, the lambda and deferred
+    step checks, one binding per spine, and the open term.
   - `SharedBindingsTest` compiles a multi-validator with a `@Param`, a static, failing, tracing and constant
     zero-argument helpers, mutual recursion, and two-handler and three-handler variants. It checks:
     - identical outcomes, traces, results and failure text with the rule on and off, on every context, at both levels,
       with and without source maps and with D2 on and off;
     - the inlined-program oracle;
     - the same budget on every run that reaches a handler;
-    - in the two-handler variant, exactly 15 steps more on the contexts with no handler.
+    - in the two-handler variant, exactly 15 steps more on the contexts with no handler: 3 for `underLimit`, a lambda,
+      and 12 for `odd`, a fixpoint.
   - The review's scenarios are pinned with identical budgets on every run: the helpers that become builtins, the
     `JulcArray.of` helper and six `nullList` checks under D2. So is a run that fails at its boundary check, at exactly
     3 steps more.
