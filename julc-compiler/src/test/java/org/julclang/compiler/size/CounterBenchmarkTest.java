@@ -45,7 +45,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 
@@ -70,15 +69,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * {@link #tokenNameDerivationIsTheOneDifference()} pins that a Create naming the token the other way is rejected by
  * the one and accepted by the other.
  * <p>
- * <b>A finding on o16.</b> {@link SharedBindings} says o16 keeps each purpose's budget; here it changes some paths'
- * budgets, which {@link #sharedHandlerBindingsBudgetDeviationsArePinned()} pins and explains as far as known.
+ * <b>o16 and the budget.</b> o16 keeps the budget of every run that reaches a handler, which every scenario here does:
+ * {@link #sharedHandlerBindingsKeepEveryHandledRunsBudget()} holds it to that exactly. A run whose purpose has no
+ * handler pays for the shared bindings before it fails at the dispatch ({@code SharedBindingsTest}).
  * <p>
  * One more difference no scenario reaches: Aiken's {@code spend(datum: Option<State>, ...)} checks the spent datum's
  * shape, JuLC's {@code (State) (Object) getInlineDatum(...)} does not. Every context here carries a well-formed datum.
  */
 class CounterBenchmarkTest {
 
-    /** The size target of this branch for {@code PlainCounter} at PV11_SAFE with both rules on. */
+    /** The size target of this branch for {@code PlainCounter} at PV11_SAFE with both rules on (measured: 2,749). */
     private static final int MAX_JULC_FLAT_BYTES = 2_750;
 
     /** The PV11 cost model charges every CEK machine step the same: 16000 CPU and 100 memory. */
@@ -87,11 +87,6 @@ class CounterBenchmarkTest {
 
     /** What binding one shared value adds, at most: an application, a lambda, and the value (two forces and a builtin). */
     private static final int STEPS_PER_SHARED_VALUE = 5;
-
-    /** The scenarios o16 makes one let-binding dearer, and the one it makes cheaper: see the o16 test. */
-    private static final Set<String> O16_ONE_MORE_BINDING = Set.of("mint Create", "mint Burn", "mint Create unsigned",
-            "mint Create minting 2", "spend Reset by non-owner");
-    private static final String O16_CHEAPER = "spend Reset";
 
     private static final JvmCryptoProvider CRYPTO = new JvmCryptoProvider();
 
@@ -227,43 +222,18 @@ class CounterBenchmarkTest {
     }
 
     /**
-     * o16 is meant to leave each purpose's budget identical ({@link SharedBindings}: "the same values, failures, traces
-     * and budget"). On {@code PlainCounter} it does not, whether o17 is on or off. This test pins the deviations as
-     * measured, so that a fix, or a new deviation, fails it:
-     * <ul>
-     *   <li>every mint path, and the spend path that stops at Reset's owner check, runs exactly three machine steps
-     *       more, the cost of one more let-binding of a lambda (an application, the binder's lambda, the bound lambda).
-     *       One candidate: without o16 the mint handler binds no {@code ByteStringLib.equals}, which it calls once and
-     *       so inlines; shared, it is bound;</li>
-     *   <li>the accepted Reset runs cheaper with o16 than without, by builtin work and not only by machine steps
-     *       (not yet explained).</li>
-     * </ul>
-     * Increment and Close, accepted or rejected, and the rejected Reset paths aside, run with an identical budget.
+     * o16 binds the methods both handlers need once, around the dispatch, and keeps what each handler runs: every
+     * scenario reaches a handler, accepting or rejecting, and costs exactly what it does without o16, whether o17 is on
+     * or off.
      */
     @Test
-    void sharedHandlerBindingsBudgetDeviationsArePinned() {
+    void sharedHandlerBindingsKeepEveryHandledRunsBudget() {
         assertFalse(Arrays.equals(UplcFlatEncoder.encodeProgram(julcOn.program()),
                 UplcFlatEncoder.encodeProgram(julcO16Off.program())), "o16 changes nothing in PlainCounter");
-        var oneMoreBinding = new ExBudget(3 * STEP_CPU, 3 * STEP_MEM);
-        var table = new StringBuilder(String.format("%no16 budget change (on minus off)%n%-30s %12s %8s %12s %8s%n",
-                "scenario", "dCPU", "dMem", "dCPU(o17off)", "dMem"));
         for (var scenario : SCENARIOS) {
-            var withO17 = difference(run(scenario, julcOn).budget(), run(scenario, julcO16Off).budget());
-            var withoutO17 = difference(run(scenario, julcO17Off).budget(), run(scenario, julcOff).budget());
-            table.append(String.format("%-30s %12d %8d %12d %8d%n", scenario.name(), withO17.cpuSteps(),
-                    withO17.memoryUnits(), withoutO17.cpuSteps(), withoutO17.memoryUnits()));
-            for (var change : List.of(withO17, withoutO17)) {
-                if (O16_ONE_MORE_BINDING.contains(scenario.name())) {
-                    assertEquals(oneMoreBinding, change, scenario.name());
-                } else if (scenario.name().equals(O16_CHEAPER)) {
-                    assertTrue(change.cpuSteps() < 0 && change.memoryUnits() < 0, scenario.name() + ": " + change);
-                    assertTrue(change.cpuSteps() % STEP_CPU != 0, scenario.name() + " now differs by machine steps only");
-                } else {
-                    assertEquals(ExBudget.ZERO, change, scenario.name());
-                }
-            }
+            assertEquals(run(scenario, julcO16Off).budget(), run(scenario, julcOn).budget(), scenario.name() + " (o17 on)");
+            assertEquals(run(scenario, julcOff).budget(), run(scenario, julcO17Off).budget(), scenario.name() + " (o17 off)");
         }
-        System.out.println(table);
     }
 
     /**
@@ -505,10 +475,6 @@ class CounterBenchmarkTest {
         var run = RUNS.get(scenario.name()).get(script.label());
         assertNotNull(run, scenario.name() + " on " + script.label());
         return run;
-    }
-
-    private static ExBudget difference(ExBudget a, ExBudget b) {
-        return new ExBudget(a.cpuSteps() - b.cpuSteps(), a.memoryUnits() - b.memoryUnits());
     }
 
     /** {@code with} minus {@code without}, in machine steps; fails unless the difference is whole machine steps. */

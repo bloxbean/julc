@@ -75,10 +75,8 @@ class O11BlsTypesTest {
      * lowering change shows up here and not only in the printed artifact lines.
      * <p>
      * ADR-076 D2 moved every pin but G2_CONS: each binds a repeated forced builtin or fixpoint combinator once at the
-     * root. With both ADR-076 rules off each program keeps its earlier pin (CONS_RECURSION 222 8be19c3e, VALIDATE_ONCE
-     * 274 77949aa1, CONS_ORDER 421 f32127c8, CONS_EMPTY_AND_MIXED 410 a0ce1790, CONS_LOOPS 559 46f2ad09, CONS_SWITCH
-     * 327 31b391b9, CAST_VIEWS 168 b55df08b), and substituting the root bindings back gives it term for term (checked
-     * at every level below).
+     * root. With both ADR-076 rules off each program keeps its earlier pin ({@link #CONS_ARTIFACTS_WITHOUT_ADR076}), and
+     * substituting the root bindings back gives it term for term (checked at every level below).
      */
     private static final Map<String, String> CONS_ARTIFACTS = Map.of(
             "CONS_RECURSION", "191 adb07d5d5645b53f0ae5cf504f41fa1d70942a2c7db6a42d6b5948dd",
@@ -89,6 +87,17 @@ class O11BlsTypesTest {
             "CONS_LOOPS", "446 2e1ef9ea8c814be00242f8047cd37f35f052ca29d9220965285f15a9",
             "CONS_SWITCH", "296 10f612f49c9c97aa6373090c74f6c354490b31cabc1aacf280d990d7",
             "CAST_VIEWS", "154 f3375175a8cd08a406b2570844c233bf94bc141d3da405b8fba820c8");
+
+    /** The pins as they were before ADR-076, which the programs keep with both of its rules off. */
+    private static final Map<String, String> CONS_ARTIFACTS_WITHOUT_ADR076 = Map.of(
+            "CONS_RECURSION", "222 8be19c3e5bb0d7295ea15e66fb4b7cbeab0ec099bc5421c4d4c104b6",
+            "VALIDATE_ONCE", "274 77949aa1bd08c80cf52d4f7822dbcff9d80ef347d57f5cdabcdd987e",
+            "CONS_ORDER", "421 f32127c89146678d6af4e2f00eb3a29922c6fa3e8663e801cbc33693",
+            "G2_CONS", "225 029e90c66f35d80475cff250026fb8c672b77617ddf725f4d7719192",
+            "CONS_EMPTY_AND_MIXED", "410 a0ce17903b087d903a320777989798b5f5af27cd6cc3c6fb32a763ce",
+            "CONS_LOOPS", "559 46f2ad09411eb12c4b558bbf3acd3ee19ea8b1616199851a54ab4968",
+            "CONS_SWITCH", "327 31b391b946bdd0b081e68310afbf25d836355fc301bfb8b6edfe2ad6",
+            "CAST_VIEWS", "168 b55df08bb69f59b0edd4ba5cc66ff2adec38bdc811f26099aa0f47fd");
 
     /** ADR-043 (O9) promotes the repeatedly indexed boundary list at PV11_COSTED, so the chain's own get fails as IndexArray there. */
     private static final Map<String, String> COSTED_FAILURE_PREFIX = Map.of(
@@ -107,7 +116,8 @@ class O11BlsTypesTest {
                         label + " determinism");
                 assertFalse(result.hasErrors(), label);
                 // ADR-076 D2 binds repeated closed values at the root; substituting them back gives the program without it.
-                Adr076Sharing.assertSharesOnlyClosedValues(result, compileWithoutAdr076(fixture.source(), fixture.method(), level), label);
+                var unshared = compileWithoutAdr076(fixture.source(), fixture.method(), level);
+                Adr076Sharing.assertSharesOnlyClosedValues(result, unshared, label);
                 compile(fixture.source(), fixture.method(), level, true); // source maps compile too
                 for (var input : fixture.inputs()) {
                     EvalResult javaResult = null;
@@ -143,6 +153,8 @@ class O11BlsTypesTest {
                     System.out.println("BLS_TYPED_ARTIFACT " + fixture.name() + " " + artifact);
                     if (CONS_ARTIFACTS.containsKey(fixture.name())) {
                         assertEquals(CONS_ARTIFACTS.get(fixture.name()), artifact, label + " artifact");
+                        assertEquals(CONS_ARTIFACTS_WITHOUT_ADR076.get(fixture.name()), UplcFlatEncoder.encodeProgram(unshared.program()).length
+                                + " " + JulcScriptAdapter.scriptHash(unshared.program()), label + " artifact without ADR-076");
                     }
                 }
             }

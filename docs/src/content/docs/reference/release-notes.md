@@ -16,12 +16,13 @@ Two rewrites at `pv11-safe` and `pv11-costed` make scripts smaller (ADR-076):
   methods are bound once at the script's root.**
 
 Results:
-- The counter validator of issue #325 goes from 3,862 to 2,741 bytes, 1.55 times Aiken's 1,769 for the same checks.
+- The counter validator of issue #325 goes from 3,862 to 2,749 bytes, 1.55 times Aiken's 1,769 for the same checks.
 - Every accepting transaction of its benchmark is cheaper.
 - Across the compiler's recorded test corpus, the second rewrite alone shrinks programs by 10 %.
 
-What a script computes, where it fails and what it traces do not change. Script hashes change at these levels. A
-transaction that fails early can cost a few machine steps more before it fails. Each rewrite can be turned off with
+What a script computes, where it fails and what it traces do not change. Script hashes change at these levels. The
+first rewrite keeps the budget of every run that reaches a purpose's handler. The second can add a few machine steps
+to a run that uses few of the shared values, such as a transaction that fails early. Each rewrite can be turned off with
 `CompilerOptions.disableOptimizationRule("pv11.o16.shared-handler-bindings")` or
 `disableOptimizationRule("pv11.o17.shared-closed-values")`.
 

@@ -1,11 +1,13 @@
 package org.julclang.benchmark.optimization;
 
+import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.OptimizationLevel;
 import org.julclang.core.PlutusData;
 import org.julclang.vm.OptimizationCostProfiles;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 
 /** Compiled-source evidence for ADR-034 / #110; each loop family is checked separately. */
 public final class ListCaseEvidence {
@@ -107,6 +109,11 @@ public final class ListCaseEvidence {
             """;
 
     public static List<OptimizationBenchmarkRunner.Comparison> comparisons() {
+        return comparisons(options -> { });
+    }
+
+    /** {@link #comparisons()} with each candidate's options adjusted by {@code candidateTuning}. */
+    public static List<OptimizationBenchmarkRunner.Comparison> comparisons(Consumer<CompilerOptions> candidateTuning) {
         var bad = PlutusData.bytes(new byte[]{1});
         var flatInputs = List.of(
                 input("empty", PlutusData.list()),
@@ -119,25 +126,25 @@ public final class ListCaseEvidence {
                 input("bad-outer", bad));
         var comparisons = new ArrayList<OptimizationBenchmarkRunner.Comparison>();
         for (var method : List.of("sum", "traced", "stop", "multi", "failSelected", "unchecked", "effects")) {
-            comparisons.add(compare(method, flatInputs));
+            comparisons.add(compare(method, candidateTuning, flatInputs));
         }
-        comparisons.add(compare("nested", List.of(
+        comparisons.add(compare("nested", candidateTuning, List.of(
                 input("empty", PlutusData.list()),
                 input("nested", PlutusData.list(integers(1, 2), integers(), integers(3))),
                 input("bad-row", PlutusData.list(bad)),
                 input("bad-element", PlutusData.list(PlutusData.list(PlutusData.integer(1), bad))))));
-        comparisons.add(compare("recursive", List.of(
+        comparisons.add(compare("recursive", candidateTuning, List.of(
                 OptimizationBenchmarkRunner.InputCase.of("three", integers(1, 2, 3), PlutusData.integer(3)),
                 OptimizationBenchmarkRunner.InputCase.of("unselected", bad, PlutusData.integer(0)))));
-        comparisons.add(compare("mutualA", List.of(
+        comparisons.add(compare("mutualA", candidateTuning, List.of(
                 OptimizationBenchmarkRunner.InputCase.of("three", integers(1, 2, 3), PlutusData.integer(3)))));
-        comparisons.add(compare("records", List.of(
+        comparisons.add(compare("records", candidateTuning, List.of(
                 input("empty", PlutusData.list()),
                 input("record", PlutusData.list(PlutusData.constr(0, PlutusData.integer(7)))),
                 input("bad-record", PlutusData.list(bad)),
                 input("bad-field", PlutusData.list(PlutusData.constr(0, bad))),
                 input("missing-field", PlutusData.list(PlutusData.constr(0))))));
-        comparisons.add(compare("aggregate", List.of(
+        comparisons.add(compare("aggregate", candidateTuning, List.of(
                 OptimizationBenchmarkRunner.InputCase.of("accept", integers(1, 2, 3), PlutusData.integer(1), PlutusData.integer(4)),
                 OptimizationBenchmarkRunner.InputCase.of("reject", integers(1, 2, 3), PlutusData.integer(1), PlutusData.integer(6)),
                 OptimizationBenchmarkRunner.InputCase.of("negative-drop", integers(1, 2, 3), PlutusData.integer(-1), PlutusData.integer(0)),
@@ -149,10 +156,16 @@ public final class ListCaseEvidence {
 
     public static OptimizationBenchmarkRunner.Comparison compare(
             String method, List<OptimizationBenchmarkRunner.InputCase> inputs) {
+        return compare(method, options -> { }, inputs);
+    }
+
+    private static OptimizationBenchmarkRunner.Comparison compare(
+            String method, Consumer<CompilerOptions> candidateTuning, List<OptimizationBenchmarkRunner.InputCase> inputs) {
         return OptimizationBenchmarkRunner.compareWithJavaAndTruffle(
                 new OptimizationBenchmarkRunner.Fixture("o3-for-each-" + method, sourceFor(method), method, inputs),
                 OptimizationLevel.PV11_SAFE,
-                OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1);
+                OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1,
+                candidateTuning);
     }
 
     // Keep each measured artifact independent. In particular, unrelated recursive

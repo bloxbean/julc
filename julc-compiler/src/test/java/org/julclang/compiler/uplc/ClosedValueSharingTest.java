@@ -40,13 +40,24 @@ class ClosedValueSharingTest {
         return term;
     }
 
-    /** A random closed term that uses forced builtins and Z combinators at varying lambda depths. */
+    /**
+     * A random closed term that uses forced builtins and Z combinators at varying lambda depths, with byte-aligned
+     * constants (strings and byte strings, which FLAT pads to a byte boundary) among its integers.
+     */
     private static Term random(Random random, int budget, int depth) {
         int choice = random.nextInt(budget <= 1 ? 4 : 10);
         return switch (choice) {
             case 0 -> forced(POLYMORPHIC[random.nextInt(POLYMORPHIC.length)]);
             case 1 -> depth > 0 ? Term.var(1 + random.nextInt(depth)) : Term.const_(Constant.integer(BigInteger.ONE));
-            case 2 -> Term.const_(Constant.integer(BigInteger.valueOf(random.nextInt(9))));
+            case 2 -> Term.const_(switch (random.nextInt(3)) {
+                case 0 -> Constant.integer(BigInteger.valueOf(random.nextInt(9)));
+                case 1 -> Constant.string("s".repeat(random.nextInt(4)));
+                default -> {
+                    var bytes = new byte[random.nextInt(5)];
+                    random.nextBytes(bytes);
+                    yield Constant.byteString(bytes);
+                }
+            });
             case 3 -> random.nextInt(6) == 0 ? ClosedValueSharing.Z : Term.builtin(DefaultFun.AddInteger);
             case 4, 5 -> Term.lam("x" + depth, random(random, budget - 1, depth + 1));
             case 6, 7 -> Term.apply(random(random, budget / 2, depth), random(random, budget / 2, depth));
@@ -66,7 +77,10 @@ class ClosedValueSharingTest {
             if (result != term) shared++;
             assertEquals(term, SharedClosedValues.unshare(result), "trial " + trial);
             assertEquals(result, ClosedValueSharing.share(term), "deterministic, trial " + trial);
-            UplcFlatEncoder.encodeProgram(Program.plutusV3(result)); // well formed
+            // Well formed, and kept only where its encoding is strictly smaller.
+            int before = UplcFlatEncoder.encodeProgram(Program.plutusV3(term)).length;
+            int after = UplcFlatEncoder.encodeProgram(Program.plutusV3(result)).length;
+            if (result != term) assertTrue(after < before, "trial " + trial + ": " + before + " -> " + after);
         }
         assertTrue(shared > 30, "sharing fired on " + shared + " terms");
     }

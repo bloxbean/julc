@@ -88,9 +88,8 @@ class Adr060ByteSnapshotTest {
         // their bytes until now. D1 (shared handler bindings) moves no row of the corpus, and the other rows D2 moves are
         // explained above.
         String sharing = "ADR-076 D2: repeated closed values are bound once at the program root";
-        for (var id : List.of("golden-1", "golden-3", "golden-4", "golden-5", "golden-6", "golden-7", "hygiene-15",
-                "hygiene-19", "o9-2", "o9-12", "o9-14", "o9-15", "o9-16", "o9-17", "o9-19", "o11-1", "o11-13", "o11-15",
-                "o11-17", "o15-17")) {
+        for (var id : List.of("golden-3", "golden-4", "golden-5", "golden-6", "golden-7", "hygiene-15", "hygiene-19",
+                "o9-2", "o9-12", "o9-14", "o9-15", "o9-16", "o9-17", "o9-19", "o11-1", "o11-13", "o11-15", "o11-17")) {
             EXPLAINED.put(id + "-PV11_SAFE-false", sharing);
             EXPLAINED.put(id + "-PV11_COSTED-false", sharing);
         }

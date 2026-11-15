@@ -19,22 +19,22 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * ADR-076's own guarantees: it is the rules-off program with its closed values bound at the root (D2, I1), and its
  * budget is at most the rules-off budget plus the bindings' steps (I2).
  */
-final class Adr076Sharing {
+public final class Adr076Sharing {
 
     /** Both ADR-076 rules: shared handler bindings (D1) and shared closed values (D2). */
-    static final List<String> RULES = List.of(SharedBindings.RULE, UplcOptimizer.SHARED_CLOSED_VALUES_RULE);
+    public static final List<String> RULES = List.of(SharedBindings.RULE, UplcOptimizer.SHARED_CLOSED_VALUES_RULE);
 
     /** One machine step (variable, lambda, application, force, builtin) under the pinned cost models. */
-    static final ExBudget STEP = new ExBudget(16_000, 100);
+    public static final ExBudget STEP = new ExBudget(16_000, 100);
 
     /** The steps of the costliest binding D2 adds: an application, a lambda, two forces and a builtin. */
-    static final int STEPS_PER_SHARED_VALUE = 5;
+    public static final int STEPS_PER_SHARED_VALUE = 5;
 
     private Adr076Sharing() {
     }
 
     /** {@code options} with both ADR-076 rules disabled. */
-    static CompilerOptions off(CompilerOptions options) {
+    public static CompilerOptions off(CompilerOptions options) {
         RULES.forEach(options::disableOptimizationRule);
         return options;
     }
@@ -43,7 +43,7 @@ final class Adr076Sharing {
      * {@code on} is {@code off} with repeated closed values bound at its root, term for term, no larger, and D1 did not
      * apply. Returns how many values D2 bound.
      */
-    static int assertSharesOnlyClosedValues(CompileResult on, CompileResult off, String label) {
+    public static int assertSharesOnlyClosedValues(CompileResult on, CompileResult off, String label) {
         assertFalse(on.optimizationReport().appliedRules().contains(SharedBindings.RULE), label + ": D1 applied");
         var term = on.program().term();
         assertEquals(off.program().term(), SharedClosedValues.unshare(term),
@@ -54,7 +54,7 @@ final class Adr076Sharing {
     }
 
     /** A run of the rules-on program costs at most the rules-off run plus five steps per shared value (I2). */
-    static void assertBudgetWithin(ExBudget on, ExBudget off, int sharedValues, String label) {
+    public static void assertBudgetWithin(ExBudget on, ExBudget off, int sharedValues, String label) {
         long steps = (long) STEPS_PER_SHARED_VALUE * sharedValues;
         assertTrue(on.cpuSteps() <= off.cpuSteps() + steps * STEP.cpuSteps(),
                 label + ": CPU beyond ADR-076's " + steps + " binding steps: " + off + " -> " + on);

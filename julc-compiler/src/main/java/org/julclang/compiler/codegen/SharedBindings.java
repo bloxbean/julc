@@ -7,6 +7,7 @@ import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.resolve.LibraryMethodRegistry.LibraryMethod;
 
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -22,6 +23,7 @@ import java.util.Set;
  * Each handler of a validator with several entry points binds the helper methods and library methods it uses. A method
  * every handler uses was bound, and so written into the script, once per handler. A method is <em>shared</em> when:
  * <ul>
+ *   <li>it, and every method it reaches, is a function the optimizer keeps ({@link #isKeptFunction});</li>
  *   <li>every handler needs it: its entry point reaches it through the methods and static fields it names, read as free
  *       variables, so a local that shadows a method's name does not count; and</li>
  *   <li>nothing it reaches is a static field of the validator: the static fields stay bound inside each handler, as
@@ -34,10 +36,9 @@ import java.util.Set;
  * one of the total, cheap values the delayed-method pass leaves bound, so evaluating it before the dispatch instead of
  * after it gives the same values, failures and traces.
  * <p>
- * The budget can move a little either way, because the optimizer treats a binding outside the dispatch differently
- * from one inside a handler: a helper a handler calls once was inlined into it, and once shared it is bound instead,
- * a few machine steps more on that handler's path; other paths can come out cheaper. The counter benchmark of issue
- * #325 measures and pins these (ADR-076).
+ * A run that reaches a handler takes the same steps: that handler bound the same methods, and each is a function the
+ * optimizer never inlines ({@link #isKeptFunction}). A run whose purpose has no handler fails at the dispatch, and now
+ * evaluates the shared bindings before it does (ADR-076 I3).
  */
 public final class SharedBindings {
 
@@ -77,10 +78,53 @@ public final class SharedBindings {
             for (String name : everyHandler) {
                 if (staticNames.contains(name)) continue;
                 var reached = reached(Set.of(name), bodies, freeNames);
-                if (reached.stream().noneMatch(staticNames::contains)) shared.add(name);
+                // Everything it reaches must be a function the optimizer keeps, so that sharing it cannot stop an inlining
+                // (and every dependency of a shared method is shared too).
+                if (reached.stream().noneMatch(staticNames::contains)
+                        && reached.stream().allMatch(reachedName -> isKeptFunction(bodies.get(reachedName)))) {
+                    shared.add(name);
+                }
             }
         }
         return new SharedBindings(shared);
+    }
+
+    /**
+     * Whether the UPLC optimizer keeps {@code body} as a function wherever it is bound: a lambda whose body is not just a
+     * builtin applied to its parameters in order. The optimizer inlines a binding used once only when its value is a
+     * constant, a variable or a (forced) builtin, and a builtin wrapped in a lambda over its arguments becomes one by eta
+     * reduction. A handler that called such a method once had it inlined, and could fold it further; bound around the
+     * dispatch it would not be, so sharing it would add work to that handler. A method with no parameters, a constant
+     * or a delayed body, is not shared for the same reason.
+     */
+    private static boolean isKeptFunction(PirTerm body) {
+        var parameters = new ArrayList<String>();
+        PirTerm inner = body;
+        while (inner instanceof PirTerm.Lam lam) {
+            parameters.add(lam.param());
+            inner = lam.body();
+        }
+        if (parameters.isEmpty()) return false;
+        return !switch (inner) {
+            case PirTerm.Var _, PirTerm.Const _, PirTerm.Builtin _ -> true;
+            case PirTerm.App app -> isBuiltinOver(app, parameters);
+            default -> false;
+        };
+    }
+
+    /** Whether {@code app} is a builtin applied to exactly {@code parameters}, in order. */
+    private static boolean isBuiltinOver(PirTerm.App app, List<String> parameters) {
+        var arguments = new ArrayList<PirTerm>();
+        PirTerm head = app;
+        while (head instanceof PirTerm.App next) {
+            arguments.addFirst(next.argument());
+            head = next.function();
+        }
+        if (!(head instanceof PirTerm.Builtin) || arguments.size() != parameters.size()) return false;
+        for (int i = 0; i < arguments.size(); i++) {
+            if (!(arguments.get(i) instanceof PirTerm.Var variable) || !variable.name().equals(parameters.get(i))) return false;
+        }
+        return true;
     }
 
     /** The methods and static fields {@code start} names, and everything they reach in turn, found with a work list. */

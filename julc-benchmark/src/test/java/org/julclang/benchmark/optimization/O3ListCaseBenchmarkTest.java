@@ -13,20 +13,29 @@ import static org.junit.jupiter.api.Assertions.*;
 class O3ListCaseBenchmarkTest {
     @Test
     void compiledTraversalsPreserveResultsFailuresTracesAndImproveBudgets() {
-        for (var c : ListCaseEvidence.comparisons()) {
+        var comparisons = ListCaseEvidence.comparisons();
+        // O3 and the rules it composes with are held to their own size and budget guarantees with ADR-076 off, and
+        // each real candidate to ADR-076's bound against that one.
+        var unsharedComparisons = ListCaseEvidence.comparisons(Adr076Isolation.WITHOUT_ADR076);
+        assertEquals(comparisons.size(), unsharedComparisons.size());
+        for (int k = 0; k < comparisons.size(); k++) {
+            var c = comparisons.get(k);
+            var unshared = unsharedComparisons.get(k);
+            Adr076Isolation.assertWithinAdr076Bound(c, unshared);
             c.verifyEquivalent();
             assertTrue(c.candidateArtifact().appliedRules().contains("pv11.o3.case-list"));
             if (c.fixtureId().endsWith("-aggregate")) {
                 assertTrue(c.candidateArtifact().appliedRules().containsAll(List.of(
                         "pv11.o1.drop-list", "pv11.o2.case-bool", "pv11.o13.exp-mod-literal-fold")));
             }
-            assertTrue(c.candidateArtifact().flatBytes() < c.baselineArtifact().flatBytes(), c.fixtureId());
+            assertTrue(unshared.candidateArtifact().flatBytes() < c.baselineArtifact().flatBytes(), c.fixtureId());
             for (int i = 0; i < c.candidateEvaluations().size(); i++) {
                 var before = c.baselineEvaluations().get(i);
                 var after = c.candidateEvaluations().get(i);
+                var plain = unshared.candidateEvaluations().get(i);
                 String label = c.fixtureId() + "/" + after.backend() + "/" + after.caseId();
-                assertTrue(after.budget().cpuSteps() <= before.budget().cpuSteps(), label);
-                assertTrue(after.budget().memoryUnits() <= before.budget().memoryUnits(), label);
+                assertTrue(plain.budget().cpuSteps() <= before.budget().cpuSteps(), label);
+                assertTrue(plain.budget().memoryUnits() <= before.budget().memoryUnits(), label);
                 if (c.fixtureId().endsWith("-traced")) {
                     var expected = new ArrayList<String>();
                     expected.add("input");

@@ -1,5 +1,6 @@
 package org.julclang.benchmark.optimization;
 
+import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.OptimizationLevel;
 import org.julclang.core.Constant;
 import org.julclang.core.DefaultFun;
@@ -11,6 +12,7 @@ import org.julclang.vm.OptimizationCostProfiles;
 import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.function.Consumer;
 
 /** Reproducible ADR-032 evidence fixtures and release-note table entry point. */
 public final class OptimizationEvidenceMain {
@@ -596,11 +598,17 @@ public final class OptimizationEvidenceMain {
      * BASELINE on result, traces and failure text.
      */
     public static OptimizationBenchmarkRunner.Comparison o8ValueSharingComparison() {
+        return o8ValueSharingComparison(options -> { });
+    }
+
+    /** {@link #o8ValueSharingComparison()} with the candidate's options adjusted by {@code candidateTuning}. */
+    public static OptimizationBenchmarkRunner.Comparison o8ValueSharingComparison(Consumer<CompilerOptions> candidateTuning) {
         return OptimizationBenchmarkRunner.compareWithJavaAndTruffle(
                 new OptimizationBenchmarkRunner.Fixture(
                         "o8-native-value-sharing", O8_REPEATED_SOURCE, "repeated", o8Cases()),
                 OptimizationLevel.PV11_SAFE,
-                OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1);
+                OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1,
+                candidateTuning);
     }
 
     /** The manual-sharing control: BASELINE and PV11_SAFE of {@code shared} carry no O8 rule. */
@@ -990,6 +998,11 @@ public final class OptimizationEvidenceMain {
     }
 
     public static OptimizationBenchmarkRunner.Comparison o13ExpModLiteralComparison() {
+        return o13ExpModLiteralComparison(options -> { });
+    }
+
+    /** {@link #o13ExpModLiteralComparison()} with the candidate's options adjusted by {@code candidateTuning}. */
+    public static OptimizationBenchmarkRunner.Comparison o13ExpModLiteralComparison(Consumer<CompilerOptions> candidateTuning) {
         return OptimizationBenchmarkRunner.compareWithJavaAndTruffle(
                 new OptimizationBenchmarkRunner.Fixture(
                         "o13-exp-mod-literal-fold",
@@ -997,7 +1010,8 @@ public final class OptimizationEvidenceMain {
                         "literals",
                         List.of(OptimizationBenchmarkRunner.InputCase.of("literal-suite"))),
                 OptimizationLevel.PV11_SAFE,
-                OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1);
+                OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1,
+                candidateTuning);
     }
 
     public static OptimizationBenchmarkRunner.Comparison o13ExpModInvalidLiteralComparison() {
@@ -1030,6 +1044,11 @@ public final class OptimizationEvidenceMain {
     }
 
     public static OptimizationBenchmarkRunner.Comparison aggregatePv11SafeComparison() {
+        return aggregatePv11SafeComparison(options -> { });
+    }
+
+    /** {@link #aggregatePv11SafeComparison()} with the candidate's options adjusted by {@code candidateTuning}. */
+    public static OptimizationBenchmarkRunner.Comparison aggregatePv11SafeComparison(Consumer<CompilerOptions> candidateTuning) {
         return OptimizationBenchmarkRunner.compareWithJavaAndTruffle(
                 new OptimizationBenchmarkRunner.Fixture(
                         "pv11-safe-aggregate-validator-like",
@@ -1046,7 +1065,8 @@ public final class OptimizationEvidenceMain {
                                 input("malformed-head", PlutusData.list(
                                         PlutusData.bytes(new byte[] {1})), 0, 5))),
                 OptimizationLevel.PV11_SAFE,
-                OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1);
+                OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1,
+                candidateTuning);
     }
 
     static OptimizationBenchmarkRunner.Fixture o1DropListFixture() {
