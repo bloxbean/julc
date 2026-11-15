@@ -5,6 +5,7 @@ import org.julclang.core.text.UplcPrinter;
 import org.julclang.decompiler.codegen.JavaCodeGenerator;
 import org.julclang.decompiler.hir.HirTerm;
 import org.julclang.decompiler.input.ScriptAnalyzer;
+import org.julclang.decompiler.input.SharedRootBindings;
 import org.julclang.decompiler.input.ScriptLoader;
 import org.julclang.decompiler.lift.UplcLifter;
 import org.julclang.decompiler.naming.NameAssigner;
@@ -31,14 +32,16 @@ public final class JulcDecompiler {
         // Phase 1: Load and analyze
         Program program = ScriptLoader.fromHex(cborHex);
         String uplcText = UplcPrinter.print(program);
-        ScriptAnalyzer.ScriptStats stats = ScriptAnalyzer.analyze(program);
+        // ADR-076: a JuLC script may bind shared closed values at its root; read it as it was before that sharing.
+        Program analysed = SharedRootBindings.inline(program);
+        ScriptAnalyzer.ScriptStats stats = ScriptAnalyzer.analyze(analysed);
 
         if (options.outputLevel() == DecompileOptions.OutputLevel.DISASSEMBLY) {
             return new DecompileResult(program, uplcText, stats);
         }
 
         // Phase 2: Lift to HIR
-        HirTerm hir = UplcLifter.lift(program.term());
+        HirTerm hir = UplcLifter.lift(analysed.term());
 
         if (options.outputLevel() == DecompileOptions.OutputLevel.STRUCTURED) {
             return new DecompileResult(program, uplcText, stats, hir, null);
@@ -76,13 +79,15 @@ public final class JulcDecompiler {
      */
     public static DecompileResult decompile(Program program, DecompileOptions options) {
         String uplcText = UplcPrinter.print(program);
-        ScriptAnalyzer.ScriptStats stats = ScriptAnalyzer.analyze(program);
+        // ADR-076: a JuLC script may bind shared closed values at its root; read it as it was before that sharing.
+        Program analysed = SharedRootBindings.inline(program);
+        ScriptAnalyzer.ScriptStats stats = ScriptAnalyzer.analyze(analysed);
 
         if (options.outputLevel() == DecompileOptions.OutputLevel.DISASSEMBLY) {
             return new DecompileResult(program, uplcText, stats);
         }
 
-        HirTerm hir = UplcLifter.lift(program.term());
+        HirTerm hir = UplcLifter.lift(analysed.term());
 
         if (options.outputLevel() == DecompileOptions.OutputLevel.STRUCTURED) {
             return new DecompileResult(program, uplcText, stats, hir, null);

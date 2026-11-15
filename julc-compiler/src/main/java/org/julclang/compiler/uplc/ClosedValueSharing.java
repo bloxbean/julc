@@ -3,7 +3,9 @@ package org.julclang.compiler.uplc;
 import org.julclang.core.BuiltinSemantics;
 import org.julclang.core.DefaultFun;
 import org.julclang.core.NamedDeBruijn;
+import org.julclang.core.Program;
 import org.julclang.core.Term;
+import org.julclang.core.flat.UplcFlatEncoder;
 import org.julclang.core.recursion.Trampoline;
 
 import java.util.ArrayDeque;
@@ -58,7 +60,8 @@ final class ClosedValueSharing {
     /** {@code term} with each repeated shareable value bound once around it; {@code term} itself if none pays. */
     static Term share(Term term) {
         var uses = new LinkedHashMap<Term, List<Integer>>();
-        census(term, uses);
+        // A root binder would capture a free variable of an open term, so only a closed term is shared.
+        if (!census(term, uses)) return term;
         var candidates = new ArrayList<Candidate>();
         for (var entry : uses.entrySet()) {
             var candidate = candidate(entry.getKey());
@@ -86,21 +89,31 @@ final class ClosedValueSharing {
         for (int i = chosen.size() - 1; i >= 0; i--) {
             body = Term.apply(Term.lam(chosen.get(i).name(), body), chosen.get(i).value());
         }
-        return body;
+        // The estimate counts term bits but not the padding FLAT puts before a byte payload, so keep the result only
+        // where its encoding is really smaller.
+        return encodedSize(body) < encodedSize(term) ? body : term;
     }
 
-    /** Every shareable value in {@code term}, with the lambda depth of each use, in pre-order. */
-    private static void census(Term root, Map<Term, List<Integer>> uses) {
+    private static int encodedSize(Term term) {
+        return UplcFlatEncoder.encodeProgram(Program.plutusV3(term)).length;
+    }
+
+    /**
+     * Every shareable value in {@code term}, with the lambda depth of each use, in pre-order; false, with the census
+     * incomplete, if the term has a free variable.
+     */
+    private static boolean census(Term root, Map<Term, List<Integer>> uses) {
         record Visit(Term term, int depth) {}
         var pending = new ArrayDeque<Visit>();
         pending.push(new Visit(root, 0));
         while (!pending.isEmpty()) {
             var visit = pending.pop();
             var term = visit.term();
-            if (isForcedBuiltin(term) || term.equals(Z)) {
+            if (isShareable(term)) {
                 uses.computeIfAbsent(term, t -> new ArrayList<>()).add(visit.depth());
                 continue;
             }
+            if (term instanceof Term.Var(var name) && name.index() > visit.depth()) return false;
             switch (term) {
                 case Term.Lam(var name, var body) -> pending.push(new Visit(body, visit.depth() + 1));
                 case Term.Apply(var function, var argument) -> {
@@ -119,27 +132,26 @@ final class ClosedValueSharing {
                 case Term.Var _, Term.Const _, Term.Builtin _, Term.Error _ -> { }
             }
         }
+        return true;
     }
 
-    /** {@code force (builtin b)} or {@code force (force (builtin b))}: a builtin forced at least once. */
-    private static boolean isForcedBuiltin(Term term) {
-        int forces = 0;
-        while (term instanceof Term.Force(var inner)) {
-            forces++;
-            term = inner;
-        }
-        return forces > 0 && term instanceof Term.Builtin;
+    /**
+     * A value this shares: the Z combinator, or a builtin forced exactly as often as its type arity. The force chain is
+     * counted before the term is hashed, so an arbitrarily long chain is rejected without walking it recursively.
+     */
+    private static boolean isShareable(Term term) {
+        return candidate(term) != null;
     }
 
     private static Candidate candidate(Term value) {
-        if (value.equals(Z)) return new Candidate(value, bits(value), "#z", 0);
+        if (value instanceof Term.Lam && value.equals(Z)) return new Candidate(value, bits(value), "#z", 0);
         int forces = 0;
         Term inner = value;
         while (inner instanceof Term.Force(var next)) {
             forces++;
             inner = next;
         }
-        if (!(inner instanceof Term.Builtin(DefaultFun fun))) return null;
+        if (forces == 0 || !(inner instanceof Term.Builtin(DefaultFun fun))) return null;
         // Only a builtin forced exactly as often as its type arity is a value: one more force fails when it runs, and
         // binding that at the root would make it fail where it might not have run.
         var signature = BuiltinSemantics.find(fun);
@@ -182,7 +194,7 @@ final class ClosedValueSharing {
     /** {@code term} with each chosen value read from its binder, stack-safe (ADR-074). */
     private static Trampoline<Term> replace(Term term, int depth, Map<Term, Integer> slotOf, List<String> names) {
         return Trampoline.defer(() -> {
-            if (isForcedBuiltin(term) || term.equals(Z)) {
+            if (isShareable(term)) {
                 Integer slot = slotOf.get(term);
                 if (slot != null) {
                     return Trampoline.done(new Term.Var(new NamedDeBruijn(names.get(slot), depth + names.size() - slot)));

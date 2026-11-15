@@ -96,12 +96,17 @@ class ClosedValueSharingTest {
 
     @Test
     void aBuiltinForcedMoreThanItsArityIsNotShared() {
-        // force (force headList) fails when it runs; binding it at the root would fail every run.
+        // force (force headList) fails when it runs; binding it at the root would fail every run. Only its inner
+        // force headList, a value, may be shared: the outer force still runs at each use, where it always failed.
         Term overForced = Term.force(Term.force(Term.builtin(DefaultFun.HeadList)));
         Term term = Term.var(1);
         for (int i = 0; i < 40; i++) term = Term.apply(overForced, term);
         term = Term.lam("x", term);
-        assertSame(term, ClosedValueSharing.share(term));
+        var result = ClosedValueSharing.share(term);
+        assertEquals(term, SharedClosedValues.unshare(result));
+        for (Term root = result; root instanceof Term.Apply(Term.Lam(var name, var body), var value); root = body) {
+            assertTrue(!value.equals(overForced), "the over-forced builtin is never a root binding");
+        }
     }
 
     @Test
@@ -136,5 +141,38 @@ class ClosedValueSharingTest {
         var baseline = new JulcCompiler(StdlibRegistry.defaultRegistry(),
                 new CompilerOptions().setOptimizationLevel(OptimizationLevel.BASELINE)).compile(source);
         assertTrue(!baseline.optimizationReport().appliedRules().contains(UplcOptimizer.SHARED_CLOSED_VALUES_RULE));
+    }
+
+    @Test
+    void anOpenTermIsNotShared() {
+        // The optimizer's public API takes open terms; a root binder would capture the free Var(1).
+        Term open = Term.var(1);
+        for (int i = 0; i < 8; i++) open = Term.apply(forced(DefaultFun.TailList), open);
+        assertSame(open, ClosedValueSharing.share(open));
+    }
+
+    @Test
+    void aLongForceChainIsRejectedOnASmallStack() throws Exception {
+        Term chain = Term.builtin(DefaultFun.HeadList);
+        for (int i = 0; i < 50_000; i++) chain = Term.force(chain);
+        final Term term = Term.lam("x", Term.delay(chain));
+        var result = new AtomicReference<Term>();
+        var thread = new Thread(null, () -> result.set(ClosedValueSharing.share(term)), "small", 256 * 1024);
+        thread.start();
+        thread.join();
+        assertSame(term, result.get());
+    }
+
+    @Test
+    void sharingThatWouldGrowTheEncodingIsNotKept() {
+        // Each trace's string is byte-aligned, so bits saved before it can become padding.
+        Term term = Term.var(1);
+        for (int i = 0; i < 8; i++) {
+            term = Term.apply(Term.apply(forced(DefaultFun.Trace), Term.const_(Constant.string("a"))), Term.delay(term));
+        }
+        term = Term.lam("x", term);
+        var result = ClosedValueSharing.share(term);
+        assertTrue(UplcFlatEncoder.encodeProgram(Program.plutusV3(result)).length
+                <= UplcFlatEncoder.encodeProgram(Program.plutusV3(term)).length);
     }
 }
