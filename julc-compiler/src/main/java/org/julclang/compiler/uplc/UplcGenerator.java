@@ -13,6 +13,7 @@ import org.julclang.compiler.pir.PirType;
 import org.julclang.core.Constant;
 import org.julclang.core.DefaultFun;
 import org.julclang.core.Term;
+import org.julclang.core.recursion.Trampoline;
 import org.julclang.core.source.SourceLocation;
 import org.julclang.vm.ProtocolCapability;
 
@@ -99,24 +100,44 @@ public class UplcGenerator {
         return new IdentityHashMap<>(emittedBinders);
     }
 
+    /**
+     * The UPLC of {@code pir}. The lowering keeps its pending work on the heap ({@link Trampoline}), so a term of any
+     * depth, such as a validator's long chain of method bindings, needs a bounded amount of Java stack (issue #327,
+     * ADR-074). If the lowering fails, the binder scope and the inherited source locations are restored to what they
+     * were, and the exception is rethrown.
+     */
     public Term generate(PirTerm pir) {
-        var term = generateCore(pir);
-        // Record source position: check if this PIR term has a direct mapping,
-        // otherwise inherit from parent context (locationStack)
-        if (!pirPositions.isEmpty()) {
-            var loc = pirPositions.get(pir);
-            if (loc != null) {
-                uplcPositions.put(term, loc);
-                exactUplcPositions.put(term, loc);
-            } else if (!locationStack.isEmpty() && !uplcPositions.containsKey(term)) {
-                // Propagate parent location to inner terms that lack their own
-                uplcPositions.put(term, locationStack.peek());
-            }
+        var entryScope = scope;
+        int entryLocations = locationStack.size();
+        try {
+            return lower(pir).run();
+        } catch (RuntimeException e) {
+            scope = entryScope;
+            while (locationStack.size() > entryLocations) locationStack.pop();
+            throw e;
         }
-        return term;
     }
 
-    private Term generateCore(PirTerm pir) {
+    /** {@link #generate}'s lowering of {@code pir}, then the recording of its source position. */
+    private Trampoline<Term> lower(PirTerm pir) {
+        return Trampoline.defer(() -> generateCore(pir).map(term -> {
+            // Record source position: check if this PIR term has a direct mapping,
+            // otherwise inherit from parent context (locationStack)
+            if (!pirPositions.isEmpty()) {
+                var loc = pirPositions.get(pir);
+                if (loc != null) {
+                    uplcPositions.put(term, loc);
+                    exactUplcPositions.put(term, loc);
+                } else if (!locationStack.isEmpty() && !uplcPositions.containsKey(term)) {
+                    // Propagate parent location to inner terms that lack their own
+                    uplcPositions.put(term, locationStack.peek());
+                }
+            }
+            return term;
+        }));
+    }
+
+    private Trampoline<Term> generateCore(PirTerm pir) {
         // Push source location context for children to inherit
         if (!pirPositions.isEmpty()) {
             var loc = pirPositions.get(pir);
@@ -124,16 +145,20 @@ public class UplcGenerator {
                 locationStack.push(loc);
             }
         }
-        try {
-            return generateInner(pir);
-        } finally {
+        return generateInner(pir).map(term -> {
             if (!pirPositions.isEmpty() && pirPositions.containsKey(pir)) {
                 locationStack.pop();
             }
-        }
+            return term;
+        });
     }
 
-    private Term generateInner(PirTerm pir) {
+    /**
+     * One PIR form's lowering. Every recursive lowering goes through {@link #lower}, and every change of scope happens
+     * at the point it did when this recursed on the Java stack: a binder is bound just before its body is lowered and
+     * unbound just after.
+     */
+    private Trampoline<Term> generateInner(PirTerm pir) {
         return switch (pir) {
             case PirTerm.Var(var name, _) -> {
                 // ADR-060: a ".name" pseudo-variable is member access whose receiver type did not
@@ -141,36 +166,38 @@ public class UplcGenerator {
                 if (name.startsWith(".")) {
                     throw CompilerTypeDiagnostics.unresolvedMember(name.substring(1), currentSourceLocation());
                 }
-                yield Term.var(deBruijnIndex(name));
+                yield Trampoline.done(Term.var(deBruijnIndex(name)));
             }
 
-            case PirTerm.Const(var value) -> Term.const_(value);
+            case PirTerm.Const(var value) -> Trampoline.done(Term.const_(value));
 
-            case PirTerm.Builtin(var fun) -> generateBuiltin(fun);
+            case PirTerm.Builtin(var fun) -> Trampoline.done(generateBuiltin(fun));
 
             case PirTerm.Lam(var param, _, var body) -> {
                 bind(param);
-                var bodyTerm = generate(body);
-                unbind();
-                var lambda = new Term.Lam(param, bodyTerm);
-                recordBinder(pir, lambda);
-                yield lambda;
+                yield lower(body).map(bodyTerm -> {
+                    unbind();
+                    var lambda = new Term.Lam(param, bodyTerm);
+                    recordBinder(pir, lambda);
+                    return lambda;
+                });
             }
 
-            case PirTerm.App(var function, var argument) -> {
-                yield Term.apply(generate(function), generate(argument));
-            }
+            case PirTerm.App(var function, var argument) ->
+                    lower(function).then(functionTerm -> lower(argument)
+                            .map(argumentTerm -> Term.apply(functionTerm, argumentTerm)));
 
-            case PirTerm.Let(var name, var value, var body) -> {
+            case PirTerm.Let(var name, var value, var body) ->
                 // Let(name, val, body) -> Apply(Lam(name, body'), val')
-                var valTerm = generate(value);
-                bind(name, factOf(value));
-                var bodyTerm = generate(body);
-                unbind();
-                var lambda = new Term.Lam(name, bodyTerm);
-                recordBinder(pir, lambda);
-                yield Term.apply(lambda, valTerm);
-            }
+                    lower(value).then(valTerm -> {
+                        bind(name, factOf(value));
+                        return lower(body).map(bodyTerm -> {
+                            unbind();
+                            var lambda = new Term.Lam(name, bodyTerm);
+                            recordBinder(pir, lambda);
+                            return Term.apply(lambda, valTerm);
+                        });
+                    });
 
             case PirTerm.LetRec letRec -> generateLetRec(letRec);
 
@@ -180,18 +207,18 @@ public class UplcGenerator {
                     context.recordOptimizationRule(PV11_CASE_BOOL_RULE);
                     // Case Bool branch order is False (0), then True (1).
                     // Case evaluates the scrutinee once and only the selected branch.
-                    yield new Term.Case(
-                            generate(cond),
-                            List.of(generate(elseBranch), generate(thenBranch)));
+                    yield lower(cond).then(condTerm -> lower(elseBranch).then(elseTerm -> lower(thenBranch)
+                            .map(thenTerm -> new Term.Case(condTerm, List.of(elseTerm, thenTerm)))));
                 }
                 // Force(Apply(Apply(Apply(Force(Builtin(IfThenElse)), cond), Delay(then)), Delay(else)))
                 var ifBuiltin = Term.force(Term.builtin(DefaultFun.IfThenElse));
-                yield Term.force(
-                        Term.apply(
+                yield lower(cond).then(condTerm -> lower(thenBranch).then(thenTerm -> lower(elseBranch)
+                        .map(elseTerm -> Term.force(
                                 Term.apply(
-                                        Term.apply(ifBuiltin, generate(cond)),
-                                        Term.delay(generate(thenBranch))),
-                                Term.delay(generate(elseBranch))));
+                                        Term.apply(
+                                                Term.apply(ifBuiltin, condTerm),
+                                                Term.delay(thenTerm)),
+                                        Term.delay(elseTerm))))));
             }
 
             case PirTerm.IntegerCase(var scrutinee, var branches) -> {
@@ -200,10 +227,8 @@ public class UplcGenerator {
                 }
                 // Integer Case: branch i is selected for scrutinee value i; branches take no
                 // arguments and only the selected branch is evaluated (ADR-041 O5).
-                var scrutineeTerm = generate(scrutinee);
-                var branchTerms = new ArrayList<Term>(branches.size());
-                for (var branch : branches) branchTerms.add(generate(branch));
-                yield new Term.Case(scrutineeTerm, branchTerms);
+                yield lower(scrutinee).then(scrutineeTerm -> Trampoline.each(branches, this::lower)
+                        .map(branchTerms -> new Term.Case(scrutineeTerm, branchTerms)));
             }
 
             case PirTerm.PairMatch(var scrutinee, _, var first, var second, var body) -> {
@@ -211,17 +236,15 @@ public class UplcGenerator {
                     throw new CompilerException("PairMatch requires the PV11 safe lowering profile");
                 }
                 context.recordOptimizationRule(PV11_CASE_PAIR_RULE);
-                var pairTerm = generate(scrutinee);
-                bind(first);
-                bind(second);
-                Term bodyTerm;
-                try {
-                    bodyTerm = generate(body);
-                } finally {
-                    unbind();
-                    unbind();
-                }
-                yield new Term.Case(pairTerm, List.of(Term.lam(first, Term.lam(second, bodyTerm))));
+                yield lower(scrutinee).then(pairTerm -> {
+                    bind(first);
+                    bind(second);
+                    return lower(body).map(bodyTerm -> {
+                        unbind();
+                        unbind();
+                        return new Term.Case(pairTerm, List.of(Term.lam(first, Term.lam(second, bodyTerm))));
+                    });
+                });
             }
 
             case PirTerm.ListMatch(var scrutinee, var head, var tail, var nil, var cons) -> {
@@ -231,20 +254,17 @@ public class UplcGenerator {
                     throw new CompilerException("ListMatch requires the PV11 safe lowering profile");
                 }
                 context.recordOptimizationRule(PV11_CASE_LIST_RULE);
-                var listTerm = generate(scrutinee);
-                var nilTerm = generate(nil);
-                bind(head);
-                bind(tail);
-                Term consTerm;
-                try {
-                    consTerm = generate(cons);
-                } finally {
-                    unbind();
-                    unbind();
-                }
-                // List Case: h::t selects branch 0 (applied to h then t); [] selects branch 1.
-                yield new Term.Case(listTerm,
-                        List.of(Term.lam(head, Term.lam(tail, consTerm)), nilTerm));
+                yield lower(scrutinee).then(listTerm -> lower(nil).then(nilTerm -> {
+                    bind(head);
+                    bind(tail);
+                    return lower(cons).map(consTerm -> {
+                        unbind();
+                        unbind();
+                        // List Case: h::t selects branch 0 (applied to h then t); [] selects branch 1.
+                        return new Term.Case(listTerm,
+                                List.of(Term.lam(head, Term.lam(tail, consTerm)), nilTerm));
+                    });
+                }));
             }
 
             case PirTerm.DataConstr(var tag, var dataType, var fields) -> {
@@ -252,48 +272,50 @@ public class UplcGenerator {
                 var fieldTypes = getFieldTypes(dataType, tag);
 
                 // Build the Data list from right to left: MkCons(last, MkNilData())
-                Term fieldList = Term.apply(
+                Term nil = Term.apply(
                         wrapForces(Term.builtin(DefaultFun.MkNilData), 0),
                         Term.const_(Constant.unit()));
-                for (int i = fields.size() - 1; i >= 0; i--) {
-                    var fieldTerm = generate(fields.get(i));
-                    // Wrap with Data encoding based on field type
-                    if (i < fieldTypes.size()) {
-                        fieldTerm = wrapDataEncode(fieldTerm, fieldTypes.get(i));
-                    }
-                    fieldList = Term.apply(
-                            Term.apply(
-                                    wrapForces(Term.builtin(DefaultFun.MkCons), forceCount(DefaultFun.MkCons)),
-                                    fieldTerm),
-                            fieldList);
-                }
-
                 // ConstrData(tag, fieldList)
-                yield Term.apply(
+                yield fieldList(fields, fieldTypes, fields.size() - 1, nil).map(fieldList -> Term.apply(
                         Term.apply(Term.builtin(DefaultFun.ConstrData),
                                 Term.const_(Constant.integer(BigInteger.valueOf(tag)))),
-                        fieldList);
+                        fieldList));
             }
 
-            case PirTerm.DataMatch(var scrutinee, var branches) -> {
-                yield generateDataMatch(scrutinee, branches);
-            }
+            case PirTerm.DataMatch(var scrutinee, var branches) -> generateDataMatch(scrutinee, branches);
 
-            case PirTerm.Error _ -> Term.error();
+            case PirTerm.Error _ -> Trampoline.done(Term.error());
 
             case PirTerm.Trace(var message, var body) -> {
                 // Apply(Apply(Force(Builtin(Trace)), msg), body)
                 // Trace is polymorphic (1 Force), so: Force(Builtin(Trace))
                 // Unlike IfThenElse, Trace evaluates its second arg eagerly (no Delay/Force needed)
                 var traceBuiltin = Term.force(Term.builtin(DefaultFun.Trace));
-                yield Term.apply(
-                        Term.apply(traceBuiltin, generate(message)),
-                        generate(body));
+                yield lower(message).then(messageTerm -> lower(body)
+                        .map(bodyTerm -> Term.apply(Term.apply(traceBuiltin, messageTerm), bodyTerm)));
             }
         };
     }
 
-    private Term generateLetRec(PirTerm.LetRec letRec) {
+    /**
+     * The Data list of a constructor's fields {@code 0..index}, consed onto {@code tail}: field {@code index} is lowered
+     * first, then the ones before it, as the list is built from right to left.
+     */
+    private Trampoline<Term> fieldList(List<PirTerm> fields, List<PirType> fieldTypes, int index, Term tail) {
+        if (index < 0) return Trampoline.done(tail);
+        return lower(fields.get(index)).then(lowered -> {
+            // Wrap with Data encoding based on field type
+            var fieldTerm = index < fieldTypes.size() ? wrapDataEncode(lowered, fieldTypes.get(index)) : lowered;
+            var list = Term.apply(
+                    Term.apply(
+                            wrapForces(Term.builtin(DefaultFun.MkCons), forceCount(DefaultFun.MkCons)),
+                            fieldTerm),
+                    tail);
+            return fieldList(fields, fieldTypes, index - 1, list);
+        });
+    }
+
+    private Trampoline<Term> generateLetRec(PirTerm.LetRec letRec) {
         // Z-combinator implementation for recursive bindings.
         // For single binding: LetRec([name = body], expr)
         //   → Let(name, Apply(fix, Lam(name, body')), expr')
@@ -324,19 +346,20 @@ public class UplcGenerator {
             // Generate the recursive function body: Lam(name, body')
             // The body references 'name' which is the recursive reference
             bind(name, fact);
-            var bodyTerm = generate(value);
-            unbind();
-            var recursiveLam = Term.lam(name, bodyTerm);
+            return lower(value).then(bodyTerm -> {
+                unbind();
+                var recursiveLam = Term.lam(name, bodyTerm);
 
-            // Apply fix to the recursive lambda
-            var fixedFn = Term.apply(fix, recursiveLam);
+                // Apply fix to the recursive lambda
+                var fixedFn = Term.apply(fix, recursiveLam);
 
-            // Now bind name = fixedFn and generate the expression
-            bind(name, fact);
-            var exprTerm = generate(letRec.body());
-            unbind();
-
-            return Term.apply(Term.lam(name, exprTerm), fixedFn);
+                // Now bind name = fixedFn and generate the expression
+                bind(name, fact);
+                return lower(letRec.body()).map(exprTerm -> {
+                    unbind();
+                    return Term.apply(Term.lam(name, exprTerm), fixedFn);
+                });
+            });
         }
 
         // Multi-binding LetRec: dependency analysis + topological sort + Bekic's theorem
@@ -351,7 +374,7 @@ public class UplcGenerator {
      * 2. If bindings can be topologically sorted (no mutual cycles), nest them as single-binding LetRec/Let
      * 3. Decompose mutual cycles recursively with Bekic's theorem
      */
-    private Term generateMultiBindingLetRec(PirTerm.LetRec letRec) {
+    private Trampoline<Term> generateMultiBindingLetRec(PirTerm.LetRec letRec) {
         var bindings = letRec.bindings();
         var bindingNames = new LinkedHashSet<String>();
         for (var b : bindings) bindingNames.add(b.name());
@@ -390,7 +413,7 @@ public class UplcGenerator {
                     result = new PirTerm.Let(name, value, result);
                 }
             }
-            return generate(result);
+            return lower(result);
         }
 
         // Mutual cycle detected — use the direct two-binding form or recursively
@@ -398,7 +421,7 @@ public class UplcGenerator {
         if (bindings.size() == 2) {
             return generateBekicLetRec(bindings.get(0), bindings.get(1), letRec.body());
         }
-        return generate(decomposeBekic(bindings, letRec.body()));
+        return lower(decomposeBekic(bindings, letRec.body()));
     }
 
     /**
@@ -449,17 +472,33 @@ public class UplcGenerator {
         return result;
     }
 
-    private boolean topoVisit(String name, Map<String, Set<String>> deps,
-                              Set<String> visited, Set<String> inProgress, List<String> result) {
-        if (inProgress.contains(name)) return false; // cycle
-        if (visited.contains(name)) return true;
-        inProgress.add(name);
-        for (var dep : deps.getOrDefault(name, Set.of())) {
-            if (!topoVisit(dep, deps, visited, inProgress, result)) return false;
+    /**
+     * The depth-first visit of {@code root}, with the path on a heap stack (issue #327): false on a cycle, otherwise
+     * every binding {@code root} reaches added to {@code result} after its dependencies, as the recursive visit did.
+     */
+    private static boolean topoVisit(String root, Map<String, Set<String>> deps,
+                                     Set<String> visited, Set<String> inProgress, List<String> result) {
+        if (inProgress.contains(root)) return false; // cycle
+        if (visited.contains(root)) return true;
+        record Frame(String name, Iterator<String> dependencies) {}
+        var path = new ArrayDeque<Frame>();
+        inProgress.add(root);
+        path.push(new Frame(root, deps.getOrDefault(root, Set.of()).iterator()));
+        while (!path.isEmpty()) {
+            var frame = path.peek();
+            if (frame.dependencies().hasNext()) {
+                var dep = frame.dependencies().next();
+                if (inProgress.contains(dep)) return false; // cycle
+                if (visited.contains(dep)) continue;
+                inProgress.add(dep);
+                path.push(new Frame(dep, deps.getOrDefault(dep, Set.of()).iterator()));
+                continue;
+            }
+            path.pop();
+            inProgress.remove(frame.name());
+            visited.add(frame.name());
+            result.add(frame.name());
         }
-        inProgress.remove(name);
-        visited.add(name);
-        result.add(name);
         return true;
     }
 
@@ -477,7 +516,7 @@ public class UplcGenerator {
      * Inside the inner LetRec for B, self-references to B work via Z-combinator,
      * and references to A resolve to the outer LetRec's binding.
      */
-    private Term generateBekicLetRec(PirTerm.Binding bindingA, PirTerm.Binding bindingB,
+    private Trampoline<Term> generateBekicLetRec(PirTerm.Binding bindingA, PirTerm.Binding bindingB,
                                       PirTerm mainBody) {
         var nameA = bindingA.name();
         var nameB = bindingB.name();
@@ -500,7 +539,7 @@ public class UplcGenerator {
                 // After binding A, define B and then evaluate mainBody
                 new PirTerm.Let(nameB, innerLetRecB, mainBody));
 
-        return generate(outerLetRecA);
+        return lower(outerLetRecA);
     }
 
     /** O2's legality gate: the safe profile and Case on builtin constants. */
@@ -534,7 +573,7 @@ public class UplcGenerator {
      * ADR-038 uses typed pair destructuring under the O4 gate; other profiles retain
      * the historical UnConstrData/FstPair/SndPair expansion.
      */
-    private Term generateDataMatch(PirTerm scrutinee, List<PirTerm.MatchBranch> branches) {
+    private Trampoline<Term> generateDataMatch(PirTerm scrutinee, List<PirTerm.MatchBranch> branches) {
         // ADR-060: the dispatch binders are reserved names, chosen against every name a branch
         // can see or bind (its body's free variables, field bindings and pattern variable), so no
         // branch code is captured and no branch binder intercepts a generated reference.
@@ -589,7 +628,7 @@ public class UplcGenerator {
             // Keep data strict and once-bound, and decoding inside the unchanged dispatch.
             var pairType = new PirType.PairType(new PirType.IntegerType(),
                     new PirType.ListType(new PirType.DataType()));
-            return generate(new PirTerm.Let(dataName, scrutinee,
+            return lower(new PirTerm.Let(dataName, scrutinee,
                     new PirTerm.PairMatch(pirApp1(DefaultFun.UnConstrData, dataVar),
                             pairType, tagName, fieldsName, dispatch)));
         }
@@ -602,7 +641,7 @@ public class UplcGenerator {
                                 new PirTerm.Let(fieldsName,
                                         pirApp1(DefaultFun.SndPair, pairVar),
                                         dispatch))));
-        return generate(matchPir);
+        return lower(matchPir);
     }
 
     /**

@@ -189,7 +189,7 @@ public final class DebugMetadataCollector {
                 .forEach(binding -> binding.unavailableReason =
                         "declaration was not materialized by a proven final binder lowering");
         var occurrence = new int[]{0};
-        walk(program.term(), List.of(), emittedBinders, exactPositions, lowered, points, occurrence);
+        walk(program.term(), emittedBinders, exactPositions, lowered, points, occurrence);
 
         var metadata = new DebugMetadata(DebugMetadata.FORMAT, DebugMetadata.MAJOR, DebugMetadata.MINOR,
                 List.of("anchored-lambda-occurrences-v1", "exact-environment-slots-v1",
@@ -202,11 +202,49 @@ public final class DebugMetadataCollector {
 
     private record LexicalBinder(String id, PirDebugProvenance.Association association) {}
 
-    private void walk(Term term, List<LexicalBinder> lexical,
+    /** A term still to visit, with the binders in scope at it, innermost first. */
+    private record Pending(Term term, List<LexicalBinder> lexical) {}
+
+    /**
+     * Records a suspension point for every term of {@code root}, and a lowered binding for every lambda, in pre-order,
+     * children left to right. The terms still to visit are kept on a heap stack, so a term of any depth needs a bounded
+     * amount of Java stack (issue #327). Package-private for its depth test.
+     */
+    void walk(Term root,
                       Map<Term.Lam, PirDebugProvenance.Association> emittedBinders,
                       Map<Term, SourceLocation> exactPositions,
                       List<DebugMetadata.LoweredBinding> lowered,
                       List<DebugMetadata.SuspensionPoint> points, int[] occurrence) {
+        var pending = new ArrayDeque<Pending>();
+        pending.push(new Pending(root, List.of()));
+        while (!pending.isEmpty()) {
+            var next = pending.pop();
+            var term = next.term();
+            var inner = visit(term, next.lexical(), emittedBinders, exactPositions, lowered, points, occurrence);
+            var children = switch (term) {
+                case Term.Lam lambda -> List.of(lambda.body());
+                case Term.Apply value -> List.of(value.function(), value.argument());
+                case Term.Force value -> List.of(value.term());
+                case Term.Delay value -> List.of(value.term());
+                case Term.Constr value -> value.fields();
+                case Term.Case value -> {
+                    var all = new ArrayList<Term>(value.branches().size() + 1);
+                    all.add(value.scrutinee());
+                    all.addAll(value.branches());
+                    yield all;
+                }
+                default -> List.<Term>of();
+            };
+            for (int i = children.size() - 1; i >= 0; i--) pending.push(new Pending(children.get(i), inner));
+        }
+    }
+
+    /** Records {@code term}'s suspension point, and its lowered binding if it is a lambda; returns its children's scope. */
+    private List<LexicalBinder> visit(Term term, List<LexicalBinder> lexical,
+                                      Map<Term.Lam, PirDebugProvenance.Association> emittedBinders,
+                                      Map<Term, SourceLocation> exactPositions,
+                                      List<DebugMetadata.LoweredBinding> lowered,
+                                      List<DebugMetadata.SuspensionPoint> points, int[] occurrence) {
         int id = occurrence[0]++;
         SourceLocation position = exactPositions.get(term);
         var context = position == null ? DebugMetadata.SourceContext.GENERATED : DebugMetadata.SourceContext.EXACT;
@@ -257,25 +295,9 @@ public final class DebugMetadataCollector {
             var inner = new ArrayList<LexicalBinder>(lexical.size() + 1);
             inner.add(new LexicalBinder(loweredId, association));
             inner.addAll(lexical);
-            walk(lambda.body(), List.copyOf(inner), emittedBinders, exactPositions, lowered, points, occurrence);
-            return;
+            return List.copyOf(inner);
         }
-        switch (term) {
-            case Term.Apply value -> {
-                walk(value.function(), lexical, emittedBinders, exactPositions, lowered, points, occurrence);
-                walk(value.argument(), lexical, emittedBinders, exactPositions, lowered, points, occurrence);
-            }
-            case Term.Force value -> walk(value.term(), lexical, emittedBinders, exactPositions, lowered, points, occurrence);
-            case Term.Delay value -> walk(value.term(), lexical, emittedBinders, exactPositions, lowered, points, occurrence);
-            case Term.Constr value -> value.fields().forEach(child ->
-                    walk(child, lexical, emittedBinders, exactPositions, lowered, points, occurrence));
-            case Term.Case value -> {
-                walk(value.scrutinee(), lexical, emittedBinders, exactPositions, lowered, points, occurrence);
-                value.branches().forEach(child ->
-                        walk(child, lexical, emittedBinders, exactPositions, lowered, points, occurrence));
-            }
-            default -> { }
-        }
+        return lexical;
     }
 
     private DebugMetadata.SourceRange range(SourceLocation location) {
