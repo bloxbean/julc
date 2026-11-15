@@ -299,13 +299,26 @@ public final class PirHelpers {
      * would fold to a constant that the optimizer does not copy into each read, so it is left to fold where it is read.
      */
     private static boolean isConstantArithmetic(PirTerm term) {
-        return term instanceof PirTerm.App(PirTerm.App(PirTerm.Builtin(var fun), var left), var right)
-                && (fun == DefaultFun.AddInteger || fun == DefaultFun.SubtractInteger || fun == DefaultFun.MultiplyInteger)
-                && isIntegerConstant(left) && isIntegerConstant(right);
+        if (arithmeticOperands(term) == null) return false;
+        // A work list over the operands, not recursion: a long sum of constants nests as deep as it is long (issue #327).
+        var pending = new ArrayDeque<PirTerm>();
+        pending.push(term);
+        while (!pending.isEmpty()) {
+            var next = pending.pop();
+            if (next instanceof PirTerm.Const(Constant.IntegerConst _)) continue;
+            var operands = arithmeticOperands(next);
+            if (operands == null) return false;
+            pending.push(operands.get(1));
+            pending.push(operands.get(0));
+        }
+        return true;
     }
 
-    private static boolean isIntegerConstant(PirTerm term) {
-        return term instanceof PirTerm.Const(Constant.IntegerConst _) || isConstantArithmetic(term);
+    /** The two operands of integer addition, subtraction or multiplication, or null. */
+    private static List<PirTerm> arithmeticOperands(PirTerm term) {
+        return term instanceof PirTerm.App(PirTerm.App(PirTerm.Builtin(var fun), var left), var right)
+                && (fun == DefaultFun.AddInteger || fun == DefaultFun.SubtractInteger || fun == DefaultFun.MultiplyInteger)
+                ? List.of(left, right) : null;
     }
 
     /**
@@ -711,30 +724,27 @@ public final class PirHelpers {
                 new PirTerm.Let(tVar.name(), target, search));
     }
 
-    /** Check if a PIR term contains a Var reference with the given name (for self-recursion detection). */
+    /**
+     * Check if a PIR term contains a Var reference with the given name (for self-recursion detection). Only a
+     * {@link PirTerm.PairMatch}'s fields hide the name. A work list, not recursion (issue #327).
+     */
     public static boolean containsVarRef(PirTerm term, String name) {
-        return switch (term) {
-            case PirTerm.Var v -> v.name().equals(name);
-            case PirTerm.Let l -> containsVarRef(l.value(), name) || containsVarRef(l.body(), name);
-            case PirTerm.LetRec lr -> lr.bindings().stream().anyMatch(b -> containsVarRef(b.value(), name))
-                    || containsVarRef(lr.body(), name);
-            case PirTerm.Lam lam -> containsVarRef(lam.body(), name);
-            case PirTerm.App app -> containsVarRef(app.function(), name) || containsVarRef(app.argument(), name);
-            case PirTerm.IfThenElse ite -> containsVarRef(ite.cond(), name)
-                    || containsVarRef(ite.thenBranch(), name) || containsVarRef(ite.elseBranch(), name);
-            case PirTerm.DataConstr dc -> dc.fields().stream().anyMatch(f -> containsVarRef(f, name));
-            case PirTerm.IntegerCase c -> containsVarRef(c.scrutinee(), name)
-                    || c.branches().stream().anyMatch(b -> containsVarRef(b, name));
-            case PirTerm.PairMatch m -> containsVarRef(m.scrutinee(), name)
-                    || (!m.firstName().equals(name) && !m.secondName().equals(name)
-                        && containsVarRef(m.body(), name));
-            case PirTerm.ListMatch m -> containsVarRef(m.scrutinee(), name)
-                    || containsVarRef(m.nilBranch(), name) || containsVarRef(m.consBranch(), name);
-            case PirTerm.DataMatch dm -> containsVarRef(dm.scrutinee(), name)
-                    || dm.branches().stream().anyMatch(b -> containsVarRef(b.body(), name));
-            case PirTerm.Trace t -> containsVarRef(t.message(), name) || containsVarRef(t.body(), name);
-            case PirTerm.Const _, PirTerm.Builtin _, PirTerm.Error _ -> false;
-        };
+        var pending = new ArrayDeque<PirTerm>();
+        pending.push(term);
+        while (!pending.isEmpty()) {
+            var next = pending.pop();
+            if (next instanceof PirTerm.Var v) {
+                if (v.name().equals(name)) return true;
+                continue;
+            }
+            if (next instanceof PirTerm.PairMatch m && (m.firstName().equals(name) || m.secondName().equals(name))) {
+                pending.push(m.scrutinee());
+                continue;
+            }
+            var children = children(next);
+            for (int i = children.size() - 1; i >= 0; i--) pending.push(children.get(i));
+        }
+        return false;
     }
 
     /** Convenience: None value (ConstrData(1, [])). */
