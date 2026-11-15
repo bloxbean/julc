@@ -80,6 +80,7 @@ final class Lambdas {
             return function(call, parenthesized.getExpression(), receiver, encodesResult, frame);
         }
         if (argument instanceof ConditionalExpressionTree conditional) {
+            // The run() is at an expression boundary: a ternary nests as deep as the source does (ADR-074).
             return lowering.conditions().choice(conditional.getCondition(), frame).choose(
                     inner -> Trampoline.done(function(call, conditional.getTrueExpression(), receiver, encodesResult, inner)),
                     inner -> Trampoline.done(function(call, conditional.getFalseExpression(), receiver, encodesResult, inner))).run();

@@ -153,7 +153,8 @@ final class ReferenceAccumulatorTypes {
         while (!pending.isEmpty()) {
             switch (pending.pop()) {
                 case BlockTree block -> {
-                    var statements = block.getStatements();
+                    // Pushed in reverse from an array-backed copy: javac's lists are linked.
+                    var statements = new ArrayList<StatementTree>(block.getStatements());
                     for (int i = statements.size() - 1; i >= 0; i--) pending.push(statements.get(i));
                 }
                 case IfTree branch -> {

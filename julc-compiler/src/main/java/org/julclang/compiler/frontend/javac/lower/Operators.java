@@ -280,6 +280,7 @@ final class Operators {
         PirTerm elseTerm;
         if (lowering.conditions().binds(tree.getCondition(), frame)) {
             // ADR-069 D3: each arm in the frame its side of the condition gives, lowered once; the checks read both arms.
+            // The run() here is at an expression boundary: a ternary nests as deep as the source does (ADR-074).
             var arms = new PirTerm[2];
             result = lowering.conditions().branch(tree.getCondition(), frame,
                     inner -> Trampoline.done(arms[0] = lowering.expr(tree.getTrueExpression(), inner)),

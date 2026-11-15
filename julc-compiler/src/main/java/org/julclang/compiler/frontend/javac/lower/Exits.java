@@ -11,6 +11,7 @@ import com.sun.source.tree.YieldTree;
 import org.julclang.core.recursion.Trampoline;
 
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Predicate;
 
@@ -77,10 +78,13 @@ final class Exits {
     }
 
     private static boolean allPaths(List<? extends StatementTree> statements, Class<? extends StatementTree> exit) {
-        return allPathsFrom(statements, 0, exit).run();
+        return allPathsFrom(new ArrayList<>(statements), 0, exit).run();
     }
 
-    /** {@link #allPaths} from {@code index}, stack-safe: an {@code else if} chain is as deep as it is long (issue #327). */
+    /**
+     * {@link #allPaths} from {@code index}, stack-safe: an {@code else if} chain is as deep as it is long (issue #327).
+     * {@code statements} is an array-backed copy: javac's lists are linked, and reading one by index is linear.
+     */
     private static Trampoline<Boolean> allPathsFrom(List<? extends StatementTree> statements, int index,
                                                     Class<? extends StatementTree> exit) {
         return Trampoline.defer(() -> {
@@ -91,8 +95,9 @@ final class Exits {
             if (!(statement instanceof IfTree branch) || branch.getElseStatement() == null) {
                 return allPathsFrom(statements, index + 1, exit);
             }
-            return allPathsFrom(blockStatements(branch.getThenStatement()), 0, exit)
-                    .then(then -> then ? allPathsFrom(blockStatements(branch.getElseStatement()), 0, exit) : Trampoline.done(false))
+            return allPathsFrom(new ArrayList<>(blockStatements(branch.getThenStatement())), 0, exit)
+                    .then(then -> then ? allPathsFrom(new ArrayList<>(blockStatements(branch.getElseStatement())), 0, exit)
+                            : Trampoline.done(false))
                     .then(both -> both ? Trampoline.done(true) : allPathsFrom(statements, index + 1, exit));
         });
     }

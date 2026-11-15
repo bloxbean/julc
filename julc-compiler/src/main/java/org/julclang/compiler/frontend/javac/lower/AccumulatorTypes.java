@@ -134,7 +134,8 @@ final class AccumulatorTypes {
 
         /** {@code held} joined with what each of {@code values} shows, read one after another. */
         private Trampoline<Held> joined(Held held, List<? extends ExpressionTree> values, Set<Element> read) {
-            return joinedFrom(held, values, 0, read);
+            // An array-backed copy: javac's argument lists are linked, and reading one by index is linear.
+            return joinedFrom(held, new ArrayList<ExpressionTree>(values), 0, read);
         }
 
         private Trampoline<Held> joinedFrom(Held held, List<? extends ExpressionTree> values, int index, Set<Element> read) {

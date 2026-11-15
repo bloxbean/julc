@@ -3,6 +3,7 @@ package org.julclang.compiler.pir;
 import org.julclang.core.Constant;
 import org.junit.jupiter.api.Test;
 
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -159,5 +160,36 @@ class PirTermEqualityTest {
             };
         }
         return term;
+    }
+
+    /** A record compares a null component as Objects.equals does: equal only to null (issue #327 review). */
+    @Test
+    void aNullComponentIsEqualOnlyToNull() {
+        var type = new PirType.IntegerType();
+        var one = new PirTerm.Const(Constant.integer(BigInteger.ONE));
+        assertEquals(new PirTerm.Lam("x", type, null), new PirTerm.Lam("x", type, null));
+        assertNotEquals(new PirTerm.Lam("x", type, null), new PirTerm.Lam("x", type, one));
+        assertNotEquals(new PirTerm.Lam("x", type, one), new PirTerm.Lam("x", type, null));
+        assertEquals(new PirTerm.Let("x", null, one), new PirTerm.Let("x", null, one));
+        assertNotEquals(new PirTerm.Let("a", null, one), new PirTerm.Let("b", null, one));
+        assertEquals(new PirTerm.App(null, null), new PirTerm.App(null, null));
+        assertNotEquals(new PirTerm.App(one, null), new PirTerm.App(null, one));
+        assertEquals(new PirTerm.IfThenElse(one, null, one), new PirTerm.IfThenElse(one, null, one));
+        assertEquals(new PirTerm.Trace(null, one), new PirTerm.Trace(null, one));
+        assertEquals(new PirTerm.Let(null, one, one), new PirTerm.Let(null, one, one));
+        assertEquals(
+                new PirTerm.LetRec(List.of(new PirTerm.Binding("f", null)), one),
+                new PirTerm.LetRec(List.of(new PirTerm.Binding("f", null)), one));
+        assertNotEquals(
+                new PirTerm.LetRec(List.of(new PirTerm.Binding("f", null)), one),
+                new PirTerm.LetRec(List.of(new PirTerm.Binding("f", one)), one));
+        // A null child below a deep spine is compared without recursion too.
+        PirTerm left = new PirTerm.Lam("x", type, null);
+        PirTerm right = new PirTerm.Lam("x", type, null);
+        for (int i = 0; i < 100_000; i++) {
+            left = new PirTerm.Let("v", one, left);
+            right = new PirTerm.Let("v", one, right);
+        }
+        assertEquals(left, right);
     }
 }

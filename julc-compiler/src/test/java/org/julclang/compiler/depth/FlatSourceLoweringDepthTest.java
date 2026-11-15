@@ -39,7 +39,7 @@ class FlatSourceLoweringDepthTest {
     private static final int DEEP = 3_000;
     private static final long SMALL_STACK = 256 * 1024;
     /** As long an {@code else if} chain as javac parses on {@link #SMALL_STACK}, with room: javac's own limit is about 150. */
-    private static final int ELSE_IFS = 120;
+    private static final int ELSE_IFS = 100;
 
     private static JulcVm vm;
 

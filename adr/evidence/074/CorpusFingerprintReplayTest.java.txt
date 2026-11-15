@@ -1,0 +1,185 @@
+package org.julclang.compiler.replay327;
+
+import org.julclang.compiler.CompileResult;
+import org.julclang.compiler.CompilerOptions;
+import org.julclang.compiler.CompilerTargetRegistry;
+import org.julclang.compiler.JulcCompiler;
+import org.julclang.compiler.OptimizationLevel;
+import org.julclang.compiler.pir.StdlibLookup;
+import org.julclang.core.flat.UplcFlatEncoder;
+import org.julclang.stdlib.StdlibRegistry;
+import org.julclang.vm.OptimizationCostProfiles;
+import org.junit.jupiter.api.Test;
+
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.util.ArrayList;
+import java.util.HexFormat;
+import java.util.List;
+import java.util.TreeMap;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+
+/**
+ * Issue #327 evidence, not part of the build: replays a recorded corpus (CorpusRecorder) and writes one fingerprint
+ * line per case and level, covering the script bytes, the source map, debug metadata, diagnostics, parameters, the
+ * optimization report and the contract schema. Run on main and on the branch; the files must be identical.
+ */
+class CorpusFingerprintReplayTest {
+
+    @Test
+    void replay() throws Exception {
+        String corpus = System.getenv("REPLAY_CORPUS");
+        if (corpus == null) return;
+        Path root = Path.of(corpus);
+        Path out = Path.of(System.getenv("REPLAY_OUT"));
+        var cases = new ArrayList<Path>();
+        try (var dirs = Files.list(root.resolve("cases"))) { dirs.sorted().forEach(cases::add); }
+        var lines = new ConcurrentHashMap<String, String>();
+        int threads = Integer.parseInt(System.getenv().getOrDefault("REPLAY_THREADS", "4"));
+        try (var pool = Executors.newFixedThreadPool(threads)) {
+            var futures = new ArrayList<Future<?>>();
+            for (Path dir : cases) futures.add(pool.submit(() -> replayCase(root, dir, lines)));
+            for (var f : futures) f.get();
+        }
+        var sorted = new TreeMap<>(lines);
+        var text = new StringBuilder();
+        sorted.forEach((k, v) -> text.append(k).append(' ').append(v).append('\n'));
+        Files.writeString(out, text.toString());
+        System.out.println("REPLAY wrote " + sorted.size() + " lines to " + out);
+    }
+
+    private static void replayCase(Path root, Path dir, ConcurrentHashMap<String, String> lines) {
+        String key = dir.getFileName().toString();
+        try {
+            var fields = new ArrayList<String[]>();
+            for (String line : Files.readString(dir.resolve("case.txt")).split("\n")) {
+                int colon = line.indexOf(": ");
+                if (colon > 0) fields.add(new String[]{line.substring(0, colon), line.substring(colon + 2)});
+            }
+            String entry = field(fields, "entry"), lookupId = field(fields, "lookup"), method = field(fields, "method");
+            if (entry.equals("JavaLibraryProvider") || lookupId.startsWith("custom:")) {
+                lines.put(key, "skipped " + entry + " " + lookupId.split(":")[0]);
+                return;
+            }
+            String[] main = field(fields, "source") == null ? null : field(fields, "source").split(" ", 2);
+            var libraries = new ArrayList<String[]>();
+            for (var f : fields) if (f[0].equals("library")) libraries.add(f[1].split(" ", 2));
+            var levels = new ArrayList<String>();
+            try (var files = Files.list(dir)) {
+                files.map(p -> p.getFileName().toString()).filter(n -> n.startsWith("level-")).sorted()
+                        .forEach(n -> levels.add(n.substring("level-".length())));
+            }
+            for (String level : levels) {
+                String id = key + " " + level;
+                try {
+                    var options = new CompilerOptions();
+                    options.setTarget(CompilerTargetRegistry.targetForProfileId(field(fields, "target")));
+                    options.setOptimizationLevel(OptimizationLevel.valueOf(level));
+                    String cost = field(fields, "costProfile");
+                    if (cost != null) options.setOptimizationCostProfile(OptimizationCostProfiles.forId(cost.split(" ")[0]));
+                    options.setSourceMapEnabled(Boolean.parseBoolean(field(fields, "sourceMap")));
+                    String disabled = field(fields, "disabledRules");
+                    if (disabled != null) for (String rule : disabled.split(",")) options.disableOptimizationRule(rule);
+                    StdlibLookup lookup = lookupId.startsWith("default:") ? StdlibRegistry.defaultRegistry() : null;
+                    var compiler = new JulcCompiler(lookup, options);
+                    String mainText = main == null ? null : source(root, main[0]);
+                    var libraryTexts = new ArrayList<String>();
+                    for (var library : libraries) libraryTexts.add(source(root, library[0]));
+                    lines.put(id, fingerprint(run(id.replace(' ', '-'), compiler, entry, method, main, mainText, libraries, libraryTexts)));
+                } catch (Throwable e) {
+                    lines.put(id, "threw " + e.getClass().getName() + " " + sha(String.valueOf(e.getMessage())));
+                }
+            }
+        } catch (Exception e) {
+            lines.put(key, "unreadable " + e);
+        }
+    }
+
+    private static Object run(String id, JulcCompiler compiler, String entry, String method, String[] main, String mainText,
+                              List<String[]> libraries, List<String> libraryTexts) throws Exception {
+        return switch (entry) {
+            case "compile" -> libraryTexts.isEmpty() ? compiler.compile(mainText) : compiler.compile(mainText, libraryTexts);
+            case "compileWithDetails" -> compiler.compileWithDetails(mainText, libraryTexts);
+            case "compileMethod" -> compiler.compileMethod(mainText, method, libraryTexts);
+            case "compileContract" -> compiler.compileContract(mainText, libraryTexts);
+            case "compileContractWithDetails" -> compiler.compileContractWithDetails(mainText, libraryTexts);
+            case "compileForDebug" -> compiler.compileForDebug(mainText, libraryTexts);
+            case "compilePath", "compileContractPath" -> {
+                Path tmp = Path.of(System.getenv().getOrDefault("REPLAY_TMP", System.getProperty("java.io.tmpdir")), "replay327", id);
+                Files.createDirectories(tmp);
+                Path mainFile = tmp.resolve(main.length > 1 ? main[1] : "Main.java");
+                Files.createDirectories(mainFile.getParent());
+                Files.writeString(mainFile, mainText);
+                var libraryFiles = new ArrayList<Path>();
+                for (int i = 0; i < libraries.size(); i++) {
+                    Path file = tmp.resolve(libraries.get(i).length > 1 ? libraries.get(i)[1] : "Lib" + i + ".java");
+                    Files.createDirectories(file.getParent());
+                    Files.writeString(file, libraryTexts.get(i));
+                    libraryFiles.add(file);
+                }
+                yield entry.equals("compilePath") ? compiler.compile(mainFile, libraryFiles)
+                        : compiler.compileContract(mainFile, libraryFiles);
+            }
+            default -> throw new IllegalStateException("unknown entry " + entry);
+        };
+    }
+
+    private static String fingerprint(Object outcome) throws Exception {
+        var text = new StringBuilder();
+        switch (outcome) {
+            case CompileResult r -> describe(r, text);
+            case org.julclang.compiler.schema.ContractCompileResult c -> {
+                describe(c.compileResult(), text);
+                text.append("schema=").append(sha(String.valueOf(c.contractSchema()))).append(' ');
+            }
+            case org.julclang.compiler.DebugCompileResult d -> {
+                describe(d.compileResult(), text);
+                text.append("debug=").append(d.debugMetadata() == null ? "-" : sha(withoutCompilerIdentity(d.debugMetadata()))).append(' ');
+            }
+            default -> text.append("other=").append(outcome.getClass().getName());
+        }
+        return text.toString().trim();
+    }
+
+    private static void describe(CompileResult r, StringBuilder text) throws Exception {
+        text.append("program=").append(r.program() == null ? "-" : sha(UplcFlatEncoder.encodeProgram(r.program()))).append(' ');
+        text.append("sourceMap=").append(r.sourceMap() == null || r.program() == null ? "-"
+                : sha(String.valueOf(r.sourceMap().toIndexed(r.program().term())))).append(' ');
+        text.append("diagnostics=").append(sha(String.valueOf(r.diagnostics()))).append(' ');
+        text.append("params=").append(sha(String.valueOf(r.params()))).append(' ');
+        text.append("report=").append(sha(String.valueOf(r.optimizationReport()))).append(' ');
+        text.append("errors=").append(r.hasErrors()).append(' ');
+    }
+
+    /** The metadata as text, without the compiler identity (it carries the build's git hash). */
+    private static String withoutCompilerIdentity(org.julclang.core.debug.DebugMetadata m) {
+        var a = m.artifact();
+        var artifact = new org.julclang.core.debug.DebugMetadata.Artifact("-", a.targetId(), a.options(),
+                a.optimizationProvenance(), a.flatSha256(), a.unparameterizedFlatSha256(), a.uplcVersion(), a.traversal(),
+                a.occurrenceCount(), a.sourceManifestSha256(), a.parameterDigests());
+        return m.format() + "|" + m.major() + "|" + m.minor() + "|" + m.requiredCapabilities() + "|" + artifact + "|"
+                + m.sources() + "|" + m.scopes() + "|" + m.bindings() + "|" + m.types() + "|" + m.layouts() + "|"
+                + m.loweredBindings() + "|" + m.suspensionPoints();
+    }
+
+    private static String field(List<String[]> fields, String name) {
+        for (var f : fields) if (f[0].equals(name)) return f[1];
+        return null;
+    }
+
+    private static String source(Path root, String digest) throws Exception {
+        return Files.readString(root.resolve("sources").resolve(digest + ".java"));
+    }
+
+    private static String sha(String text) throws Exception {
+        return sha(text.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static String sha(byte[] bytes) throws Exception {
+        return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)).substring(0, 16);
+    }
+}
