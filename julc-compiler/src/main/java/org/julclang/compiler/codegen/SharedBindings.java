@@ -36,9 +36,10 @@ import java.util.Set;
  * one of the total, cheap values the delayed-method pass leaves bound, so evaluating it before the dispatch instead of
  * after it gives the same values, failures and traces.
  * <p>
- * A run that reaches a handler takes the same steps: that handler bound the same methods, and each is a function the
- * optimizer never inlines ({@link #isKeptFunction}). A run whose purpose has no handler fails at the dispatch, and now
- * evaluates the shared bindings before it does (ADR-076 I3).
+ * A run that reaches a handler takes the same steps: that handler bound the same methods, each a lambda the optimizer
+ * does not inline ({@link #isKeptFunction}). The test reads PIR, so a lambda the optimizer later reduces to a builtin, or
+ * a use a handler folds away, moves that budget by a few whole steps either way. A run whose purpose has no handler
+ * fails at the dispatch, and now evaluates the shared bindings first (ADR-076 I3).
  */
 public final class SharedBindings {
 
@@ -96,24 +97,41 @@ public final class SharedBindings {
      * reduction. A handler that called such a method once had it inlined, and could fold it further; bound around the
      * dispatch it would not be, so sharing it would add work to that handler. A method with no parameters, a constant
      * or a delayed body, is not shared for the same reason.
+     * <p>
+     * A {@code let} that only renames a variable, as the javac frontend writes for a local initialised from a parameter
+     * ({@code PlutusData e = d; return Builtins.unIData(e);}), is read through: the optimizer beta-reduces it, and what is
+     * left can be a builtin over the parameters.
      */
     private static boolean isKeptFunction(PirTerm body) {
         var parameters = new ArrayList<String>();
+        var aliases = new HashMap<String, String>();
         PirTerm inner = body;
-        while (inner instanceof PirTerm.Lam lam) {
-            parameters.add(lam.param());
-            inner = lam.body();
+        while (true) {
+            if (inner instanceof PirTerm.Lam lam) {
+                // A parameter that hides an earlier one cannot be eta-reduced away with it: keep the function.
+                if (parameters.contains(lam.param())) return true;
+                parameters.add(lam.param());
+                aliases.remove(lam.param());
+                inner = lam.body();
+            } else if (inner instanceof PirTerm.Let let && let.value() instanceof PirTerm.Var renamed) {
+                // A rename that hides a parameter leaves that parameter unused: keep the function.
+                if (parameters.contains(let.name())) return true;
+                aliases.put(let.name(), aliases.getOrDefault(renamed.name(), renamed.name()));
+                inner = let.body();
+            } else {
+                break;
+            }
         }
         if (parameters.isEmpty()) return false;
         return !switch (inner) {
             case PirTerm.Var _, PirTerm.Const _, PirTerm.Builtin _ -> true;
-            case PirTerm.App app -> isBuiltinOver(app, parameters);
+            case PirTerm.App app -> isBuiltinOver(app, parameters, aliases);
             default -> false;
         };
     }
 
-    /** Whether {@code app} is a builtin applied to exactly {@code parameters}, in order. */
-    private static boolean isBuiltinOver(PirTerm.App app, List<String> parameters) {
+    /** Whether {@code app} is a builtin applied to exactly {@code parameters}, in order, read through {@code aliases}. */
+    private static boolean isBuiltinOver(PirTerm.App app, List<String> parameters, Map<String, String> aliases) {
         var arguments = new ArrayList<PirTerm>();
         PirTerm head = app;
         while (head instanceof PirTerm.App next) {
@@ -122,7 +140,8 @@ public final class SharedBindings {
         }
         if (!(head instanceof PirTerm.Builtin) || arguments.size() != parameters.size()) return false;
         for (int i = 0; i < arguments.size(); i++) {
-            if (!(arguments.get(i) instanceof PirTerm.Var variable) || !variable.name().equals(parameters.get(i))) return false;
+            if (!(arguments.get(i) instanceof PirTerm.Var variable)
+                    || !aliases.getOrDefault(variable.name(), variable.name()).equals(parameters.get(i))) return false;
         }
         return true;
     }

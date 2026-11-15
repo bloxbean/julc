@@ -109,7 +109,15 @@ final class ClosedValueSharing {
         while (!pending.isEmpty()) {
             var visit = pending.pop();
             var term = visit.term();
-            if (isShareable(term)) {
+            if (term instanceof Term.Force) {
+                // A force chain is read once, from its head: its shareable forced builtin, or what lies below it.
+                var chain = ForceChain.of(term);
+                int outer = chain.outerForces();
+                if (outer >= 0) uses.computeIfAbsent(peel(term, outer), t -> new ArrayList<>()).add(visit.depth());
+                else pending.push(new Visit(chain.bottom(), visit.depth()));
+                continue;
+            }
+            if (isZ(term)) {
                 uses.computeIfAbsent(term, t -> new ArrayList<>()).add(visit.depth());
                 continue;
             }
@@ -120,7 +128,7 @@ final class ClosedValueSharing {
                     pending.push(new Visit(argument, visit.depth()));
                     pending.push(new Visit(function, visit.depth()));
                 }
-                case Term.Force(var inner) -> pending.push(new Visit(inner, visit.depth()));
+                case Term.Force _ -> throw new IllegalStateException("a force chain is read from its head");
                 case Term.Delay(var inner) -> pending.push(new Visit(inner, visit.depth()));
                 case Term.Constr constr -> {
                     for (int i = constr.fields().size() - 1; i >= 0; i--) pending.push(new Visit(constr.fields().get(i), visit.depth()));
@@ -135,16 +143,51 @@ final class ClosedValueSharing {
         return true;
     }
 
-    /**
-     * A value this shares: the Z combinator, or a builtin forced exactly as often as its type arity. The force chain is
-     * counted before the term is hashed, so an arbitrarily long chain is rejected without walking it recursively.
-     */
-    private static boolean isShareable(Term term) {
-        return candidate(term) != null;
+    private static boolean isZ(Term term) {
+        return term instanceof Term.Lam && term.equals(Z);
     }
 
+    /**
+     * A chain of forces read from its head: how many forces, and the term below them. The value this shares in it is a
+     * builtin forced exactly as often as its type arity: the bottom {@code arity} forces of a chain over a builtin with
+     * at least that many. A chain with more forces is that value under {@link #outerForces} more, which fail when they
+     * run and stay where they are.
+     */
+    private record ForceChain(int forces, Term bottom) {
+        static ForceChain of(Term head) {
+            int forces = 0;
+            Term term = head;
+            while (term instanceof Term.Force(var inner)) {
+                forces++;
+                term = inner;
+            }
+            return new ForceChain(forces, term);
+        }
+
+        /** The forces above the shareable forced builtin at the bottom of this chain, or -1 if there is none. */
+        int outerForces() {
+            if (!(bottom instanceof Term.Builtin(DefaultFun fun))) return -1;
+            var signature = BuiltinSemantics.find(fun);
+            if (signature == null || signature.typeArity() == 0 || signature.typeArity() > forces) return -1;
+            return forces - signature.typeArity();
+        }
+    }
+
+    /** {@code term} without its outer {@code forces} forces. */
+    private static Term peel(Term term, int forces) {
+        for (int i = 0; i < forces; i++) term = ((Term.Force) term).term();
+        return term;
+    }
+
+    /** {@code term} under {@code forces} forces. */
+    private static Term forced(Term term, int forces) {
+        for (int i = 0; i < forces; i++) term = Term.force(term);
+        return term;
+    }
+
+    /** The candidate a recorded value makes: the Z combinator, or a builtin forced exactly as often as its type arity. */
     private static Candidate candidate(Term value) {
-        if (value instanceof Term.Lam && value.equals(Z)) return new Candidate(value, bits(value), "#z", 0);
+        if (isZ(value)) return new Candidate(value, bits(value), "#z", 0);
         int forces = 0;
         Term inner = value;
         while (inner instanceof Term.Force(var next)) {
@@ -194,7 +237,18 @@ final class ClosedValueSharing {
     /** {@code term} with each chosen value read from its binder, stack-safe (ADR-074). */
     private static Trampoline<Term> replace(Term term, int depth, Map<Term, Integer> slotOf, List<String> names) {
         return Trampoline.defer(() -> {
-            if (isShareable(term)) {
+            if (term instanceof Term.Force) {
+                // Read once from the head, as the census read it.
+                var chain = ForceChain.of(term);
+                int outer = chain.outerForces();
+                if (outer < 0) {
+                    return replace(chain.bottom(), depth, slotOf, names).map(bottom -> forced(bottom, chain.forces()));
+                }
+                Integer slot = slotOf.get(peel(term, outer));
+                if (slot == null) return Trampoline.done(term);
+                return Trampoline.done(forced(new Term.Var(new NamedDeBruijn(names.get(slot), depth + names.size() - slot)), outer));
+            }
+            if (isZ(term)) {
                 Integer slot = slotOf.get(term);
                 if (slot != null) {
                     return Trampoline.done(new Term.Var(new NamedDeBruijn(names.get(slot), depth + names.size() - slot)));
@@ -205,7 +259,7 @@ final class ClosedValueSharing {
                 case Term.Lam(var name, var body) -> replace(body, depth + 1, slotOf, names).map(b -> (Term) Term.lam(name, b));
                 case Term.Apply(var function, var argument) -> replace(function, depth, slotOf, names)
                         .then(f -> replace(argument, depth, slotOf, names).map(a -> (Term) Term.apply(f, a)));
-                case Term.Force(var inner) -> replace(inner, depth, slotOf, names).map(i -> (Term) Term.force(i));
+                case Term.Force _ -> throw new IllegalStateException("a force chain is read from its head");
                 case Term.Delay(var inner) -> replace(inner, depth, slotOf, names).map(i -> (Term) Term.delay(i));
                 case Term.Constr constr -> Trampoline.each(constr.fields(), f -> replace(f, depth, slotOf, names))
                         .map(fields -> (Term) new Term.Constr(constr.tag(), fields));

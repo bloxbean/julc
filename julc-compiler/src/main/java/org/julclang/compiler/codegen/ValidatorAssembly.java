@@ -235,14 +235,19 @@ public final class ValidatorAssembly {
             }
             wrappedTerm = wrapper.wrapMultiValidator(handlers, multiParamCounts,
                     multiDatumOptional, multiDatumTypes, multiRedeemerTypes);
-            // 15c. The shared methods, once, around the dispatch: helpers inside the library methods they call.
+            // 15c. The shared methods, once, around the dispatch: helpers inside the library methods they call. They are
+            // bound inside the script-context lambda, so the program keeps its \ctx shape (the decompiler reads its arity
+            // from it), and are evaluated once per run either way.
             if (shared.any()) {
                 context.recordOptimizationRule(SharedBindings.RULE);
                 var sharedHelpers = validator.helpers().stream().filter(helper -> shared.isShared(helper.name())).toList();
                 var sharedLibMethods = sortedLibMethods.stream()
                         .filter(method -> shared.isShared(method.qualifiedName())).toList();
-                wrappedTerm = bindLibraries(sharedLibMethods,
-                        wrapMethodBindings(sharedHelpers, wrappedTerm, frontend), frontend);
+                if (!(wrappedTerm instanceof PirTerm.Lam contextLambda)) {
+                    throw new IllegalStateException("a multi-validator's wrapper is a lambda of its script context");
+                }
+                wrappedTerm = new PirTerm.Lam(contextLambda.param(), contextLambda.paramType(), bindLibraries(sharedLibMethods,
+                        wrapMethodBindings(sharedHelpers, contextLambda.body(), frontend), frontend));
             }
         } else if (validator.purpose() == ScriptPurpose.SPENDING) {
             var entry = validator.entries().getFirst();

@@ -34,7 +34,7 @@ public final class JulcDecompiler {
         String uplcText = UplcPrinter.print(program);
         // ADR-076: a JuLC script may bind shared closed values at its root; read it as it was before that sharing.
         Program analysed = SharedRootBindings.inline(program);
-        ScriptAnalyzer.ScriptStats stats = ScriptAnalyzer.analyze(analysed);
+        ScriptAnalyzer.ScriptStats stats = stats(program, analysed);
 
         if (options.outputLevel() == DecompileOptions.OutputLevel.DISASSEMBLY) {
             return new DecompileResult(program, uplcText, stats);
@@ -61,6 +61,15 @@ public final class JulcDecompiler {
     }
 
     /**
+     * The statistics of the script as deployed, {@code program}, with the arity read from {@code analysed}, the script
+     * with its shared root bindings substituted back: those bindings sit before the validator's own lambdas.
+     */
+    private static ScriptAnalyzer.ScriptStats stats(Program program, Program analysed) {
+        var stats = ScriptAnalyzer.analyze(program);
+        return analysed == program ? stats : stats.withEstimatedArity(ScriptAnalyzer.estimatedArity(analysed));
+    }
+
+    /**
      * Decompile with default options (full Java output).
      */
     public static DecompileResult decompile(String cborHex) {
@@ -81,7 +90,7 @@ public final class JulcDecompiler {
         String uplcText = UplcPrinter.print(program);
         // ADR-076: a JuLC script may bind shared closed values at its root; read it as it was before that sharing.
         Program analysed = SharedRootBindings.inline(program);
-        ScriptAnalyzer.ScriptStats stats = ScriptAnalyzer.analyze(analysed);
+        ScriptAnalyzer.ScriptStats stats = stats(program, analysed);
 
         if (options.outputLevel() == DecompileOptions.OutputLevel.DISASSEMBLY) {
             return new DecompileResult(program, uplcText, stats);

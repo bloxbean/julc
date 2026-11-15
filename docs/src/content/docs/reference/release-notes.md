@@ -21,8 +21,9 @@ Results:
 - Across the compiler's recorded test corpus, the second rewrite alone shrinks programs by 10 %.
 
 What a script computes, where it fails and what it traces do not change. Script hashes change at these levels. The
-first rewrite keeps the budget of every run that reaches a purpose's handler. The second can add a few machine steps
-to a run that uses few of the shared values, such as a transaction that fails early. Each rewrite can be turned off with
+first rewrite keeps the budget of a run that reaches a purpose's handler, except for a few machine steps either way
+where the optimizer later simplifies a shared method. The second can add a few steps to a run that uses few of the
+shared values, such as a transaction that fails early. Each rewrite can be turned off with
 `CompilerOptions.disableOptimizationRule("pv11.o16.shared-handler-bindings")` or
 `disableOptimizationRule("pv11.o17.shared-closed-values")`.
 

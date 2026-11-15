@@ -17,16 +17,22 @@ import java.util.List;
  */
 public final class SharedRootBindings {
 
-    /** The Z combinator as JuLC writes it: {@code \f. (\x. f (\v. x x v)) (\x. f (\v. x x v))}. */
-    private static final Term Z = zCombinator();
-
     private SharedRootBindings() {
     }
 
-    private static Term zCombinator() {
-        var innerBody = Term.lam("v", Term.apply(Term.apply(Term.var(2), Term.var(2)), Term.var(1)));
-        var branch = Term.lam("x", Term.apply(Term.var(2), innerBody));
-        return Term.lam("f", Term.apply(branch, branch));
+    /**
+     * Whether {@code term} is the Z combinator as JuLC writes it, {@code \f. (\x. f (\v. x x v)) (\x. f (\v. x x v))},
+     * compared by de Bruijn indices only: a script decoded from FLAT names its lambdas afresh.
+     */
+    static boolean isZ(Term term) {
+        return term instanceof Term.Lam(_, Term.Apply(var left, var right)) && isZBranch(left) && isZBranch(right);
+    }
+
+    /** {@code \x. f (\v. x x v)} under the binder of {@code f}: {@code \ [2 (\ [[2 2] 1])]}. */
+    private static boolean isZBranch(Term term) {
+        return term instanceof Term.Lam(_, Term.Apply(Term.Var(var f), Term.Lam(_,
+                Term.Apply(Term.Apply(Term.Var(var x1), Term.Var(var x2)), Term.Var(var v1)))))
+                && f.index() == 2 && x1.index() == 2 && x2.index() == 2 && v1.index() == 1;
     }
 
     /** {@code program} with its shared root bindings substituted back; {@code program} itself if it has none. */
@@ -42,7 +48,7 @@ public final class SharedRootBindings {
     }
 
     private static boolean isSharedValue(Term value) {
-        if (value instanceof Term.Lam) return value.equals(Z);
+        if (value instanceof Term.Lam) return isZ(value);
         int forces = 0;
         Term inner = value;
         while (inner instanceof Term.Force(var next)) {

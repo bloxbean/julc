@@ -10,6 +10,7 @@ import org.julclang.core.Term;
 import org.julclang.core.flat.UplcFlatEncoder;
 import org.julclang.stdlib.StdlibRegistry;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
@@ -106,6 +107,22 @@ class ClosedValueSharingTest {
         assertTrue(UplcFlatEncoder.encodeProgram(Program.plutusV3(shared)).length
                 < UplcFlatEncoder.encodeProgram(Program.plutusV3(many)).length);
         assertEquals(many, SharedClosedValues.unshare(shared));
+    }
+
+    @Test
+    @Timeout(20)
+    void longForceChainsAreReadOnceFromTheirHead() {
+        // 400 chains of 2,000 forces over headList: each chain's bottom force is the shareable value, under 1,999
+        // forces that stay where they are. Reading each chain from every force would walk 800 million nodes.
+        Term chain = Term.builtin(DefaultFun.HeadList);
+        for (int i = 0; i < 2_000; i++) chain = Term.force(chain);
+        Term term = Term.var(1);
+        for (int i = 0; i < 400; i++) term = Term.apply(chain, term);
+        term = Term.lam("x", term);
+        var result = ClosedValueSharing.share(term);
+        assertTrue(result != term, "the bottom force headList is shared");
+        assertEquals(term, SharedClosedValues.unshare(result));
+        assertEquals(1, SharedClosedValues.count(result));
     }
 
     @Test

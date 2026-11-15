@@ -11,6 +11,7 @@ import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.uplc.SharedClosedValues;
 import org.julclang.compiler.uplc.UplcOptimizer;
 import org.julclang.core.PlutusData;
+import org.julclang.core.flat.UplcFlatEncoder;
 import org.julclang.ledger.Credential;
 import org.julclang.ledger.PolicyId;
 import org.julclang.ledger.PubKeyHash;
@@ -35,8 +36,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * ADR-076 D1 (issue #325): binding the methods every handler needs once, around the purpose dispatch, keeps what every
- * purpose computes, and what every run that reaches a handler costs. A run with no handler fails at the dispatch as
- * before, with the same traces, after evaluating the shared bindings, which it pays for. A {@code @MultiValidator} with a {@code @Param}, a static field, a failing and a
+ * purpose computes. On the fixtures here it also keeps what every run that reaches a handler costs; a run with no handler
+ * fails at the dispatch as before, with the same traces, after evaluating the shared bindings, which it pays for. Helpers
+ * whose PIR shape differs from what the optimizer leaves of them are pinned separately. A {@code @MultiValidator} with a {@code @Param}, a static field, a failing and a
  * tracing method of no parameters, a constant method, mutually recursive methods and a method that reads the static is
  * compiled with the rule on and off, with two and three handlers, at both levels where it runs and with source maps on
  * and off, and run on contexts of every purpose, including one with no handler.
@@ -48,6 +50,7 @@ class SharedBindingsTest {
             import java.math.BigInteger;
             import java.util.Optional;
             import org.julclang.core.PlutusData;
+import org.julclang.core.flat.UplcFlatEncoder;
             import org.julclang.ledger.ScriptContext;
             import org.julclang.stdlib.Builtins;
             import org.julclang.stdlib.annotation.Entrypoint;
@@ -98,6 +101,71 @@ class SharedBindingsTest {
                 }
 
                 static boolean body(BigInteger r) {""");
+
+    private static final String EDGE_HEAD = """
+            package probe;
+            import java.math.BigInteger;
+            import java.util.Optional;
+            import org.julclang.core.PlutusData;
+import org.julclang.core.flat.UplcFlatEncoder;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.stdlib.Builtins;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.MultiValidator;
+            import org.julclang.stdlib.annotation.Purpose;
+
+            @MultiValidator
+            public class Probe {
+            """;
+
+    /**
+     * A helper whose PIR body renames its parameter before a builtin: the optimizer beta-reduces the {@code let} and
+     * eta-reduces {@code \d. unIData d} to the builtin, so D1 reads through the rename and does not share it.
+     */
+    static final String EDGE_LET_ETA = EDGE_HEAD + """
+                @Entrypoint(purpose = Purpose.MINT)
+                public static boolean mint(PlutusData redeemer, ScriptContext ctx) {
+                    return toInt(redeemer).compareTo(BigInteger.ONE) > 0;
+                }
+                @Entrypoint(purpose = Purpose.SPEND)
+                public static boolean spend(Optional<PlutusData> datum, PlutusData redeemer, ScriptContext ctx) {
+                    return toInt(redeemer).compareTo(BigInteger.TWO) > 0;
+                }
+                static BigInteger toInt(PlutusData d) { PlutusData e = d; return Builtins.unIData(e); }
+            }
+            """;
+
+    /** The same through a local alias of a parameter of two, called with constants the optimizer folds. */
+    static final String EDGE_ALIAS_ADD = EDGE_HEAD + """
+                @Entrypoint(purpose = Purpose.MINT)
+                public static boolean mint(PlutusData redeemer, ScriptContext ctx) {
+                    return add(BigInteger.ONE, BigInteger.ONE).equals(BigInteger.TWO);
+                }
+                @Entrypoint(purpose = Purpose.SPEND)
+                public static boolean spend(Optional<PlutusData> datum, PlutusData redeemer, ScriptContext ctx) {
+                    return add(BigInteger.ONE, BigInteger.ONE).equals(BigInteger.TWO);
+                }
+                static BigInteger add(BigInteger a, BigInteger b) { BigInteger c = a; return c.add(b); }
+            }
+            """;
+
+    /** A helper mint reaches only under {@code if (never())}, a use constant folding removes from that handler. */
+    static final String EDGE_DEAD = EDGE_HEAD + """
+                @Entrypoint(purpose = Purpose.MINT)
+                public static boolean mint(PlutusData redeemer, ScriptContext ctx) {
+                    BigInteger r = Builtins.unIData(redeemer);
+                    if (never()) return m(r, r);
+                    return r.signum() > 0;
+                }
+                @Entrypoint(purpose = Purpose.SPEND)
+                public static boolean spend(Optional<PlutusData> datum, PlutusData redeemer, ScriptContext ctx) {
+                    BigInteger r = Builtins.unIData(redeemer);
+                    return m(r, r) && m(r, BigInteger.ONE);
+                }
+                static boolean never() { return false; }
+                static boolean m(BigInteger a, BigInteger b) { return a.add(b).compareTo(BigInteger.TEN) > 0 && a.signum() >= 0; }
+            }
+            """;
 
     private static final List<OptimizationLevel> LEVELS = List.of(OptimizationLevel.PV11_SAFE, OptimizationLevel.PV11_COSTED);
 
@@ -206,6 +274,55 @@ class SharedBindingsTest {
         }
     }
 
+    /**
+     * Helpers whose PIR shape differs from what the optimizer leaves of them. D1 decides from the PIR before the UPLC
+     * optimizer runs, and the optimizer then treats a binding around the dispatch differently from one inside each
+     * handler:
+     * <ul>
+     *   <li>{@link #EDGE_LET_ETA} and {@link #EDGE_ALIAS_ADD}: a {@code let} that renames a parameter before a builtin.
+     *       The optimizer beta-reduces it and eta-reduces what is left to the builtin, which it inlines and folds in
+     *       each handler; D1 reads through the rename, shares nothing, and the program is the one without D1.</li>
+     *   <li>{@link #EDGE_DEAD}: mint reaches {@code m} only under {@code if (never())}, a use constant folding removes.
+     *       Shared, {@code m} is bound once outside the handlers instead of in spend's branch, and both handled paths
+     *       come out cheaper (six and nine machine steps) and the script smaller: pinned as measured.</li>
+     * </ul>
+     * With source maps the optimizer does not run, and D1 changes no budget. Outcomes, traces, results and failure
+     * text are identical throughout, at both levels and with D2 on or off.
+     */
+    @Test
+    void edgeProgramsKeepTheirOutcomesAndMoveTheBudgetByThePinnedSteps() {
+        record Pin(String source, boolean shares, int bytes, int bytesWithMaps, Map<String, Integer> steps) {}
+        var unchanged = Map.of("mint", 0, "spend", 0);
+        var pins = Map.of(
+                "let-eta", new Pin(EDGE_LET_ETA, false, 0, 0, unchanged),
+                "alias-add", new Pin(EDGE_ALIAS_ADD, false, 0, 0, unchanged),
+                "dead", new Pin(EDGE_DEAD, true, -52, -40, Map.of("mint", -6, "spend", -9)));
+        for (var entry : pins.entrySet()) {
+            var pin = entry.getValue();
+            for (var level : LEVELS) {
+                for (boolean maps : List.of(false, true)) {
+                    for (boolean d2 : List.of(true, false)) {
+                        String label = entry.getKey() + "/" + level + "/" + maps + "/d2=" + d2;
+                        var on = compile(pin.source(), level, maps, true, d2);
+                        var off = compile(pin.source(), level, maps, false, d2);
+                        assertEquals(pin.shares(), on.optimizationReport().appliedRules().contains(SharedBindings.RULE), label);
+                        if (!pin.shares()) assertEquals(off.program(), on.program(), label);
+                        assertEquals(maps ? pin.bytesWithMaps() : pin.bytes(), UplcFlatEncoder.encodeProgram(on.program()).length
+                                - UplcFlatEncoder.encodeProgram(off.program()).length, label + ": size");
+                        for (var context : edgeContexts()) {
+                            String run = label + "/" + context.name();
+                            var shared = CompilerTestVm.pv11().evaluateWithArgs(on.program(), List.of(context.data()));
+                            var unshared = CompilerTestVm.pv11().evaluateWithArgs(off.program(), List.of(context.data()));
+                            assertSameOutcome(unshared, shared, run);
+                            assertWholeSteps(maps ? 0 : pin.steps().get(context.purpose()), unshared.budgetConsumed(),
+                                    shared.budgetConsumed(), run);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private static String name(String source) {
         return source == TWO ? "two" : "three";
     }
@@ -241,6 +358,20 @@ class SharedBindingsTest {
             contexts.add(new Context("spend", redeemer,
                     ScriptContextTestBuilder.spending(reference, PlutusData.integer(1)).redeemer(value).buildPlutusData()));
             contexts.add(new Context("withdraw", redeemer, ScriptContextTestBuilder.rewarding(credential).redeemer(value).buildPlutusData()));
+        }
+        return contexts;
+    }
+
+    /** Mint and spend contexts, without a parameter to apply, for the pinned fixtures. */
+    private static List<Context> edgeContexts() {
+        var contexts = new ArrayList<Context>();
+        var policy = new PolicyId(new byte[28]);
+        var reference = new TxOutRef(new TxId(new byte[32]), BigInteger.ZERO);
+        for (long redeemer : List.of(0L, 3L, 20L)) {
+            var value = PlutusData.integer(redeemer);
+            contexts.add(new Context("mint", redeemer, ScriptContextTestBuilder.minting(policy).redeemer(value).buildPlutusData()));
+            contexts.add(new Context("spend", redeemer,
+                    ScriptContextTestBuilder.spending(reference, PlutusData.integer(1)).redeemer(value).buildPlutusData()));
         }
         return contexts;
     }

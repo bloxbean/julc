@@ -63,6 +63,11 @@ public final class ScriptAnalyzer {
     /**
      * Estimate the entrypoint arity by counting outermost consecutive lambdas.
      */
+    /** How many leading lambdas {@code program} takes: its estimated arity. */
+    public static int estimatedArity(Program program) {
+        return estimateArity(program.term());
+    }
+
     private static int estimateArity(Term term) {
         int arity = 0;
         Term current = term;
@@ -171,6 +176,12 @@ public final class ScriptAnalyzer {
             int errorCount,
             boolean usesSop
     ) {
+        /** These statistics with {@code arity} as the estimated arity. */
+        public ScriptStats withEstimatedArity(int arity) {
+            return new ScriptStats(programVersion, plutusVersion, totalNodes, maxDepth, arity, nodeCounts, builtinsUsed,
+                    lamCount, applyCount, constCount, forceCount, delayCount, errorCount, usesSop);
+        }
+
         /**
          * Format a human-readable summary.
          */
