@@ -156,6 +156,33 @@ class HandlerBindingSharingTest {
     }
 
     @Test
+    void aBinderThatOnlyHasAMethodsNameIsNotThatMethod() {
+        // Codex round 8: \A.m. dispatch, an outer lambda named like the method. Both handlers bind A.m = \x. x + 1 and
+        // then A.n, and run A.n (A.m x); handler 0's A.n reads the outer A.m, handler 1's its own. The two A.n are not
+        // the same function, whatever their binders' names.
+        Term plusOne = Term.lam("#v", add(Term.var(1), integer(1)));
+        // Inside a handler: #x 1, #d 2, outer A.m 3. Inside let A.m: A.m 1, #x 2, #d 3, outer A.m 4.
+        Function<Integer, Term> handler = h -> let("A.m", plusOne,
+                let("A.n", Term.lam("#y", add(Term.apply(Term.var(h == 0 ? 5 : 2), Term.var(1)), integer(1))),
+                        Term.apply(Term.var(1), Term.apply(Term.var(2), Term.var(3)))));
+        // [[(\#f. \#g. #f #g) (\A.m. program)] (\#w. w + 100)]: the outer A.m is a lambda, not a let's binder, so it is
+        // no binding of the method.
+        Term outer = Term.lam("A.m", twoHandlers(handler));
+        Term term = Term.apply(Term.apply(Term.lam("#f", Term.lam("#g", Term.apply(Term.var(2), Term.var(1)))), outer),
+                Term.lam("#w", add(Term.var(1), integer(100))));
+        // The method A.m, the same in both handlers, is shared; A.n, which reads different binders, is not.
+        assertEquals(1, bindings(HandlerBindingSharing.share(term, candidates("A.m", "A.n")), "A.m"));
+        Term shared = HandlerBindingSharing.share(term, candidates("A.m", "A.n"));
+        assertEquals(2, bindings(shared, "A.n"));
+        for (int input = 0; input <= 1; input++) {
+            var before = CompilerTestVm.pv11().evaluateWithArgs(Program.plutusV3(term), List.of(PlutusData.integer(input)));
+            var after = CompilerTestVm.pv11().evaluateWithArgs(Program.plutusV3(shared), List.of(PlutusData.integer(input)));
+            assertEquals(((EvalResult.Success) before).resultTerm(), ((EvalResult.Success) after).resultTerm(), "input " + input);
+            assertEquals(before.budgetConsumed(), after.budgetConsumed(), "input " + input);
+        }
+    }
+
+    @Test
     void anOpenTermIsLeftAsItIs() {
         // A handler that reads a variable nothing binds: the pass declines rather than rebuilding it.
         Term open = twoHandlers(h -> let("A.m", Term.lam("#p", add(Term.var(1), integer(1))), Term.apply(Term.var(1), Term.var(9))));

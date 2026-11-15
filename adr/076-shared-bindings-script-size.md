@@ -79,7 +79,9 @@ all of these hold:
   binding zero or many times. Another method's value is such a value, so a binding inside it moves with it and is not
   shared out of it.
 - **The same function.** Each binding is the same term, where a variable bound inside it has the same index and one bound
-  outside it names the same binder.
+  outside it is the same declaration: the very binder, for one bound above the handlers, or in each handler the binder
+  the same method's binding declares. A binder is known by where it is declared, never by its name or depth, which two
+  binders can share (Codex rounds 7 and 8).
 - **Total, no effect.** The value is pure (`UplcOptimizer.isPure`: a value, a pure term or a fixpoint of a lambda), or
   the fixpoint of a lambda over a value read from a binder of the Z combinator, as D2 leaves it. It is not a value
   `UplcOptimizer.inlinesWhenUsedOnce` accepts.

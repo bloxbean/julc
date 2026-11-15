@@ -199,7 +199,7 @@ final class HandlerBindingSharing {
             if (found.size() == handlers.handlers() && spines.size() == found.size()
                     && isTotalValue(first.value(), first.scope())
                     && !UplcOptimizer.inlinesWhenUsedOnce(first.value())
-                    && found.stream().allMatch(other -> sameFunction(first, other, handlers.names()))) {
+                    && found.stream().allMatch(other -> sameFunction(first, other, census.methodBinders()))) {
                 shared.add(entry.getKey());
             }
         }
@@ -573,11 +573,11 @@ final class HandlerBindingSharing {
 
     /**
      * Whether two of a method's bindings are the same function: the same term, where a variable bound inside it is read
-     * by the same index and one bound outside it names the same binder. A candidate's binder carries the method's name,
-     * and {@link #readsOnlyWhatIsInScope} checks it is that method's binding; any other must be the very binder, as one
-     * bound above both handlers is.
+     * by the same index and one bound outside it is the same declaration: the very binder, as one bound above both
+     * handlers is, or in each the binder the same method's binding declares. A name alone, which a lambda elsewhere can
+     * also carry, is not enough.
      */
-    private static boolean sameFunction(Occurrence a, Occurrence b, Set<String> candidates) {
+    private static boolean sameFunction(Occurrence a, Occurrence b, Map<Scope, String> methodBinders) {
         record Pair(Term a, Term b, int depth) {}
         var pending = new ArrayDeque<Pair>();
         pending.push(new Pair(a.value(), b.value(), 0));
@@ -593,10 +593,13 @@ final class HandlerBindingSharing {
                     } else {
                         var outerA = Scope.at(a.scope(), i - depth);
                         var outerB = Scope.at(b.scope(), j - depth);
-                        if (outerA == null || outerB == null || !outerA.name().equals(outerB.name())) return false;
-                        // A method's binder in each handler, checked later to be its binding's; any other must be one
-                        // binder, above both.
-                        if (!candidates.contains(outerA.name()) && outerA != outerB) return false;
+                        if (outerA == null || outerB == null) return false;
+                        // The very binder, as one bound above both handlers is, or in each handler the binder that
+                        // the same method's binding declares.
+                        if (outerA != outerB) {
+                            String method = methodBinders.get(outerA);
+                            if (method == null || !method.equals(methodBinders.get(outerB))) return false;
+                        }
                     }
                 }
                 case Term.Lam(var _, var body) -> {
