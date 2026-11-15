@@ -21,10 +21,12 @@ import javax.lang.model.element.Element;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.type.TypeKind;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Function;
 
 /**
  * What the reference reads a Data accumulator of a {@code while} as, when several travel in a tuple: {@code AccumulatorTypeAnalyzer}
@@ -134,15 +136,37 @@ final class ReferenceAccumulatorTypes {
 
     /** Whether a statement of {@code body}, in its blocks and branches, sets {@code accumulator} to a call of the builtin. */
     private boolean assigns(StatementTree body, Element accumulator, String builtin) {
-        return switch (body) {
-            case BlockTree block -> block.getStatements().stream().anyMatch(inner -> assigns(inner, accumulator, builtin));
-            case IfTree branch -> assigns(branch.getThenStatement(), accumulator, builtin)
-                    || branch.getElseStatement() != null && assigns(branch.getElseStatement(), accumulator, builtin);
-            case ExpressionStatementTree statement -> statement.getExpression() instanceof AssignmentTree assignment
-                    && assignment.getVariable() instanceof IdentifierTree target && facts.element(target).equals(accumulator)
-                    && isBuiltin(assignment.getExpression(), builtin);
-            default -> false;
-        };
+        return firstOf(body, statement -> statement instanceof ExpressionStatementTree expression
+                && expression.getExpression() instanceof AssignmentTree assignment
+                && assignment.getVariable() instanceof IdentifierTree target && facts.element(target).equals(accumulator)
+                && isBuiltin(assignment.getExpression(), builtin) ? statement : null) != null;
+    }
+
+    /**
+     * The first non-null {@code test} of a statement of {@code body} that is neither a block nor an {@code if}, in source
+     * order through blocks and both branches of each {@code if}. A work list, not recursion: an {@code else if} chain is as
+     * deep as it is long (issue #327).
+     */
+    private static <T> T firstOf(StatementTree body, Function<StatementTree, T> test) {
+        var pending = new ArrayDeque<StatementTree>();
+        pending.push(body);
+        while (!pending.isEmpty()) {
+            switch (pending.pop()) {
+                case BlockTree block -> {
+                    var statements = block.getStatements();
+                    for (int i = statements.size() - 1; i >= 0; i--) pending.push(statements.get(i));
+                }
+                case IfTree branch -> {
+                    if (branch.getElseStatement() != null) pending.push(branch.getElseStatement());
+                    pending.push(branch.getThenStatement());
+                }
+                case StatementTree statement -> {
+                    var found = test.apply(statement);
+                    if (found != null) return found;
+                }
+            }
+        }
+        return null;
     }
 
     private boolean callsAnywhere(Tree body, String builtin) {
@@ -164,17 +188,8 @@ final class ReferenceAccumulatorTypes {
 
     /** The first local of {@code statement} initialized to {@code headList(cursor)}, or null. */
     private Element headOf(StatementTree statement, Element cursor) {
-        return switch (statement) {
-            case VariableTree local when isBuiltin(local.getInitializer(), "headList")
-                    && ((MethodInvocationTree) local.getInitializer()).getArguments().getFirst() instanceof IdentifierTree name
-                    && facts.element(name).equals(cursor) -> facts.element(local);
-            case BlockTree block -> block.getStatements().stream().map(inner -> headOf(inner, cursor))
-                    .filter(found -> found != null).findFirst().orElse(null);
-            case IfTree branch -> {
-                var found = headOf(branch.getThenStatement(), cursor);
-                yield found != null || branch.getElseStatement() == null ? found : headOf(branch.getElseStatement(), cursor);
-            }
-            default -> null;
-        };
+        return firstOf(statement, inner -> inner instanceof VariableTree local && isBuiltin(local.getInitializer(), "headList")
+                && ((MethodInvocationTree) local.getInitializer()).getArguments().getFirst() instanceof IdentifierTree name
+                && facts.element(name).equals(cursor) ? facts.element(local) : null);
     }
 }

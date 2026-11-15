@@ -164,12 +164,12 @@ final class Loops {
         if (elements.isEmpty()) {
             rules.requireNoReassignment(tree);
             if (breaks) rules.requireNoBreak(tree, tree.getStatement());
-            var bodyTerm = statements.single(tree.getStatement(), frame.in(scope));
+            var bodyTerm = statements.single(tree.getStatement(), frame.in(scope)).run();
             var result = (PirTerm.LetRec) desugarer.desugarForEach(iterable, item.name(), NO_ACCUMULATOR, Statements.unit(),
                     new PirType.UnitType(), bodyTerm, held);
             terms.loop(result, null, item);
             if (index + 1 >= following.size() && cont == null) return Trampoline.done(result);
-            return statements.rest(following, index + 1, frame, cont).map(rest ->
+            return statements.sequence(following, index + 1, frame, cont).map(rest ->
                     terms.generatedLet(PirHelpers.hygienicName("#_forEach", PirHelpers.freeVariables(rest)), result, rest));
         }
 
@@ -256,10 +256,10 @@ final class Loops {
         if (elements.isEmpty()) {
             if (breaks) rules.requireNoBreak(tree, tree.getStatement());
             var test = lowering.expr(condition, frame);
-            var bodyTerm = statements.single(tree.getStatement(), frame);
+            var bodyTerm = statements.single(tree.getStatement(), frame).run();
             var result = desugarer.desugarWhile(test, bodyTerm);
             if (index + 1 >= following.size() && cont == null) return Trampoline.done(result);
-            return statements.rest(following, index + 1, frame, cont).map(rest ->
+            return statements.sequence(following, index + 1, frame, cont).map(rest ->
                     terms.generatedLet(PirHelpers.hygienicName("#_while", PirHelpers.freeVariables(rest)), result, rest));
         }
 
@@ -339,7 +339,7 @@ final class Loops {
     private Trampoline<PirTerm> after(PirTerm result, Carried carried, List<? extends StatementTree> following, int index, Frame frame,
                                       PirTerm cont) {
         if (index + 1 >= following.size() && cont == null) return Trampoline.done(result);
-        return statements.rest(following, index + 1, frame, cont)
+        return statements.sequence(following, index + 1, frame, cont)
                 .map(rest -> carried.rebound(result, rebindPreLoopVariables(rest, frame, carried)));
     }
 

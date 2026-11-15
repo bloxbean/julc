@@ -20,6 +20,7 @@ import org.julclang.compiler.frontend.javac.JavacNames;
 import org.julclang.compiler.frontend.javac.subset.EqualityRules;
 import org.julclang.compiler.pir.PirHelpers;
 import org.julclang.compiler.pir.PirTerm;
+import org.julclang.core.recursion.Trampoline;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.resolve.LibraryMethodRegistry;
 import org.julclang.core.Constant;
@@ -281,8 +282,8 @@ final class Operators {
             // ADR-069 D3: each arm in the frame its side of the condition gives, lowered once; the checks read both arms.
             var arms = new PirTerm[2];
             result = lowering.conditions().branch(tree.getCondition(), frame,
-                    inner -> arms[0] = lowering.expr(tree.getTrueExpression(), inner),
-                    inner -> arms[1] = lowering.expr(tree.getFalseExpression(), inner));
+                    inner -> Trampoline.done(arms[0] = lowering.expr(tree.getTrueExpression(), inner)),
+                    inner -> Trampoline.done(arms[1] = lowering.expr(tree.getFalseExpression(), inner))).run();
             thenTerm = arms[0];
             elseTerm = arms[1];
         } else {

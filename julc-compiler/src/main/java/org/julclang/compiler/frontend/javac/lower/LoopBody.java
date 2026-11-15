@@ -106,34 +106,31 @@ final class LoopBody {
 
     /** A body with no {@code break}: its value is {@code carried} as the body leaves it. */
     PirTerm fold(StatementTree body, Carried carried, Frame frame) {
-        return branch(body, frame, new Shape(carried, null));
+        return branch(body, frame, new Shape(carried, null)).run();
     }
 
     /** A body with a {@code break}: {@code next} goes on with a value, and a {@code break} stops at one. */
     PirTerm breaking(StatementTree body, Carried carried, UnaryOperator<PirTerm> next, Frame frame) {
-        return branch(body, frame, new Shape(carried, next));
+        return branch(body, frame, new Shape(carried, next)).run();
     }
 
-    private PirTerm branch(StatementTree branch, Frame frame, Shape shape) {
+    private Trampoline<PirTerm> branch(StatementTree branch, Frame frame, Shape shape) {
         return sequence(branch instanceof BlockTree block ? block.getStatements() : List.of(branch), 0, frame, shape);
     }
 
-    private PirTerm sequence(List<? extends StatementTree> list, int index, Frame frame, Shape shape) {
-        return rest(list, index, frame, shape).run();
-    }
-
     /**
-     * {@link #sequence}, stack-safe (issue #327, ADR-074): each statement holds the ones after it, so a body is as deep as
-     * it is long. Each step is the recursive form's, in its order; a statement's own branches follow source nesting.
+     * The statements from {@code index}, as a stack-safe walk (issue #327, ADR-074): each statement holds the ones after
+     * it, and an {@code else if} holds the next, so a body is as deep as it is long. Each step is the recursive form's, in
+     * its order.
      */
-    private Trampoline<PirTerm> rest(List<? extends StatementTree> list, int index, Frame frame, Shape shape) {
+    private Trampoline<PirTerm> sequence(List<? extends StatementTree> list, int index, Frame frame, Shape shape) {
         return Trampoline.defer(() -> {
             if (index >= list.size()) return Trampoline.done(shape.end(shape.carried().value()));
             return switch (list.get(index)) {
-                case BlockTree block -> rest(spliced(list, index, block), 0, frame, shape);
+                case BlockTree block -> sequence(spliced(list, index, block), 0, frame, shape);
                 case BreakTree ignored when shape.breaks() -> Trampoline.done(shape.carried().value());
                 case ExpressionStatementTree statement -> expression(statement.getExpression(), list, index, frame, shape);
-                case VariableTree local -> statements.localDeep(local, frame, inner -> rest(list, index + 1, inner, shape));
+                case VariableTree local -> statements.local(local, frame, inner -> sequence(list, index + 1, inner, shape));
                 case IfTree branch when !lowering.conditions().introducedBy(branch, frame).isEmpty() -> introducing(branch, list, index, frame, shape);
                 case IfTree branch -> shape.breaks() ? breakingIf(branch, list, index, frame, shape) : foldIf(branch, list, index, frame, shape);
                 case WhileLoopTree loop -> nested(loop, "A nested while loop", list, index, frame, shape);
@@ -168,7 +165,7 @@ final class LoopBody {
         var target = LoopRules.updated(expression);
         if (target == null) {
             var effect = lowering.expr(expression, frame);
-            return rest(list, index + 1, frame, shape).map(after -> new PirTerm.Let("#_", effect, after));
+            return sequence(list, index + 1, frame, shape).map(after -> new PirTerm.Let("#_", effect, after));
         }
         var element = facts.element(target);
         // ADR-069 D8 rule 1: an update of a pattern variable that is no accumulator would be lost where an if rejoins.
@@ -181,7 +178,7 @@ final class LoopBody {
         boolean endsAtBreak = shape.breaks() && shape.carried().holds(element)
                 && index + 1 < list.size() && list.get(index + 1) instanceof BreakTree;
         if (endsAtBreak && shape.carried().isSingle()) return Trampoline.done(value);
-        var after = endsAtBreak ? Trampoline.done(shape.carried().value()) : rest(list, index + 1, frame, shape);
+        var after = endsAtBreak ? Trampoline.done(shape.carried().value()) : sequence(list, index + 1, frame, shape);
         return after.map(term -> terms.let(binder, value, term));
     }
 
@@ -207,20 +204,20 @@ final class LoopBody {
         var fell = new boolean[1];
         Function<Frame, Trampoline<PirTerm>> then = inner -> {
             if (!Conditions.bindsAll(inner, introduced)) {
-                return Trampoline.done(branch(tree.getThenStatement(), inner, shape.endingUnreachably()));
+                return branch(tree.getThenStatement(), inner, shape.endingUnreachably());
             }
             fell[0] = true;
-            return rest(Ifs.spliced(tree.getThenStatement(), rest), 0, inner, shape);
+            return sequence(Ifs.spliced(tree.getThenStatement(), rest), 0, inner, shape);
         };
         Function<Frame, Trampoline<PirTerm>> otherwise = inner -> {
             if (!Conditions.bindsAll(inner, introduced)) {
-                return Trampoline.done(elseStatement == null ? new PirTerm.Error(shape.carried().type())
-                        : branch(elseStatement, inner, shape.endingUnreachably()));
+                return elseStatement == null ? Trampoline.done(new PirTerm.Error(shape.carried().type()))
+                        : branch(elseStatement, inner, shape.endingUnreachably());
             }
             fell[0] = true;
-            return rest(Ifs.spliced(elseStatement, rest), 0, inner, shape);
+            return sequence(Ifs.spliced(elseStatement, rest), 0, inner, shape);
         };
-        return lowering.conditions().branchDeep(Ifs.condition(tree), frame, then, otherwise).map(result -> {
+        return lowering.conditions().branch(Ifs.condition(tree), frame, then, otherwise).map(result -> {
             // No outcome bound them: a defect here, refused at the first use rather than compiled to a script that fails (M3-C7).
             if (!fell[0]) throw Conditions.unboundAfter(facts, tree, introduced);
             return result;
@@ -231,16 +228,18 @@ final class LoopBody {
         var condition = lowering.conditions().choice(Ifs.condition(tree), frame);
         // With statements after it, the if's value is the accumulators mid-body, never the body's end: a normal fold, even
         // in a branch whose end is unreachable (review F16). Last in the body, it is the end.
-        var result = branches(condition, tree, index + 1 < list.size() ? shape.fold() : shape);
-        if (index + 1 >= list.size()) return Trampoline.done(result);
-        var carried = shape.carried();
-        return rest(list, index + 1, frame, shape).map(after -> carried.rebound(result, after));
+        return branches(condition, tree, index + 1 < list.size() ? shape.fold() : shape).then(result -> {
+            if (index + 1 >= list.size()) return Trampoline.done(result);
+            var carried = shape.carried();
+            return sequence(list, index + 1, frame, shape).map(after -> carried.rebound(result, after));
+        });
     }
 
     /** The {@code if} as a value: each branch's, and with no {@code else} the accumulators as they stand. */
-    private PirTerm branches(Conditions.Choice condition, IfTree tree, Shape shape) {
+    private Trampoline<PirTerm> branches(Conditions.Choice condition, IfTree tree, Shape shape) {
         return condition.choose(inner -> branch(tree.getThenStatement(), inner, shape),
-                inner -> tree.getElseStatement() != null ? branch(tree.getElseStatement(), inner, shape) : shape.carried().value());
+                inner -> tree.getElseStatement() != null ? branch(tree.getElseStatement(), inner, shape)
+                        : Trampoline.done(shape.carried().value()));
     }
 
     /** See the class's comment. The reference ends an {@code if} with no {@code break} by one accumulator's value or by each branch going on. */
@@ -254,28 +253,28 @@ final class LoopBody {
         var carried = shape.carried();
 
         if (!breaks && (hasRest || carried.isSingle())) {
-            var result = branches(condition, tree, shape.fold());
-            return hasRest ? rest(list, index + 1, frame, shape).map(after -> carried.rebound(result, after))
-                    : Trampoline.done(shape.end(result));
+            return branches(condition, tree, shape.fold()).then(result -> hasRest
+                    ? sequence(list, index + 1, frame, shape).map(after -> carried.rebound(result, after))
+                    : Trampoline.done(shape.end(result)));
         }
         if (!hasRest || elseStatement == null && !Exits.canCompleteNormally(thenStatement)) {
             // At most one path reaches what follows, so it stands in place.
-            return condition.chooseDeep(inner -> Trampoline.done(branch(thenStatement, inner, shape)),
-                    inner -> elseStatement != null ? Trampoline.done(branch(elseStatement, inner, shape))
-                            : rest(list, index + 1, frame, shape));
+            return condition.choose(inner -> branch(thenStatement, inner, shape),
+                    inner -> elseStatement != null ? branch(elseStatement, inner, shape) : sequence(list, index + 1, frame, shape));
         }
-        return rest(list, index + 1, frame, shape).map(after -> joined(condition, tree, after, frame, shape));
+        return sequence(list, index + 1, frame, shape).then(after -> joined(condition, tree, after, frame, shape));
     }
 
     /** {@code let join = \value -> rest in if ...}: each path that does not break calls it. */
-    private PirTerm joined(Conditions.Choice condition, IfTree tree, PirTerm rest, Frame frame, Shape shape) {
+    private Trampoline<PirTerm> joined(Conditions.Choice condition, IfTree tree, PirTerm rest, Frame frame, Shape shape) {
         var carried = shape.carried();
         var type = carried.type();
         var join = terms.generated("#join" + ++joins, new PirType.FunType(type, type));
         var toJoin = new Shape(carried, value -> new PirTerm.App(join, value));
-        var choice = condition.choose(inner -> branch(tree.getThenStatement(), inner, toJoin),
-                inner -> tree.getElseStatement() != null ? branch(tree.getElseStatement(), inner, toJoin) : toJoin.end(carried.value()));
-        return terms.generatedLet(join.name(), joinFunction(carried, rest), choice);
+        return condition.choose(inner -> branch(tree.getThenStatement(), inner, toJoin),
+                        inner -> tree.getElseStatement() != null ? branch(tree.getElseStatement(), inner, toJoin)
+                                : Trampoline.done(toJoin.end(carried.value())))
+                .map(choice -> terms.generatedLet(join.name(), joinFunction(carried, rest), choice));
     }
 
     private PirTerm joinFunction(Carried carried, PirTerm rest) {
@@ -295,7 +294,7 @@ final class LoopBody {
         }
         var inner = loops.accumulators(loop, frame);
         var result = loops.alone(loop, frame);
-        return rest(list, index + 1, frame, shape).map(rest -> {
+        return sequence(list, index + 1, frame, shape).map(rest -> {
             if (inner.isEmpty()) return terms.generatedLet(PirHelpers.hygienicName("#_nested", PirHelpers.freeVariables(rest)), result, rest);
             return loops.nested(inner, loop, frame, rest).rebound(result, rest);
         });

@@ -84,13 +84,13 @@ final class Ifs {
         var rest = following.subList(index + 1, following.size());
         var falling = new PirTerm[1];
         Function<Frame, Trampoline<PirTerm>> then = inner -> Conditions.bindsAll(inner, introduced)
-                ? statements.rest(spliced(tree.getThenStatement(), rest), 0, inner, cont).map(term -> falling[0] = term)
-                : Trampoline.done(statements.branch(tree.getThenStatement(), inner, unreachable(frame)));
+                ? statements.sequence(spliced(tree.getThenStatement(), rest), 0, inner, cont).map(term -> falling[0] = term)
+                : statements.branch(tree.getThenStatement(), inner, unreachable(frame));
         Function<Frame, Trampoline<PirTerm>> otherwise = inner -> Conditions.bindsAll(inner, introduced)
-                ? statements.rest(spliced(tree.getElseStatement(), rest), 0, inner, cont).map(term -> falling[0] = term)
-                : Trampoline.done(tree.getElseStatement() == null ? unreachable(frame)
-                        : statements.branch(tree.getElseStatement(), inner, unreachable(frame)));
-        return lowering.conditions().branchDeep(condition(tree), frame, then, otherwise).map(result -> {
+                ? statements.sequence(spliced(tree.getElseStatement(), rest), 0, inner, cont).map(term -> falling[0] = term)
+                : tree.getElseStatement() == null ? Trampoline.done(unreachable(frame))
+                        : statements.branch(tree.getElseStatement(), inner, unreachable(frame));
+        return lowering.conditions().branch(condition(tree), frame, then, otherwise).map(result -> {
             // No outcome bound them: a defect here, refused at the first use rather than compiled to a script that fails (M3-C7).
             if (falling[0] == null) throw Conditions.unboundAfter(facts, tree, introduced);
             // Typed by what falls through: in a lambda block the unreachable end's own type is only a placeholder (review M3-S4).
@@ -123,27 +123,27 @@ final class Ifs {
      * path that falls through runs it. It is placed in both branches, and {@code let}s nothing, as the reference does.
      */
     private Trampoline<PirTerm> ifWithExit(IfTree tree, List<? extends StatementTree> following, int index, Frame frame, PirTerm cont) {
-        return statements.rest(following, index + 1, frame, cont).map(after -> terms.at(tree, withContinuation(tree, after, frame)));
+        return statements.sequence(following, index + 1, frame, cont)
+                .then(after -> withContinuation(tree, after, frame).map(result -> terms.at(tree, result)));
     }
 
-    /** The {@code if} with {@code after} placed in each branch that falls through. */
-    private PirTerm withContinuation(IfTree tree, PirTerm after, Frame frame) {
+    /**
+     * The {@code if} with {@code after} placed in each branch that falls through. An {@code else if} is lowered in the
+     * same walk, so a chain of them needs no Java stack per link (issue #327).
+     */
+    private Trampoline<PirTerm> withContinuation(IfTree tree, PirTerm after, Frame frame) {
         var condition = condition(tree);
         var pattern = pattern(condition);
-        PirTerm result;
         if (pattern != null) {
-            var elseTerm = elseWithExit(tree, frame, after);
-            result = patternIf((InstanceOfTree) condition, pattern, elseTerm, frame,
-                    inner -> statements.branch(tree.getThenStatement(), inner, after));
-        } else {
-            result = lowering.conditions().choice(condition, frame).choose(
-                    inner -> statements.branch(tree.getThenStatement(), inner, after), inner -> elseWithExit(tree, inner, after));
+            return elseWithExit(tree, frame, after).then(elseTerm -> patternIf((InstanceOfTree) condition, pattern, elseTerm, frame,
+                    inner -> statements.branch(tree.getThenStatement(), inner, after)));
         }
-        return result;
+        return lowering.conditions().choice(condition, frame).choose(
+                inner -> statements.branch(tree.getThenStatement(), inner, after), inner -> elseWithExit(tree, inner, after));
     }
 
-    private PirTerm elseWithExit(IfTree tree, Frame frame, PirTerm after) {
-        return tree.getElseStatement() == null ? after : statements.branch(tree.getElseStatement(), frame, after);
+    private Trampoline<PirTerm> elseWithExit(IfTree tree, Frame frame, PirTerm after) {
+        return tree.getElseStatement() == null ? Trampoline.done(after) : statements.branch(tree.getElseStatement(), frame, after);
     }
 
     /**
@@ -152,10 +152,10 @@ final class Ifs {
      * is its argument, read where the branch ends: there the loop's result has been bound to that variable.
      */
     private Trampoline<PirTerm> ifWithLoop(IfTree tree, List<? extends StatementTree> following, int index, Frame frame, PirTerm cont) {
-        return statements.rest(following, index + 1, frame, cont).map(after -> joinedLoop(tree, after, frame));
+        return statements.sequence(following, index + 1, frame, cont).then(after -> joinedLoop(tree, after, frame));
     }
 
-    private PirTerm joinedLoop(IfTree tree, PirTerm after, Frame frame) {
+    private Trampoline<PirTerm> joinedLoop(IfTree tree, PirTerm after, Frame frame) {
         var join = "#if-join-" + ++joins;
         var updated = accumulators.ofBranches(tree, frame);
         PirTerm joinBody = after;
@@ -172,7 +172,8 @@ final class Ifs {
         PirTerm fallThrough = terms.generated(join, joinType);
         for (var element : updated) fallThrough = new PirTerm.App(fallThrough, terms.var(element, frame.scope().lookup(element)));
         if (updated.isEmpty()) fallThrough = new PirTerm.App(fallThrough, Statements.unit());
-        return terms.at(tree, terms.generatedLet(join, joinBody, withContinuation(tree, fallThrough, frame)));
+        var body = joinBody;
+        return withContinuation(tree, fallThrough, frame).map(result -> terms.at(tree, terms.generatedLet(join, body, result)));
     }
 
     /**
@@ -181,43 +182,52 @@ final class Ifs {
      */
     private Trampoline<PirTerm> ifForEffect(IfTree tree, List<? extends StatementTree> following, int index, Frame frame, PirTerm cont) {
         boolean hasFollowing = index + 1 < following.size();
-        var effect = terms.at(tree, nested(tree, frame));
-        if (!hasFollowing && cont == null) return Trampoline.done(effect);
-        return statements.rest(following, index + 1, frame, cont).map(after -> terms.afterEffect(effect, after));
+        return nested(tree, frame).then(value -> {
+            var effect = terms.at(tree, value);
+            if (!hasFollowing && cont == null) return Trampoline.done(effect);
+            return statements.sequence(following, index + 1, frame, cont).map(after -> terms.afterEffect(effect, after));
+        });
     }
 
-    /** An {@code if} that is a value: a branch of another for its effect, or the term {@link #ifForEffect} binds. */
-    PirTerm nested(IfTree tree, Frame frame) {
+    /**
+     * An {@code if} that is a value: a branch of another for its effect, or the term {@link #ifForEffect} binds. An
+     * {@code else if} is lowered in the same walk (issue #327).
+     */
+    Trampoline<PirTerm> nested(IfTree tree, Frame frame) {
         var condition = condition(tree);
         var pattern = pattern(condition);
         if (pattern != null) {
-            var elseTerm = elseForEffect(tree, frame);
-            return patternIf((InstanceOfTree) condition, pattern, elseTerm, frame,
-                    inner -> statements.single(tree.getThenStatement(), inner));
+            return elseForEffect(tree, frame).then(elseTerm -> patternIf((InstanceOfTree) condition, pattern, elseTerm, frame,
+                    inner -> statements.single(tree.getThenStatement(), inner)));
         }
         return lowering.conditions().choice(condition, frame).choose(
                 inner -> statements.single(tree.getThenStatement(), inner), inner -> elseForEffect(tree, inner));
     }
 
-    private PirTerm elseForEffect(IfTree tree, Frame frame) {
-        return tree.getElseStatement() == null ? Statements.unit() : statements.single(tree.getElseStatement(), frame);
+    private Trampoline<PirTerm> elseForEffect(IfTree tree, Frame frame) {
+        return tree.getElseStatement() == null ? Trampoline.done(Statements.unit()) : statements.single(tree.getElseStatement(), frame);
     }
 
     /**
      * {@code if (test) { let v = operand in then } else elseTerm}: {@code v} is in scope in the then branch alone. The test
      * evaluates the operand first, so the operand can be bound ahead of it ({@link PirHelpers#readOnce}).
      */
-    private PirTerm patternIf(InstanceOfTree test, BindingPatternTree pattern, PirTerm elseTerm, Frame frame,
-                              Function<Frame, PirTerm> then) {
-        return PirHelpers.readOnce(lowering.expr(test.getExpression(), frame), new PirType.DataType(), scrutinee -> {
+    private Trampoline<PirTerm> patternIf(InstanceOfTree test, BindingPatternTree pattern, PirTerm elseTerm, Frame frame,
+                                          Function<Frame, Trampoline<PirTerm>> then) {
+        return Terms.readOnce(lowering.expr(test.getExpression(), frame), new PirType.DataType(), scrutinee -> {
             var condition = typeTests.instanceOf(test, frame, () -> scrutinee);
             var variable = pattern.getVariable();
             var element = facts.element(variable);
             var scope = frame.scope().bind(element, facts.pirType(element.asType(), variable.getType()));
+            var binder = scope.lookup(element);
             // In a guard the test is a dispatch (ADR-067 D1), which I1's check does not read: its binder is a plain let.
-            var thenTerm = frame.inGuard() ? terms.let(scope.lookup(element), scrutinee, then.apply(frame.in(scope)))
-                    : terms.introduced(scope.lookup(element), scrutinee, typeTests.tag(test), then.apply(frame.in(scope)));
-            return new PirTerm.IfThenElse(condition, thenTerm, elseTerm);
+            if (frame.inGuard()) {
+                return then.apply(frame.in(scope)).map(thenBody ->
+                        new PirTerm.IfThenElse(condition, terms.let(binder, scrutinee, thenBody), elseTerm));
+            }
+            var tag = typeTests.tag(test);
+            return then.apply(frame.in(scope)).map(thenBody ->
+                    new PirTerm.IfThenElse(condition, terms.introduced(binder, scrutinee, tag, thenBody), elseTerm));
         });
     }
 

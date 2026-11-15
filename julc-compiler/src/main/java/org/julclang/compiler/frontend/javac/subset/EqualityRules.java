@@ -15,6 +15,7 @@ import org.julclang.compiler.frontend.javac.EqualityOperations;
 import org.julclang.compiler.frontend.javac.EqualityRelation;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacNames;
+import org.julclang.core.recursion.Trampoline;
 
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ExecutableElement;
@@ -96,23 +97,31 @@ public final class EqualityRules {
      * {@code getConstantValue()} is Java's exact value.
      */
     private boolean isPlainConstantString(ExpressionTree tree, Set<Element> reached) {
-        return switch (tree) {
-            case LiteralTree literal -> literal.getValue() instanceof String;
-            case ParenthesizedTree parenthesized -> isPlainConstantString(parenthesized.getExpression(), reached);
-            case BinaryTree binary -> binary.getKind() == Tree.Kind.PLUS
-                    && isPlainConstantString(binary.getLeftOperand(), reached)
-                    && isPlainConstantString(binary.getRightOperand(), reached);
-            case IdentifierTree name -> isPlainConstantVariable(facts.element(name), reached);
-            case MemberSelectTree select -> isPlainConstantVariable(facts.element(select), reached);
-            default -> false;
-        };
+        return plainConstantString(tree, reached).run();
     }
 
-    private boolean isPlainConstantVariable(Element element, Set<Element> reached) {
-        if (!(element instanceof VariableElement variable && variable.getConstantValue() instanceof String)) return false;
-        if (!reached.add(variable)) return true;
+    /**
+     * Stack-safe (issue #327): a constant variable is as plain as its initializer, and a chain of {@code final}s each
+     * initialized by the one before is as long as the source. Operands are read in order, stopping as {@code &&} does.
+     */
+    private Trampoline<Boolean> plainConstantString(ExpressionTree tree, Set<Element> reached) {
+        return Trampoline.defer(() -> switch (tree) {
+            case LiteralTree literal -> Trampoline.done(literal.getValue() instanceof String);
+            case ParenthesizedTree parenthesized -> plainConstantString(parenthesized.getExpression(), reached);
+            case BinaryTree binary -> binary.getKind() != Tree.Kind.PLUS ? Trampoline.done(false)
+                    : plainConstantString(binary.getLeftOperand(), reached).then(left -> left
+                            ? plainConstantString(binary.getRightOperand(), reached) : Trampoline.done(false));
+            case IdentifierTree name -> plainConstantVariable(facts.element(name), reached);
+            case MemberSelectTree select -> plainConstantVariable(facts.element(select), reached);
+            default -> Trampoline.done(false);
+        });
+    }
+
+    private Trampoline<Boolean> plainConstantVariable(Element element, Set<Element> reached) {
+        if (!(element instanceof VariableElement variable && variable.getConstantValue() instanceof String)) return Trampoline.done(false);
+        if (!reached.add(variable)) return Trampoline.done(true);
         var initializer = facts.initializer(variable);
-        return initializer == null || isPlainConstantString(initializer, reached);
+        return initializer == null ? Trampoline.done(true) : plainConstantString(initializer, reached);
     }
 
     private void requireStrings(BinaryTree tree) {

@@ -8,8 +8,11 @@ import com.sun.source.tree.ReturnTree;
 import com.sun.source.tree.StatementTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.tree.YieldTree;
+import org.julclang.core.recursion.Trampoline;
 
+import java.util.ArrayDeque;
 import java.util.List;
+import java.util.function.Predicate;
 
 /**
  * What a statement's shape says about leaving it, read from the tree alone. {@link Ifs} chooses its shape from these. Only
@@ -26,24 +29,36 @@ final class Exits {
      * {@code return}, or a {@code yield}. A {@code switch} in an expression holds its own.
      */
     static boolean holdsExit(StatementTree statement) {
-        return switch (statement) {
-            case ReturnTree ignored -> true;
-            case YieldTree ignored -> true;
-            case BlockTree block -> block.getStatements().stream().anyMatch(Exits::holdsExit);
-            case IfTree branch -> holdsExit(branch.getThenStatement())
-                    || branch.getElseStatement() != null && holdsExit(branch.getElseStatement());
-            default -> false;
-        };
+        return holds(statement, leaf -> leaf instanceof ReturnTree || leaf instanceof YieldTree);
     }
 
     /** Whether {@code statement} holds a loop statement. A loop in an expression has its own value boundary. */
     static boolean holdsLoop(StatementTree statement) {
-        return switch (statement) {
-            case BlockTree block -> block.getStatements().stream().anyMatch(Exits::holdsLoop);
-            case IfTree branch -> holdsLoop(branch.getThenStatement())
-                    || branch.getElseStatement() != null && holdsLoop(branch.getElseStatement());
-            default -> isLoop(statement);
-        };
+        return holds(statement, Exits::isLoop);
+    }
+
+    /**
+     * Whether {@code test} holds of a statement in {@code statement} that is neither a block nor an {@code if}, looking
+     * into blocks and both branches of each {@code if}. A work list, not recursion: an {@code else if} chain is as deep
+     * as it is long (issue #327). The answer is a pure function of the tree, so the order the statements are met in does
+     * not change it.
+     */
+    private static boolean holds(StatementTree statement, Predicate<StatementTree> test) {
+        var pending = new ArrayDeque<StatementTree>();
+        pending.push(statement);
+        while (!pending.isEmpty()) {
+            switch (pending.pop()) {
+                case BlockTree block -> block.getStatements().forEach(pending::push);
+                case IfTree branch -> {
+                    pending.push(branch.getThenStatement());
+                    if (branch.getElseStatement() != null) pending.push(branch.getElseStatement());
+                }
+                case StatementTree leaf -> {
+                    if (test.test(leaf)) return true;
+                }
+            }
+        }
+        return false;
     }
 
     /**
@@ -62,16 +77,24 @@ final class Exits {
     }
 
     private static boolean allPaths(List<? extends StatementTree> statements, Class<? extends StatementTree> exit) {
-        for (var statement : statements) {
-            if (exit.isInstance(statement) || statement instanceof LabeledStatementTree) return true;
-            if (exit == ReturnTree.class && isLoop(statement) && statement == statements.getLast()) return true;
-            if (statement instanceof IfTree branch && branch.getElseStatement() != null
-                    && allPaths(blockStatements(branch.getThenStatement()), exit)
-                    && allPaths(blockStatements(branch.getElseStatement()), exit)) {
-                return true;
+        return allPathsFrom(statements, 0, exit).run();
+    }
+
+    /** {@link #allPaths} from {@code index}, stack-safe: an {@code else if} chain is as deep as it is long (issue #327). */
+    private static Trampoline<Boolean> allPathsFrom(List<? extends StatementTree> statements, int index,
+                                                    Class<? extends StatementTree> exit) {
+        return Trampoline.defer(() -> {
+            if (index >= statements.size()) return Trampoline.done(false);
+            var statement = statements.get(index);
+            if (exit.isInstance(statement) || statement instanceof LabeledStatementTree) return Trampoline.done(true);
+            if (exit == ReturnTree.class && isLoop(statement) && statement == statements.getLast()) return Trampoline.done(true);
+            if (!(statement instanceof IfTree branch) || branch.getElseStatement() == null) {
+                return allPathsFrom(statements, index + 1, exit);
             }
-        }
-        return false;
+            return allPathsFrom(blockStatements(branch.getThenStatement()), 0, exit)
+                    .then(then -> then ? allPathsFrom(blockStatements(branch.getElseStatement()), 0, exit) : Trampoline.done(false))
+                    .then(both -> both ? Trampoline.done(true) : allPathsFrom(statements, index + 1, exit));
+        });
     }
 
     private static boolean isLoop(StatementTree statement) {
@@ -83,13 +106,18 @@ final class Exits {
      * counts as completing, which costs a join and no more ({@link LoopBody}).
      */
     static boolean canCompleteNormally(StatementTree statement) {
-        return switch (statement) {
-            case BreakTree ignored -> false;
-            case BlockTree block -> block.getStatements().stream().allMatch(Exits::canCompleteNormally);
-            case IfTree branch -> branch.getElseStatement() == null || canCompleteNormally(branch.getThenStatement())
-                    || canCompleteNormally(branch.getElseStatement());
-            default -> true;
-        };
+        return completes(statement).run();
+    }
+
+    /** {@link #canCompleteNormally}, stack-safe: an {@code else if} chain is as deep as it is long (issue #327). */
+    private static Trampoline<Boolean> completes(StatementTree statement) {
+        return Trampoline.defer(() -> switch (statement) {
+            case BreakTree ignored -> Trampoline.done(false);
+            case BlockTree block -> Trampoline.all(block.getStatements(), Exits::completes);
+            case IfTree branch -> branch.getElseStatement() == null ? Trampoline.done(true)
+                    : completes(branch.getThenStatement()).then(then -> then ? Trampoline.done(true) : completes(branch.getElseStatement()));
+            default -> Trampoline.done(true);
+        });
     }
 
     /** A branch's statements: a block's, or the one statement it is. */

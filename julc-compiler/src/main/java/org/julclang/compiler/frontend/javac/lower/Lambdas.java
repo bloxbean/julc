@@ -16,6 +16,7 @@ import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacNames;
 import org.julclang.compiler.pir.PirHelpers;
 import org.julclang.compiler.pir.PirTerm;
+import org.julclang.core.recursion.Trampoline;
 import org.julclang.compiler.pir.PirType;
 
 import javax.lang.model.type.TypeKind;
@@ -80,8 +81,8 @@ final class Lambdas {
         }
         if (argument instanceof ConditionalExpressionTree conditional) {
             return lowering.conditions().choice(conditional.getCondition(), frame).choose(
-                    inner -> function(call, conditional.getTrueExpression(), receiver, encodesResult, inner),
-                    inner -> function(call, conditional.getFalseExpression(), receiver, encodesResult, inner));
+                    inner -> Trampoline.done(function(call, conditional.getTrueExpression(), receiver, encodesResult, inner)),
+                    inner -> Trampoline.done(function(call, conditional.getFalseExpression(), receiver, encodesResult, inner))).run();
         }
         if (!(argument instanceof LambdaExpressionTree lambda)) {
             throw facts.rejection(DiagnosticCodes.EXPRESSION_UNSUPPORTED, argument,
