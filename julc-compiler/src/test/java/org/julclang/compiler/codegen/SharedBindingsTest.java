@@ -481,9 +481,9 @@ class SharedBindingsTest {
     }
 
     /**
-     * Codex round 4, P2: a chain of methods every handler reaches, each calling the next. D1 decides with one trial
-     * lowering and one walk, not a lowering per method and dependency: the whole chain is shared, and each handled run
-     * keeps its outcome and costs no more.
+     * Codex round 4, P2: a chain of methods every handler reaches, each calling the next. The assembly names the
+     * candidates and the optimizer's D1 pass, after D2, decides on its output without lowering anything again: the whole
+     * chain is shared, and each handled run keeps its outcome and costs no more.
      */
     @Test
     void aLongChainOfSharedMethodsIsDecidedOnceAndShared() {

@@ -3,13 +3,13 @@
 **Status:** Proposed (2026-11-15). Implemented in the same change.
 **Date:** 2026-11-15
 **Risk class:** correctness-sensitive, **medium**.
-- Two new rewrites run at `PV11_SAFE` and `PV11_COSTED`, the default levels, so script bytes and hashes change for most
-  programs.
+- Two new rewrites run at `PV11_SAFE`, the default level, and at the opt-in `PV11_COSTED`, so script bytes and hashes
+  change for most programs at those levels.
 - Each moves only closed values, or functions every handler already evaluates, so what a script computes, where it
   fails and what it traces do not change.
-- D1 shares only methods that stay functions after the UPLC optimizer, so a run that reaches a handler keeps its
-  budget, or lowers it where a handler's use of a shared method folds away. A run with no handler, which always fails at the dispatch, first evaluates the shared
-  bindings.
+- D1 runs on the optimizer's output and only merges bindings every handler compiled to the same function, so a run that
+  reaches its handler's bindings keeps its budget exactly (I3). A run that fails before them, for want of a handler, at
+  its boundary check or in a static initializer, first evaluates the shared bindings.
 - D2 lowers the budget on most paths, and can raise it by a few machine steps on a path that uses few shared values.
 
 **Issue:** [#325](https://github.com/bloxbean/julc/issues/325)
@@ -41,7 +41,8 @@ Each `let` of the compiled UPLC was listed with the FLAT size of its value, and 
 
 ## Goals
 
-- Smaller scripts at the default levels, without changing what any script computes, where it fails or what it traces.
+- Smaller scripts at `PV11_SAFE`, the default level, and at `PV11_COSTED`, without changing what any script computes,
+  where it fails or what it traces.
 - A size and cost benchmark against Aiken that runs real transactions.
 - Every change is switchable, so the effect of each rule can be tested by compiling with and without it.
 
@@ -344,3 +345,11 @@ the guard only removes sharing that did not shrink a program.
 - **The stdlib's near-identical loops.** `ValuesLib.findTokenAmount` and `_assetOf` are 151 and 156 B of almost the
   same loop.
 - **#151 idea 3.** Walk the field list of a record once for every field read.
+
+## Revision history
+
+- **r1** (2026-11-15): the design as implemented in PR #336. It was reviewed in nine Codex rounds, which moved D1 from
+  the PIR assembly to a UPLC pass after D2 (Alternatives rejected), and by independent Claude reviewers.
+- **r2** (2026-11-16; responds to reviewer1's review of `2fabf0b2`): F1 [P3]. The risk summary now states D1's exact I3
+  budget and its failure-path surcharge, not the earlier design's "or lowers it". `PV11_SAFE` is named as the default
+  level and `PV11_COSTED` as opt-in. The long-chain test's Javadoc no longer describes the trial lowering.
