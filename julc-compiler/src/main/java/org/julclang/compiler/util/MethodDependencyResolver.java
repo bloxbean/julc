@@ -105,35 +105,58 @@ public class MethodDependencyResolver {
         return sccs;
     }
 
-    private static void strongConnect(int v, List<List<Integer>> adj,
+    /**
+     * Tarjan's visit from {@code root}, with the depth-first path on a heap stack instead of the Java stack: a chain
+     * of methods each calling the next is as deep as it is long (issue #327). It visits edges in the order the
+     * recursive form did, so the components and their members come out in the same order.
+     */
+    private static void strongConnect(int root, List<List<Integer>> adj,
                                        int[] index, int[] lowlink, boolean[] onStack,
                                        boolean[] visited, Deque<Integer> stack,
                                        List<List<Integer>> sccs, int[] counter) {
+        // Each frame is {vertex, index of its next edge}.
+        var path = new ArrayDeque<int[]>();
+        enter(root, index, lowlink, onStack, visited, stack, counter);
+        path.push(new int[]{root, 0});
+        while (!path.isEmpty()) {
+            int[] frame = path.peek();
+            int v = frame[0];
+            var edges = adj.get(v);
+            if (frame[1] < edges.size()) {
+                int w = edges.get(frame[1]++);
+                if (!visited[w]) {
+                    enter(w, index, lowlink, onStack, visited, stack, counter);
+                    path.push(new int[]{w, 0});
+                } else if (onStack[w]) {
+                    lowlink[v] = Math.min(lowlink[v], index[w]);
+                }
+                continue;
+            }
+            if (lowlink[v] == index[v]) {
+                var scc = new ArrayList<Integer>();
+                int w;
+                do {
+                    w = stack.pop();
+                    onStack[w] = false;
+                    scc.add(w);
+                } while (w != v);
+                sccs.add(scc);
+            }
+            path.pop();
+            if (!path.isEmpty()) {
+                int caller = path.peek()[0];
+                lowlink[caller] = Math.min(lowlink[caller], lowlink[v]);
+            }
+        }
+    }
+
+    private static void enter(int v, int[] index, int[] lowlink, boolean[] onStack, boolean[] visited,
+                              Deque<Integer> stack, int[] counter) {
         index[v] = counter[0];
         lowlink[v] = counter[0];
         counter[0]++;
         visited[v] = true;
         stack.push(v);
         onStack[v] = true;
-
-        for (int w : adj.get(v)) {
-            if (!visited[w]) {
-                strongConnect(w, adj, index, lowlink, onStack, visited, stack, sccs, counter);
-                lowlink[v] = Math.min(lowlink[v], lowlink[w]);
-            } else if (onStack[w]) {
-                lowlink[v] = Math.min(lowlink[v], index[w]);
-            }
-        }
-
-        if (lowlink[v] == index[v]) {
-            var scc = new ArrayList<Integer>();
-            int w;
-            do {
-                w = stack.pop();
-                onStack[w] = false;
-                scc.add(w);
-            } while (w != v);
-            sccs.add(scc);
-        }
     }
 }

@@ -3,6 +3,7 @@ package org.julclang.compiler.pir;
 import org.julclang.compiler.debug.PirDebugProvenance;
 import org.julclang.core.Constant;
 import org.julclang.core.DefaultFun;
+import org.julclang.core.recursion.Trampoline;
 import org.julclang.core.source.SourceLocation;
 
 import java.math.BigInteger;
@@ -90,17 +91,11 @@ public final class NarrowingElisionPass {
 
     /** A term with no wrap comes back as the same object, so a program with no {@code (int)} of a {@code long} is untouched. */
     public Result lower(PirTerm term) {
-        return new Result(holdsNarrowing(term) ? walk(term, null) : term, positions);
+        return new Result(holdsNarrowing(term) ? walk(term, null).run() : term, positions);
     }
 
     private static boolean holdsNarrowing(PirTerm term) {
-        if (narrowedOperand(term) != null) return true;
-        boolean[] holds = {false};
-        PirHelpers.mapChildren(term, child -> {
-            holds[0] |= holdsNarrowing(child);
-            return child;
-        });
-        return holds[0];
+        return PirHelpers.anyTerm(term, inner -> narrowedOperand(inner) != null);
     }
 
     /** The {@code x} of {@code ((x + 2^31) mod 2^32) - 2^31}, exactly as {@link #narrowToInt} builds it, or null. */
@@ -116,32 +111,46 @@ public final class NarrowingElisionPass {
                 && builtin == fun && value.equals(right) ? left : null;
     }
 
-    private PirTerm walk(PirTerm term, Scope scope) {
-        var operand = narrowedOperand(term);
-        if (operand != null) {
-            var range = rangeOf(operand, scope);
-            if (range != null && range.fitsInt()) return elided(term, walk(operand, scope));
-        }
-        return remember(term, switch (term) {
-            case PirTerm.Let let -> new PirTerm.Let(let.name(), walk(let.value(), scope),
-                    walk(let.body(), new Scope(let.name(), let.value(), scope, scope)));
-            case PirTerm.LetRec rec -> {
-                var inner = hide(scope, rec.bindings().stream().map(PirTerm.Binding::name).toList());
-                yield new PirTerm.LetRec(rec.bindings().stream()
-                        .map(binding -> new PirTerm.Binding(binding.name(), walk(binding.value(), inner))).toList(),
-                        walk(rec.body(), inner));
+    /** Every wrap in {@code term} that {@link #rangeOf} proves redundant removed; stack-safe (issue #327). */
+    private Trampoline<PirTerm> walk(PirTerm term, Scope scope) {
+        return Trampoline.defer(() -> {
+            var operand = narrowedOperand(term);
+            if (operand != null) {
+                var range = rangeOf(operand, scope);
+                if (range != null && range.fitsInt()) return walk(operand, scope).map(walked -> elided(term, walked));
             }
-            case PirTerm.Lam lam -> new PirTerm.Lam(lam.param(), lam.paramType(), walk(lam.body(), hide(scope, List.of(lam.param()))));
-            case PirTerm.PairMatch match -> new PirTerm.PairMatch(walk(match.scrutinee(), scope), match.pairType(),
-                    match.firstName(), match.secondName(), walk(match.body(), hide(scope, List.of(match.firstName(), match.secondName()))));
-            case PirTerm.ListMatch match -> new PirTerm.ListMatch(walk(match.scrutinee(), scope), match.headName(), match.tailName(),
-                    walk(match.nilBranch(), scope), walk(match.consBranch(), hide(scope, List.of(match.headName(), match.tailName()))));
-            case PirTerm.DataMatch match -> new PirTerm.DataMatch(walk(match.scrutinee(), scope), match.branches().stream()
-                    .map(branch -> new PirTerm.MatchBranch(branch.constructorName(), branch.bindings(), branch.bindingTypes(),
-                            walk(branch.body(), hide(scope, bound(branch))), branch.patternVar())).toList());
-            // The remaining forms bind nothing.
-            case PirTerm.Var _, PirTerm.Const _, PirTerm.Builtin _, PirTerm.Error _, PirTerm.App _, PirTerm.IfThenElse _,
-                 PirTerm.Trace _, PirTerm.DataConstr _, PirTerm.IntegerCase _ -> PirHelpers.mapChildren(term, child -> walk(child, scope));
+            Trampoline<PirTerm> rebuilt = switch (term) {
+                case PirTerm.Let let -> walk(let.value(), scope).then(value ->
+                        walk(let.body(), new Scope(let.name(), let.value(), scope, scope))
+                                .map(body -> new PirTerm.Let(let.name(), value, body)));
+                case PirTerm.LetRec rec -> {
+                    var inner = hide(scope, rec.bindings().stream().map(PirTerm.Binding::name).toList());
+                    yield Trampoline.each(rec.bindings(), binding -> walk(binding.value(), inner)
+                                    .map(value -> new PirTerm.Binding(binding.name(), value)))
+                            .then(bindings -> walk(rec.body(), inner).map(body -> new PirTerm.LetRec(bindings, body)));
+                }
+                case PirTerm.Lam lam -> walk(lam.body(), hide(scope, List.of(lam.param())))
+                        .map(body -> new PirTerm.Lam(lam.param(), lam.paramType(), body));
+                case PirTerm.PairMatch match -> walk(match.scrutinee(), scope).then(scrutinee ->
+                        walk(match.body(), hide(scope, List.of(match.firstName(), match.secondName())))
+                                .map(body -> new PirTerm.PairMatch(scrutinee, match.pairType(), match.firstName(),
+                                        match.secondName(), body)));
+                case PirTerm.ListMatch match -> walk(match.scrutinee(), scope).then(scrutinee ->
+                        walk(match.nilBranch(), scope).then(nil ->
+                                walk(match.consBranch(), hide(scope, List.of(match.headName(), match.tailName())))
+                                        .map(cons -> new PirTerm.ListMatch(scrutinee, match.headName(), match.tailName(),
+                                                nil, cons))));
+                case PirTerm.DataMatch match -> walk(match.scrutinee(), scope).then(scrutinee ->
+                        Trampoline.each(match.branches(), branch -> walk(branch.body(), hide(scope, bound(branch)))
+                                        .map(body -> new PirTerm.MatchBranch(branch.constructorName(), branch.bindings(),
+                                                branch.bindingTypes(), body, branch.patternVar())))
+                                .map(branches -> new PirTerm.DataMatch(scrutinee, branches)));
+                // The remaining forms bind nothing.
+                case PirTerm.Var _, PirTerm.Const _, PirTerm.Builtin _, PirTerm.Error _, PirTerm.App _, PirTerm.IfThenElse _,
+                     PirTerm.Trace _, PirTerm.DataConstr _, PirTerm.IntegerCase _ ->
+                        PirHelpers.traverseChildren(term, child -> walk(child, scope));
+            };
+            return rebuilt.map(replacement -> remember(term, replacement));
         });
     }
 
@@ -161,17 +170,25 @@ public final class NarrowingElisionPass {
      * but for a divisor, which is read once, and a value only reads binders outside itself, so this ends.
      */
     private static Range rangeOf(PirTerm term, Scope scope) {
-        if (narrowedOperand(term) != null) return INT;
-        return switch (term) {
-            case PirTerm.Const(Constant.IntegerConst(var value)) -> new Range(value, value);
-            case PirTerm.Var read -> {
-                var binder = binderOf(read.name(), scope);
-                yield binder == null || binder.value() == null ? null : rangeOf(binder.value(), binder.valueScope());
-            }
-            case PirTerm.Let let -> rangeOf(let.body(), new Scope(let.name(), let.value(), scope, scope));
-            case PirTerm.App app -> rangeOfCall(app, scope);
-            default -> null;
-        };
+        return range(term, scope).run();
+    }
+
+    /** {@link #rangeOf}, stack-safe: a chain of {@code let}s or of variables bound to variables can be long (issue #327). */
+    private static Trampoline<Range> range(PirTerm term, Scope scope) {
+        return Trampoline.defer(() -> {
+            if (narrowedOperand(term) != null) return Trampoline.done(INT);
+            return switch (term) {
+                case PirTerm.Const(Constant.IntegerConst(var value)) -> Trampoline.done(new Range(value, value));
+                case PirTerm.Var read -> {
+                    var binder = binderOf(read.name(), scope);
+                    yield binder == null || binder.value() == null ? Trampoline.done(null)
+                            : range(binder.value(), binder.valueScope());
+                }
+                case PirTerm.Let let -> range(let.body(), new Scope(let.name(), let.value(), scope, scope));
+                case PirTerm.App app -> rangeOfCall(app, scope);
+                default -> Trampoline.done(null);
+            };
+        });
     }
 
     private static Scope binderOf(String name, Scope scope) {
@@ -179,7 +196,7 @@ public final class NarrowingElisionPass {
         return scope;
     }
 
-    private static Range rangeOfCall(PirTerm.App call, Scope scope) {
+    private static Trampoline<Range> rangeOfCall(PirTerm.App call, Scope scope) {
         var arguments = new ArrayList<PirTerm>();
         PirTerm head = call;
         while (head instanceof PirTerm.App app) {
@@ -188,36 +205,32 @@ public final class NarrowingElisionPass {
         }
         return switch (head) {
             case PirTerm.Builtin builtin when arguments.size() == 2 -> switch (builtin.fun()) {
-                case IndexByteString -> BYTE;
-                case ModInteger -> {
-                    var divisor = rangeOf(arguments.get(1), scope);
-                    yield divisor == null || !divisor.positive() ? null
-                            : new Range(BigInteger.ZERO, divisor.high().subtract(BigInteger.ONE));
-                }
-                case RemainderInteger -> {
-                    var divisor = rangeOf(arguments.get(1), scope);
-                    yield divisor == null || !divisor.positive() ? null
-                            : new Range(divisor.high().subtract(BigInteger.ONE).negate(), divisor.high().subtract(BigInteger.ONE));
-                }
-                default -> null;
+                case IndexByteString -> Trampoline.done(BYTE);
+                case ModInteger -> range(arguments.get(1), scope).map(divisor -> divisor == null || !divisor.positive() ? null
+                        : new Range(BigInteger.ZERO, divisor.high().subtract(BigInteger.ONE)));
+                case RemainderInteger -> range(arguments.get(1), scope).map(divisor -> divisor == null || !divisor.positive()
+                        ? null
+                        : new Range(divisor.high().subtract(BigInteger.ONE).negate(), divisor.high().subtract(BigInteger.ONE)));
+                default -> Trampoline.done(null);
             };
             case PirTerm.Var function -> {
                 var binder = binderOf(function.name(), scope);
-                yield binder == null || binder.value() == null ? null : rangeOfBody(binder.value(), arguments.size(), binder.valueScope());
+                yield binder == null || binder.value() == null ? Trampoline.done(null)
+                        : rangeOfBody(binder.value(), arguments.size(), binder.valueScope());
             }
-            default -> null;
+            default -> Trampoline.done(null);
         };
     }
 
     /** The result of a function of exactly {@code count} parameters, applied to as many arguments; nothing is known of them. */
-    private static Range rangeOfBody(PirTerm function, int count, Scope scope) {
+    private static Trampoline<Range> rangeOfBody(PirTerm function, int count, Scope scope) {
         var body = function;
         for (int i = 0; i < count; i++) {
-            if (!(body instanceof PirTerm.Lam lam)) return null;
+            if (!(body instanceof PirTerm.Lam lam)) return Trampoline.done(null);
             scope = new Scope(lam.param(), null, null, scope);
             body = lam.body();
         }
-        return rangeOf(body, scope);
+        return range(body, scope);
     }
 
     /** The operand keeps its own position: a failure in it is still reported where it is. */

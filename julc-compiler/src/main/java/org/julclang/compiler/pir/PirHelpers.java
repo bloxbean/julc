@@ -3,13 +3,17 @@ package org.julclang.compiler.pir;
 import org.julclang.compiler.CompilerTypeDiagnostics;
 import org.julclang.core.Constant;
 import org.julclang.core.DefaultFun;
-
+import org.julclang.core.recursion.Trampoline;
 
 import java.math.BigInteger;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.function.BinaryOperator;
+import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.function.UnaryOperator;
 
 /**
@@ -47,6 +51,68 @@ public final class PirHelpers {
             case PirTerm.IntegerCase c -> new PirTerm.IntegerCase(map.apply(c.scrutinee()),
                     c.branches().stream().map(map).toList());
         };
+    }
+
+    /**
+     * {@link #mapChildren}, for a {@code map} that is itself a stack-safe walk (issue #327, ADR-074): the children are
+     * mapped one after another, in {@link #mapChildren}'s order, and the term is rebuilt from the results. A pass
+     * that recursed through {@link #mapChildren} recurses through this instead, and so needs no Java stack per level.
+     */
+    public static Trampoline<PirTerm> traverseChildren(PirTerm term, Function<PirTerm, Trampoline<PirTerm>> map) {
+        return switch (term) {
+            case PirTerm.Var _, PirTerm.Const _, PirTerm.Builtin _, PirTerm.Error _ -> Trampoline.done(term);
+            case PirTerm.Lam l -> map.apply(l.body()).map(body -> new PirTerm.Lam(l.param(), l.paramType(), body));
+            case PirTerm.Let l -> map.apply(l.value()).then(value -> map.apply(l.body())
+                    .map(body -> new PirTerm.Let(l.name(), value, body)));
+            case PirTerm.LetRec r -> Trampoline.each(r.bindings(), b -> map.apply(b.value())
+                            .map(value -> new PirTerm.Binding(b.name(), value)))
+                    .then(bindings -> map.apply(r.body()).map(body -> new PirTerm.LetRec(bindings, body)));
+            case PirTerm.App a -> map.apply(a.function()).then(function -> map.apply(a.argument())
+                    .map(argument -> new PirTerm.App(function, argument)));
+            case PirTerm.IfThenElse i -> map.apply(i.cond()).then(cond -> map.apply(i.thenBranch())
+                    .then(then -> map.apply(i.elseBranch()).map(otherwise -> new PirTerm.IfThenElse(cond, then, otherwise))));
+            case PirTerm.Trace t -> map.apply(t.message()).then(message -> map.apply(t.body())
+                    .map(body -> new PirTerm.Trace(message, body)));
+            case PirTerm.DataConstr c -> Trampoline.each(c.fields(), map)
+                    .map(fields -> new PirTerm.DataConstr(c.tag(), c.dataType(), fields));
+            case PirTerm.DataMatch m -> map.apply(m.scrutinee()).then(scrutinee -> Trampoline.each(m.branches(),
+                    b -> map.apply(b.body()).map(body -> new PirTerm.MatchBranch(b.constructorName(), b.bindings(),
+                            b.bindingTypes(), body, b.patternVar())))
+                    .map(branches -> new PirTerm.DataMatch(scrutinee, branches)));
+            case PirTerm.ListMatch m -> map.apply(m.scrutinee()).then(scrutinee -> map.apply(m.nilBranch())
+                    .then(nil -> map.apply(m.consBranch()).map(cons -> new PirTerm.ListMatch(scrutinee, m.headName(),
+                            m.tailName(), nil, cons))));
+            case PirTerm.PairMatch m -> map.apply(m.scrutinee()).then(scrutinee -> map.apply(m.body())
+                    .map(body -> new PirTerm.PairMatch(scrutinee, m.pairType(), m.firstName(), m.secondName(), body)));
+            case PirTerm.IntegerCase c -> map.apply(c.scrutinee()).then(scrutinee -> Trampoline.each(c.branches(), map)
+                    .map(branches -> new PirTerm.IntegerCase(scrutinee, branches)));
+        };
+    }
+
+    /** The direct children of {@code term}, in {@link #mapChildren}'s order. */
+    public static List<PirTerm> children(PirTerm term) {
+        var children = new ArrayList<PirTerm>();
+        mapChildren(term, child -> {
+            children.add(child);
+            return child;
+        });
+        return children;
+    }
+
+    /**
+     * Whether {@code test} holds of {@code term} or of a term inside it, found without recursion (issue #327). Terms are
+     * tested in pre-order, children in {@link #mapChildren}'s order, stopping at the first that holds.
+     */
+    public static boolean anyTerm(PirTerm term, Predicate<PirTerm> test) {
+        var pending = new ArrayDeque<PirTerm>();
+        pending.push(term);
+        while (!pending.isEmpty()) {
+            var next = pending.pop();
+            if (test.test(next)) return true;
+            var children = children(next);
+            for (int i = children.size() - 1; i >= 0; i--) pending.push(children.get(i));
+        }
+        return false;
     }
 
     /**

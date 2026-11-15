@@ -40,6 +40,9 @@ public sealed interface Term {
      */
     record Lam(String paramName, Term body) implements Term {
         public Lam { Objects.requireNonNull(paramName); Objects.requireNonNull(body); }
+
+        /** Structural, as a record's, but compared without recursion (issue #327). */
+        @Override public boolean equals(Object other) { return other instanceof Term term && TermEquality.equal(this, term); }
     }
 
     /**
@@ -50,6 +53,9 @@ public sealed interface Term {
      */
     record Apply(Term function, Term argument) implements Term {
         public Apply { Objects.requireNonNull(function); Objects.requireNonNull(argument); }
+
+        /** Structural, as a record's, but compared without recursion (issue #327). */
+        @Override public boolean equals(Object other) { return other instanceof Term term && TermEquality.equal(this, term); }
     }
 
     /**
@@ -59,6 +65,9 @@ public sealed interface Term {
      */
     record Force(Term term) implements Term {
         public Force { Objects.requireNonNull(term); }
+
+        /** Structural, as a record's, but compared without recursion (issue #327). */
+        @Override public boolean equals(Object other) { return other instanceof Term term && TermEquality.equal(this, term); }
     }
 
     /**
@@ -68,6 +77,9 @@ public sealed interface Term {
      */
     record Delay(Term term) implements Term {
         public Delay { Objects.requireNonNull(term); }
+
+        /** Structural, as a record's, but compared without recursion (issue #327). */
+        @Override public boolean equals(Object other) { return other instanceof Term term && TermEquality.equal(this, term); }
     }
 
     /**
@@ -105,6 +117,9 @@ public sealed interface Term {
         public Constr {
             fields = List.copyOf(fields);
         }
+
+        /** Structural, as a record's, but compared without recursion (issue #327). */
+        @Override public boolean equals(Object other) { return other instanceof Term term && TermEquality.equal(this, term); }
     }
 
     /**
@@ -119,6 +134,9 @@ public sealed interface Term {
             Objects.requireNonNull(scrutinee);
             branches = List.copyOf(branches);
         }
+
+        /** Structural, as a record's, but compared without recursion (issue #327). */
+        @Override public boolean equals(Object other) { return other instanceof Term term && TermEquality.equal(this, term); }
     }
 
     // Convenience factory methods

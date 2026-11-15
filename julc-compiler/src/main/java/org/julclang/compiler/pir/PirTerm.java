@@ -13,15 +13,29 @@ import java.util.Objects;
 public sealed interface PirTerm {
 
     record Var(String name, PirType type) implements PirTerm {}
-    record Let(String name, PirTerm value, PirTerm body) implements PirTerm {}
+    record Let(String name, PirTerm value, PirTerm body) implements PirTerm {
+        /** Structural, as a record's, but compared without recursion (issue #327). */
+        @Override public boolean equals(Object other) { return other instanceof PirTerm term && PirTermEquality.equal(this, term); }
+    }
     record LetRec(List<Binding> bindings, PirTerm body) implements PirTerm {
         public LetRec { bindings = List.copyOf(bindings); }
+        /** Structural, as a record's, but compared without recursion (issue #327). */
+        @Override public boolean equals(Object other) { return other instanceof PirTerm term && PirTermEquality.equal(this, term); }
     }
-    record Lam(String param, PirType paramType, PirTerm body) implements PirTerm {}
-    record App(PirTerm function, PirTerm argument) implements PirTerm {}
+    record Lam(String param, PirType paramType, PirTerm body) implements PirTerm {
+        /** Structural, as a record's, but compared without recursion (issue #327). */
+        @Override public boolean equals(Object other) { return other instanceof PirTerm term && PirTermEquality.equal(this, term); }
+    }
+    record App(PirTerm function, PirTerm argument) implements PirTerm {
+        /** Structural, as a record's, but compared without recursion (issue #327). */
+        @Override public boolean equals(Object other) { return other instanceof PirTerm term && PirTermEquality.equal(this, term); }
+    }
     record Const(Constant value) implements PirTerm {}
     record Builtin(DefaultFun fun) implements PirTerm {}
-    record IfThenElse(PirTerm cond, PirTerm thenBranch, PirTerm elseBranch) implements PirTerm {}
+    record IfThenElse(PirTerm cond, PirTerm thenBranch, PirTerm elseBranch) implements PirTerm {
+        /** Structural, as a record's, but compared without recursion (issue #327). */
+        @Override public boolean equals(Object other) { return other instanceof PirTerm term && PirTermEquality.equal(this, term); }
+    }
     /**
      * Select one branch by a native, non-negative integer scrutinee (PV11 {@code Case} on
      * Integer). Branch {@code i} runs for scrutinee value {@code i}; any other value fails at
@@ -37,6 +51,8 @@ public sealed interface PirTerm {
                 throw new IllegalArgumentException("IntegerCase requires at least two branches");
             }
         }
+        /** Structural, as a record's, but compared without recursion (issue #327). */
+        @Override public boolean equals(Object other) { return other instanceof PirTerm term && PirTermEquality.equal(this, term); }
     }
     /** Match a proven native pair once; bind raw first/second fields without decoding them. */
     record PairMatch(PirTerm scrutinee, PirType.PairType pairType, String firstName,
@@ -50,6 +66,8 @@ public sealed interface PirTerm {
                 throw new IllegalArgumentException("PairMatch requires distinct field binders");
             }
         }
+        /** Structural, as a record's, but compared without recursion (issue #327). */
+        @Override public boolean equals(Object other) { return other instanceof PirTerm term && PirTermEquality.equal(this, term); }
     }
     /**
      * Match a native List<Data>, binding its raw head and tail only in consBranch.
@@ -69,15 +87,24 @@ public sealed interface PirTerm {
                 throw new IllegalArgumentException("ListMatch requires distinct head/tail binders");
             }
         }
+        /** Structural, as a record's, but compared without recursion (issue #327). */
+        @Override public boolean equals(Object other) { return other instanceof PirTerm term && PirTermEquality.equal(this, term); }
     }
     record DataConstr(int tag, PirType dataType, List<PirTerm> fields) implements PirTerm {
         public DataConstr { fields = List.copyOf(fields); }
+        /** Structural, as a record's, but compared without recursion (issue #327). */
+        @Override public boolean equals(Object other) { return other instanceof PirTerm term && PirTermEquality.equal(this, term); }
     }
     record DataMatch(PirTerm scrutinee, List<MatchBranch> branches) implements PirTerm {
         public DataMatch { branches = List.copyOf(branches); }
+        /** Structural, as a record's, but compared without recursion (issue #327). */
+        @Override public boolean equals(Object other) { return other instanceof PirTerm term && PirTermEquality.equal(this, term); }
     }
     record Error(PirType type) implements PirTerm {}
-    record Trace(PirTerm message, PirTerm body) implements PirTerm {}
+    record Trace(PirTerm message, PirTerm body) implements PirTerm {
+        /** Structural, as a record's, but compared without recursion (issue #327). */
+        @Override public boolean equals(Object other) { return other instanceof PirTerm term && PirTermEquality.equal(this, term); }
+    }
 
     record Binding(String name, PirTerm value) {}
     record MatchBranch(String constructorName, List<String> bindings, List<PirType> bindingTypes, PirTerm body, String patternVar) {

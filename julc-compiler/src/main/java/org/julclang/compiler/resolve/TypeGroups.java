@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -90,8 +91,13 @@ public final class TypeGroups {
         return result;
     }
 
+    /**
+     * Tarjan's visit from {@code root}, with the depth-first path on a heap stack instead of the Java stack, so that
+     * a long chain of types each naming the next cannot exhaust it (issue #327). It visits dependencies in the order
+     * the recursive form did, so the components and their members come out in the same order.
+     */
     private static void strongConnect(
-            String node,
+            String root,
             Map<String, Set<String>> deps,
             int[] nextIndex,
             Map<String, Integer> indexes,
@@ -99,32 +105,48 @@ public final class TypeGroups {
             ArrayDeque<String> stack,
             Set<String> onStack,
             List<List<String>> components) {
+        record Frame(String node, Iterator<String> dependencies) {}
+        var path = new ArrayDeque<Frame>();
+        enter(root, nextIndex, indexes, lowLinks, stack, onStack);
+        path.push(new Frame(root, deps.getOrDefault(root, Set.of()).iterator()));
+        while (!path.isEmpty()) {
+            var frame = path.peek();
+            String node = frame.node();
+            if (frame.dependencies().hasNext()) {
+                String dependency = frame.dependencies().next();
+                if (!indexes.containsKey(dependency)) {
+                    enter(dependency, nextIndex, indexes, lowLinks, stack, onStack);
+                    path.push(new Frame(dependency, deps.getOrDefault(dependency, Set.of()).iterator()));
+                } else if (onStack.contains(dependency)) {
+                    lowLinks.put(node, Math.min(lowLinks.get(node), indexes.get(dependency)));
+                }
+                continue;
+            }
+            if (lowLinks.get(node).equals(indexes.get(node))) {
+                var component = new ArrayList<String>();
+                String member;
+                do {
+                    member = stack.pop();
+                    onStack.remove(member);
+                    component.add(member);
+                } while (!member.equals(node));
+                components.add(component);
+            }
+            path.pop();
+            if (!path.isEmpty()) {
+                String caller = path.peek().node();
+                lowLinks.put(caller, Math.min(lowLinks.get(caller), lowLinks.get(node)));
+            }
+        }
+    }
+
+    private static void enter(String node, int[] nextIndex, Map<String, Integer> indexes, Map<String, Integer> lowLinks,
+                              ArrayDeque<String> stack, Set<String> onStack) {
         int nodeIndex = nextIndex[0]++;
         indexes.put(node, nodeIndex);
         lowLinks.put(node, nodeIndex);
         stack.push(node);
         onStack.add(node);
-
-        for (String dependency : deps.getOrDefault(node, Set.of())) {
-            if (!indexes.containsKey(dependency)) {
-                strongConnect(dependency, deps, nextIndex, indexes, lowLinks,
-                        stack, onStack, components);
-                lowLinks.put(node, Math.min(lowLinks.get(node), lowLinks.get(dependency)));
-            } else if (onStack.contains(dependency)) {
-                lowLinks.put(node, Math.min(lowLinks.get(node), indexes.get(dependency)));
-            }
-        }
-
-        if (lowLinks.get(node).equals(indexes.get(node))) {
-            var component = new ArrayList<String>();
-            String member;
-            do {
-                member = stack.pop();
-                onStack.remove(member);
-                component.add(member);
-            } while (!member.equals(node));
-            components.add(component);
-        }
     }
 
     /** The members of a registered recursive {@code group} that have no finite base constructor. */
