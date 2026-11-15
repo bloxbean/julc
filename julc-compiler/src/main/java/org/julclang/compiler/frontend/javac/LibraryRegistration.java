@@ -12,8 +12,9 @@ import java.util.Map;
 
 /**
  * The order in which the reference's {@code LibraryCompiler} registers library methods, and the programs it cannot compile
- * for that order (ADR-068 D8). The order is what the library {@code let}s follow: {@code ValidatorAssembly} sorts them by
- * dependency, and breaks ties by it, so the bytes depend on it.
+ * for that order (ADR-068 D8). It no longer orders the library {@code let}s: {@code ValidatorAssembly} binds them in an
+ * order fixed by their dependencies and their bodies ({@code LibraryBindingOrder}, ADR-075), so the bytes do not depend
+ * on it.
  * <p>
  * The reference compiles the units in the order it was given them, a unit's classes outer first, and a class's static
  * methods in source order, registering each as it compiles it. A call of a library method by its class name needs the

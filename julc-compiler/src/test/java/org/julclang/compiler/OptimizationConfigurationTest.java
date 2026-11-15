@@ -2,6 +2,7 @@ package org.julclang.compiler;
 
 import org.julclang.core.Constant;
 import org.julclang.core.Term;
+import org.julclang.core.flat.UplcFlatDecoder;
 import org.julclang.core.flat.UplcFlatEncoder;
 import org.julclang.compiler.uplc.UplcOptimizer;
 import org.julclang.stdlib.StdlibRegistry;
@@ -180,9 +181,10 @@ class OptimizationConfigurationTest {
         assertEquals(List.of("pv11.o8.value-sharing"), shared.optimizationReport().appliedRules().stream()
                 .filter(rule -> rule.startsWith("pv11.o8")).toList());
         assertFalse(unshared.optimizationReport().appliedRules().contains("pv11.o8.value-sharing"));
-        // With O8 off, the safe profile reproduces the pre-O8 bytes captured at ADR-042's base commit.
+        // With O8 off, the safe profile reproduces the pre-O8 bytes captured at ADR-042's base commit, up to the order of
+        // the library bindings, which ADR-075 made canonical.
         var preO8 = golden("/optimization/o8-pre-change-bytes.txt", "0-PV11_SAFE-false");
-        assertArrayEquals(preO8, UplcFlatEncoder.encodeProgram(unshared.program()));
+        LibraryOrderEquivalence.assertSameUpToLibraryOrder(UplcFlatDecoder.decodeProgram(preO8), unshared.program(), "O8 off");
         assertFalse(Arrays.equals(preO8, UplcFlatEncoder.encodeProgram(shared.program())));
         // Disabling a rule the level would not run anyway changes nothing.
         assertArrayEquals(UplcFlatEncoder.encodeProgram(compile(OptimizationLevel.BASELINE, null).program()),
