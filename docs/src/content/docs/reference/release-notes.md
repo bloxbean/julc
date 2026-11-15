@@ -7,6 +7,24 @@ Each section below is a release, newest first.
 
 ## 0.1.0-pre21
 
+### Long programs compile on small stacks (#327)
+
+The compiler's walks over a program no longer recurse on the Java stack as deep as the program is long. This covers:
+- the PIR passes, UPLC generation and the optimizer;
+- the verifier;
+- FLAT encoding and decoding, and source maps;
+- the call graph;
+- the front end's lowering of a block's statements.
+
+Before, a validator with a few hundred helper methods, early returns or `else if` branches could exhaust the stack. In
+the WebAssembly engine on Node's default stack, that showed as an opaque `TypeError: type incompatibility when
+transforming from/to JS`. Those programs now compile on a 256 KB stack. In the WebAssembly engine on a 1 MB stack,
+600 helpers or 1,500 early returns compile, which used to fail.
+
+Compiled scripts do not change: a replay of about 55,000 recorded compilations gives the same bytes, source maps,
+diagnostics and debug metadata as before. Compilation takes about 12 % longer. Nesting inside the Java source, an
+expression inside an expression, is still limited by javac itself (ADR-074).
+
 ### Ed25519 verification on BouncyCastle; bcprov 1.86 (#322)
 
 The Java VM and the testkit verify Ed25519 signatures (`verifyEd25519Signature`) with libsodium's input checks and
