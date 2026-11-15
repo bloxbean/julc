@@ -1,6 +1,6 @@
 # ADR-074: Stack-safe term walks
 
-**Status:** Proposed (2026-11-15). Implemented in the same change.
+**Status:** Accepted (2026-11-15). Implemented in PR #332, reviewed by Claude reviewers and Codex.
 **Date:** 2026-11-15
 **Risk class:** correctness-sensitive, **medium**. Every walk over PIR and UPLC terms changes form. None changes what it
 computes, and the output of every compilation is meant to stay byte for byte as it was (I2). The risk is a walk whose
@@ -156,6 +156,21 @@ are four:
 - **A walk that still recurses.** A missed walk stays a limit. `DeepProgramCompileTest` covers the shapes the issue
   names and others; a new pass must follow D1.
 - **Compile time.** Each converted walk now allocates on the heap: about 12 % on the replayed corpus (Verification).
+
+## Implementation milestones
+
+All landed in PR #332, in this order:
+
+1. **Foundation:** `Trampoline` (D1), iterative `PirTerm` / `Term` equality (D2) and the iterative SCC (D3).
+2. **julc-core:** the FLAT codec, `UplcPrinter` and source-map walks.
+3. **PIR walks:** `PirSubstitution`, the `PirHelpers` walks, `TermTypes`, `PirFormatter`, the literal folds and pair
+   destructuring; then the value-sharing, list-promotion and delayed-method passes.
+4. **UPLC and backend:** `UplcGenerator`, `BooleanProof`, `DebugMetadataCollector`, `UplcOptimizer`, `PirVerifier`,
+   `PirClosure`, `PirLinker` and the codegen walks.
+5. **Front end:** a block's statements, `else if` chains, alias chains and helper chains lowered without a Java stack
+   frame per link.
+6. **Verification:** `DeepProgramCompileTest` and the per-walk depth tests, the corpus replay (I2), the Wasm depth run
+   and the measured compile-time cost; then the review fixes.
 
 ## Verification
 

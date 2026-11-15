@@ -106,12 +106,12 @@ class O15ProjectionSharingTest {
                     var unshared = compileWithoutAdr076(fixture.source(), fixture.method(), level, maps);
                     int shared = Adr076Sharing.assertSharesOnlyClosedValues(compiled, unshared, label);
                     var unsharedBytes = UplcFlatEncoder.encodeProgram(unshared.program());
-                    // The golden is reproducible at this commit with the rule switched off.
-                    assertArrayEquals(oldBytes, UplcFlatEncoder.encodeProgram(compileWithoutAdr076(fixture.source(),
-                            fixture.method(), level, maps, ValueConversionSharingPass.PROJECTION_RULE).program()),
+                    // The golden is reproducible at this commit with the rule switched off, up to ADR-075's library order.
+                    LibraryOrderEquivalence.assertSameUpToLibraryOrder(old, compileWithoutAdr076(fixture.source(),
+                            fixture.method(), level, maps, ValueConversionSharingPass.PROJECTION_RULE).program(),
                             label + " with the rule off");
                     if (!expectRule) {
-                        assertArrayEquals(oldBytes, unsharedBytes, label);
+                        LibraryOrderEquivalence.assertSameUpToLibraryOrder(old, unshared.program(), label);
                     } else {
                         // Sharing k sites of a chain of n builtin applications removes (k-1)·n
                         // applications (and their forces) for one lambda, one application and k

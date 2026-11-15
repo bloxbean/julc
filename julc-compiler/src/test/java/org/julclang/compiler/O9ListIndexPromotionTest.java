@@ -86,7 +86,7 @@ class O9ListIndexPromotionTest {
                     int shared = Adr076Sharing.assertSharesOnlyClosedValues(compiled, unshared, label);
                     var unsharedBytes = UplcFlatEncoder.encodeProgram(unshared.program());
                     if (!expectRule) {
-                        assertArrayEquals(UplcFlatEncoder.encodeProgram(old), unsharedBytes, label);
+                        LibraryOrderEquivalence.assertSameUpToLibraryOrder(old, unshared.program(), label);
                     } else {
                         // Every promoted site drops a recursive binding (a fixpoint combinator and a
                         // two-parameter lambda) for one builtin application, so the program shrinks.

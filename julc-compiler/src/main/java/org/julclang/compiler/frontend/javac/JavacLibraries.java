@@ -32,8 +32,8 @@ import java.util.Set;
  * only a language-neutral producer specializes (ADR-059). No other method of a library is lowered.
  * <p>
  * The units are lowered in qualified-name order (I4), so a unit's first rejection does not depend on the host. The
- * {@code let}s they become follow the reference's registration ({@link LibraryRegistration}), which reads the units in the
- * host's order, so the bytes are the reference's for the same pool.
+ * {@code let}s they become are bound in an order fixed by the methods themselves (ADR-075), not by the order of the
+ * pool or of the reference's registration ({@link LibraryRegistration}).
  */
 final class JavacLibraries {
 

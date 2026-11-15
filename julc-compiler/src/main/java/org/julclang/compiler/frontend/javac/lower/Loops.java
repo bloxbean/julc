@@ -103,7 +103,7 @@ final class Loops {
 
     /**
      * The loop at {@code index} of {@code following}, which continues with what follows it, then {@code cont}: a step of
-     * {@link Statements#rest}, stack-safe in what follows (issue #327). The loop itself is lowered as before, and what
+     * {@link Statements#sequence}, stack-safe in what follows (issue #327). The loop itself is lowered as before, and what
      * follows it after.
      */
     Trampoline<PirTerm> loop(StatementTree loop, List<? extends StatementTree> following, int index, Frame frame, PirTerm cont) {
