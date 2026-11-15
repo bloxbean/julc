@@ -9,6 +9,7 @@ import org.julclang.core.flat.UplcFlatEncoder;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigInteger;
+import java.util.ArrayList;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -89,5 +90,36 @@ class LibraryOrderEquivalenceTest {
         Term ab = Term.apply(Term.lam("a", Term.apply(Term.lam("b", add(Term.var(2), Term.var(1))), traceB)), traceA);
         Term ba = Term.apply(Term.lam("b", Term.apply(Term.lam("a", add(Term.var(1), Term.var(2))), traceA)), traceB);
         assertFalse(LibraryOrderEquivalence.sameUpToLibraryOrder(Program.plutusV3(ab), Program.plutusV3(ba)));
+    }
+
+    @Test
+    void aValueDoesNotMoveAcrossAFailingBinding() {
+        // let a = error in let b = 0 in 0, against let b = 0 in let a = error in 0: they fail at different costs.
+        Term errorFirst = Term.apply(Term.lam("a", Term.apply(Term.lam("b", integer(0)), integer(0))), Term.error());
+        Term errorSecond = Term.apply(Term.lam("b", Term.apply(Term.lam("a", integer(0)), Term.error())), integer(0));
+        assertFalse(LibraryOrderEquivalence.sameUpToLibraryOrder(Program.plutusV3(errorFirst), Program.plutusV3(errorSecond)));
+    }
+
+    @Test
+    void aValueDoesNotMoveAcrossATracingBinding() {
+        // A trace and a large constructor swapped: under a tight budget one run traces before it runs out and the other
+        // does not.
+        Term trace = Term.apply(Term.apply(Term.force(Term.builtin(DefaultFun.Trace)), Term.const_(Constant.string("A"))),
+                integer(0));
+        var fields = new ArrayList<Term>();
+        for (int i = 0; i < 100; i++) fields.add(integer(i));
+        Term big = new Term.Constr(0, fields);
+        Term traceFirst = Term.apply(Term.lam("t", Term.apply(Term.lam("c", integer(0)), big)), trace);
+        Term bigFirst = Term.apply(Term.lam("c", Term.apply(Term.lam("t", integer(0)), trace)), big);
+        assertFalse(LibraryOrderEquivalence.sameUpToLibraryOrder(Program.plutusV3(traceFirst), Program.plutusV3(bigFirst)));
+    }
+
+    @Test
+    void aNestedBindingKeepsItsNameWhenAnIndependentBindingMoves() {
+        // let a = delay (let x = 1 in x) in let b = 2 in force a, against b bound first: both return 1 at the same cost.
+        Term delayed = Term.delay(Term.apply(Term.lam("x", Term.var(1)), integer(1)));
+        Term aFirst = Term.apply(Term.lam("a", Term.apply(Term.lam("b", Term.force(Term.var(2))), integer(2))), delayed);
+        Term bFirst = Term.apply(Term.lam("b", Term.apply(Term.lam("a", Term.force(Term.var(1))), delayed)), integer(2));
+        assertTrue(LibraryOrderEquivalence.sameUpToLibraryOrder(Program.plutusV3(aFirst), Program.plutusV3(bFirst)));
     }
 }

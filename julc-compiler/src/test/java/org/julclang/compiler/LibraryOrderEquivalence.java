@@ -24,10 +24,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * them in a canonical order. A test that held a program byte-identical to such a golden holds it to this instead:
  * every other difference, in any term, any constant or any variable, still fails it.
  * <p>
- * FLAT keeps no names, so a binder of a run is named by its value, the lambdas around the run and the run's place: a
- * digest of the value written out with the run's earlier binders named the same way. A run's value bindings (a lambda,
- * a delay, a constant, a forced builtin, a variable or a constructor of these, none of which can fail or trace) are
- * written sorted; its other bindings in their order. A variable bound by a run is written as its binder's name, and any
+ * FLAT keeps no names, so a binder of a run is named by its value and the number of lambdas around the run: a digest
+ * of the value written out with the run's earlier binders named the same way. A binding whose value can fail or trace
+ * is a barrier, kept in its place; the value bindings between two barriers (a lambda, a delay, a constant, a forced
+ * builtin, a variable or a constructor of these, none of which can fail or trace) are written sorted. A variable bound by a run is written as its binder's name, and any
  * other variable as its de Bruijn index counted without the binders of runs, which reordering a run does not change.
  */
 public final class LibraryOrderEquivalence {
@@ -91,29 +91,38 @@ public final class LibraryOrderEquivalence {
     /** Programs in tests are small, so this recurses. */
     private static void write(Term term, List<Binder> scope, StringBuilder text) {
         if (term instanceof Term.Apply(Term.Lam(var first, var ignored), var ignoredValue)) {
-            // A run of lets. A binder is named by its value, by the lambdas around the run and by the run's place, so a
-            // binding in another scope never shares its name. Bindings whose values cannot fail or trace may come in
-            // any order, so they are sorted; every other binding keeps its order (ADR-075 reorders only those).
+            // A run of lets. A binder is named by its value and the number of lambdas around the run, which no reordering
+            // of a run changes, so a binding in another scope never shares its name. A binding whose value can fail or
+            // trace is a barrier: the value bindings between two barriers may come in any order, so they are sorted,
+            // and nothing moves across a barrier (ADR-075 reorders only closed or total bindings).
             int depth = (int) scope.stream().filter(binder -> binder.name() == null).count();
-            String place = depth + ":" + (scope.isEmpty() ? "" : scope.getLast().name());
-            var values = new ArrayList<String>();
-            var effects = new ArrayList<String>();
+            var segments = new ArrayList<List<String>>();
+            var segment = new ArrayList<String>();
             int bound = 0;
             Term rest = term;
             while (rest instanceof Term.Apply(Term.Lam(var name, var body), var value)) {
                 var valueText = new StringBuilder();
                 write(value, scope, valueText);
-                String binder = "b" + digest(place + "|" + valueText);
-                (isValue(value) ? values : effects).add(binder + "=" + valueText);
+                String binder = "b" + digest(depth + "|" + valueText);
+                if (isValue(value)) {
+                    segment.add(binder + "=" + valueText);
+                } else {
+                    segments.add(segment);
+                    segments.add(List.of("!" + binder + "=" + valueText));
+                    segment = new ArrayList<>();
+                }
                 scope.add(new Binder(binder));
                 bound++;
                 rest = body;
             }
-            values.sort(null);
+            segments.add(segment);
             text.append("(lets");
-            for (var binding : values) text.append(' ').append(binding);
-            text.append(" then");
-            for (var binding : effects) text.append(' ').append(binding);
+            for (var part : segments) {
+                var sorted = new ArrayList<>(part);
+                sorted.sort(null);
+                for (var binding : sorted) text.append(' ').append(binding);
+                text.append(" |");
+            }
             text.append(" in ");
             write(rest, scope, text);
             text.append(')');
