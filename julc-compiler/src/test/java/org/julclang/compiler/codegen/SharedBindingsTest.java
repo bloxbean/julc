@@ -161,6 +161,23 @@ class SharedBindingsTest {
             }
             """;
 
+    /**
+     * Codex round 4: a cast {@code NarrowingElisionPass} removes, since {@code indexByteString} returns 0 to 255. Alone,
+     * the PIR still converts; through the backend {@code at} is the builtin, which each handler inlines.
+     */
+    static final String EDGE_NARROWED = EDGE_HEAD + """
+                @Entrypoint(purpose = Purpose.MINT)
+                public static boolean mint(PlutusData redeemer, ScriptContext ctx) {
+                    return at(Builtins.serialiseData(redeemer), 0) == 3;
+                }
+                @Entrypoint(purpose = Purpose.SPEND)
+                public static boolean spend(Optional<PlutusData> datum, PlutusData redeemer, ScriptContext ctx) {
+                    return at(Builtins.serialiseData(redeemer), 0) == 20;
+                }
+                static long at(byte[] bytes, long index) { return (int) Builtins.indexByteString(bytes, index); }
+            }
+            """;
+
     /** A helper mint reaches only under {@code if (never())}, a use constant folding removes from that handler. */
     static final String EDGE_DEAD = EDGE_HEAD + """
                 @Entrypoint(purpose = Purpose.MINT)
@@ -182,11 +199,10 @@ class SharedBindingsTest {
     private static final List<OptimizationLevel> LEVELS = List.of(OptimizationLevel.PV11_SAFE, OptimizationLevel.PV11_COSTED);
 
     /**
-     * The machine steps a run with no handler pays with D1 on: the shared bindings ({@code underLimit} and the
-     * {@code even}/{@code odd} group with its fixpoint) are evaluated before the dispatch fails. Nothing is shared with
-     * three handlers.
+     * The machine steps a run with no handler pays with D1 on: the shared binding of {@code underLimit} is evaluated
+     * before the dispatch fails. Nothing is shared with three handlers.
      */
-    private static final Map<String, Integer> SHARED_BINDING_STEPS = Map.of("two", 30, "three", 0);
+    private static final Map<String, Integer> SHARED_BINDING_STEPS = Map.of("two", 3, "three", 0);
 
     private static final List<String> METHODS = List.of("body", "boom", "loud", "five", "underLimit", "even", "odd", "withK");
 
@@ -251,13 +267,12 @@ class SharedBindingsTest {
                 var shared = binders(on.pirTerm());
                 var unshared = binders(off.pirTerm());
                 for (String method : METHODS) assertEquals(2, unshared.get(method).size(), label + " " + method);
-                // underLimit reads the @Param, which is bound outside the dispatch; even and odd are shared together.
-                for (String method : List.of("underLimit", "even", "odd")) assertEquals(1, shared.get(method).size(), label + " " + method);
-                assertEquals(List.of("rec:even+odd"), shared.get("even"), label);
-                assertEquals(List.of("rec:even+odd"), shared.get("odd"), label);
+                // underLimit reads the @Param, which is bound outside the dispatch.
+                assertEquals(1, shared.get("underLimit").size(), label);
                 // withK reads the static K, and body reaches withK; five is a constant the optimizer inlines; boom and
-                // loud have no parameters. Each handler keeps its own.
-                for (String method : List.of("body", "withK", "five", "boom", "loud")) {
+                // loud have no parameters. even and odd are mutually recursive, which UPLC lowers by Bekic's theorem
+                // into bindings nested in each other, not one function per handler. Each handler keeps its own.
+                for (String method : List.of("body", "withK", "five", "boom", "loud", "even", "odd")) {
                     assertEquals(2, shared.get(method).size(), label + " " + method);
                 }
                 // boom and loud are never bound as values that run where they are bound.
@@ -294,22 +309,29 @@ class SharedBindingsTest {
      *   <li>{@link #EDGE_LET_ETA} and {@link #EDGE_ALIAS_ADD}: a {@code let} that renames a parameter before a builtin.
      *       The optimizer beta-reduces it and eta-reduces what is left to the builtin, which it inlines and folds in
      *       each handler; D1 reads through the rename, shares nothing, and the program is the one without D1.</li>
+     *   <li>{@link #EDGE_UNUSED_LOCAL}: an unused local the optimizer drops before eta-reducing to the builtin (Codex
+     *       round 3), and {@link #EDGE_NARROWED}: a cast a PIR pass removes, after which the method is the builtin (Codex
+     *       round 4). The PIR shape looks like a kept function; the program compiled without D1 shows each handler
+     *       inlined it, so it is not shared. With source maps the optimizer does not run, each handler keeps the same
+     *       binding, and it is shared: the script is smaller and no run's budget moves.</li>
      *   <li>{@link #EDGE_DEAD}: mint reaches {@code m} only under {@code if (never())}, a use constant folding removes.
-     *       Shared, {@code m} is bound once outside the handlers instead of in spend's branch, and both handled paths
-     *       come out cheaper (six and nine machine steps) and the script smaller: pinned as measured.</li>
+     *       The binding stays in both handlers, the same function, so {@code m} is shared, and both handled paths come
+     *       out cheaper (six and nine machine steps) and the script smaller: pinned as measured.</li>
      * </ul>
-     * With source maps the optimizer does not run, and D1 changes no budget. Outcomes, traces, results and failure
+     * D1 decides from the program compiled without it, so where it shares nothing the program, the optimization report
+     * and the diagnostics are those without D1. With source maps the optimizer does not run, and D1 changes no budget. Outcomes, traces, results and failure
      * text are identical throughout, at both levels and with D2 on or off.
      */
     @Test
     void edgeProgramsKeepTheirOutcomesAndMoveTheBudgetByThePinnedSteps() {
-        record Pin(String source, boolean shares, int bytes, int bytesWithMaps, Map<String, Integer> steps) {}
+        record Pin(String source, boolean shares, boolean sharesWithMaps, int bytes, int bytesWithMaps, Map<String, Integer> steps) {}
         var unchanged = Map.of("mint", 0, "spend", 0);
         var pins = Map.of(
-                "let-eta", new Pin(EDGE_LET_ETA, false, 0, 0, unchanged),
-                "alias-add", new Pin(EDGE_ALIAS_ADD, false, 0, 0, unchanged),
-                "unused-local", new Pin(EDGE_UNUSED_LOCAL, false, 0, 0, unchanged),
-                "dead", new Pin(EDGE_DEAD, true, -52, -40, Map.of("mint", -6, "spend", -9)));
+                "let-eta", new Pin(EDGE_LET_ETA, false, false, 0, 0, unchanged),
+                "alias-add", new Pin(EDGE_ALIAS_ADD, false, false, 0, 0, unchanged),
+                "unused-local", new Pin(EDGE_UNUSED_LOCAL, false, true, 0, -10, unchanged),
+                "narrowed", new Pin(EDGE_NARROWED, false, true, 0, -7, unchanged),
+                "dead", new Pin(EDGE_DEAD, true, true, -52, -40, Map.of("mint", -6, "spend", -9)));
         for (var entry : pins.entrySet()) {
             var pin = entry.getValue();
             for (var level : LEVELS) {
@@ -318,8 +340,13 @@ class SharedBindingsTest {
                         String label = entry.getKey() + "/" + level + "/" + maps + "/d2=" + d2;
                         var on = compile(pin.source(), level, maps, true, d2);
                         var off = compile(pin.source(), level, maps, false, d2);
-                        assertEquals(pin.shares(), on.optimizationReport().appliedRules().contains(SharedBindings.RULE), label);
-                        if (!pin.shares()) assertEquals(off.program(), on.program(), label);
+                        boolean shares = maps ? pin.sharesWithMaps() : pin.shares();
+                        assertEquals(shares, on.optimizationReport().appliedRules().contains(SharedBindings.RULE), label);
+                        if (!shares) {
+                            assertEquals(off.program(), on.program(), label);
+                            assertEquals(off.optimizationReport(), on.optimizationReport(), label + ": report");
+                            assertEquals(off.diagnostics(), on.diagnostics(), label + ": diagnostics");
+                        }
                         assertEquals(maps ? pin.bytesWithMaps() : pin.bytes(), UplcFlatEncoder.encodeProgram(on.program()).length
                                 - UplcFlatEncoder.encodeProgram(off.program()).length, label + ": size");
                         for (var context : edgeContexts()) {
@@ -332,6 +359,46 @@ class SharedBindingsTest {
                         }
                     }
                 }
+            }
+        }
+    }
+
+    /**
+     * Codex round 4, P2: a chain of methods every handler reaches, each calling the next. D1 decides with one trial
+     * lowering and one walk, not a lowering per method and dependency: the whole chain is shared, and each handled run
+     * keeps its outcome and costs no more.
+     */
+    @Test
+    void aLongChainOfSharedMethodsIsDecidedOnceAndShared() {
+        int length = 300;
+        var source = new StringBuilder(EDGE_HEAD).append("""
+                    @Entrypoint(purpose = Purpose.MINT)
+                    public static boolean mint(PlutusData redeemer, ScriptContext ctx) {
+                        return h0(Builtins.unIData(redeemer)).compareTo(BigInteger.TEN) > 0;
+                    }
+                    @Entrypoint(purpose = Purpose.SPEND)
+                    public static boolean spend(Optional<PlutusData> datum, PlutusData redeemer, ScriptContext ctx) {
+                        return h0(Builtins.unIData(redeemer)).compareTo(BigInteger.TWO) > 0;
+                    }
+                """);
+        for (int i = 0; i < length; i++) {
+            source.append("    static BigInteger h").append(i).append("(BigInteger x) { return h").append(i + 1)
+                    .append("(x).add(x); }\n");
+        }
+        source.append("    static BigInteger h").append(length).append("(BigInteger x) { return x.multiply(x); }\n}\n");
+        for (var level : LEVELS) {
+            var on = compile(source.toString(), level, false, true, false);
+            var off = compile(source.toString(), level, false, false, false);
+            assertTrue(on.optimizationReport().appliedRules().contains(SharedBindings.RULE), level.toString());
+            assertTrue(UplcFlatEncoder.encodeProgram(on.program()).length < UplcFlatEncoder.encodeProgram(off.program()).length,
+                    level.toString());
+            for (var context : edgeContexts()) {
+                String run = level + "/" + context.name();
+                var shared = CompilerTestVm.pv11().evaluateWithArgs(on.program(), List.of(context.data()));
+                var unshared = CompilerTestVm.pv11().evaluateWithArgs(off.program(), List.of(context.data()));
+                assertSameOutcome(unshared, shared, run);
+                assertTrue(shared.budgetConsumed().cpuSteps() <= unshared.budgetConsumed().cpuSteps(), run);
+                assertTrue(shared.budgetConsumed().memoryUnits() <= unshared.budgetConsumed().memoryUnits(), run);
             }
         }
     }

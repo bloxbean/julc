@@ -109,6 +109,21 @@ public final class CompilationContext {
                 effectiveOptions.getLogger());
     }
 
+    /**
+     * A context for a trial lowering whose program is read and dropped (ADR-076 D1): this compilation's target, level,
+     * cost profile, source-map setting, disabled rules and binder check, with diagnostics, applied rules and logging of
+     * its own, so nothing the trial does reaches this compilation. Closed-value sharing, which runs after the optimizer
+     * has settled what it inlines and keeps, is off in it.
+     */
+    public CompilationContext trial() {
+        var disabled = new LinkedHashSet<>(disabledOptimizationRules);
+        disabled.add(UplcOptimizer.SHARED_CLOSED_VALUES_RULE);
+        var trial = new CompilationContext(resolvedTarget, false, sourceMapEnabled, optimizationLevel,
+                optimizationCostProfile, disabled, message -> {});
+        trial.binderNamespace = binderNamespace;
+        return trial;
+    }
+
     /** Marks sources this compilation's class-path scan found: on the javac frontend they rank as JAR sources (D8). */
     void markJarSources(Collection<String> sources) {
         jarSources.addAll(sources);

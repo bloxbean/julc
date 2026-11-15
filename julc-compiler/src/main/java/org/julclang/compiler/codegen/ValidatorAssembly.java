@@ -18,6 +18,7 @@ import org.julclang.core.source.SourceLocation;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -165,7 +166,8 @@ public final class ValidatorAssembly {
     /** Assembles a validator and lowers it. */
     public static Assembled validator(Validator validator, TypeRegistry types, CompilationContext context,
                                       Frontend frontend, boolean captureDetails) {
-        PirTerm wrapped = frontend.bindProgram(wrap(validator, types, context, frontend));
+        var shared = sharedBindings(validator, types, context, frontend);
+        PirTerm wrapped = frontend.bindProgram(wrap(validator, types, context, frontend, shared));
         wrapped = bindParams(validator.params(), wrapped, frontend);
         frontend.finalCheck().accept(wrapped);
         var lowered = PirBackend.lower(wrapped, context, frontend.positions(), true, frontend.provenance(),
@@ -178,18 +180,42 @@ public final class ValidatorAssembly {
         return new Assembled(result, lowered);
     }
 
+    /**
+     * ADR-076 D1: under auto-dispatch, the methods every handler needs, bound once around the dispatch (15c). The
+     * candidates read from the PIR are checked against a trial: the program as assembled without D1, lowered by the whole
+     * backend in a context of its own, with a copy of the positions and none of the frontend's callbacks, so the trial
+     * leaves nothing in this compilation. A trial that fails shares nothing; the real lowering then reports the failure.
+     */
+    private static SharedBindings sharedBindings(Validator validator, TypeRegistry types, CompilationContext context,
+                                                 Frontend frontend) {
+        if (!validator.autoDispatch() || !context.optimizationLevel().pv11SafeRulesEnabled()
+                || !context.ruleEnabled(SharedBindings.RULE)) {
+            return SharedBindings.NONE;
+        }
+        var candidates = SharedBindings.candidates(validator.entries().stream().map(Entry::function).toList(),
+                validator.helpers(), validator.statics(), validator.libraries());
+        if (!candidates.any()) return candidates;
+        var trialFrontend = new Frontend(new IdentityHashMap<>(frontend.positions()), null, null, term -> {}, null, null,
+                frontend.programBound());
+        try {
+            var trialContext = context.trial();
+            PirTerm wrapped = trialFrontend.bindProgram(wrap(validator, types, trialContext, trialFrontend, SharedBindings.NONE));
+            wrapped = bindParams(validator.params(), wrapped, trialFrontend);
+            var lowered = PirBackend.lowerQuietly(wrapped, trialContext, trialFrontend.positions(),
+                    bindings(validator.helpers(), validator.statics(), validator.libraries()));
+            return candidates.keptIn(lowered.program().term(), validator.entries().size());
+        } catch (RuntimeException e) {
+            return SharedBindings.NONE;
+        }
+    }
+
     /** Steps 13 to 15b: the bindings around each entry point, and the wrapper. */
-    private static PirTerm wrap(Validator validator, TypeRegistry types, CompilationContext context, Frontend frontend) {
+    private static PirTerm wrap(Validator validator, TypeRegistry types, CompilationContext context, Frontend frontend,
+                                SharedBindings shared) {
         // 13. Wrap helper methods as Let bindings
         // For auto-dispatch, wrap each handler; for single entrypoint, wrap the single body
         var handlers = new LinkedHashMap<Integer, PirTerm>();
         PirTerm body = null;
-        // ADR-076 D1: under auto-dispatch, the methods every handler needs are bound once around the dispatch (15c).
-        SharedBindings shared = !validator.autoDispatch() ? null
-                : context.optimizationLevel().pv11SafeRulesEnabled() && context.ruleEnabled(SharedBindings.RULE)
-                ? SharedBindings.of(validator.entries().stream().map(Entry::function).toList(), validator.helpers(),
-                        validator.statics(), validator.libraries(), context)
-                : SharedBindings.NONE;
         if (validator.autoDispatch()) {
             // Wrap the helper methods each handler needs alone around it (dependency-ordered)
             var ownHelpers = validator.helpers().stream().filter(helper -> !shared.isShared(helper.name())).toList();
