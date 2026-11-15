@@ -4,10 +4,12 @@ import org.julclang.compiler.pir.PirTerm;
 import org.julclang.core.BuiltinSemantics;
 import org.julclang.core.Constant;
 import org.julclang.core.DefaultFun;
+import org.julclang.core.recursion.Trampoline;
 
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -129,40 +131,47 @@ public final class BooleanProof {
 
     /** The fact of {@code term} evaluated in {@code scope}. */
     static Fact of(PirTerm term, Scope scope) {
-        return switch (term) {
-            case PirTerm.Const(var value) -> value instanceof Constant.BoolConst ? BOOLEAN : UNKNOWN;
-            case PirTerm.Builtin(var fun) ->
-                    returnsBoolean(fun) ? new Yields(BuiltinSemantics.find(fun).valueArity()) : UNKNOWN;
-            case PirTerm.Var(var name, _) -> scope.lookup(name);
-            case PirTerm.Lam(var param, _, var body) -> abstracted(of(body, scope.bind(param, UNKNOWN)));
-            case PirTerm.App(var function, _) -> applied(of(function, scope));
-            case PirTerm.Let(var name, var value, var body) -> of(body, scope.bind(name, of(value, scope)));
-            case PirTerm.LetRec(var bindings, var body) -> of(body, bindRecursive(bindings, scope));
+        return fact(term, scope).run();
+    }
+
+    /** {@link #of}, with its pending work on the heap, so a term of any depth reads in bounded stack (issue #327). */
+    private static Trampoline<Fact> fact(PirTerm term, Scope scope) {
+        return Trampoline.defer(() -> switch (term) {
+            case PirTerm.Const(var value) -> Trampoline.done(value instanceof Constant.BoolConst ? BOOLEAN : UNKNOWN);
+            case PirTerm.Builtin(var fun) -> Trampoline.done(
+                    returnsBoolean(fun) ? new Yields(BuiltinSemantics.find(fun).valueArity()) : UNKNOWN);
+            case PirTerm.Var(var name, _) -> Trampoline.done(scope.lookup(name));
+            case PirTerm.Lam(var param, _, var body) ->
+                    fact(body, scope.bind(param, UNKNOWN)).map(BooleanProof::abstracted);
+            case PirTerm.App(var function, _) -> fact(function, scope).map(BooleanProof::applied);
+            case PirTerm.Let(var name, var value, var body) ->
+                    fact(value, scope).then(held -> fact(body, scope.bind(name, held)));
+            case PirTerm.LetRec(var bindings, var body) -> recursive(bindings, scope).then(inner -> fact(body, inner));
             case PirTerm.IfThenElse(_, var thenBranch, var elseBranch) ->
-                    join(of(thenBranch, scope), of(elseBranch, scope));
-            case PirTerm.IntegerCase(_, var branches) -> {
-                Fact fact = NEVER;
-                for (var branch : branches) fact = join(fact, of(branch, scope));
-                yield fact;
-            }
-            case PirTerm.DataMatch(_, var branches) -> {
-                Fact fact = NEVER;
-                for (var branch : branches) {
-                    var inner = scope;
-                    for (var binding : branch.bindings()) inner = inner.bind(binding, UNKNOWN);
-                    if (branch.patternVar() != null) inner = inner.bind(branch.patternVar(), UNKNOWN);
-                    fact = join(fact, of(branch.body(), inner));
-                }
-                yield fact;
-            }
+                    Trampoline.both(fact(thenBranch, scope), fact(elseBranch, scope), BooleanProof::join);
+            case PirTerm.IntegerCase(_, var branches) ->
+                    Trampoline.each(branches, branch -> fact(branch, scope)).map(BooleanProof::joinAll);
+            case PirTerm.DataMatch(_, var branches) -> Trampoline.each(branches, branch -> {
+                var inner = scope;
+                for (var binding : branch.bindings()) inner = inner.bind(binding, UNKNOWN);
+                if (branch.patternVar() != null) inner = inner.bind(branch.patternVar(), UNKNOWN);
+                return fact(branch.body(), inner);
+            }).map(BooleanProof::joinAll);
             case PirTerm.PairMatch(var scrutinee, _, var first, var second, var body) ->
                     isUnConstrData(scrutinee)
-                            ? of(body, scope.bind(first, UNKNOWN).bind(second, UNKNOWN))
-                            : UNKNOWN;
-            case PirTerm.Trace(_, var body) -> of(body, scope);
-            case PirTerm.Error _ -> NEVER;
-            case PirTerm.ListMatch _, PirTerm.DataConstr _ -> UNKNOWN;
-        };
+                            ? fact(body, scope.bind(first, UNKNOWN).bind(second, UNKNOWN))
+                            : Trampoline.done(UNKNOWN);
+            case PirTerm.Trace(_, var body) -> fact(body, scope);
+            case PirTerm.Error _ -> Trampoline.done(NEVER);
+            case PirTerm.ListMatch _, PirTerm.DataConstr _ -> Trampoline.done(UNKNOWN);
+        });
+    }
+
+    /** The facts of a choice's arms joined, from {@link #NEVER}, in order. */
+    private static Fact joinAll(List<Fact> facts) {
+        Fact fact = NEVER;
+        for (var branch : facts) fact = join(fact, branch);
+        return fact;
     }
 
     /**
@@ -171,36 +180,53 @@ public final class BooleanProof {
      * bindings is read at most {@code k + 1} times, and a single binding once.
      */
     static Scope bindRecursive(List<PirTerm.Binding> bindings, Scope scope) {
-        var facts = new HashMap<String, Fact>();
-        for (var binding : bindings) {
-            int parameters = parameters(binding.value());
-            facts.put(binding.name(), parameters > 0 ? new Yields(parameters) : UNKNOWN);
-        }
-        Scope inner;
-        boolean refuted;
-        do {
-            refuted = false;
-            inner = scope;
-            for (var binding : bindings) inner = inner.bind(binding.name(), facts.get(binding.name()));
+        return recursive(bindings, scope).run();
+    }
+
+    /** {@link #bindRecursive}, as a step of {@link #fact}'s walk, so a group nested in a group needs no more stack. */
+    private static Trampoline<Scope> recursive(List<PirTerm.Binding> bindings, Scope scope) {
+        return Trampoline.defer(() -> {
+            var facts = new HashMap<String, Fact>();
             for (var binding : bindings) {
-                var claim = facts.get(binding.name());
-                if (!claim.equals(UNKNOWN) && !of(binding.value(), inner).equals(claim)) {
-                    facts.put(binding.name(), UNKNOWN);
-                    refuted = true;
-                }
+                int parameters = parameters(binding.value());
+                facts.put(binding.name(), parameters > 0 ? new Yields(parameters) : UNKNOWN);
             }
-        } while (refuted);
-        return inner;
+            return refine(bindings, scope, facts);
+        });
+    }
+
+    /** One reading of the group under the current claims; read again while a claim is refuted. */
+    private static Trampoline<Scope> refine(List<PirTerm.Binding> bindings, Scope scope, Map<String, Fact> facts) {
+        Scope bound = scope;
+        for (var binding : bindings) bound = bound.bind(binding.name(), facts.get(binding.name()));
+        Scope inner = bound;
+        return Trampoline.each(bindings, binding -> {
+            var claim = facts.get(binding.name());
+            if (claim.equals(UNKNOWN)) return Trampoline.done(false);
+            return fact(binding.value(), inner).map(held -> {
+                if (held.equals(claim)) return false;
+                facts.put(binding.name(), UNKNOWN);
+                return true;
+            });
+        }).then(refutations -> refutations.contains(true) ? refine(bindings, scope, facts) : Trampoline.done(inner));
     }
 
     /** The parameters a call applies: a bound value's leading lambdas, read through lets between them. */
     private static int parameters(PirTerm value) {
-        return switch (value) {
-            case PirTerm.Lam lam -> 1 + parameters(lam.body());
-            case PirTerm.Let let -> parameters(let.body());
-            case PirTerm.LetRec rec -> parameters(rec.body());
-            default -> 0;
-        };
+        int parameters = 0;
+        while (true) {
+            switch (value) {
+                case PirTerm.Lam lam -> {
+                    parameters++;
+                    value = lam.body();
+                }
+                case PirTerm.Let let -> value = let.body();
+                case PirTerm.LetRec rec -> value = rec.body();
+                default -> {
+                    return parameters;
+                }
+            }
+        }
     }
 
     private static Fact abstracted(Fact body) {

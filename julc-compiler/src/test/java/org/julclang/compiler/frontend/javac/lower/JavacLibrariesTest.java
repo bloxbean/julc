@@ -18,12 +18,10 @@ import org.junit.jupiter.params.provider.ValueSource;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.math.BigInteger;
-import java.util.Arrays;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -108,11 +106,12 @@ class JavacLibrariesTest {
     }
 
     @Test
-    void theOrderOfTheLetsIsTheReferencesRegistration() {
+    void theOrderOfTheLetsDoesNotFollowThePool() {
         var ordered = javacBytes(VALIDATOR, List.of(TOKEN_LIB, RULES_LIB));
         var inverted = javacBytes(VALIDATOR, List.of(RULES_LIB, TOKEN_LIB));
-        // Not one program written two ways: the lets follow the pool's order, as the reference's do.
-        assertFalse(Arrays.equals(ordered, inverted));
+        // ADR-075 (issue #328): the library methods are bound in an order fixed by their content, so the order the
+        // libraries come in does not reach the script. The reference's lets followed the pool's order.
+        assertArrayEquals(ordered, inverted);
     }
 
     private static byte[] javacBytes(String source, List<String> libraries) {

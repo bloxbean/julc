@@ -24,65 +24,101 @@ public final class PirClosure {
         if (!free.isEmpty()) throw new IllegalArgumentException("Unbound PIR symbols: " + free);
     }
 
-    private static Set<String> plus(Set<String> scope, String... names) {
-        var s = new HashSet<>(scope);
-        Collections.addAll(s, names);
-        return s;
+    /** A step of the walk: a term to visit, or names entering or leaving scope. */
+    private sealed interface Step {
+        record Visit(PirTerm term) implements Step {}
+
+        record Enter(List<String> names) implements Step {}
+
+        record Exit(List<String> names) implements Step {}
     }
 
+    /**
+     * Adds the names {@code t} reads that are not in scope, in the order a left-to-right walk meets them. The walk keeps
+     * its pending steps on a heap stack, as a term can nest as deeply as a program is long (issue #327, ADR-074), and
+     * counts how many binders hold each name instead of copying the scope at every binder.
+     */
     private static void collect(PirTerm t, Set<String> s, Set<String> free) {
+        var bound = new HashMap<String, Integer>();
+        for (String name : s) bound.put(name, 1);
+        var pending = new ArrayDeque<Step>();
+        pending.push(new Step.Visit(t));
+        while (!pending.isEmpty()) {
+            switch (pending.pop()) {
+                case Step.Enter enter -> enter.names().forEach(name -> bound.merge(name, 1, Integer::sum));
+                case Step.Exit exit -> exit.names().forEach(name -> bound.computeIfPresent(name,
+                        (key, count) -> count == 1 ? null : count - 1));
+                case Step.Visit visit -> {
+                    // Steps are pushed last-first, so that they run in order.
+                    var steps = new ArrayList<Step>();
+                    visit(visit.term(), bound, free, steps);
+                    for (int i = steps.size() - 1; i >= 0; i--) pending.push(steps.get(i));
+                }
+            }
+        }
+    }
+
+    /** Visits one term: records a free read, or lists the steps of its children, in order. */
+    private static void visit(PirTerm t, Map<String, Integer> bound, Set<String> free, List<Step> steps) {
         switch (t) {
             case PirTerm.Var v -> {
-                if (!s.contains(v.name())) free.add(v.name());
+                if (!bound.containsKey(v.name())) free.add(v.name());
             }
-            case PirTerm.Lam l -> collect(l.body(), plus(s, l.param()), free);
+            case PirTerm.Lam l -> scoped(steps, List.of(l.param()), l.body());
             case PirTerm.Let l -> {
-                collect(l.value(), s, free);
-                collect(l.body(), plus(s, l.name()), free);
+                steps.add(new Step.Visit(l.value()));
+                scoped(steps, List.of(l.name()), l.body());
             }
             case PirTerm.LetRec l -> {
-                var ns = new HashSet<>(s);
-                l.bindings().forEach(b -> ns.add(b.name()));
-                l.bindings().forEach(b -> collect(b.value(), ns, free));
-                collect(l.body(), ns, free);
+                var names = l.bindings().stream().map(PirTerm.Binding::name).toList();
+                steps.add(new Step.Enter(names));
+                l.bindings().forEach(b -> steps.add(new Step.Visit(b.value())));
+                steps.add(new Step.Visit(l.body()));
+                steps.add(new Step.Exit(names));
             }
             case PirTerm.App a -> {
-                collect(a.function(), s, free);
-                collect(a.argument(), s, free);
+                steps.add(new Step.Visit(a.function()));
+                steps.add(new Step.Visit(a.argument()));
             }
             case PirTerm.IfThenElse i -> {
-                collect(i.cond(), s, free);
-                collect(i.thenBranch(), s, free);
-                collect(i.elseBranch(), s, free);
+                steps.add(new Step.Visit(i.cond()));
+                steps.add(new Step.Visit(i.thenBranch()));
+                steps.add(new Step.Visit(i.elseBranch()));
             }
-            case PirTerm.DataConstr c -> c.fields().forEach(f -> collect(f, s, free));
+            case PirTerm.DataConstr c -> c.fields().forEach(f -> steps.add(new Step.Visit(f)));
             case PirTerm.DataMatch m -> {
-                collect(m.scrutinee(), s, free);
+                steps.add(new Step.Visit(m.scrutinee()));
                 for (var b : m.branches()) {
-                    var ns = new HashSet<>(s);
-                    ns.addAll(b.bindings());
-                    if (b.patternVar() != null) ns.add(b.patternVar());
-                    collect(b.body(), ns, free);
+                    var names = new ArrayList<>(b.bindings());
+                    if (b.patternVar() != null) names.add(b.patternVar());
+                    scoped(steps, names, b.body());
                 }
             }
             case PirTerm.ListMatch m -> {
-                collect(m.scrutinee(), s, free);
-                collect(m.nilBranch(), s, free);
-                collect(m.consBranch(), plus(s, m.headName(), m.tailName()), free);
+                steps.add(new Step.Visit(m.scrutinee()));
+                steps.add(new Step.Visit(m.nilBranch()));
+                scoped(steps, List.of(m.headName(), m.tailName()), m.consBranch());
             }
             case PirTerm.PairMatch m -> {
-                collect(m.scrutinee(), s, free);
-                collect(m.body(), plus(s, m.firstName(), m.secondName()), free);
+                steps.add(new Step.Visit(m.scrutinee()));
+                scoped(steps, List.of(m.firstName(), m.secondName()), m.body());
             }
             case PirTerm.IntegerCase c -> {
-                collect(c.scrutinee(), s, free);
-                c.branches().forEach(b -> collect(b, s, free));
+                steps.add(new Step.Visit(c.scrutinee()));
+                c.branches().forEach(b -> steps.add(new Step.Visit(b)));
             }
             case PirTerm.Trace t1 -> {
-                collect(t1.message(), s, free);
-                collect(t1.body(), s, free);
+                steps.add(new Step.Visit(t1.message()));
+                steps.add(new Step.Visit(t1.body()));
             }
             case PirTerm.Const _, PirTerm.Builtin _, PirTerm.Error _ -> {}
         }
+    }
+
+    /** {@code body} visited with {@code names} in scope. */
+    private static void scoped(List<Step> steps, List<String> names, PirTerm body) {
+        steps.add(new Step.Enter(names));
+        steps.add(new Step.Visit(body));
+        steps.add(new Step.Exit(names));
     }
 }

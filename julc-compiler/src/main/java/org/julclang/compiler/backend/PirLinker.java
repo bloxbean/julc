@@ -53,33 +53,59 @@ public final class PirLinker {
         return result;
     }
 
+    /**
+     * Tarjan's visit from {@code root}, with the depth-first path on a heap stack instead of the Java stack, as a chain of
+     * definitions each using the next is as deep as it is long (issue #327, ADR-074). It visits edges in the order the
+     * recursive form did, so the groups come out in the same order.
+     */
     private static void visit(
-            String n,
+            String root,
             Map<String, Set<String>> es,
             Map<String, Integer> ix,
             Map<String, Integer> low,
             Deque<String> stack,
             Set<String> active,
             List<List<String>> groups) {
+        record Frame(String node, Iterator<String> edges) {}
+        var path = new ArrayDeque<Frame>();
+        enter(root, ix, low, stack, active);
+        path.push(new Frame(root, es.get(root).iterator()));
+        while (!path.isEmpty()) {
+            var frame = path.peek();
+            String n = frame.node();
+            if (frame.edges().hasNext()) {
+                String v = frame.edges().next();
+                if (!ix.containsKey(v)) {
+                    enter(v, ix, low, stack, active);
+                    path.push(new Frame(v, es.get(v).iterator()));
+                } else if (active.contains(v)) low.put(n, Math.min(low.get(n), ix.get(v)));
+                continue;
+            }
+            if (low.get(n).equals(ix.get(n))) {
+                var members = new HashSet<String>();
+                String v;
+                do {
+                    v = stack.pop();
+                    active.remove(v);
+                    members.add(v);
+                } while (!v.equals(n));
+                // A group of one is that definition: only a larger group needs ordering by definition order.
+                groups.add(members.size() == 1 ? List.of(n)
+                        : es.keySet().stream().filter(members::contains).toList());
+            }
+            path.pop();
+            if (!path.isEmpty()) {
+                String caller = path.peek().node();
+                low.put(caller, Math.min(low.get(caller), low.get(n)));
+            }
+        }
+    }
+
+    private static void enter(String n, Map<String, Integer> ix, Map<String, Integer> low, Deque<String> stack,
+                              Set<String> active) {
         ix.put(n, ix.size());
         low.put(n, ix.get(n));
         stack.push(n);
         active.add(n);
-        for (String v : es.get(n)) {
-            if (!ix.containsKey(v)) {
-                visit(v, es, ix, low, stack, active, groups);
-                low.put(n, Math.min(low.get(n), low.get(v)));
-            } else if (active.contains(v)) low.put(n, Math.min(low.get(n), ix.get(v)));
-        }
-        if (low.get(n).equals(ix.get(n))) {
-            var members = new HashSet<String>();
-            String v;
-            do {
-                v = stack.pop();
-                active.remove(v);
-                members.add(v);
-            } while (!v.equals(n));
-            groups.add(es.keySet().stream().filter(members::contains).toList());
-        }
     }
 }

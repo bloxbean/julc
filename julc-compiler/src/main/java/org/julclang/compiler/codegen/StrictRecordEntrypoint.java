@@ -4,6 +4,7 @@ import org.julclang.compiler.pir.PirHelpers;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.core.DefaultFun;
+import org.julclang.core.recursion.Trampoline;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -154,44 +155,27 @@ public final class StrictRecordEntrypoint {
     }
 
     private static PirTerm replace(PirTerm term, PirTerm target, PirTerm replacement, Rebuilds rebuilds) {
-        if (term.equals(target)) return replacement;
-        return switch (term) {
-            case PirTerm.Var _, PirTerm.Const _, PirTerm.Builtin _, PirTerm.Error _ -> term;
-            case PirTerm.Let(var name, var value, var body) -> rebuilt(term, new PirTerm.Let(name,
-                    replace(value, target, replacement, rebuilds), replace(body, target, replacement, rebuilds)), rebuilds);
-            case PirTerm.LetRec(var bindings, var body) -> rebuilt(term, new PirTerm.LetRec(
-                    bindings.stream().map(binding -> new PirTerm.Binding(binding.name(),
-                            replace(binding.value(), target, replacement, rebuilds))).toList(),
-                    replace(body, target, replacement, rebuilds)), rebuilds);
-            case PirTerm.Lam(var param, var type, var body) ->
-                    rebuilt(term, new PirTerm.Lam(param, type, replace(body, target, replacement, rebuilds)), rebuilds);
-            case PirTerm.App(var function, var argument) -> new PirTerm.App(
-                    replace(function, target, replacement, rebuilds),
-                    replace(argument, target, replacement, rebuilds));
-            case PirTerm.IfThenElse(var cond, var yes, var no) -> new PirTerm.IfThenElse(
-                    replace(cond, target, replacement, rebuilds),
-                    replace(yes, target, replacement, rebuilds), replace(no, target, replacement, rebuilds));
-            case PirTerm.DataConstr(var tag, var type, var fields) -> new PirTerm.DataConstr(
-                    tag, type, fields.stream().map(field ->
-                            replace(field, target, replacement, rebuilds)).toList());
-            case PirTerm.IntegerCase(var scrutinee, var branches) ->
-                    new PirTerm.IntegerCase(replace(scrutinee, target, replacement, rebuilds),
-                            branches.stream().map(b -> replace(b, target, replacement, rebuilds)).toList());
-            case PirTerm.PairMatch(var pair, var type, var first, var second, var body) ->
-                    rebuilt(term, new PirTerm.PairMatch(replace(pair, target, replacement, rebuilds), type, first, second,
-                            replace(body, target, replacement, rebuilds)), rebuilds);
-            case PirTerm.ListMatch(var xs, var head, var tail, var nil, var cons) ->
-                    rebuilt(term, new PirTerm.ListMatch(replace(xs, target, replacement, rebuilds), head, tail,
-                            replace(nil, target, replacement, rebuilds), replace(cons, target, replacement, rebuilds)), rebuilds);
-            case PirTerm.DataMatch(var scrutinee, var branches) -> rebuilt(term, new PirTerm.DataMatch(
-                    replace(scrutinee, target, replacement, rebuilds),
-                    branches.stream().map(branch -> new PirTerm.MatchBranch(
-                            branch.constructorName(), branch.bindings(), branch.bindingTypes(),
-                            replace(branch.body(), target, replacement, rebuilds), branch.patternVar())).toList()), rebuilds);
-            case PirTerm.Trace(var message, var body) -> new PirTerm.Trace(
-                    replace(message, target, replacement, rebuilds),
-                    replace(body, target, replacement, rebuilds));
-        };
+        return replaceWalk(term, target, replacement, rebuilds).run();
+    }
+
+    /**
+     * {@code term} with every occurrence of {@code target} replaced, each binder form rebuilt and reported to
+     * {@code rebuilds} after its children, in a left-to-right walk. The walk keeps its pending work on the heap, as an
+     * entrypoint's body can nest as deeply as the method is long (issue #327, ADR-074).
+     */
+    private static Trampoline<PirTerm> replaceWalk(PirTerm term, PirTerm target, PirTerm replacement, Rebuilds rebuilds) {
+        return Trampoline.defer(() -> {
+            if (term.equals(target)) return Trampoline.done(replacement);
+            var copy = PirHelpers.traverseChildren(term, child -> replaceWalk(child, target, replacement, rebuilds));
+            return switch (term) {
+                case PirTerm.Var _, PirTerm.Const _, PirTerm.Builtin _, PirTerm.Error _ -> Trampoline.done(term);
+                // The binder forms are reported to rebuilds; the others are not.
+                case PirTerm.Let _, PirTerm.LetRec _, PirTerm.Lam _, PirTerm.PairMatch _, PirTerm.ListMatch _,
+                     PirTerm.DataMatch _ -> copy.map(rebuiltTerm -> rebuilt(term, rebuiltTerm, rebuilds));
+                case PirTerm.App _, PirTerm.IfThenElse _, PirTerm.DataConstr _, PirTerm.IntegerCase _,
+                     PirTerm.Trace _ -> copy;
+            };
+        });
     }
 
     private static PirTerm rebuilt(PirTerm original, PirTerm copy, Rebuilds rebuilds) {

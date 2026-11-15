@@ -9,9 +9,11 @@ import org.julclang.core.DefaultFun;
 import org.julclang.core.Term;
 import org.julclang.core.flat.FlatWriter;
 import org.julclang.core.flat.UplcFlatEncoder;
+import org.julclang.core.recursion.Trampoline;
 import org.julclang.core.source.SourceLocation;
 import org.julclang.vm.ProtocolCapability;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -150,23 +152,32 @@ public abstract class LiteralFoldPass {
 
     /** Bottom-up: fold children, register a local that became a literal, then try the node. */
     private PirTerm fold(PirTerm term) {
-        if (term instanceof PirTerm.Let let) {
-            var value = fold(let.value());
-            if (binderCounts.get(let.name()) == 1) {
-                // A local bound to a literal, or aliasing one, is a literal below; only the
-                // former may be credited to a fold that consumes its last occurrence.
-                var literal = literalOf(value);
-                if (literal != null) {
-                    literals.put(let.name(), literal);
-                    if (!(value instanceof PirTerm.Var)) creditableBindings.put(let.name(), value);
-                }
+        return foldTerm(term).run();
+    }
+
+    /** {@link #fold}, stack-safe (issue #327): a term nests as deeply as a program is long. */
+    private Trampoline<PirTerm> foldTerm(PirTerm term) {
+        return Trampoline.defer(() -> {
+            if (term instanceof PirTerm.Let let) {
+                return foldTerm(let.value()).then(value -> {
+                    if (binderCounts.get(let.name()) == 1) {
+                        // A local bound to a literal, or aliasing one, is a literal below; only the
+                        // former may be credited to a fold that consumes its last occurrence.
+                        var literal = literalOf(value);
+                        if (literal != null) {
+                            literals.put(let.name(), literal);
+                            if (!(value instanceof PirTerm.Var)) creditableBindings.put(let.name(), value);
+                        }
+                    }
+                    return foldTerm(let.body()).map(body -> remember(term, new PirTerm.Let(let.name(), value, body)));
+                });
             }
-            var body = fold(let.body());
-            return remember(term, new PirTerm.Let(let.name(), value, body));
-        }
-        var mapped = remember(term, PirHelpers.mapChildren(term, this::fold));
-        var folded = foldNode(mapped);
-        return folded == null ? mapped : remember(mapped, folded);
+            return PirHelpers.traverseChildren(term, this::foldTerm).map(children -> {
+                var mapped = remember(term, children);
+                var folded = foldNode(mapped);
+                return folded == null ? mapped : remember(mapped, folded);
+            });
+        });
     }
 
     /** The replacement for a node whose children are folded, or null; domains may add cases. */
@@ -264,10 +275,16 @@ public abstract class LiteralFoldPass {
         return dying;
     }
 
-    /** Variable occurrences in an argument as it stands; a domain's literal shape may nest them. */
+    /** Variable occurrences in an argument as it stands; a domain's literal shape may nest them. Pre-order, no recursion. */
     private static void countVariables(PirTerm term, Map<String, Integer> counts) {
-        if (term instanceof PirTerm.Var v) counts.merge(v.name(), 1, Integer::sum);
-        PirHelpers.mapChildren(term, child -> { countVariables(child, counts); return child; });
+        var pending = new ArrayDeque<PirTerm>();
+        pending.push(term);
+        while (!pending.isEmpty()) {
+            var next = pending.pop();
+            if (next instanceof PirTerm.Var v) counts.merge(v.name(), 1, Integer::sum);
+            var children = PirHelpers.children(next);
+            for (int i = children.size() - 1; i >= 0; i--) pending.push(children.get(i));
+        }
     }
 
     /**
@@ -285,23 +302,25 @@ public abstract class LiteralFoldPass {
      * as two copies and approved).
      */
     private Term measure(PirTerm term, Set<String> dying, Set<String> credited) {
-        return switch (term) {
-            case PirTerm.Const c -> Term.const_(c.value());
+        return measured(term, dying, credited).run();
+    }
+
+    /** {@link #measure}, stack-safe (issue #327): a long list literal is a deep chain of conses. */
+    private Trampoline<Term> measured(PirTerm term, Set<String> dying, Set<String> credited) {
+        return Trampoline.defer(() -> switch (term) {
+            case PirTerm.Const c -> Trampoline.done(Term.const_(c.value()));
             case PirTerm.Var v -> dying.contains(v.name()) && credited.add(v.name())
-                    ? measure(creditableBindings.get(v.name()), dying, credited) : Term.var(1);
-            case PirTerm.Builtin b -> Term.builtin(b.fun());
-            case PirTerm.App a -> Term.apply(measure(a.function(), dying, credited), measure(a.argument(), dying, credited));
-            default -> {
-                var children = new ArrayList<PirTerm>();
-                PirHelpers.mapChildren(term, child -> { children.add(child); return child; });
-                Term measured = null;
-                for (var child : children) {
-                    var part = measure(child, dying, credited);
-                    measured = measured == null ? part : Term.apply(measured, part);
-                }
-                yield measured == null ? Term.error() : measured;
-            }
-        };
+                    ? measured(creditableBindings.get(v.name()), dying, credited) : Trampoline.done(Term.var(1));
+            case PirTerm.Builtin b -> Trampoline.done(Term.builtin(b.fun()));
+            case PirTerm.App a -> Trampoline.both(measured(a.function(), dying, credited),
+                    Trampoline.defer(() -> measured(a.argument(), dying, credited)), Term::apply);
+            default -> Trampoline.each(PirHelpers.children(term), child -> measured(child, dying, credited))
+                    .map(parts -> {
+                        Term whole = null;
+                        for (var part : parts) whole = whole == null ? part : Term.apply(whole, part);
+                        return whole == null ? Term.error() : whole;
+                    });
+        });
     }
 
     /** A folded constant: marks the rule as applied and lets a domain track the node. */
@@ -381,21 +400,28 @@ public abstract class LiteralFoldPass {
         return term instanceof PirTerm.Builtin builtin && builtin.fun() == fun;
     }
 
-    private void collectBinders(PirTerm term) {
-        switch (term) {
-            case PirTerm.Var v -> remainingUses.merge(v.name(), 1, Integer::sum);
-            case PirTerm.Lam l -> bind(l.param());
-            case PirTerm.Let l -> { bind(l.name()); letValues.putIfAbsent(l.name(), l.value()); }
-            case PirTerm.LetRec r -> r.bindings().forEach(b -> bind(b.name()));
-            case PirTerm.ListMatch m -> { bind(m.headName()); bind(m.tailName()); }
-            case PirTerm.PairMatch m -> { bind(m.firstName()); bind(m.secondName()); }
-            case PirTerm.DataMatch m -> m.branches().forEach(b -> {
-                b.bindings().forEach(this::bind);
-                if (b.patternVar() != null) bind(b.patternVar());
-            });
-            default -> { }
+    /** Counts binders and occurrences, and records each name's first {@code let} value: pre-order, no recursion. */
+    private void collectBinders(PirTerm root) {
+        var pending = new ArrayDeque<PirTerm>();
+        pending.push(root);
+        while (!pending.isEmpty()) {
+            var term = pending.pop();
+            switch (term) {
+                case PirTerm.Var v -> remainingUses.merge(v.name(), 1, Integer::sum);
+                case PirTerm.Lam l -> bind(l.param());
+                case PirTerm.Let l -> { bind(l.name()); letValues.putIfAbsent(l.name(), l.value()); }
+                case PirTerm.LetRec r -> r.bindings().forEach(b -> bind(b.name()));
+                case PirTerm.ListMatch m -> { bind(m.headName()); bind(m.tailName()); }
+                case PirTerm.PairMatch m -> { bind(m.firstName()); bind(m.secondName()); }
+                case PirTerm.DataMatch m -> m.branches().forEach(b -> {
+                    b.bindings().forEach(this::bind);
+                    if (b.patternVar() != null) bind(b.patternVar());
+                });
+                default -> { }
+            }
+            var children = PirHelpers.children(term);
+            for (int i = children.size() - 1; i >= 0; i--) pending.push(children.get(i));
         }
-        PirHelpers.mapChildren(term, child -> { collectBinders(child); return child; });
     }
 
     private void bind(String name) {

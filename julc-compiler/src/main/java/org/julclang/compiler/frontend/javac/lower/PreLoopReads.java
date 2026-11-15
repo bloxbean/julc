@@ -2,6 +2,9 @@ package org.julclang.compiler.frontend.javac.lower;
 
 import org.julclang.compiler.pir.PirTerm;
 
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -16,50 +19,70 @@ final class PreLoopReads {
     private PreLoopReads() {
     }
 
+    /**
+     * Walks {@code term} in pre-order with a heap stack, since {@code term} is what follows a loop, as deep as the rest of
+     * its block (issue #327). Each node's children are pushed last first, so they are met in the order the recursive form
+     * met them, which {@link #children} spells out.
+     */
     static void collect(PirTerm term, Set<String> candidates, Map<String, PirTerm.Var> reads) {
-        switch (term) {
-            case PirTerm.Var read -> {
+        var pending = new ArrayDeque<PirTerm>();
+        pending.push(term);
+        while (!pending.isEmpty()) {
+            var next = pending.pop();
+            if (next instanceof PirTerm.Var read) {
                 if (candidates.contains(read.name())) reads.putIfAbsent(read.name(), read);
+                continue;
             }
+            var children = children(next);
+            for (int i = children.size() - 1; i >= 0; i--) pending.push(children.get(i));
+        }
+    }
+
+    /** The terms {@code term} holds, in the order the reference reads them. */
+    private static List<PirTerm> children(PirTerm term) {
+        var children = new ArrayList<PirTerm>();
+        switch (term) {
             case PirTerm.Let let -> {
-                collect(let.value(), candidates, reads);
-                collect(let.body(), candidates, reads);
+                children.add(let.value());
+                children.add(let.body());
             }
             case PirTerm.LetRec rec -> {
-                rec.bindings().forEach(binding -> collect(binding.value(), candidates, reads));
-                collect(rec.body(), candidates, reads);
+                rec.bindings().forEach(binding -> children.add(binding.value()));
+                children.add(rec.body());
             }
-            case PirTerm.Lam lam -> collect(lam.body(), candidates, reads);
+            case PirTerm.Lam lam -> children.add(lam.body());
             case PirTerm.App app -> {
-                collect(app.function(), candidates, reads);
-                collect(app.argument(), candidates, reads);
+                children.add(app.function());
+                children.add(app.argument());
             }
             case PirTerm.IfThenElse branch -> {
-                collect(branch.cond(), candidates, reads);
-                collect(branch.thenBranch(), candidates, reads);
-                collect(branch.elseBranch(), candidates, reads);
+                children.add(branch.cond());
+                children.add(branch.thenBranch());
+                children.add(branch.elseBranch());
             }
-            case PirTerm.DataConstr constr -> constr.fields().forEach(field -> collect(field, candidates, reads));
+            case PirTerm.DataConstr constr -> children.addAll(constr.fields());
             case PirTerm.IntegerCase select -> {
-                collect(select.scrutinee(), candidates, reads);
-                select.branches().forEach(branch -> collect(branch, candidates, reads));
+                children.add(select.scrutinee());
+                children.addAll(select.branches());
             }
             case PirTerm.PairMatch match -> {
-                collect(match.scrutinee(), candidates, reads);
-                collect(match.body(), candidates, reads);
+                children.add(match.scrutinee());
+                children.add(match.body());
             }
             case PirTerm.ListMatch match -> {
-                collect(match.scrutinee(), candidates, reads);
-                collect(match.nilBranch(), candidates, reads);
-                collect(match.consBranch(), candidates, reads);
+                children.add(match.scrutinee());
+                children.add(match.nilBranch());
+                children.add(match.consBranch());
             }
             case PirTerm.DataMatch match -> {
-                collect(match.scrutinee(), candidates, reads);
-                match.branches().forEach(branch -> collect(branch.body(), candidates, reads));
+                children.add(match.scrutinee());
+                match.branches().forEach(branch -> children.add(branch.body()));
             }
             case PirTerm.Trace trace -> {
-                collect(trace.message(), candidates, reads);
-                collect(trace.body(), candidates, reads);
+                children.add(trace.message());
+                children.add(trace.body());
+            }
+            case PirTerm.Var ignored -> {
             }
             case PirTerm.Const ignored -> {
             }
@@ -68,5 +91,6 @@ final class PreLoopReads {
             case PirTerm.Error ignored -> {
             }
         }
+        return children;
     }
 }

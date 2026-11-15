@@ -14,6 +14,7 @@ import com.sun.source.tree.UnaryTree;
 import com.sun.source.tree.VariableTree;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacNames;
+import org.julclang.core.recursion.Trampoline;
 
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ElementKind;
@@ -73,23 +74,28 @@ public final class GuardConstants {
     }
 
     public Result evaluate(ExpressionTree tree) {
-        return evaluate(tree, new HashSet<>());
+        return evaluate(tree, new HashSet<>()).run();
     }
 
-    private Result evaluate(ExpressionTree tree, Set<Element> visiting) {
-        return switch (tree) {
-            case LiteralTree literal -> literal(literal);
+    /**
+     * Stack-safe (issue #327): a constant variable's value is its initializer's, and a chain of {@code final}s each
+     * initialized by the one before is as long as the source. Operands are evaluated in the recursive form's order.
+     */
+    private Trampoline<Result> evaluate(ExpressionTree tree, Set<Element> visiting) {
+        return Trampoline.defer(() -> switch (tree) {
+            case LiteralTree literal -> Trampoline.done(literal(literal));
             case ParenthesizedTree parenthesized -> evaluate(parenthesized.getExpression(), visiting);
-            case UnaryTree unary -> unary(unary.getKind(), evaluate(unary.getExpression(), visiting));
-            case BinaryTree binary -> binary(binary.getKind(), evaluate(binary.getLeftOperand(), visiting),
-                    evaluate(binary.getRightOperand(), visiting));
-            case ConditionalExpressionTree conditional -> conditional(evaluate(conditional.getCondition(), visiting),
-                    evaluate(conditional.getTrueExpression(), visiting), evaluate(conditional.getFalseExpression(), visiting));
-            case TypeCastTree cast -> cast(cast.getType(), evaluate(cast.getExpression(), visiting));
+            case UnaryTree unary -> evaluate(unary.getExpression(), visiting).map(operand -> unary(unary.getKind(), operand));
+            case BinaryTree binary -> evaluate(binary.getLeftOperand(), visiting).then(left ->
+                    evaluate(binary.getRightOperand(), visiting).map(right -> binary(binary.getKind(), left, right)));
+            case ConditionalExpressionTree conditional -> evaluate(conditional.getCondition(), visiting).then(test ->
+                    evaluate(conditional.getTrueExpression(), visiting).then(whenTrue ->
+                            evaluate(conditional.getFalseExpression(), visiting).map(whenFalse -> conditional(test, whenTrue, whenFalse))));
+            case TypeCastTree cast -> evaluate(cast.getExpression(), visiting).map(operand -> cast(cast.getType(), operand));
             case IdentifierTree name -> variable(name, visiting);
             case MemberSelectTree select -> qualified(select, visiting);
-            default -> Result.NOT_CONSTANT;
-        };
+            default -> Trampoline.done(Result.NOT_CONSTANT);
+        });
     }
 
     private static Result literal(LiteralTree literal) {
@@ -241,17 +247,17 @@ public final class GuardConstants {
     // --- Constant variables (JLS 4.12.4) ---
 
     /** A {@code final} local, or a {@code static final} field of a class around {@code name}. */
-    private Result variable(IdentifierTree name, Set<Element> visiting) {
+    private Trampoline<Result> variable(IdentifierTree name, Set<Element> visiting) {
         return facts.elementOrNull(name) instanceof VariableElement variable && isConstantDeclaration(variable, name)
-                ? initializer(variable, visiting) : Result.NOT_CONSTANT;
+                ? initializer(variable, visiting) : Trampoline.done(Result.NOT_CONSTANT);
     }
 
     /**
      * {@code T.F}: a constant only where {@code T} is a type of this unit, and {@code F} a constant field of exactly that
      * type. A variable of the name obscures the type, which javac has decided.
      */
-    private Result qualified(MemberSelectTree select, Set<Element> visiting) {
-        return constantFieldOf(select) instanceof VariableElement field ? initializer(field, visiting) : Result.NOT_CONSTANT;
+    private Trampoline<Result> qualified(MemberSelectTree select, Set<Element> visiting) {
+        return constantFieldOf(select) instanceof VariableElement field ? initializer(field, visiting) : Trampoline.done(Result.NOT_CONSTANT);
     }
 
     private VariableElement constantFieldOf(MemberSelectTree select) {
@@ -269,16 +275,19 @@ public final class GuardConstants {
      * one tells.
      */
     boolean readsThroughNew(ExpressionTree tree) {
-        for (var name : SubsetWalk.all(tree, IdentifierTree.class)) {
-            if (facts.elementOrNull(name) instanceof VariableElement variable && variable.getKind() == ElementKind.LOCAL_VARIABLE) {
-                var declaration = facts.declaration(variable);
-                if (facts.enclosing(name, Tree.Kind.NEW_CLASS) != facts.enclosing(declaration, Tree.Kind.NEW_CLASS)
-                        || readsThroughNew(declaration.getInitializer())) {
-                    return true;
-                }
+        return readsThroughNewDeep(tree).run();
+    }
+
+    /** {@link #readsThroughNew}, stack-safe: it follows each local into its initializer, as far as the source goes (issue #327). */
+    private Trampoline<Boolean> readsThroughNewDeep(ExpressionTree tree) {
+        return Trampoline.defer(() -> Trampoline.any(SubsetWalk.all(tree, IdentifierTree.class), name -> {
+            if (!(facts.elementOrNull(name) instanceof VariableElement variable && variable.getKind() == ElementKind.LOCAL_VARIABLE)) {
+                return Trampoline.done(false);
             }
-        }
-        return false;
+            var declaration = facts.declaration(variable);
+            if (facts.enclosing(name, Tree.Kind.NEW_CLASS) != facts.enclosing(declaration, Tree.Kind.NEW_CLASS)) return Trampoline.done(true);
+            return readsThroughNewDeep(declaration.getInitializer());
+        }));
     }
 
     private boolean inUnit(TypeElement type, Tree at) {
@@ -302,21 +311,20 @@ public final class GuardConstants {
         return field.getModifiers().containsAll(Set.of(Modifier.STATIC, Modifier.FINAL));
     }
 
-    private Result initializer(VariableElement variable, Set<Element> visiting) {
+    private Trampoline<Result> initializer(VariableElement variable, Set<Element> visiting) {
         var declaration = facts.declaration(variable);
         if (!isConstantType(declaration) || declaration.getInitializer() == null || !visiting.add(variable)) {
-            return Result.NOT_CONSTANT;
+            return Trampoline.done(Result.NOT_CONSTANT);
         }
-        try {
-            var value = evaluate(declaration.getInitializer(), visiting);
+        // A failure ends the evaluation, and its set with it, so the variable needs no removing after one.
+        return evaluate(declaration.getInitializer(), visiting).map(value -> {
+            visiting.remove(variable);
             if (!value.constant() || value.unclassifiable() || isVar(declaration)) return value;
             // The assignment conversion to the declared type, widening included: a long N = 1 is a long. javac has rejected
             // a narrowing, and char, byte and short are not modelled.
             var type = variable.asType();
             return type.getKind().isPrimitive() ? toPrimitive(type.getKind(), value) : value;
-        } finally {
-            visiting.remove(variable);
-        }
+        });
     }
 
     private boolean isVar(VariableTree declaration) {

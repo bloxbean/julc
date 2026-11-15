@@ -3,6 +3,8 @@ package org.julclang.core.text;
 import org.julclang.core.*;
 
 import java.math.BigInteger;
+import java.util.ArrayDeque;
+import java.util.List;
 import java.util.HexFormat;
 
 /**
@@ -44,32 +46,50 @@ public final class UplcPrinter {
         return sb.toString();
     }
 
-    private static void printTerm(Term term, StringBuilder sb) {
+    /**
+     * Prints {@code root} from a work list of terms and text, not by recursion, so a deep term needs no more Java stack
+     * than a shallow one (issue #327, ADR-074). The text is the same.
+     */
+    private static void printTerm(Term root, StringBuilder sb) {
+        var pending = new ArrayDeque<Object>();
+        pending.push(root);
+        while (!pending.isEmpty()) {
+            Object next = pending.pop();
+            if (next instanceof String text) {
+                sb.append(text);
+            } else {
+                printNode((Term) next, sb, pending);
+            }
+        }
+    }
+
+    /** Prints a leaf, or the node's opening text and pushes the rest: its children and the text between them, last first. */
+    private static void printNode(Term term, StringBuilder sb, ArrayDeque<Object> pending) {
         switch (term) {
             case Term.Var v -> sb.append(sanitizeName(v.name().name()));
             case Term.Lam l -> {
                 sb.append("(lam ");
                 sb.append(sanitizeName(l.paramName()));
                 sb.append(' ');
-                printTerm(l.body(), sb);
-                sb.append(')');
+                pending.push(")");
+                pending.push(l.body());
             }
             case Term.Apply a -> {
                 sb.append('[');
-                printTerm(a.function(), sb);
-                sb.append(' ');
-                printTerm(a.argument(), sb);
-                sb.append(']');
+                pending.push("]");
+                pending.push(a.argument());
+                pending.push(" ");
+                pending.push(a.function());
             }
             case Term.Force f -> {
                 sb.append("(force ");
-                printTerm(f.term(), sb);
-                sb.append(')');
+                pending.push(")");
+                pending.push(f.term());
             }
             case Term.Delay d -> {
                 sb.append("(delay ");
-                printTerm(d.term(), sb);
-                sb.append(')');
+                pending.push(")");
+                pending.push(d.term());
             }
             case Term.Const c -> {
                 sb.append("(con ");
@@ -85,21 +105,23 @@ public final class UplcPrinter {
             case Term.Constr c -> {
                 sb.append("(constr ");
                 sb.append(Long.toUnsignedString(c.tag()));
-                for (var field : c.fields()) {
-                    sb.append(' ');
-                    printTerm(field, sb);
-                }
-                sb.append(')');
+                pending.push(")");
+                pushSpaced(c.fields(), pending);
             }
             case Term.Case cs -> {
                 sb.append("(case ");
-                printTerm(cs.scrutinee(), sb);
-                for (var branch : cs.branches()) {
-                    sb.append(' ');
-                    printTerm(branch, sb);
-                }
-                sb.append(')');
+                pending.push(")");
+                pushSpaced(cs.branches(), pending);
+                pending.push(cs.scrutinee());
             }
+        }
+    }
+
+    /** Pushes each term preceded by a space, so that they print in order. */
+    private static void pushSpaced(List<Term> terms, ArrayDeque<Object> pending) {
+        for (int i = terms.size() - 1; i >= 0; i--) {
+            pending.push(terms.get(i));
+            pending.push(" ");
         }
     }
 

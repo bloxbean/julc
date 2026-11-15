@@ -17,6 +17,7 @@ import org.julclang.compiler.frontend.javac.JavacNames;
 import org.julclang.compiler.frontend.javac.SwitchResults;
 import org.julclang.compiler.frontend.javac.subset.LoopRules;
 import org.julclang.compiler.pir.PirType;
+import org.julclang.core.recursion.Trampoline;
 
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ExecutableElement;
@@ -110,72 +111,86 @@ final class AccumulatorTypes {
 
         /** What {@code variable} is shown to hold. {@code read} holds what is being read. */
         Held variable(Element variable, Set<Element> read) {
-            if (!read.add(variable)) return Held.SAME;
-            var held = start(variable, read);
-            for (var assignment : assignments) {
-                if (assignment.getVariable() instanceof IdentifierTree target && variable.equals(facts.element(target))) {
-                    held = held.and(value(assignment.getExpression(), read));
+            return held(variable, read).run();
+        }
+
+        /**
+         * {@link #variable}, stack-safe (issue #327): a variable reads another, or a helper that returns another helper's
+         * result, as far as the source goes. Each step is the recursive form's, in its order.
+         */
+        private Trampoline<Held> held(Element variable, Set<Element> read) {
+            return Trampoline.defer(() -> {
+                if (!read.add(variable)) return Trampoline.done(Held.SAME);
+                var assigned = new ArrayList<ExpressionTree>();
+                for (var assignment : assignments) {
+                    if (assignment.getVariable() instanceof IdentifierTree target && variable.equals(facts.element(target))) {
+                        assigned.add(assignment.getExpression());
+                    }
                 }
-            }
-            return held == Held.CURSOR && headIsReadAsPair(variable) ? Held.PAIRS : held;
+                return start(variable, read).then(held -> joined(held, assigned, read))
+                        .map(held -> held == Held.CURSOR && headIsReadAsPair(variable) ? Held.PAIRS : held);
+            });
+        }
+
+        /** {@code held} joined with what each of {@code values} shows, read one after another. */
+        private Trampoline<Held> joined(Held held, List<? extends ExpressionTree> values, Set<Element> read) {
+            // An array-backed copy: javac's argument lists are linked, and reading one by index is linear.
+            return joinedFrom(held, new ArrayList<ExpressionTree>(values), 0, read);
+        }
+
+        private Trampoline<Held> joinedFrom(Held held, List<? extends ExpressionTree> values, int index, Set<Element> read) {
+            if (index == values.size()) return Trampoline.done(held);
+            return value(values.get(index), read).then(next -> joinedFrom(held.and(next), values, index + 1, read));
         }
 
         /**
          * What an initializer shows. A declared type says nothing: {@code PlutusData.ListData} and {@code MapData} are also
          * the types of encoded Data. A parameter's value is the caller's, and a {@code @Param}'s initializer can only be a literal.
          */
-        private Held start(Element variable, Set<Element> read) {
+        private Trampoline<Held> start(Element variable, Set<Element> read) {
             boolean initialized = variable instanceof VariableElement local && facts.initializer(local) != null;
-            return initialized ? value(facts.initializer((VariableElement) variable), read) : Held.DATA;
+            return initialized ? value(facts.initializer((VariableElement) variable), read) : Trampoline.done(Held.DATA);
         }
 
-        private Held value(ExpressionTree tree, Set<Element> read) {
-            return switch (tree) {
+        private Trampoline<Held> value(ExpressionTree tree, Set<Element> read) {
+            return Trampoline.defer(() -> switch (tree) {
                 case ParenthesizedTree parenthesized -> value(parenthesized.getExpression(), read);
-                case ConditionalExpressionTree conditional ->
-                        value(conditional.getTrueExpression(), read).and(value(conditional.getFalseExpression(), read));
-                case SwitchExpressionTree selected -> {
-                    var held = Held.SAME;
-                    for (var result : SwitchResults.of(selected)) held = held.and(value(result, read));
-                    yield held;
-                }
-                case IdentifierTree name when facts.elementOrNull(name) instanceof VariableElement variable -> variable(variable, read);
+                case ConditionalExpressionTree conditional -> value(conditional.getTrueExpression(), read)
+                        .then(whenTrue -> value(conditional.getFalseExpression(), read).map(whenTrue::and));
+                case SwitchExpressionTree selected -> joined(Held.SAME, SwitchResults.of(selected), read);
+                case IdentifierTree name when facts.elementOrNull(name) instanceof VariableElement variable -> held(variable, read);
                 case MethodInvocationTree call -> call(call, read);
-                default -> Held.DATA;
-            };
+                default -> Trampoline.done(Held.DATA);
+            });
         }
 
-        private Held call(MethodInvocationTree call, Set<Element> read) {
-            if (!(facts.element(call.getMethodSelect()) instanceof ExecutableElement method)) return Held.DATA;
+        private Trampoline<Held> call(MethodInvocationTree call, Set<Element> read) {
+            if (!(facts.element(call.getMethodSelect()) instanceof ExecutableElement method)) return Trampoline.done(Held.DATA);
             if (!isBuiltin(method)) return helper(method, read);
             return switch (method.getSimpleName().toString()) {
-                case "tailList" -> {
-                    var list = value(call.getArguments().getFirst(), read);
-                    yield list.isList() ? list : Held.CURSOR;
-                }
-                case "mkCons" -> {
-                    var tail = value(call.getArguments().getLast(), read);
-                    if (tail == Held.LIST || tail == Held.PAIRS) yield tail;
-                    if (value(call.getArguments().getFirst(), read) == Held.PAIR) yield Held.PAIRS;
-                    yield tail == Held.SAME ? tail : Held.LIST;
-                }
-                case "mkNilData", "unListData", "constrFields" -> Held.LIST;
-                case "mkNilPairData", "unMapData" -> Held.PAIRS;
-                case "mkPairData" -> Held.PAIR;
-                default -> Held.DATA;
+                case "tailList" -> value(call.getArguments().getFirst(), read).map(list -> list.isList() ? list : Held.CURSOR);
+                case "mkCons" -> value(call.getArguments().getLast(), read).then(tail -> {
+                    if (tail == Held.LIST || tail == Held.PAIRS) return Trampoline.done(tail);
+                    return value(call.getArguments().getFirst(), read)
+                            .map(head -> head == Held.PAIR ? Held.PAIRS : tail == Held.SAME ? tail : Held.LIST);
+                });
+                case "mkNilData", "unListData", "constrFields" -> Trampoline.done(Held.LIST);
+                case "mkNilPairData", "unMapData" -> Trampoline.done(Held.PAIRS);
+                case "mkPairData" -> Trampoline.done(Held.PAIR);
+                default -> Trampoline.done(Held.DATA);
             };
         }
 
         /** What a method of a source returns, on every path it has. */
-        private Held helper(ExecutableElement method, Set<Element> read) {
+        private Trampoline<Held> helper(ExecutableElement method, Set<Element> read) {
             MethodTree declaration = facts.declaration(method);
-            if (declaration == null || declaration.getBody() == null) return Held.DATA;
-            if (!read.add(method)) return Held.SAME;
-            var held = Held.SAME;
+            if (declaration == null || declaration.getBody() == null) return Trampoline.done(Held.DATA);
+            if (!read.add(method)) return Trampoline.done(Held.SAME);
+            var results = new ArrayList<ExpressionTree>();
             for (var result : LoopRules.returns(declaration)) {
-                if (result.getExpression() != null) held = held.and(value(result.getExpression(), read));
+                if (result.getExpression() != null) results.add(result.getExpression());
             }
-            return held;
+            return joined(Held.SAME, results, read);
         }
 
         /** Whether the element a cursor's head goes to is read as a pair: {@code fstPair} of it, or of a local that holds it. */

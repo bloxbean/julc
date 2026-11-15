@@ -30,6 +30,7 @@ import javax.lang.model.element.VariableElement;
 import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
 import java.math.BigInteger;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -269,33 +270,42 @@ final class Casts {
      * reference binds it, and so is a {@code var} assigned again whose type is a map; a {@code var} of another type assigned
      * again stops (I8). A {@code @Param}'s value is what is applied, not its initializer, so the read ends at it.
      */
-    private void valuesOf(ExpressionTree tree, Set<Element> read, List<ExpressionTree> values) {
-        switch (tree) {
-            case ParenthesizedTree parenthesized -> valuesOf(parenthesized.getExpression(), read, values);
-            case ConditionalExpressionTree conditional -> {
-                valuesOf(conditional.getTrueExpression(), read, values);
-                valuesOf(conditional.getFalseExpression(), read, values);
-            }
-            case SwitchExpressionTree selected -> SwitchResults.of(selected).forEach(result -> valuesOf(result, read, values));
-            case ExpressionTree cast when isPlainView(cast) -> valuesOf(viewed(cast), read, values);
-            case IdentifierTree name when facts.elementOrNull(name) instanceof VariableElement variable
-                    && facts.initializer(variable) != null && !facts.hasAnnotation(variable, JavacNames.PARAM) -> {
-                // The reference binds a variable with a written type as that type, and a var as its initializer is seen.
-                if (!isVar(variable)) {
-                    values.add(name);
-                } else if (!facts.effectivelyFinal(variable)) {
-                    // A var assigned again may hold another value than its initializer's: a map by its type holds a map
-                    // whatever was assigned, and Data may hold either, so it stops.
-                    if (!(typing.of(name) instanceof PirType.MapType)) {
-                        throw facts.rejection(DiagnosticCodes.TYPE_RESOLUTION_FAILED, name,
-                                "a variable cast to a map that is assigned after its declaration, so it may hold a map or not");
-                    }
-                    values.add(name);
-                } else if (read.add(variable)) {
-                    valuesOf(facts.initializer(variable), read, values);
+    private void valuesOf(ExpressionTree root, Set<Element> read, List<ExpressionTree> values) {
+        // A work list, since a chain of vars each initialized by the one before is as long as the source (issue #327). A
+        // tree acts when it is met, then its parts are met in order: they are pushed last first.
+        var pending = new ArrayDeque<ExpressionTree>();
+        pending.push(root);
+        while (!pending.isEmpty()) {
+            var tree = pending.pop();
+            var parts = new ArrayList<ExpressionTree>();
+            switch (tree) {
+                case ParenthesizedTree parenthesized -> parts.add(parenthesized.getExpression());
+                case ConditionalExpressionTree conditional -> {
+                    parts.add(conditional.getTrueExpression());
+                    parts.add(conditional.getFalseExpression());
                 }
+                case SwitchExpressionTree selected -> parts.addAll(SwitchResults.of(selected));
+                case ExpressionTree cast when isPlainView(cast) -> parts.add(viewed(cast));
+                case IdentifierTree name when facts.elementOrNull(name) instanceof VariableElement variable
+                        && facts.initializer(variable) != null && !facts.hasAnnotation(variable, JavacNames.PARAM) -> {
+                    // The reference binds a variable with a written type as that type, and a var as its initializer is seen.
+                    if (!isVar(variable)) {
+                        values.add(name);
+                    } else if (!facts.effectivelyFinal(variable)) {
+                        // A var assigned again may hold another value than its initializer's: a map by its type holds a map
+                        // whatever was assigned, and Data may hold either, so it stops.
+                        if (!(typing.of(name) instanceof PirType.MapType)) {
+                            throw facts.rejection(DiagnosticCodes.TYPE_RESOLUTION_FAILED, name,
+                                    "a variable cast to a map that is assigned after its declaration, so it may hold a map or not");
+                        }
+                        values.add(name);
+                    } else if (read.add(variable)) {
+                        parts.add(facts.initializer(variable));
+                    }
+                }
+                default -> values.add(tree);
             }
-            default -> values.add(tree);
+            for (int i = parts.size() - 1; i >= 0; i--) pending.push(parts.get(i));
         }
     }
 }

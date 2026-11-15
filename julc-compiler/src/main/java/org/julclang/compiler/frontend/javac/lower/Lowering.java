@@ -138,7 +138,7 @@ public final class Lowering {
 
     /** A block, as a lambda's body is one. */
     PirTerm block(BlockTree tree, Frame frame) {
-        return statements.block(tree, frame);
+        return statements.block(tree, frame).run();
     }
 
     /** An expression, with a Data-encoding rejection that had no position located at it. */

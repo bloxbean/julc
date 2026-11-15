@@ -4,6 +4,8 @@ import org.julclang.core.*;
 import org.julclang.core.cbor.PlutusDataCborEncoder;
 
 import java.math.BigInteger;
+import java.util.ArrayDeque;
+import java.util.List;
 
 /**
  * Encodes UPLC {@link Program}s and {@link Term}s to FLAT binary format.
@@ -48,10 +50,34 @@ public final class UplcFlatEncoder {
         writer.filler();
     }
 
+    /** A list cons bit in {@link #writeTerm}'s work list. */
+    private static final Object LIST_CONS = new Object();
+    /** A list nil bit in {@link #writeTerm}'s work list. */
+    private static final Object LIST_NIL = new Object();
+
     /**
      * Encode a UPLC term.
+     * <p>
+     * The term is written in pre-order from a work list, not by recursion, so a deep term needs no more Java stack
+     * than a shallow one (issue #327, ADR-074). The bits are the same, in the same order.
      */
     public void writeTerm(Term term) {
+        var pending = new ArrayDeque<Object>();
+        pending.push(term);
+        while (!pending.isEmpty()) {
+            Object next = pending.pop();
+            if (next == LIST_CONS) {
+                writer.listCons();
+            } else if (next == LIST_NIL) {
+                writer.listNil();
+            } else {
+                writeNode((Term) next, pending);
+            }
+        }
+    }
+
+    /** Writes the node's own bits and pushes what follows them: its children, last first. */
+    private void writeNode(Term term, ArrayDeque<Object> pending) {
         switch (term) {
             case Term.Var v -> {
                 writer.bits(4, 0); // tag 0
@@ -59,16 +85,16 @@ public final class UplcFlatEncoder {
             }
             case Term.Delay d -> {
                 writer.bits(4, 1); // tag 1
-                writeTerm(d.term());
+                pending.push(d.term());
             }
             case Term.Lam l -> {
                 writer.bits(4, 2); // tag 2
-                writeTerm(l.body());
+                pending.push(l.body());
             }
             case Term.Apply a -> {
                 writer.bits(4, 3); // tag 3
-                writeTerm(a.function());
-                writeTerm(a.argument());
+                pending.push(a.argument());
+                pending.push(a.function());
             }
             case Term.Const c -> {
                 writer.bits(4, 4); // tag 4
@@ -76,7 +102,7 @@ public final class UplcFlatEncoder {
             }
             case Term.Force f -> {
                 writer.bits(4, 5); // tag 5
-                writeTerm(f.term());
+                pending.push(f.term());
             }
             case Term.Error _ -> {
                 writer.bits(4, 6); // tag 6
@@ -88,22 +114,23 @@ public final class UplcFlatEncoder {
             case Term.Constr c -> {
                 writer.bits(4, 8); // tag 8
                 writer.word64(c.tag());
-                writeTermList(c.fields());
+                pushTermList(c.fields(), pending);
             }
             case Term.Case cs -> {
                 writer.bits(4, 9); // tag 9
-                writeTerm(cs.scrutinee());
-                writeTermList(cs.branches());
+                pushTermList(cs.branches(), pending);
+                pending.push(cs.scrutinee());
             }
         }
     }
 
-    private void writeTermList(java.util.List<Term> terms) {
-        for (var t : terms) {
-            writer.listCons();
-            writeTerm(t);
+    /** Pushes a FLAT list of terms, a cons bit before each element and a nil bit after the last. */
+    private static void pushTermList(List<Term> terms, ArrayDeque<Object> pending) {
+        pending.push(LIST_NIL);
+        for (int i = terms.size() - 1; i >= 0; i--) {
+            pending.push(terms.get(i));
+            pending.push(LIST_CONS);
         }
-        writer.listNil();
     }
 
     /**

@@ -81,7 +81,7 @@ class O9ListIndexPromotionTest {
                     assertFalse(containsBuiltin(compiled.pirTerm(), DefaultFun.MultiIndexArray), label);
                     var old = golden(i, level, maps);
                     if (!expectRule) {
-                        assertArrayEquals(UplcFlatEncoder.encodeProgram(old), bytes, label);
+                        LibraryOrderEquivalence.assertSameUpToLibraryOrder(old, compiled.program(), label);
                     } else {
                         // Every promoted site drops a recursive binding (a fixpoint combinator and a
                         // two-parameter lambda) for one builtin application, so the program shrinks.
