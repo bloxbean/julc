@@ -143,10 +143,12 @@ A probe on `main` (`a2bfc683`, a validator using four stdlib libraries and two u
 - **Evaluation differential against `main`.** I took every `compileMethod` case of the ADR-074 corpus that uses the
   default library lookup: 15,097 of its 20,407 recorded cases. Each was compiled on `main` and on
   this change at every level it was recorded at, then evaluated on seven argument vectors under a transaction's
-  budget. That is 272,462 evaluations: 98,422 succeed, 167,907 fail and 112 exhaust the budget.
-  - In every one the outcome, the CPU and memory consumed, and the traces are identical.
-  - 822 results differ in the term they print, and every one of them is a lambda: a partial application whose
-    closure shows the new order of its bindings.
+  budget. That is 266,441 evaluations: 98,422 succeed, 167,907 fail and 112 exhaust the budget. Another 6,017
+  compilations failed identically on both, so there was nothing to evaluate.
+  - In every evaluation the outcome, the CPU and memory consumed (for an exhausted budget too) and the traces are
+    identical.
+  - 822 results differ in the term they print, compared by SHA-256, and every one of them is a lambda: a partial
+    application whose closure shows the new order of its bindings.
   - The harness is `adr/evidence/075/EvalDiffReplayTest.java.txt`.
 - The full suites, the difftest JVM/UPLC agreement and the external examples are recorded in the PR.
 

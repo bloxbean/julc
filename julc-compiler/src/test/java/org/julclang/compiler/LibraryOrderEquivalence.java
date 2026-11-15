@@ -1,5 +1,6 @@
 package org.julclang.compiler;
 
+import org.julclang.core.BuiltinSemantics;
 import org.julclang.core.Program;
 import org.julclang.core.Term;
 import org.julclang.core.flat.UplcFlatEncoder;
@@ -23,10 +24,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * them in a canonical order. A test that held a program byte-identical to such a golden holds it to this instead:
  * every other difference, in any term, any constant or any variable, still fails it.
  * <p>
- * FLAT keeps no names, so a binder of a run is named by its value: a digest of the value written out with the run's
- * earlier binders named the same way. Each run is written sorted by those names, a variable bound by a run as its
- * binder's name, and any other variable as its de Bruijn index counted without the binders of runs, which reordering a
- * run does not change.
+ * FLAT keeps no names, so a binder of a run is named by its value, the lambdas around the run and the run's place: a
+ * digest of the value written out with the run's earlier binders named the same way. A run's value bindings (a lambda,
+ * a delay, a constant, a forced builtin, a variable or a constructor of these, none of which can fail or trace) are
+ * written sorted; its other bindings in their order. A variable bound by a run is written as its binder's name, and any
+ * other variable as its de Bruijn index counted without the binders of runs, which reordering a run does not change.
  */
 public final class LibraryOrderEquivalence {
 
@@ -63,25 +65,55 @@ public final class LibraryOrderEquivalence {
         }
     }
 
+    /**
+     * Whether evaluating {@code term} cannot fail or trace: a lambda, a delay, a constant, a variable, a builtin forced
+     * no more often than its type arity, or a constructor of these.
+     */
+    private static boolean isValue(Term term) {
+        int forces = 0;
+        Term inner = term;
+        while (inner instanceof Term.Force(var next)) {
+            forces++;
+            inner = next;
+        }
+        if (forces > 0) {
+            if (!(inner instanceof Term.Builtin(var fun))) return false;
+            var signature = BuiltinSemantics.find(fun);
+            return signature != null && forces <= signature.typeArity();
+        }
+        return switch (term) {
+            case Term.Lam _, Term.Delay _, Term.Const _, Term.Builtin _, Term.Var _ -> true;
+            case Term.Constr constr -> constr.fields().stream().allMatch(LibraryOrderEquivalence::isValue);
+            default -> false;
+        };
+    }
+
     /** Programs in tests are small, so this recurses. */
     private static void write(Term term, List<Binder> scope, StringBuilder text) {
         if (term instanceof Term.Apply(Term.Lam(var first, var ignored), var ignoredValue)) {
-            // A run of lets: each value in the scope it has, its binder named by it, the run sorted, then the body.
-            var run = new ArrayList<String>();
+            // A run of lets. A binder is named by its value, by the lambdas around the run and by the run's place, so a
+            // binding in another scope never shares its name. Bindings whose values cannot fail or trace may come in
+            // any order, so they are sorted; every other binding keeps its order (ADR-075 reorders only those).
+            int depth = (int) scope.stream().filter(binder -> binder.name() == null).count();
+            String place = depth + ":" + (scope.isEmpty() ? "" : scope.getLast().name());
+            var values = new ArrayList<String>();
+            var effects = new ArrayList<String>();
             int bound = 0;
             Term rest = term;
             while (rest instanceof Term.Apply(Term.Lam(var name, var body), var value)) {
                 var valueText = new StringBuilder();
                 write(value, scope, valueText);
-                String binder = "b" + digest(valueText.toString());
-                run.add(binder + "=" + valueText);
+                String binder = "b" + digest(place + "|" + valueText);
+                (isValue(value) ? values : effects).add(binder + "=" + valueText);
                 scope.add(new Binder(binder));
                 bound++;
                 rest = body;
             }
+            values.sort(null);
             text.append("(lets");
-            run.sort(null);
-            for (var binding : run) text.append(' ').append(binding);
+            for (var binding : values) text.append(' ').append(binding);
+            text.append(" then");
+            for (var binding : effects) text.append(' ').append(binding);
             text.append(" in ");
             write(rest, scope, text);
             text.append(')');

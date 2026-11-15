@@ -68,4 +68,26 @@ class LibraryOrderEquivalenceTest {
         Term inlined = Term.apply(Term.lam("a", Term.apply(Term.lam("b", Term.var(1)), add(integer(1), integer(1)))), integer(1));
         assertFalse(LibraryOrderEquivalence.sameUpToLibraryOrder(Program.plutusV3(reads), Program.plutusV3(inlined)));
     }
+
+    @Test
+    void bindingsInDifferentScopesAreNotTheSame() {
+        // \x. let a = x in \y. let b = y in a, against the same returning b: 10 and 20 on (10, 20).
+        Term returnsA = Term.lam("x", Term.apply(Term.lam("a", Term.lam("y",
+                Term.apply(Term.lam("b", Term.var(3)), Term.var(1)))), Term.var(1)));
+        Term returnsB = Term.lam("x", Term.apply(Term.lam("a", Term.lam("y",
+                Term.apply(Term.lam("b", Term.var(1)), Term.var(1)))), Term.var(1)));
+        assertFalse(LibraryOrderEquivalence.sameUpToLibraryOrder(Program.plutusV3(returnsA), Program.plutusV3(returnsB)));
+    }
+
+    @Test
+    void bindingsThatTraceKeepTheirOrder() {
+        // let a = trace "A" 0 in let b = trace "B" 0 in a + b, against the two lets the other way round.
+        Term traceA = Term.apply(Term.apply(Term.force(Term.builtin(DefaultFun.Trace)),
+                Term.const_(Constant.string("A"))), integer(0));
+        Term traceB = Term.apply(Term.apply(Term.force(Term.builtin(DefaultFun.Trace)),
+                Term.const_(Constant.string("B"))), integer(0));
+        Term ab = Term.apply(Term.lam("a", Term.apply(Term.lam("b", add(Term.var(2), Term.var(1))), traceB)), traceA);
+        Term ba = Term.apply(Term.lam("b", Term.apply(Term.lam("a", add(Term.var(1), Term.var(2))), traceA)), traceB);
+        assertFalse(LibraryOrderEquivalence.sameUpToLibraryOrder(Program.plutusV3(ab), Program.plutusV3(ba)));
+    }
 }

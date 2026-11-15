@@ -104,10 +104,20 @@ class EvalDiffReplayTest {
     private static String describe(EvalResult outcome) {
         return switch (outcome) {
             case EvalResult.Success s -> "ok cpu=" + s.consumed().cpuSteps() + " mem=" + s.consumed().memoryUnits() + " traces=" + s.traces()
-                    + " result=" + s.resultTerm().getClass().getSimpleName() + ":" + Integer.toHexString(UplcPrinter.print(s.resultTerm()).hashCode());
+                    + " result=" + s.resultTerm().getClass().getSimpleName() + ":" + digest(UplcPrinter.print(s.resultTerm()));
             case EvalResult.Failure f -> "fail cpu=" + f.consumed().cpuSteps() + " mem=" + f.consumed().memoryUnits() + " traces=" + f.traces();
-            case EvalResult.BudgetExhausted b -> "exhausted traces=" + b.traces();
+            case EvalResult.BudgetExhausted b -> "exhausted cpu=" + b.consumed().cpuSteps() + " mem=" + b.consumed().memoryUnits()
+                    + " traces=" + b.traces();
         };
+    }
+
+    private static String digest(String text) {
+        try {
+            return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(text.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     private static String first(TreeMap<String, List<String>> fields, String name) {
