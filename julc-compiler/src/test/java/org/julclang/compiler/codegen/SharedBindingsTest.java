@@ -50,7 +50,6 @@ class SharedBindingsTest {
             import java.math.BigInteger;
             import java.util.Optional;
             import org.julclang.core.PlutusData;
-import org.julclang.core.flat.UplcFlatEncoder;
             import org.julclang.ledger.ScriptContext;
             import org.julclang.stdlib.Builtins;
             import org.julclang.stdlib.annotation.Entrypoint;
@@ -107,7 +106,6 @@ import org.julclang.core.flat.UplcFlatEncoder;
             import java.math.BigInteger;
             import java.util.Optional;
             import org.julclang.core.PlutusData;
-import org.julclang.core.flat.UplcFlatEncoder;
             import org.julclang.ledger.ScriptContext;
             import org.julclang.stdlib.Builtins;
             import org.julclang.stdlib.annotation.Entrypoint;
@@ -146,6 +144,20 @@ import org.julclang.core.flat.UplcFlatEncoder;
                     return add(BigInteger.ONE, BigInteger.ONE).equals(BigInteger.TWO);
                 }
                 static BigInteger add(BigInteger a, BigInteger b) { BigInteger c = a; return c.add(b); }
+            }
+            """;
+
+    /** Codex round 3: an unused constant local before a builtin; the optimizer drops it and eta-reduces to the builtin. */
+    static final String EDGE_UNUSED_LOCAL = EDGE_HEAD + """
+                @Entrypoint(purpose = Purpose.MINT)
+                public static boolean mint(PlutusData redeemer, ScriptContext ctx) {
+                    return add(BigInteger.ONE, BigInteger.ONE).equals(BigInteger.TWO);
+                }
+                @Entrypoint(purpose = Purpose.SPEND)
+                public static boolean spend(Optional<PlutusData> datum, PlutusData redeemer, ScriptContext ctx) {
+                    return add(BigInteger.ONE, BigInteger.ONE).equals(BigInteger.TWO);
+                }
+                static BigInteger add(BigInteger a, BigInteger b) { BigInteger unused = BigInteger.ZERO; return a.add(b); }
             }
             """;
 
@@ -296,6 +308,7 @@ import org.julclang.core.flat.UplcFlatEncoder;
         var pins = Map.of(
                 "let-eta", new Pin(EDGE_LET_ETA, false, 0, 0, unchanged),
                 "alias-add", new Pin(EDGE_ALIAS_ADD, false, 0, 0, unchanged),
+                "unused-local", new Pin(EDGE_UNUSED_LOCAL, false, 0, 0, unchanged),
                 "dead", new Pin(EDGE_DEAD, true, -52, -40, Map.of("mint", -6, "spend", -9)));
         for (var entry : pins.entrySet()) {
             var pin = entry.getValue();

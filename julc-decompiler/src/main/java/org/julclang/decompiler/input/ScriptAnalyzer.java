@@ -60,14 +60,14 @@ public final class ScriptAnalyzer {
         return PlutusVersion.V1;
     }
 
-    /**
-     * Estimate the entrypoint arity by counting outermost consecutive lambdas.
-     */
     /** How many leading lambdas {@code program} takes: its estimated arity. */
     public static int estimatedArity(Program program) {
         return estimateArity(program.term());
     }
 
+    /**
+     * Estimate the entrypoint arity by counting outermost consecutive lambdas.
+     */
     private static int estimateArity(Term term) {
         int arity = 0;
         Term current = term;

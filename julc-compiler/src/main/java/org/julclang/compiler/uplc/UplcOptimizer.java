@@ -702,6 +702,15 @@ public class UplcOptimizer {
      * type-instantiated builtins. Larger values (Lam, Delay, Constr, partial
      * applications) are excluded to avoid moving code around.
      */
+    /**
+     * Whether beta reduction replaces a binding used once by {@code value}: a constant, a variable, or a builtin forced
+     * no more than its type arity. ADR-076's handler sharing asks this of a method's optimized body, since sharing a
+     * binding the optimizer would have inlined keeps it bound.
+     */
+    public static boolean inlinesWhenUsedOnce(Term value) {
+        return isSimple(value);
+    }
+
     private static boolean isSimple(Term term) {
         return switch (term) {
             case Term.Const _, Term.Var _, Term.Builtin _ -> true;

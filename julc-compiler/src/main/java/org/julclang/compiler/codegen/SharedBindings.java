@@ -1,10 +1,16 @@
 package org.julclang.compiler.codegen;
 
+import org.julclang.compiler.CompilationContext;
+import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.codegen.ValidatorAssembly.Method;
 import org.julclang.compiler.codegen.ValidatorAssembly.StaticField;
 import org.julclang.compiler.pir.PirSubstitution;
 import org.julclang.compiler.pir.PirTerm;
+import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.resolve.LibraryMethodRegistry.LibraryMethod;
+import org.julclang.compiler.uplc.UplcGenerator;
+import org.julclang.compiler.uplc.UplcOptimizer;
+import org.julclang.core.Term;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -36,10 +42,9 @@ import java.util.Set;
  * one of the total, cheap values the delayed-method pass leaves bound, so evaluating it before the dispatch instead of
  * after it gives the same values, failures and traces.
  * <p>
- * A run that reaches a handler takes the same steps: that handler bound the same methods, each a lambda the optimizer
- * does not inline ({@link #isKeptFunction}). The test reads PIR, so a lambda the optimizer later reduces to a builtin, or
- * a use a handler folds away, moves that budget by a few whole steps either way. A run whose purpose has no handler
- * fails at the dispatch, and now evaluates the shared bindings first (ADR-076 I3).
+ * A run that reaches a handler takes the same steps, or fewer: that handler bound the same methods, each still a lambda
+ * after the optimizer ({@link #optimizesToAFunction}), which it never inlines. A run whose purpose has no handler fails
+ * at the dispatch, and now evaluates the shared bindings first (ADR-076 I3).
  */
 public final class SharedBindings {
 
@@ -57,7 +62,7 @@ public final class SharedBindings {
 
     /** The shared methods of a validator whose handlers start at {@code entries}. */
     static SharedBindings of(List<PirTerm> entries, List<Method> helpers, List<StaticField> statics,
-                             Collection<LibraryMethod> libraries) {
+                             Collection<LibraryMethod> libraries, CompilationContext context) {
         var bodies = new HashMap<String, PirTerm>();
         for (var library : libraries) bodies.put(library.qualifiedName(), library.body());
         for (var helper : helpers) bodies.put(helper.name(), helper.body());
@@ -82,7 +87,8 @@ public final class SharedBindings {
                 // Everything it reaches must be a function the optimizer keeps, so that sharing it cannot stop an inlining
                 // (and every dependency of a shared method is shared too).
                 if (reached.stream().noneMatch(staticNames::contains)
-                        && reached.stream().allMatch(reachedName -> isKeptFunction(bodies.get(reachedName)))) {
+                        && reached.stream().allMatch(reachedName -> isKeptFunction(bodies.get(reachedName))
+                                && optimizesToAFunction(bodies.get(reachedName), context))) {
                     shared.add(name);
                 }
             }
@@ -128,6 +134,33 @@ public final class SharedBindings {
             case PirTerm.App app -> isBuiltinOver(app, parameters, aliases);
             default -> false;
         };
+    }
+
+    /**
+     * Whether {@code body} is still a function once the UPLC optimizer has run on it, not a value its beta reduction
+     * would inline into a single use ({@link UplcOptimizer#inlinesWhenUsedOnce}). The PIR shape {@link #isKeptFunction}
+     * reads cannot see everything the optimizer simplifies: an unused local is dropped and a lambda over a builtin
+     * becomes the builtin. So the body is lowered and optimized on its own, its free names as parameters, at this
+     * compilation's level, in a scratch context that records nothing. A body that cannot be lowered alone is not shared.
+     */
+    private static boolean optimizesToAFunction(PirTerm body, CompilationContext context) {
+        var free = new ArrayList<>(PirSubstitution.collectFreeVarNames(body));
+        PirTerm closed = body;
+        for (int i = free.size() - 1; i >= 0; i--) closed = new PirTerm.Lam(free.get(i), new PirType.DataType(), closed);
+        try {
+            var options = new CompilerOptions().setTarget(context.target()).setOptimizationLevel(context.optimizationLevel())
+                    .disableOptimizationRule(UplcOptimizer.SHARED_CLOSED_VALUES_RULE);
+            if (context.optimizationCostProfile() != null) options.setOptimizationCostProfile(context.optimizationCostProfile());
+            var scratch = CompilationContext.resolve(options);
+            Term term = new UplcOptimizer(scratch).optimize(new UplcGenerator(scratch, null).generate(closed));
+            for (int i = 0; i < free.size(); i++) {
+                if (!(term instanceof Term.Lam(var name, var inner))) return false;
+                term = inner;
+            }
+            return !UplcOptimizer.inlinesWhenUsedOnce(term);
+        } catch (RuntimeException e) {
+            return false;
+        }
     }
 
     /** Whether {@code app} is a builtin applied to exactly {@code parameters}, in order, read through {@code aliases}. */

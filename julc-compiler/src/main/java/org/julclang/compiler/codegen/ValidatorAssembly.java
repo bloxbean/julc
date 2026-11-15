@@ -190,7 +190,7 @@ public final class ValidatorAssembly {
         SharedBindings shared = !validator.autoDispatch() ? null
                 : context.optimizationLevel().pv11SafeRulesEnabled() && context.ruleEnabled(SharedBindings.RULE)
                 ? SharedBindings.of(validator.entries().stream().map(Entry::function).toList(), validator.helpers(),
-                        validator.statics(), validator.libraries())
+                        validator.statics(), validator.libraries(), context)
                 : SharedBindings.NONE;
         if (validator.autoDispatch()) {
             // Wrap the helper methods each handler needs alone around it (dependency-ordered)

@@ -7,8 +7,8 @@
   programs.
 - Each moves only closed values, or functions every handler already evaluates, so what a script computes, where it
   fails and what it traces do not change.
-- D1 never raised the budget of a run that reaches a handler in any case tested; it lowers it where a handler's use of a
-  shared method folds away. A run with no handler, which always fails at the dispatch, first evaluates the shared
+- D1 shares only methods that stay functions after the UPLC optimizer, so a run that reaches a handler keeps its
+  budget, or lowers it where a handler's use of a shared method folds away. A run with no handler, which always fails at the dispatch, first evaluates the shared
   bindings.
 - D2 lowers the budget on most paths, and can raise it by a few machine steps on a path that uses few shared values.
 
@@ -61,8 +61,8 @@ Under auto-dispatch, `SharedBindings` shares a helper or library method when all
   variables;
 - **nothing it reaches is a validator static field**, since static fields stay bound inside each handler, where their
   initializers have always run;
-- **it, and everything it reaches, is a function the optimizer keeps:** a lambda whose body is not just a builtin over
-  its parameters, read through the `let x = y` renames the javac frontend writes for a local alias.
+- **it, and everything it reaches, is a function the optimizer keeps.** Its body, lowered and optimized on its own with
+  its free names as parameters, must still be a lambda, not a value the inliner inlines into a single use.
 
 `ValidatorAssembly` binds the shared methods once, inside the multi-validator's context lambda and its `@Param`
 lambdas, around the preamble and the dispatch. So the program keeps its `\ctx` root. Everything else stays inside each
@@ -75,16 +75,27 @@ and kept, so the handler would do more work. A review measured that on a `five()
 run, an extra `lessThanInteger` that no longer folded. A lambda is never inlined, so sharing one moves its binding
 without changing what any handler evaluates.
 
-The test reads the method's PIR, before the optimizer has simplified it. Review found two helpers it first missed, both
-pinned in `SharedBindingsTest`:
-- `PlutusData e = d; return Builtins.unIData(e);`, which cost 3 steps more per handled run when shared;
-- `BigInteger c = a; return c.add(b);`, which stopped `add(ONE, ONE)` from folding.
+The decision is made on the optimized form because the PIR shape cannot show what the optimizer simplifies. Review
+found three helpers that are lambdas in PIR but builtins after optimization:
+- `PlutusData e = d; return Builtins.unIData(e);`;
+- `BigInteger c = a; return c.add(b);`;
+- `BigInteger unused = BigInteger.ZERO; return a.add(b);`.
 
-Each is a builtin behind a rename, which the test now reads through, so neither is shared. Seven other shared shapes
-were measured: constant locals, swapped and constant arguments, chained aliases and a projection over a builtin. All
-came out cheaper on handled runs, as does a handler whose only use of a shared method folds away under `if (never())`.
-A shape the test still cannot see would cost more; deciding on the optimized shape would close that, but the handlers
-are assembled before the optimizer runs (Open questions).
+Shared, each stayed bound, and `add(ONE, ONE)` stopped folding: 377,541 CPU more per run. So each candidate is lowered
+by `UplcGenerator` and optimized by `UplcOptimizer` alone, in a scratch context at the compilation's level that records
+nothing. It is shared only if the result is still a lambda, not a value `UplcOptimizer.inlinesWhenUsedOnce` accepts.
+A fast PIR pre-check rejects methods with no parameters and plain builtin wrappers first. A body that cannot be lowered
+alone is not shared.
+
+A method's body is optimized the same alone as in the program, except through the other methods it names. Those are
+parameters in the check, and in the program the inliner may replace one with a constant or a builtin. That cannot
+make a kept method inlinable:
+- The method stays a lambda unless eta reduction removes its last parameter.
+- If eta reduction leaves only one of the names, the check already sees a variable and does not share the method.
+- Otherwise eta reduction leaves an application still one argument short, which no constant folding reduces to a
+  value the inliner inlines. All three helpers
+are pinned in `SharedBindingsTest` as not shared, with identical programs and budgets. So is a helper whose only use in
+one handler folds away under `if (never())`, which shared costs 6 to 9 steps less.
 
 A shared method's dependencies are shared too, so every name stays in scope. Each binding is a function, so evaluating
 it before the dispatch instead of after it keeps every value, failure and trace. A run that reaches a handler takes the
@@ -144,9 +155,9 @@ builtins and the Z shape. `SharedRootBindings` substitutes a script's shared roo
   per force: one for `headList`, two for `sndPair`. Each shared value adds its binding once, at most 5 steps: an
   application, a lambda and the value.
 - **I3.** D1 evaluates on a handled run the bindings that handler evaluated before, all of them functions the optimizer
-  keeps. So the budget is unchanged, or lower where a handler's use of a shared method folds away. No tested shape costs
-  more; the PIR-shape test is the remaining risk (Decision, D1). A run with no handler pays for evaluating the shared
-  bindings before it fails, a fixed number of whole steps per program.
+  keeps, which it never inlines. So the budget is unchanged, or lower where a handler's use of a shared method folds
+  away. A run with no handler pays for evaluating the shared bindings before it fails, a fixed number of whole steps
+  per program.
 - **I4.** Below `PV11_SAFE`, or with a rule disabled, the output is what it was.
 
 ## Results
@@ -218,15 +229,16 @@ the guard only removes sharing that did not shrink a program.
   - D2 checks closedness and force counts, and matches the Z combinator exactly.
   - D1 shares only functions; a change to how the javac frontend lowers methods must keep that test meaningful.
 - **Budget.** D2 can raise a run's budget by up to 5 steps per shared value, on a run that uses few of them (I2). D1
-  could raise a handled run's budget for a helper whose PIR hides a builtin in a shape its test does not read; none is
-  known. It raises the budget of a run that fails for having no handler (I3).
+  raises the budget of a run that fails for having no handler (I3). It depends on the optimizer's inlining rule, so a
+  change to `inlinesWhenUsedOnce` must keep the two in step; they share the method.
 
 ## Implementation milestones
 
 1. D1 and D2, each behind its rule.
 2. The counter benchmark against Aiken.
 3. Reconciliation of goldens and other rules' cost tests, each held to its own guarantee with these rules off.
-4. Review fixes: D1's kept-function test, D2's closed and size guards, D4.
+4. Review fixes: D1 decided on each method's optimized form, D1 inside the context lambda, D2's closed and size
+   guards, D4.
 
 ## Verification
 
@@ -255,8 +267,6 @@ the guard only removes sharing that did not shrink a program.
 
 ## Open questions
 
-- **Decide D1 on the optimized shape.** Sharing after the optimizer would make I3 hold by construction, but the
-  handlers are assembled before it runs.
 - **One Z combinator.** It is written in `UplcGenerator`, `ClosedValueSharing`, the decompiler and a test helper. One
   constant in julc-core would keep them from drifting.
 
