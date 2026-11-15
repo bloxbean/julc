@@ -83,6 +83,20 @@ class Adr060ByteSnapshotTest {
         // earlier for the reasons above; BASELINE without source maps had kept its bytes until now.
         for (int hygiene : List.of(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 21))
             EXPLAINED.put("hygiene-" + hygiene + "-BASELINE-false", "ADR-070 D5: any and all stop at the deciding element");
+        // ADR-076 D2: after the optimizer, repeated forced builtins and fixpoint combinators are bound once at the program
+        // root; the optimizer runs without source maps, and D2 only at PV11_SAFE and PV11_COSTED. These rows had kept
+        // their bytes until now. D1 (shared handler bindings) moves no row of the corpus, and the other rows D2 moves are
+        // explained above.
+        String sharing = "ADR-076 D2: repeated closed values are bound once at the program root";
+        for (var id : List.of("golden-1", "golden-3", "golden-4", "golden-5", "golden-6", "golden-7", "hygiene-15",
+                "hygiene-19", "o9-2", "o9-12", "o9-14", "o9-15", "o9-16", "o9-17", "o9-19", "o11-1", "o11-13", "o11-15",
+                "o11-17", "o15-17")) {
+            EXPLAINED.put(id + "-PV11_SAFE-false", sharing);
+            EXPLAINED.put(id + "-PV11_COSTED-false", sharing);
+        }
+        for (var id : List.of("o9-0", "o9-3", "o9-4", "o9-6", "o9-7", "o9-8", "o9-9", "o9-10", "o9-18", "o9-22", "o11-2",
+                "o15-15"))
+            EXPLAINED.put(id + "-PV11_SAFE-false", sharing);
     }
 
     private static void delayed(String id) {

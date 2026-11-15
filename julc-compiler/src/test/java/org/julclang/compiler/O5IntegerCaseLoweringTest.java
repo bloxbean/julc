@@ -117,10 +117,15 @@ class O5IntegerCaseLoweringTest {
                     assertEquals(level.pv11SafeRulesEnabled() && dispatches,
                             compiled.optimizationReport().appliedRules().contains(UplcGenerator.PV11_CASE_INTEGER_RULE),
                             i + "/" + level);
+                    // O5 is held to its own byte, size and budget guarantees without ADR-076's sharing, and the
+                    // program with it to ADR-076's.
+                    var unshared = PairCaseLoweringTest.compileWithoutAdr076(source, level, maps);
+                    int shared = Adr076Sharing.assertSharesOnlyClosedValues(compiled, unshared, i + "/" + level + "/" + maps);
+                    var unsharedBytes = UplcFlatEncoder.encodeProgram(unshared.program());
                     if (!level.pv11SafeRulesEnabled() || !dispatches) {
-                        assertArrayEquals(UplcFlatEncoder.encodeProgram(old), bytes, i + "/" + level + "/" + maps);
+                        assertArrayEquals(UplcFlatEncoder.encodeProgram(old), unsharedBytes, i + "/" + level + "/" + maps);
                     } else {
-                        assertTrue(bytes.length < UplcFlatEncoder.encodeProgram(old).length, i + "/" + maps);
+                        assertTrue(unsharedBytes.length < UplcFlatEncoder.encodeProgram(old).length, i + "/" + maps);
                         assertNotEquals(JulcScriptAdapter.scriptHash(old), JulcScriptAdapter.scriptHash(program));
                     }
                     for (var input : inputs) {
@@ -144,8 +149,10 @@ class O5IntegerCaseLoweringTest {
                             if (provider.equals("Java")) javaResult = after;
                             if (provider.equals("Truffle")) assertEquals(javaResult.budgetConsumed(), after.budgetConsumed(), label);
                             if (level.pv11SafeRulesEnabled() && !provider.equals("Scalus")) {
-                                assertTrue(after.budgetConsumed().cpuSteps() <= before.budgetConsumed().cpuSteps(), label);
-                                assertTrue(after.budgetConsumed().memoryUnits() <= before.budgetConsumed().memoryUnits(), label);
+                                var plain = evaluate(unshared.program(), input.redeemer(), provider);
+                                assertTrue(plain.budgetConsumed().cpuSteps() <= before.budgetConsumed().cpuSteps(), label);
+                                assertTrue(plain.budgetConsumed().memoryUnits() <= before.budgetConsumed().memoryUnits(), label);
+                                Adr076Sharing.assertBudgetWithin(after.budgetConsumed(), plain.budgetConsumed(), shared, label);
                             }
                             if (level == OptimizationLevel.PV11_SAFE && !maps && provider.equals("Java")) {
                                 System.out.println("INTEGER_CASE_COST " + i + " " + input + " "

@@ -109,9 +109,14 @@ class SwitchPairCaseLoweringTest {
                     assertArrayEquals(bytes, UplcFlatEncoder.encodeProgram(
                             PairCaseLoweringTest.compile(SOURCES.get(i), level, maps).program()));
                     var old = golden(i, level.pv11SafeRulesEnabled() ? OptimizationLevel.PV11_SAFE : level, maps);
+                    // O4 is held to its own size and budget guarantees without ADR-076's sharing, and the program
+                    // with it to ADR-076's.
+                    var unshared = PairCaseLoweringTest.compileWithoutAdr076(SOURCES.get(i), level, maps);
+                    int shared = Adr076Sharing.assertSharesOnlyClosedValues(compiled, unshared, i + "/" + level + "/" + maps);
                     if (!level.pv11SafeRulesEnabled()) assertArrayEquals(UplcFlatEncoder.encodeProgram(old), bytes);
                     else {
-                        assertTrue(bytes.length < UplcFlatEncoder.encodeProgram(old).length, i + "/" + maps);
+                        assertTrue(UplcFlatEncoder.encodeProgram(unshared.program()).length
+                                < UplcFlatEncoder.encodeProgram(old).length, i + "/" + maps);
                         assertNotEquals(JulcScriptAdapter.scriptHash(old), JulcScriptAdapter.scriptHash(program));
                     }
                     for (var input : inputs) {
@@ -125,8 +130,10 @@ class SwitchPairCaseLoweringTest {
                             if (provider.equals("Java")) javaResult = after;
                             if (provider.equals("Truffle")) assertEquals(javaResult.budgetConsumed(), after.budgetConsumed(), label);
                             if (level.pv11SafeRulesEnabled() && !provider.equals("Scalus")) {
-                                assertTrue(after.budgetConsumed().cpuSteps() <= before.budgetConsumed().cpuSteps(), label);
-                                assertTrue(after.budgetConsumed().memoryUnits() <= before.budgetConsumed().memoryUnits(), label);
+                                var plain = evaluate(unshared.program(), input.data(), provider);
+                                assertTrue(plain.budgetConsumed().cpuSteps() <= before.budgetConsumed().cpuSteps(), label);
+                                assertTrue(plain.budgetConsumed().memoryUnits() <= before.budgetConsumed().memoryUnits(), label);
+                                Adr076Sharing.assertBudgetWithin(after.budgetConsumed(), plain.budgetConsumed(), shared, label);
                             }
                             if (level == OptimizationLevel.PV11_SAFE && !maps && provider.equals("Java")) {
                                 System.out.println("SWITCH_COST " + i + " " + input + " " + before.budgetConsumed() + " -> " + after.budgetConsumed());
