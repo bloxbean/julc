@@ -3,6 +3,7 @@ package org.julclang.core.source;
 import org.julclang.core.Term;
 
 import java.util.*;
+import java.util.function.Consumer;
 
 /**
  * Serializes and deserializes {@link SourceMap} instances to/from a position-based
@@ -59,69 +60,61 @@ public final class SourceMapSerializer {
                                      IdentityHashMap<Term, SourceLocation> positions,
                                      Map<Integer, SourceLocation> result,
                                      int[] counter) {
-        int idx = counter[0]++;
-        SourceLocation loc = positions.get(term);
-        if (loc != null) {
-            result.put(idx, loc);
-        }
-        // Recurse into children in the same order as UplcFlatDecoder
-        switch (term) {
-            case Term.Var _, Term.Const _, Term.Builtin _, Term.Error _ -> {
-                // leaf nodes — no children
+        preOrder(term, node -> {
+            int idx = counter[0]++;
+            SourceLocation loc = positions.get(node);
+            if (loc != null) {
+                result.put(idx, loc);
             }
-            case Term.Lam(var _, var body) -> walkToIndex(body, positions, result, counter);
-            case Term.Apply(var function, var argument) -> {
-                walkToIndex(function, positions, result, counter);
-                walkToIndex(argument, positions, result, counter);
-            }
-            case Term.Force(var child) -> walkToIndex(child, positions, result, counter);
-            case Term.Delay(var child) -> walkToIndex(child, positions, result, counter);
-            case Term.Constr(var _, var fields) -> {
-                for (Term field : fields) {
-                    walkToIndex(field, positions, result, counter);
-                }
-            }
-            case Term.Case(var scrutinee, var branches) -> {
-                walkToIndex(scrutinee, positions, result, counter);
-                for (Term branch : branches) {
-                    walkToIndex(branch, positions, result, counter);
-                }
-            }
-        }
+        });
     }
 
     private static void walkFromIndex(Term term,
                                        Map<Integer, SourceLocation> indexed,
                                        IdentityHashMap<Term, SourceLocation> result,
                                        int[] counter) {
-        int idx = counter[0]++;
-        SourceLocation loc = indexed.get(idx);
-        if (loc != null) {
-            result.put(term, loc);
-        }
-        switch (term) {
-            case Term.Var _, Term.Const _, Term.Builtin _, Term.Error _ -> {
-                // leaf nodes
+        preOrder(term, node -> {
+            int idx = counter[0]++;
+            SourceLocation loc = indexed.get(idx);
+            if (loc != null) {
+                result.put(node, loc);
             }
-            case Term.Lam(var _, var body) -> walkFromIndex(body, indexed, result, counter);
-            case Term.Apply(var function, var argument) -> {
-                walkFromIndex(function, indexed, result, counter);
-                walkFromIndex(argument, indexed, result, counter);
-            }
-            case Term.Force(var child) -> walkFromIndex(child, indexed, result, counter);
-            case Term.Delay(var child) -> walkFromIndex(child, indexed, result, counter);
-            case Term.Constr(var _, var fields) -> {
-                for (Term field : fields) {
-                    walkFromIndex(field, indexed, result, counter);
+        });
+    }
+
+    /**
+     * Visits every node of {@code root} in DFS pre-order, children left to right as {@code UplcFlatDecoder} reads them,
+     * from a work list rather than by recursion, so a deep term needs no more Java stack than a shallow one
+     * (issue #327, ADR-074).
+     */
+    private static void preOrder(Term root, Consumer<Term> visit) {
+        var pending = new ArrayDeque<Term>();
+        pending.push(root);
+        while (!pending.isEmpty()) {
+            Term term = pending.pop();
+            visit.accept(term);
+            switch (term) {
+                case Term.Var _, Term.Const _, Term.Builtin _, Term.Error _ -> {
+                    // leaf nodes — no children
+                }
+                case Term.Lam(var _, var body) -> pending.push(body);
+                case Term.Apply(var function, var argument) -> {
+                    pending.push(argument);
+                    pending.push(function);
+                }
+                case Term.Force(var child) -> pending.push(child);
+                case Term.Delay(var child) -> pending.push(child);
+                case Term.Constr(var _, var fields) -> pushReversed(fields, pending);
+                case Term.Case(var scrutinee, var branches) -> {
+                    pushReversed(branches, pending);
+                    pending.push(scrutinee);
                 }
             }
-            case Term.Case(var scrutinee, var branches) -> {
-                walkFromIndex(scrutinee, indexed, result, counter);
-                for (Term branch : branches) {
-                    walkFromIndex(branch, indexed, result, counter);
-                }
-            }
         }
+    }
+
+    private static void pushReversed(List<Term> terms, ArrayDeque<Term> pending) {
+        for (int i = terms.size() - 1; i >= 0; i--) pending.push(terms.get(i));
     }
 
     // ---- JSON serialization (hand-rolled, no external deps) ----

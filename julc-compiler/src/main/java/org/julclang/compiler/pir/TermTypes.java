@@ -53,13 +53,53 @@ public final class TermTypes {
 
     /**
      * Infer the PirType of a PIR term by structural analysis.
+     * <p>
+     * A loop, not recursion (issue #327): most forms are typed by one sub-term (a {@code let}'s body, a conditional's
+     * branch), and a call of an unknown function by its function's type, which is unwound once that type is known.
      */
     public PirType infer(PirTerm term) {
+        int calls = 0;
+        PirType type;
+        while (true) {
+            var step = inferStep(term);
+            if (step.done()) {
+                type = step.type();
+                break;
+            }
+            if (step.call()) calls++;
+            term = step.next();
+        }
+        // Each pending call of a function of unknown type is typed by its function's return type, else Data.
+        for (; calls > 0; calls--) {
+            type = type instanceof PirType.FunType ft ? ft.returnType() : new PirType.DataType();
+        }
+        return type;
+    }
+
+    /**
+     * One step of {@link #infer}: a type, or the sub-term {@code next} whose type is the answer, or, when {@code call},
+     * the function of a call, whose type's return type is the answer.
+     */
+    private record Step(boolean done, PirType type, PirTerm next, boolean call) {
+        static Step of(PirType type) {
+            return new Step(true, type, null, false);
+        }
+
+        static Step typeOf(PirTerm next) {
+            return new Step(false, null, next, false);
+        }
+
+        static Step returnTypeOf(PirTerm function) {
+            return new Step(false, null, function, true);
+        }
+    }
+
+    private Step inferStep(PirTerm term) {
         // A term produced by a typed dispatch carries the type the registry declared for it.
         var recorded = termTypes.get(term);
-        if (recorded != null) return recorded;
+        if (recorded != null) return Step.of(recorded);
         if (term instanceof PirTerm.Const c) {
-            return switch (c.value()) {
+            return Step.of(switch (c.value()) {
                 case Constant.IntegerConst _ -> new PirType.IntegerType();
                 case Constant.BoolConst _ -> new PirType.BoolType();
                 case Constant.StringConst _ -> new PirType.StringType();
@@ -76,14 +116,14 @@ public final class TermTypes {
                 case Constant.ListConst list when list.elemType() instanceof DefaultUni.Bls12_381_G2_Element ->
                         new PirType.NativeListType(new PirType.NativeG2Type());
                 default -> new PirType.DataType();
-            };
+            });
         }
         if (term instanceof PirTerm.App app) {
             // An array literal is typed by the source types of its elements (ADR-046).
             var elementTypes = arrayLiteralElementTypes(term);
             if (elementTypes.isPresent()) {
                 var distinct = new LinkedHashSet<>(elementTypes.get());
-                return new PirType.ArrayType(distinct.size() == 1 ? distinct.iterator().next() : new PirType.DataType());
+                return Step.of(new PirType.ArrayType(distinct.size() == 1 ? distinct.iterator().next() : new PirType.DataType()));
             }
             PirTerm fn = app.function();
             if (fn instanceof PirTerm.Builtin b) {
@@ -91,50 +131,47 @@ public final class TermTypes {
                         && app.argument() instanceof PirTerm.App argApp
                         && argApp.function() instanceof PirTerm.Builtin argB
                         && argB.fun() == DefaultFun.UnConstrData) {
-                    return new PirType.IntegerType();
+                    return Step.of(new PirType.IntegerType());
                 }
-                return builtinReturnType(b.fun());
+                return Step.of(builtinReturnType(b.fun()));
             }
             var root = fn;
             while (root instanceof PirTerm.App nested) {
                 root = nested.function();
             }
             if (root instanceof PirTerm.Builtin builtin) {
-                return builtinReturnType(builtin.fun());
+                return Step.of(builtinReturnType(builtin.fun()));
             }
-            var fnType = infer(fn);
-            if (fnType instanceof PirType.FunType ft) {
-                return ft.returnType();
-            }
+            return Step.returnTypeOf(fn);
         }
         if (term instanceof PirTerm.Var v) {
-            return v.type();
+            return Step.of(v.type());
         }
         if (term instanceof PirTerm.PairMatch m) {
-            return m.body() instanceof PirTerm.Error error ? error.type() : infer(m.body());
+            return m.body() instanceof PirTerm.Error error ? Step.of(error.type()) : Step.typeOf(m.body());
         }
         if (term instanceof PirTerm.IntegerCase c) {
             // Every branch produces the same result type; prefer a non-Error branch.
             for (var branch : c.branches()) {
-                if (!(branch instanceof PirTerm.Error)) return infer(branch);
+                if (!(branch instanceof PirTerm.Error)) return Step.typeOf(branch);
             }
-            return ((PirTerm.Error) c.branches().getFirst()).type();
+            return Step.of(((PirTerm.Error) c.branches().getFirst()).type());
         }
         if (term instanceof PirTerm.ListMatch m) {
             // The guarded for-each producer uses a typed Error for unreachable nil.
             return m.nilBranch() instanceof PirTerm.Error error
-                    ? error.type() : infer(m.nilBranch());
+                    ? Step.of(error.type()) : Step.typeOf(m.nilBranch());
         }
         if (term instanceof PirTerm.IfThenElse ite) {
-            return infer(ite.thenBranch());
+            return Step.typeOf(ite.thenBranch());
         }
         if (term instanceof PirTerm.Let let) {
-            return infer(let.body());
+            return Step.typeOf(let.body());
         }
         if (term instanceof PirTerm.LetRec letRec) {
-            return infer(letRec.body());
+            return Step.typeOf(letRec.body());
         }
-        return new PirType.DataType();
+        return Step.of(new PirType.DataType());
     }
 
     /**

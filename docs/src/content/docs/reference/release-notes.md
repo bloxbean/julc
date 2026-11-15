@@ -7,6 +7,26 @@ Each section below is a release, newest first.
 
 ## 0.1.0-pre21
 
+### Long programs compile on small stacks (#327)
+
+The compiler's walks over a program no longer recurse on the Java stack as deep as the program is long. This covers:
+- the PIR passes, UPLC generation and the optimizer;
+- the verifier;
+- FLAT encoding and decoding, and source maps;
+- the call graph;
+- the front end's lowering of a block's statements.
+
+Before, a validator with a few hundred helper methods, early returns or `else if` branches could exhaust the stack. In
+the WebAssembly engine on Node's default stack, that showed as an opaque `TypeError: type incompatibility when
+transforming from/to JS`. Programs with a few hundred helper methods or early returns now compile on a 256 KB stack. In
+the WebAssembly engine on a 1 MB stack, 600 helpers or 1,500 early returns compile, which used to fail.
+
+This change leaves compiled scripts as they were: a replay of about 55,000 recorded compilations gives the same bytes,
+source maps, diagnostics and debug metadata as before. Compilation takes about 12 % longer. Nesting inside the Java
+source is still limited by javac's own parser: an expression inside an expression, and an `else if` chain, which javac
+parses as nested statements. JuLC used to overflow first, at about 88 branches on a 256 KB stack; now javac does, at
+about 186 branches on 256 KB and 3,999 on 1 MB (ADR-074).
+
 ### The script no longer depends on import order (#328)
 
 A validator binds the library methods it uses with `let`s, each method's dependencies outside it. Their order used to

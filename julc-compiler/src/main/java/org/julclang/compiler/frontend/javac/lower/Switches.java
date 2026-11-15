@@ -299,7 +299,7 @@ final class Switches {
         }
         List<? extends StatementTree> group = entry.getStatements();
         if (group.size() == 1 && group.getFirst() instanceof BlockTree block) return block(block, frame);
-        return statements.sequence(group, 0, frame, null);
+        return statements.sequence(group, 0, frame, null).run();
     }
 
     /** A case block must yield on every path, by the reference's reading, which is stricter than javac's in a bare block. */
@@ -307,6 +307,6 @@ final class Switches {
         if (!Exits.allPathsYield(block.getStatements())) {
             throw facts.rejection(DiagnosticCodes.SWITCH_BLOCK_MAY_NOT_YIELD, block);
         }
-        return statements.block(block, frame);
+        return statements.block(block, frame).run();
     }
 }

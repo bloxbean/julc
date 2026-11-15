@@ -10,6 +10,7 @@ import org.julclang.compiler.pir.PirHelpers;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.core.Constant;
+import org.julclang.core.recursion.Trampoline;
 import org.julclang.core.source.SourceLocation;
 
 import javax.lang.model.element.Element;
@@ -17,6 +18,7 @@ import javax.lang.model.element.ExecutableElement;
 import java.math.BigInteger;
 import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
@@ -183,12 +185,37 @@ public final class Terms {
     }
 
     private static PirTerm.Let itemLet(PirTerm term, String item) {
-        return switch (term) {
-            case PirTerm.Let let when let.name().equals(item) -> let;
-            case PirTerm.App call -> itemLet(call.argument(), item);
-            case PirTerm.ListMatch match -> itemLet(match.consBranch(), item);
-            default -> throw new IllegalStateException("No binder of " + item + " in a loop: " + term.getClass().getSimpleName());
-        };
+        while (true) {
+            switch (term) {
+                case PirTerm.Let let when let.name().equals(item) -> {
+                    return let;
+                }
+                case PirTerm.App call -> term = call.argument();
+                case PirTerm.ListMatch match -> term = match.consBranch();
+                default -> throw new IllegalStateException("No binder of " + item + " in a loop: " + term.getClass().getSimpleName());
+            }
+        }
+    }
+
+    /** Where {@link #readOnce} places its body, as a term no lowering builds: compared by identity. */
+    private static final PirTerm HOLE = new PirTerm.Error(new PirType.UnitType());
+
+    /**
+     * {@link PirHelpers#readOnce(PirTerm, PirType, java.util.function.UnaryOperator)}, for a {@code body} that is itself a
+     * stack-safe walk (issue #327): the same binder, chosen the same way, and {@code body} called with the same read, after
+     * the binder is chosen, as there. That method places its body either alone or as the body of one {@code let}.
+     */
+    static Trampoline<PirTerm> readOnce(PirTerm operand, PirType type, Function<PirTerm, Trampoline<PirTerm>> body) {
+        var read = new PirTerm[1];
+        var skeleton = PirHelpers.readOnce(operand, type, chosen -> {
+            read[0] = chosen;
+            return HOLE;
+        });
+        return body.apply(read[0]).map(term -> {
+            if (skeleton == HOLE) return term;
+            if (skeleton instanceof PirTerm.Let let && let.body() == HOLE) return new PirTerm.Let(let.name(), let.value(), term);
+            throw new IllegalStateException("readOnce placed its body in an unexpected term: " + skeleton.getClass().getSimpleName());
+        });
     }
 
     /** A branch of a {@code DataMatch} that binds {@code bindings} and, to the scrutinee, the pattern variable of {@code binder}. */

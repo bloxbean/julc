@@ -4,7 +4,10 @@ import org.julclang.compiler.resolve.LibraryMethodRegistry;
 import org.julclang.core.Constant;
 import org.julclang.core.text.UplcPrinter;
 
+import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.HexFormat;
+import java.util.List;
 
 /**
  * Pretty-prints PIR (Plutus Intermediate Representation) terms to a human-readable
@@ -27,18 +30,14 @@ public final class PirFormatter {
      * Format a PIR term to a compact single-line string.
      */
     public static String format(PirTerm term) {
-        var sb = new StringBuilder();
-        formatTerm(term, sb);
-        return sb.toString();
+        return print(new Sub(term, false, 0));
     }
 
     /**
      * Format a PIR term with indented multi-line output.
      */
     public static String formatPretty(PirTerm term) {
-        var sb = new StringBuilder();
-        formatTermPretty(term, sb, 0);
-        return sb.toString();
+        return print(new Sub(term, true, 0));
     }
 
     /**
@@ -48,254 +47,245 @@ public final class PirFormatter {
         return LibraryMethodRegistry.pirTypeName(type);
     }
 
+    /** A sub-term still to print, compact or indented at {@code indent}. */
+    private record Sub(PirTerm term, boolean pretty, int indent) {}
+
+    /**
+     * Prints with a work list of text and sub-terms, not recursion (issue #327): each term is replaced by its pieces
+     * in order, so the text comes out as a recursive printer would write it.
+     */
+    private static String print(Sub root) {
+        var sb = new StringBuilder();
+        var pending = new ArrayDeque<Object>();
+        pending.push(root);
+        while (!pending.isEmpty()) {
+            var next = pending.pop();
+            if (next instanceof String text) {
+                sb.append(text);
+                continue;
+            }
+            var sub = (Sub) next;
+            var pieces = new ArrayList<Object>();
+            if (sub.pretty()) formatTermPretty(sub.term(), pieces, sub.indent());
+            else formatTerm(sub.term(), pieces);
+            for (int i = pieces.size() - 1; i >= 0; i--) pending.push(pieces.get(i));
+        }
+        return sb.toString();
+    }
+
     // --- Compact formatting ---
 
-    private static void formatTerm(PirTerm term, StringBuilder sb) {
+    private static void formatTerm(PirTerm term, List<Object> out) {
         switch (term) {
-            case PirTerm.Var v -> sb.append(v.name());
+            case PirTerm.Var v -> out.add(v.name());
             case PirTerm.Let let -> {
-                sb.append("(let ").append(let.name()).append(" = ");
-                formatTerm(let.value(), sb);
-                sb.append(" in ");
-                formatTerm(let.body(), sb);
-                sb.append(')');
+                out.add("(let " + let.name() + " = ");
+                out.add(compact(let.value()));
+                out.add(" in ");
+                out.add(compact(let.body()));
+                out.add(")");
             }
             case PirTerm.LetRec lr -> {
-                sb.append("(letrec ");
+                out.add("(letrec ");
                 for (int i = 0; i < lr.bindings().size(); i++) {
-                    if (i > 0) sb.append("; ");
+                    if (i > 0) out.add("; ");
                     var b = lr.bindings().get(i);
-                    sb.append(b.name()).append(" = ");
-                    formatTerm(b.value(), sb);
+                    out.add(b.name() + " = ");
+                    out.add(compact(b.value()));
                 }
-                sb.append(" in ");
-                formatTerm(lr.body(), sb);
-                sb.append(')');
+                out.add(" in ");
+                out.add(compact(lr.body()));
+                out.add(")");
             }
             case PirTerm.Lam lam -> {
-                sb.append("(lam ").append(lam.param());
-                sb.append(" : ").append(formatType(lam.paramType()));
-                sb.append(' ');
-                formatTerm(lam.body(), sb);
-                sb.append(')');
+                out.add("(lam " + lam.param() + " : " + formatType(lam.paramType()) + " ");
+                out.add(compact(lam.body()));
+                out.add(")");
             }
             case PirTerm.App app -> {
-                sb.append('[');
-                formatTerm(app.function(), sb);
-                sb.append(' ');
-                formatTerm(app.argument(), sb);
-                sb.append(']');
+                out.add("[");
+                out.add(compact(app.function()));
+                out.add(" ");
+                out.add(compact(app.argument()));
+                out.add("]");
             }
-            case PirTerm.Const c -> {
-                sb.append("(con ");
-                formatConstant(c.value(), sb);
-                sb.append(')');
-            }
-            case PirTerm.Builtin b -> {
-                sb.append("(builtin ");
-                sb.append(builtinName(b.fun()));
-                sb.append(')');
-            }
+            case PirTerm.Const c -> out.add(constant(c));
+            case PirTerm.Builtin b -> out.add("(builtin " + builtinName(b.fun()) + ")");
             case PirTerm.IfThenElse ite -> {
-                sb.append("(if ");
-                formatTerm(ite.cond(), sb);
-                sb.append(" then ");
-                formatTerm(ite.thenBranch(), sb);
-                sb.append(" else ");
-                formatTerm(ite.elseBranch(), sb);
-                sb.append(')');
+                out.add("(if ");
+                out.add(compact(ite.cond()));
+                out.add(" then ");
+                out.add(compact(ite.thenBranch()));
+                out.add(" else ");
+                out.add(compact(ite.elseBranch()));
+                out.add(")");
             }
             case PirTerm.DataConstr dc -> {
-                sb.append("(constr ").append(dc.tag());
+                out.add("(constr " + dc.tag());
                 for (var field : dc.fields()) {
-                    sb.append(' ');
-                    formatTerm(field, sb);
+                    out.add(" ");
+                    out.add(compact(field));
                 }
-                sb.append(')');
+                out.add(")");
             }
-            case PirTerm.IntegerCase c -> {
-                sb.append("(integer-case ");
-                formatTerm(c.scrutinee(), sb);
-                sb.append(" [");
-                for (int i = 0; i < c.branches().size(); i++) {
-                    if (i > 0) sb.append(", ");
-                    formatTerm(c.branches().get(i), sb);
-                }
-                sb.append("])");
-            }
-            case PirTerm.PairMatch m -> {
-                sb.append("(pair-match ");
-                formatTerm(m.scrutinee(), sb);
-                sb.append(" [").append(m.firstName()).append(", ").append(m.secondName()).append("] => ");
-                formatTerm(m.body(), sb);
-                sb.append(')');
-            }
-            case PirTerm.ListMatch m -> {
-                sb.append("(list-match ");
-                formatTerm(m.scrutinee(), sb);
-                sb.append(" [] => ");
-                formatTerm(m.nilBranch(), sb);
-                sb.append(" [").append(m.headName()).append(" :: ").append(m.tailName()).append("] => ");
-                formatTerm(m.consBranch(), sb);
-                sb.append(')');
-            }
+            case PirTerm.IntegerCase c -> integerCase(c, out);
+            case PirTerm.PairMatch m -> pairMatch(m, out);
+            case PirTerm.ListMatch m -> listMatch(m, out);
             case PirTerm.DataMatch dm -> {
-                sb.append("(match ");
-                formatTerm(dm.scrutinee(), sb);
+                out.add("(match ");
+                out.add(compact(dm.scrutinee()));
                 for (var branch : dm.branches()) {
-                    sb.append(" [").append(branch.constructorName());
-                    for (var binding : branch.bindings()) {
-                        sb.append(' ').append(binding);
-                    }
-                    sb.append(" => ");
-                    formatTerm(branch.body(), sb);
-                    sb.append(']');
+                    out.add(" [" + branch.constructorName() + bindings(branch) + " => ");
+                    out.add(compact(branch.body()));
+                    out.add("]");
                 }
-                sb.append(')');
+                out.add(")");
             }
-            case PirTerm.Error e -> sb.append("(error)");
+            case PirTerm.Error e -> out.add("(error)");
             case PirTerm.Trace t -> {
-                sb.append("(trace ");
-                formatTerm(t.message(), sb);
-                sb.append(' ');
-                formatTerm(t.body(), sb);
-                sb.append(')');
+                out.add("(trace ");
+                out.add(compact(t.message()));
+                out.add(" ");
+                out.add(compact(t.body()));
+                out.add(")");
             }
         }
     }
 
     // --- Pretty (indented) formatting ---
 
-    private static void formatTermPretty(PirTerm term, StringBuilder sb, int indent) {
+    private static void formatTermPretty(PirTerm term, List<Object> out, int indent) {
         switch (term) {
-            case PirTerm.Var v -> sb.append(v.name());
+            case PirTerm.Var v -> out.add(v.name());
             case PirTerm.Let let -> {
-                sb.append("(let ").append(let.name()).append(" =\n");
-                indent(sb, indent + 2);
-                formatTermPretty(let.value(), sb, indent + 2);
-                sb.append('\n');
-                indent(sb, indent);
-                sb.append("in\n");
-                indent(sb, indent + 2);
-                formatTermPretty(let.body(), sb, indent + 2);
-                sb.append(')');
+                out.add("(let " + let.name() + " =\n" + spaces(indent + 2));
+                out.add(pretty(let.value(), indent + 2));
+                out.add("\n" + spaces(indent) + "in\n" + spaces(indent + 2));
+                out.add(pretty(let.body(), indent + 2));
+                out.add(")");
             }
             case PirTerm.LetRec lr -> {
-                sb.append("(letrec\n");
+                out.add("(letrec\n");
                 for (int i = 0; i < lr.bindings().size(); i++) {
                     var b = lr.bindings().get(i);
-                    indent(sb, indent + 2);
-                    sb.append(b.name()).append(" =\n");
-                    indent(sb, indent + 4);
-                    formatTermPretty(b.value(), sb, indent + 4);
-                    if (i < lr.bindings().size() - 1) sb.append(';');
-                    sb.append('\n');
+                    out.add(spaces(indent + 2) + b.name() + " =\n" + spaces(indent + 4));
+                    out.add(pretty(b.value(), indent + 4));
+                    out.add((i < lr.bindings().size() - 1 ? ";" : "") + "\n");
                 }
-                indent(sb, indent);
-                sb.append("in\n");
-                indent(sb, indent + 2);
-                formatTermPretty(lr.body(), sb, indent + 2);
-                sb.append(')');
+                out.add(spaces(indent) + "in\n" + spaces(indent + 2));
+                out.add(pretty(lr.body(), indent + 2));
+                out.add(")");
             }
             case PirTerm.Lam lam -> {
-                sb.append("(lam ").append(lam.param());
-                sb.append(" : ").append(formatType(lam.paramType()));
-                sb.append('\n');
-                indent(sb, indent + 2);
-                formatTermPretty(lam.body(), sb, indent + 2);
-                sb.append(')');
+                out.add("(lam " + lam.param() + " : " + formatType(lam.paramType()) + "\n" + spaces(indent + 2));
+                out.add(pretty(lam.body(), indent + 2));
+                out.add(")");
             }
             case PirTerm.App app -> {
-                sb.append('[');
-                formatTermPretty(app.function(), sb, indent);
-                sb.append(' ');
-                formatTermPretty(app.argument(), sb, indent);
-                sb.append(']');
+                out.add("[");
+                out.add(pretty(app.function(), indent));
+                out.add(" ");
+                out.add(pretty(app.argument(), indent));
+                out.add("]");
             }
-            case PirTerm.Const c -> {
-                sb.append("(con ");
-                formatConstant(c.value(), sb);
-                sb.append(')');
-            }
-            case PirTerm.Builtin b -> {
-                sb.append("(builtin ");
-                sb.append(builtinName(b.fun()));
-                sb.append(')');
-            }
+            case PirTerm.Const c -> out.add(constant(c));
+            case PirTerm.Builtin b -> out.add("(builtin " + builtinName(b.fun()) + ")");
             case PirTerm.IfThenElse ite -> {
-                sb.append("(if ");
-                formatTermPretty(ite.cond(), sb, indent + 2);
-                sb.append('\n');
-                indent(sb, indent + 2);
-                sb.append("then ");
-                formatTermPretty(ite.thenBranch(), sb, indent + 7);
-                sb.append('\n');
-                indent(sb, indent + 2);
-                sb.append("else ");
-                formatTermPretty(ite.elseBranch(), sb, indent + 7);
-                sb.append(')');
+                out.add("(if ");
+                out.add(pretty(ite.cond(), indent + 2));
+                out.add("\n" + spaces(indent + 2) + "then ");
+                out.add(pretty(ite.thenBranch(), indent + 7));
+                out.add("\n" + spaces(indent + 2) + "else ");
+                out.add(pretty(ite.elseBranch(), indent + 7));
+                out.add(")");
             }
             case PirTerm.DataConstr dc -> {
-                sb.append("(constr ").append(dc.tag());
+                out.add("(constr " + dc.tag());
                 for (var field : dc.fields()) {
-                    sb.append(' ');
-                    formatTermPretty(field, sb, indent);
+                    out.add(" ");
+                    out.add(pretty(field, indent));
                 }
-                sb.append(')');
+                out.add(")");
             }
-            case PirTerm.IntegerCase c -> {
-                sb.append("(integer-case ");
-                formatTerm(c.scrutinee(), sb);
-                sb.append(" [");
-                for (int i = 0; i < c.branches().size(); i++) {
-                    if (i > 0) sb.append(", ");
-                    formatTerm(c.branches().get(i), sb);
-                }
-                sb.append("])");
-            }
-            case PirTerm.PairMatch m -> {
-                sb.append("(pair-match ");
-                formatTerm(m.scrutinee(), sb);
-                sb.append(" [").append(m.firstName()).append(", ").append(m.secondName()).append("] => ");
-                formatTerm(m.body(), sb);
-                sb.append(')');
-            }
-            case PirTerm.ListMatch m -> {
-                sb.append("(list-match ");
-                formatTerm(m.scrutinee(), sb);
-                sb.append(" [] => ");
-                formatTerm(m.nilBranch(), sb);
-                sb.append(" [").append(m.headName()).append(" :: ").append(m.tailName()).append("] => ");
-                formatTerm(m.consBranch(), sb);
-                sb.append(')');
-            }
+            // These print their parts compactly, as they always have.
+            case PirTerm.IntegerCase c -> integerCase(c, out);
+            case PirTerm.PairMatch m -> pairMatch(m, out);
+            case PirTerm.ListMatch m -> listMatch(m, out);
             case PirTerm.DataMatch dm -> {
-                sb.append("(match ");
-                formatTermPretty(dm.scrutinee(), sb, indent + 2);
+                out.add("(match ");
+                out.add(pretty(dm.scrutinee(), indent + 2));
                 for (var branch : dm.branches()) {
-                    sb.append('\n');
-                    indent(sb, indent + 2);
-                    sb.append('[').append(branch.constructorName());
-                    for (var binding : branch.bindings()) {
-                        sb.append(' ').append(binding);
-                    }
-                    sb.append(" =>\n");
-                    indent(sb, indent + 4);
-                    formatTermPretty(branch.body(), sb, indent + 4);
-                    sb.append(']');
+                    out.add("\n" + spaces(indent + 2) + "[" + branch.constructorName() + bindings(branch)
+                            + " =>\n" + spaces(indent + 4));
+                    out.add(pretty(branch.body(), indent + 4));
+                    out.add("]");
                 }
-                sb.append(')');
+                out.add(")");
             }
-            case PirTerm.Error e -> sb.append("(error)");
+            case PirTerm.Error e -> out.add("(error)");
             case PirTerm.Trace t -> {
-                sb.append("(trace ");
-                formatTermPretty(t.message(), sb, indent + 2);
-                sb.append('\n');
-                indent(sb, indent + 2);
-                formatTermPretty(t.body(), sb, indent + 2);
-                sb.append(')');
+                out.add("(trace ");
+                out.add(pretty(t.message(), indent + 2));
+                out.add("\n" + spaces(indent + 2));
+                out.add(pretty(t.body(), indent + 2));
+                out.add(")");
             }
         }
+    }
+
+    private static void integerCase(PirTerm.IntegerCase c, List<Object> out) {
+        out.add("(integer-case ");
+        out.add(compact(c.scrutinee()));
+        out.add(" [");
+        for (int i = 0; i < c.branches().size(); i++) {
+            if (i > 0) out.add(", ");
+            out.add(compact(c.branches().get(i)));
+        }
+        out.add("])");
+    }
+
+    private static void pairMatch(PirTerm.PairMatch m, List<Object> out) {
+        out.add("(pair-match ");
+        out.add(compact(m.scrutinee()));
+        out.add(" [" + m.firstName() + ", " + m.secondName() + "] => ");
+        out.add(compact(m.body()));
+        out.add(")");
+    }
+
+    private static void listMatch(PirTerm.ListMatch m, List<Object> out) {
+        out.add("(list-match ");
+        out.add(compact(m.scrutinee()));
+        out.add(" [] => ");
+        out.add(compact(m.nilBranch()));
+        out.add(" [" + m.headName() + " :: " + m.tailName() + "] => ");
+        out.add(compact(m.consBranch()));
+        out.add(")");
+    }
+
+    private static String bindings(PirTerm.MatchBranch branch) {
+        var sb = new StringBuilder();
+        for (var binding : branch.bindings()) sb.append(' ').append(binding);
+        return sb.toString();
+    }
+
+    private static Sub compact(PirTerm term) {
+        return new Sub(term, false, 0);
+    }
+
+    private static Sub pretty(PirTerm term, int indent) {
+        return new Sub(term, true, indent);
+    }
+
+    private static String constant(PirTerm.Const c) {
+        var sb = new StringBuilder("(con ");
+        formatConstant(c.value(), sb);
+        return sb.append(')').toString();
+    }
+
+    private static String spaces(int level) {
+        var sb = new StringBuilder();
+        indent(sb, level);
+        return sb.toString();
     }
 
     private static void indent(StringBuilder sb, int level) {

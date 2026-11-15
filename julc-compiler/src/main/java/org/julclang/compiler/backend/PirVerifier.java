@@ -7,7 +7,9 @@ import org.julclang.compiler.pir.PirType;
 import org.julclang.core.Constant;
 import org.julclang.core.DefaultFun;
 import org.julclang.core.DefaultUni;
+import org.julclang.core.recursion.Trampoline;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -83,8 +85,17 @@ public final class PirVerifier {
 
     // ---- terms ----
 
+    /**
+     * The type of {@code term}, checking it on the way. The walk keeps its pending work on the heap, as a term can nest
+     * as deeply as a program is long (issue #327, ADR-074); it checks, binds and restores names in the order a recursive
+     * walk would, so the first failure it reports is the same.
+     */
     private PirType synth(PirTerm term) {
-        return switch (term) {
+        return synthesize(term).run();
+    }
+
+    private Trampoline<PirType> synthesize(PirTerm term) {
+        return Trampoline.defer(() -> switch (term) {
             case PirTerm.Var v -> {
                 var bound = scope.get(v.name());
                 if (bound == null) throw binding("unbound symbol " + v.name());
@@ -92,65 +103,71 @@ public final class PirVerifier {
                 if (!agree(v.type(), bound))
                     throw mismatch("variable " + v.name() + " is annotated " + show(v.type())
                             + " but is bound to " + show(bound));
-                yield refine(v.type(), bound);
+                yield Trampoline.done(refine(v.type(), bound));
             }
-            case PirTerm.Const c -> constantType(c.value());
-            case PirTerm.Builtin b -> builtin(b.fun(), List.of());
+            case PirTerm.Const c -> Trampoline.done(constantType(c.value()));
+            case PirTerm.Builtin b -> Trampoline.done(builtin(b.fun(), List.of()));
             case PirTerm.Lam l -> {
                 requireBinder(l.param());
                 checkType(l.paramType());
                 var previous = bind(l.param(), l.paramType());
-                var body = synth(l.body());
-                restore(l.param(), previous);
-                yield new PirType.FunType(l.paramType(), body);
+                yield synthesize(l.body()).map(body -> {
+                    restore(l.param(), previous);
+                    return (PirType) new PirType.FunType(l.paramType(), body);
+                });
             }
             case PirTerm.Let l -> {
                 requireBinder(l.name());
-                var value = synth(l.value());
-                var previous = bind(l.name(), value);
-                var body = synth(l.body());
-                restore(l.name(), previous);
-                yield body;
+                yield synthesize(l.value()).then(value -> {
+                    var previous = bind(l.name(), value);
+                    return synthesize(l.body()).map(body -> {
+                        restore(l.name(), previous);
+                        return body;
+                    });
+                });
             }
             case PirTerm.LetRec r -> letRec(r);
             case PirTerm.App a -> application(a);
-            case PirTerm.IfThenElse i -> {
-                requireBool(synth(i.cond()), "if condition");
-                yield join(synth(i.thenBranch()), synth(i.elseBranch()), "if branches");
-            }
+            case PirTerm.IfThenElse i -> synthesize(i.cond()).then(cond -> {
+                requireBool(cond, "if condition");
+                return synthesize(i.thenBranch()).then(thenType -> synthesize(i.elseBranch())
+                        .map(elseType -> join(thenType, elseType, "if branches")));
+            });
             case PirTerm.IntegerCase _ -> throw structure(
                     "IntegerCase is generated during lowering and must not appear in producer PIR");
             case PirTerm.PairMatch m -> {
                 requireBuiltinCase("PairMatch");
-                var scrutinee = synth(m.scrutinee());
-                checkType(m.pairType());
-                if (!agree(m.pairType(), scrutinee))
-                    throw mismatch("PairMatch declares " + show(m.pairType()) + " but matches "
-                            + show(scrutinee));
-                requireBinder(m.firstName());
-                requireBinder(m.secondName());
-                var first = bind(m.firstName(), m.pairType().first());
-                var second = bind(m.secondName(), m.pairType().second());
-                var body = synth(m.body());
-                restore(m.secondName(), second);
-                restore(m.firstName(), first);
-                yield body;
+                yield synthesize(m.scrutinee()).then(scrutinee -> {
+                    checkType(m.pairType());
+                    if (!agree(m.pairType(), scrutinee))
+                        throw mismatch("PairMatch declares " + show(m.pairType()) + " but matches "
+                                + show(scrutinee));
+                    requireBinder(m.firstName());
+                    requireBinder(m.secondName());
+                    var first = bind(m.firstName(), m.pairType().first());
+                    var second = bind(m.secondName(), m.pairType().second());
+                    return synthesize(m.body()).map(body -> {
+                        restore(m.secondName(), second);
+                        restore(m.firstName(), first);
+                        return body;
+                    });
+                });
             }
             case PirTerm.ListMatch m -> listMatch(m);
             case PirTerm.DataConstr c -> dataConstr(c);
             case PirTerm.DataMatch m -> dataMatch(m);
             case PirTerm.Error e -> {
                 checkType(e.type());
-                yield e.type();
+                yield Trampoline.done(e.type());
             }
-            case PirTerm.Trace t -> {
-                requireExact(synth(t.message()), BuiltinTyping.STRING, "trace message");
-                yield synth(t.body());
-            }
-        };
+            case PirTerm.Trace t -> synthesize(t.message()).then(message -> {
+                requireExact(message, BuiltinTyping.STRING, "trace message");
+                return synthesize(t.body());
+            });
+        });
     }
 
-    private PirType letRec(PirTerm.LetRec r) {
+    private Trampoline<PirType> letRec(PirTerm.LetRec r) {
         var names = new ArrayList<String>();
         for (var binding : r.bindings()) {
             requireBinder(binding.name());
@@ -178,28 +195,26 @@ public final class PirVerifier {
         for (var name : names) previous.put(name, scope.get(name));
         // Unreferenced bindings are typed by synthesis; bind referenced ones first.
         declared.forEach(scope::put);
-        for (var binding : r.bindings()) {
-            var actual = synth(binding.value());
+        return Trampoline.each(r.bindings(), binding -> synthesize(binding.value()).map(actual -> {
             var expected = declared.get(binding.name());
             if (expected == null) scope.put(binding.name(), actual);
             else if (!agree(expected, actual))
                 throw mismatch("recursive binding " + binding.name() + " is referenced as "
                         + show(expected) + " but has type " + show(actual));
-        }
-        var body = synth(r.body());
-        previous.forEach(this::restore);
-        return body;
+            return actual;
+        })).then(checked -> synthesize(r.body()).map(body -> {
+            previous.forEach(this::restore);
+            return body;
+        }));
     }
 
-    private PirType application(PirTerm.App app) {
+    private Trampoline<PirType> application(PirTerm.App app) {
         var arguments = new ArrayList<PirTerm>();
         PirTerm head = app;
         while (head instanceof PirTerm.App a) {
             arguments.addFirst(a.argument());
             head = a.function();
         }
-        PirType function;
-        int consumed;
         if (head instanceof PirTerm.Builtin b) {
             // Every builtin is either monomorphic or polymorphic (BuiltinTypingTest).
             Integer polymorphic = BuiltinTyping.polymorphicArity(b.fun());
@@ -207,25 +222,24 @@ public final class PirVerifier {
                     ? polymorphic
                     : BuiltinTyping.monomorphic(b.fun()).parameters().size();
             int take = Math.min(arity, arguments.size());
-            var argumentTypes = new ArrayList<PirType>();
-            for (int i = 0; i < take; i++) argumentTypes.add(synth(arguments.get(i)));
-            function = builtin(b.fun(), argumentTypes);
-            consumed = take;
-        } else {
-            function = synth(head);
-            consumed = 0;
+            return Trampoline.each(arguments.subList(0, take), this::synthesize)
+                    .then(argumentTypes -> applyRemaining(builtin(b.fun(), argumentTypes), arguments, take));
         }
-        for (int i = consumed; i < arguments.size(); i++) {
-            var resolved = resolve(function);
-            if (!(resolved instanceof PirType.FunType fn))
-                throw mismatch("applies a value of type " + show(function) + " to an argument");
-            var argument = synth(arguments.get(i));
+        return synthesize(head).then(function -> applyRemaining(function, arguments, 0));
+    }
+
+    /** The type of {@code function} applied to {@code arguments} from {@code index} on, each checked in turn. */
+    private Trampoline<PirType> applyRemaining(PirType function, List<PirTerm> arguments, int index) {
+        if (index == arguments.size()) return Trampoline.done(function);
+        var resolved = resolve(function);
+        if (!(resolved instanceof PirType.FunType fn))
+            throw mismatch("applies a value of type " + show(function) + " to an argument");
+        return synthesize(arguments.get(index)).then(argument -> {
             if (!agree(fn.paramType(), argument))
                 throw mismatch("argument of type " + show(argument) + " does not match parameter "
                         + show(fn.paramType()));
-            function = fn.returnType();
-        }
-        return function;
+            return applyRemaining(fn.returnType(), arguments, index + 1);
+        });
     }
 
     private PirType builtin(DefaultFun fun, List<PirType> arguments) {
@@ -316,24 +330,27 @@ public final class PirVerifier {
         };
     }
 
-    private PirType listMatch(PirTerm.ListMatch m) {
+    private Trampoline<PirType> listMatch(PirTerm.ListMatch m) {
         requireBuiltinCase("ListMatch");
-        var scrutinee = synth(m.scrutinee());
-        if (!(resolve(scrutinee) instanceof PirType.ListType list)
-                || resolve(list.elemType()) instanceof PirType.PairType)
-            throw mismatch("ListMatch requires a Data list but matches " + show(scrutinee));
-        var nil = synth(m.nilBranch());
-        requireBinder(m.headName());
-        requireBinder(m.tailName());
-        var head = bind(m.headName(), rawView(list.elemType()));
-        var tail = bind(m.tailName(), scrutinee);
-        var cons = synth(m.consBranch());
-        restore(m.tailName(), tail);
-        restore(m.headName(), head);
-        return join(nil, cons, "ListMatch branches");
+        return synthesize(m.scrutinee()).then(scrutinee -> {
+            if (!(resolve(scrutinee) instanceof PirType.ListType list)
+                    || resolve(list.elemType()) instanceof PirType.PairType)
+                throw mismatch("ListMatch requires a Data list but matches " + show(scrutinee));
+            return synthesize(m.nilBranch()).then(nil -> {
+                requireBinder(m.headName());
+                requireBinder(m.tailName());
+                var head = bind(m.headName(), rawView(list.elemType()));
+                var tail = bind(m.tailName(), scrutinee);
+                return synthesize(m.consBranch()).map(cons -> {
+                    restore(m.tailName(), tail);
+                    restore(m.headName(), head);
+                    return join(nil, cons, "ListMatch branches");
+                });
+            });
+        });
     }
 
-    private PirType dataConstr(PirTerm.DataConstr c) {
+    private Trampoline<PirType> dataConstr(PirTerm.DataConstr c) {
         checkType(c.dataType());
         // UplcGenerator encodes fields from this type and does not resolve named references:
         // a named reference would leave every field unencoded.
@@ -342,8 +359,10 @@ public final class PirVerifier {
                     + ", not a named reference; fields are encoded from its declared field types");
         var resolved = resolve(c.dataType());
         requireTransparent(resolved, unconstructible, "construct");
-        var fields = new ArrayList<PirType>();
-        for (var field : c.fields()) fields.add(synth(field));
+        return Trampoline.each(c.fields(), this::synthesize).map(fields -> checkConstruction(c, resolved, fields));
+    }
+
+    private PirType checkConstruction(PirTerm.DataConstr c, PirType resolved, List<PirType> fields) {
         List<PirType.Field> layout;
         switch (resolved) {
             case PirType.RecordType record -> {
@@ -391,67 +410,73 @@ public final class PirVerifier {
         return c.dataType();
     }
 
-    private PirType dataMatch(PirTerm.DataMatch m) {
-        var scrutinee = synth(m.scrutinee());
-        var resolved = resolve(scrutinee);
-        requireTransparent(resolved, unmatchable, "match");
-        List<PirType.Constructor> constructors = switch (resolved) {
-            case PirType.RecordType record ->
-                    List.of(new PirType.Constructor(record.name(), 0, record.fields()));
-            case PirType.SumType sum -> {
-                requireDenseTags(sum);
-                yield sum.constructors();
-            }
-            default -> throw structure("DataMatch scrutinee must have a record or sum type, not "
-                    + show(scrutinee));
-        };
-        if (m.branches().size() != constructors.size())
-            throw structure("DataMatch over " + show(scrutinee) + " needs exactly one branch per "
-                    + "constructor in tag order: expected " + constructors.size() + " but found "
-                    + m.branches().size());
-        PirType result = null;
-        for (int i = 0; i < constructors.size(); i++) {
-            var constructor = constructors.get(i);
-            var branch = m.branches().get(i);
-            if (!constructor.name().equals(branch.constructorName()))
-                throw structure("DataMatch branch " + i + " is named " + branch.constructorName()
-                        + " but constructor tag " + i + " is " + constructor.name()
-                        + " (branches are selected by position)");
-            if (branch.bindings().size() > constructor.fields().size())
-                throw structure("DataMatch branch " + constructor.name() + " binds "
-                        + branch.bindings().size() + " fields but the constructor has "
-                        + constructor.fields().size());
-            if (branch.bindingTypes().size() != branch.bindings().size())
-                throw structure("DataMatch branch " + constructor.name()
-                        + " must give one binding type per binding");
-            var saved = new LinkedHashMap<String, PirType>();
-            // Lowering binds the pattern variable outside the field bindings, so a field of
-            // the same name shadows it (UplcGenerator.buildBranchFieldExtraction).
-            if (branch.patternVar() != null) {
-                requireBinder(branch.patternVar());
-                saved.put(branch.patternVar(), scope.get(branch.patternVar()));
-                scope.put(branch.patternVar(), scrutinee);
-            }
-            for (int j = 0; j < branch.bindings().size(); j++) {
-                var name = branch.bindings().get(j);
-                var type = branch.bindingTypes().get(j);
-                requireBinder(name);
-                checkType(type);
-                var field = constructor.fields().get(j);
-                if (!isDataEncodable(type))
-                    throw structure("DataMatch binding " + name + " has type " + show(type)
-                            + ", which cannot be decoded from a field");
-                if (!elementAgree(field.type(), type))
-                    throw mismatch("DataMatch binding " + name + " has type " + show(type)
-                            + " but field " + field.name() + " has type " + show(field.type()));
-                if (!saved.containsKey(name)) saved.put(name, scope.get(name));
-                scope.put(name, type);
-            }
-            var body = synth(branch.body());
-            saved.forEach(this::restore);
-            result = result == null ? body : join(result, body, "DataMatch branches");
+    private Trampoline<PirType> dataMatch(PirTerm.DataMatch m) {
+        return synthesize(m.scrutinee()).then(scrutinee -> {
+            var resolved = resolve(scrutinee);
+            requireTransparent(resolved, unmatchable, "match");
+            List<PirType.Constructor> constructors = switch (resolved) {
+                case PirType.RecordType record ->
+                        List.of(new PirType.Constructor(record.name(), 0, record.fields()));
+                case PirType.SumType sum -> {
+                    requireDenseTags(sum);
+                    yield sum.constructors();
+                }
+                default -> throw structure("DataMatch scrutinee must have a record or sum type, not "
+                        + show(scrutinee));
+            };
+            if (m.branches().size() != constructors.size())
+                throw structure("DataMatch over " + show(scrutinee) + " needs exactly one branch per "
+                        + "constructor in tag order: expected " + constructors.size() + " but found "
+                        + m.branches().size());
+            return matchBranches(m, constructors, scrutinee, 0, null);
+        });
+    }
+
+    /** The joined type of the branches from {@code index} on, each checked and typed in turn after {@code result}. */
+    private Trampoline<PirType> matchBranches(PirTerm.DataMatch m, List<PirType.Constructor> constructors,
+                                             PirType scrutinee, int index, PirType result) {
+        if (index == constructors.size()) return Trampoline.done(result);
+        var constructor = constructors.get(index);
+        var branch = m.branches().get(index);
+        if (!constructor.name().equals(branch.constructorName()))
+            throw structure("DataMatch branch " + index + " is named " + branch.constructorName()
+                    + " but constructor tag " + index + " is " + constructor.name()
+                    + " (branches are selected by position)");
+        if (branch.bindings().size() > constructor.fields().size())
+            throw structure("DataMatch branch " + constructor.name() + " binds "
+                    + branch.bindings().size() + " fields but the constructor has "
+                    + constructor.fields().size());
+        if (branch.bindingTypes().size() != branch.bindings().size())
+            throw structure("DataMatch branch " + constructor.name()
+                    + " must give one binding type per binding");
+        var saved = new LinkedHashMap<String, PirType>();
+        // Lowering binds the pattern variable outside the field bindings, so a field of
+        // the same name shadows it (UplcGenerator.buildBranchFieldExtraction).
+        if (branch.patternVar() != null) {
+            requireBinder(branch.patternVar());
+            saved.put(branch.patternVar(), scope.get(branch.patternVar()));
+            scope.put(branch.patternVar(), scrutinee);
         }
-        return result;
+        for (int j = 0; j < branch.bindings().size(); j++) {
+            var name = branch.bindings().get(j);
+            var type = branch.bindingTypes().get(j);
+            requireBinder(name);
+            checkType(type);
+            var field = constructor.fields().get(j);
+            if (!isDataEncodable(type))
+                throw structure("DataMatch binding " + name + " has type " + show(type)
+                        + ", which cannot be decoded from a field");
+            if (!elementAgree(field.type(), type))
+                throw mismatch("DataMatch binding " + name + " has type " + show(type)
+                        + " but field " + field.name() + " has type " + show(field.type()));
+            if (!saved.containsKey(name)) saved.put(name, scope.get(name));
+            scope.put(name, type);
+        }
+        return synthesize(branch.body()).then(body -> {
+            saved.forEach(this::restore);
+            var joined = result == null ? body : join(result, body, "DataMatch branches");
+            return matchBranches(m, constructors, scrutinee, index + 1, joined);
+        });
     }
 
     // ---- types ----
@@ -777,53 +802,72 @@ public final class PirVerifier {
         else scope.put(name, previous);
     }
 
-    /** The annotation of the first free occurrence of {@code name}, respecting shadowing. */
+    /**
+     * The annotation of the first free occurrence of {@code name}, respecting shadowing: the first a left-to-right walk
+     * meets, skipping the terms a binder of {@code name} scopes. The walk keeps the terms still to visit on a heap stack,
+     * as a term can nest as deeply as a program is long (issue #327, ADR-074).
+     */
     private static PirType referenceType(PirTerm term, String name) {
-        return switch (term) {
-            case PirTerm.Var v -> v.name().equals(name) ? v.type() : null;
-            case PirTerm.Const _, PirTerm.Builtin _, PirTerm.Error _ -> null;
-            case PirTerm.Lam l -> l.param().equals(name) ? null : referenceType(l.body(), name);
-            case PirTerm.Let l -> first(referenceType(l.value(), name),
-                    l.name().equals(name) ? null : referenceType(l.body(), name));
-            case PirTerm.LetRec r -> {
-                if (r.bindings().stream().anyMatch(b -> b.name().equals(name))) yield null;
-                PirType found = null;
-                for (var binding : r.bindings()) found = first(found, referenceType(binding.value(), name));
-                yield first(found, referenceType(r.body(), name));
+        var pending = new ArrayDeque<PirTerm>();
+        pending.push(term);
+        while (!pending.isEmpty()) {
+            var next = pending.pop();
+            var children = new ArrayList<PirTerm>();
+            switch (next) {
+                case PirTerm.Var v -> {
+                    if (v.name().equals(name)) return v.type();
+                }
+                case PirTerm.Const _, PirTerm.Builtin _, PirTerm.Error _ -> { }
+                case PirTerm.Lam l -> {
+                    if (!l.param().equals(name)) children.add(l.body());
+                }
+                case PirTerm.Let l -> {
+                    children.add(l.value());
+                    if (!l.name().equals(name)) children.add(l.body());
+                }
+                case PirTerm.LetRec r -> {
+                    if (r.bindings().stream().noneMatch(b -> b.name().equals(name))) {
+                        for (var binding : r.bindings()) children.add(binding.value());
+                        children.add(r.body());
+                    }
+                }
+                case PirTerm.App a -> {
+                    children.add(a.function());
+                    children.add(a.argument());
+                }
+                case PirTerm.IfThenElse i -> {
+                    children.add(i.cond());
+                    children.add(i.thenBranch());
+                    children.add(i.elseBranch());
+                }
+                case PirTerm.Trace t -> {
+                    children.add(t.message());
+                    children.add(t.body());
+                }
+                case PirTerm.DataConstr c -> children.addAll(c.fields());
+                case PirTerm.DataMatch m -> {
+                    children.add(m.scrutinee());
+                    for (var branch : m.branches())
+                        if (!branch.bindings().contains(name) && !name.equals(branch.patternVar()))
+                            children.add(branch.body());
+                }
+                case PirTerm.ListMatch m -> {
+                    children.add(m.scrutinee());
+                    children.add(m.nilBranch());
+                    if (!m.headName().equals(name) && !m.tailName().equals(name)) children.add(m.consBranch());
+                }
+                case PirTerm.PairMatch m -> {
+                    children.add(m.scrutinee());
+                    if (!m.firstName().equals(name) && !m.secondName().equals(name)) children.add(m.body());
+                }
+                case PirTerm.IntegerCase c -> {
+                    children.add(c.scrutinee());
+                    children.addAll(c.branches());
+                }
             }
-            case PirTerm.App a -> first(referenceType(a.function(), name), referenceType(a.argument(), name));
-            case PirTerm.IfThenElse i -> first(referenceType(i.cond(), name),
-                    first(referenceType(i.thenBranch(), name), referenceType(i.elseBranch(), name)));
-            case PirTerm.Trace t -> first(referenceType(t.message(), name), referenceType(t.body(), name));
-            case PirTerm.DataConstr c -> {
-                PirType found = null;
-                for (var field : c.fields()) found = first(found, referenceType(field, name));
-                yield found;
-            }
-            case PirTerm.DataMatch m -> {
-                PirType found = referenceType(m.scrutinee(), name);
-                for (var branch : m.branches())
-                    if (!branch.bindings().contains(name) && !name.equals(branch.patternVar()))
-                        found = first(found, referenceType(branch.body(), name));
-                yield found;
-            }
-            case PirTerm.ListMatch m -> first(first(referenceType(m.scrutinee(), name),
-                            referenceType(m.nilBranch(), name)),
-                    m.headName().equals(name) || m.tailName().equals(name)
-                            ? null : referenceType(m.consBranch(), name));
-            case PirTerm.PairMatch m -> first(referenceType(m.scrutinee(), name),
-                    m.firstName().equals(name) || m.secondName().equals(name)
-                            ? null : referenceType(m.body(), name));
-            case PirTerm.IntegerCase c -> {
-                PirType found = referenceType(c.scrutinee(), name);
-                for (var branch : c.branches()) found = first(found, referenceType(branch, name));
-                yield found;
-            }
-        };
-    }
-
-    private static PirType first(PirType a, PirType b) {
-        return a != null ? a : b;
+            for (int i = children.size() - 1; i >= 0; i--) pending.push(children.get(i));
+        }
+        return null;
     }
 
     // ---- diagnostics ----

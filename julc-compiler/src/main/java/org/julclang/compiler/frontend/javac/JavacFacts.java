@@ -49,6 +49,7 @@ import javax.lang.model.util.Elements;
 import javax.lang.model.util.Types;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumSet;
@@ -144,15 +145,30 @@ public final class JavacFacts {
      * records each {@code instanceof} pattern variable and every name javac resolved to one (ADR-069 D2, "Uses").
      */
     private void index(CompilationUnitTree unit) {
-        new TreeScanner<Void, TreePath>() {
+        // A work list in the scanner's pre-order, not its recursion: an else-if chain is as deep as it is long (issue #327).
+        record Pending(Tree tree, TreePath parent) {}
+        var pending = new ArrayDeque<Pending>();
+        pending.push(new Pending(unit, null));
+        while (!pending.isEmpty()) {
+            var next = pending.pop();
+            var path = new TreePath(next.parent(), next.tree());
+            if (paths.putIfAbsent(next.tree(), path) == null) patterns(next.tree(), path);
+            var children = children(next.tree());
+            for (int i = children.size() - 1; i >= 0; i--) pending.push(new Pending(children.get(i), path));
+        }
+    }
+
+    /** The trees a {@link TreeScanner} visits directly under {@code tree}, in its order, without visiting further. */
+    private static List<Tree> children(Tree tree) {
+        var children = new ArrayList<Tree>();
+        tree.accept(new TreeScanner<Void, Void>() {
             @Override
-            public Void scan(Tree tree, TreePath parent) {
-                if (tree == null) return null;
-                var path = new TreePath(parent, tree);
-                if (paths.putIfAbsent(tree, path) == null) patterns(tree, path);
-                return tree.accept(this, path);
+            public Void scan(Tree child, Void unused) {
+                if (child != null) children.add(child);
+                return null;
             }
-        }.scan(unit, null);
+        }, null);
+        return children;
     }
 
     private void patterns(Tree tree, TreePath path) {

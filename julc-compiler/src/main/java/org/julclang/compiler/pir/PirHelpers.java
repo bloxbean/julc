@@ -3,13 +3,17 @@ package org.julclang.compiler.pir;
 import org.julclang.compiler.CompilerTypeDiagnostics;
 import org.julclang.core.Constant;
 import org.julclang.core.DefaultFun;
-
+import org.julclang.core.recursion.Trampoline;
 
 import java.math.BigInteger;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.function.BinaryOperator;
+import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.function.UnaryOperator;
 
 /**
@@ -47,6 +51,70 @@ public final class PirHelpers {
             case PirTerm.IntegerCase c -> new PirTerm.IntegerCase(map.apply(c.scrutinee()),
                     c.branches().stream().map(map).toList());
         };
+    }
+
+    /**
+     * {@link #mapChildren}, for a {@code map} that is itself a stack-safe walk (issue #327, ADR-074): the children are
+     * mapped one after another, in {@link #mapChildren}'s order, and the term is rebuilt from the results. A pass
+     * that recursed through {@link #mapChildren} recurses through this instead, and so needs no Java stack per level.
+     * {@code map} is called while the steps are built, so it must return a computation that has not yet done its work
+     * (one that starts with {@link Trampoline#defer}); a {@code map} that works eagerly brings the recursion back.
+     */
+    public static Trampoline<PirTerm> traverseChildren(PirTerm term, Function<PirTerm, Trampoline<PirTerm>> map) {
+        return switch (term) {
+            case PirTerm.Var _, PirTerm.Const _, PirTerm.Builtin _, PirTerm.Error _ -> Trampoline.done(term);
+            case PirTerm.Lam l -> map.apply(l.body()).map(body -> new PirTerm.Lam(l.param(), l.paramType(), body));
+            case PirTerm.Let l -> map.apply(l.value()).then(value -> map.apply(l.body())
+                    .map(body -> new PirTerm.Let(l.name(), value, body)));
+            case PirTerm.LetRec r -> Trampoline.each(r.bindings(), b -> map.apply(b.value())
+                            .map(value -> new PirTerm.Binding(b.name(), value)))
+                    .then(bindings -> map.apply(r.body()).map(body -> new PirTerm.LetRec(bindings, body)));
+            case PirTerm.App a -> map.apply(a.function()).then(function -> map.apply(a.argument())
+                    .map(argument -> new PirTerm.App(function, argument)));
+            case PirTerm.IfThenElse i -> map.apply(i.cond()).then(cond -> map.apply(i.thenBranch())
+                    .then(then -> map.apply(i.elseBranch()).map(otherwise -> new PirTerm.IfThenElse(cond, then, otherwise))));
+            case PirTerm.Trace t -> map.apply(t.message()).then(message -> map.apply(t.body())
+                    .map(body -> new PirTerm.Trace(message, body)));
+            case PirTerm.DataConstr c -> Trampoline.each(c.fields(), map)
+                    .map(fields -> new PirTerm.DataConstr(c.tag(), c.dataType(), fields));
+            case PirTerm.DataMatch m -> map.apply(m.scrutinee()).then(scrutinee -> Trampoline.each(m.branches(),
+                    b -> map.apply(b.body()).map(body -> new PirTerm.MatchBranch(b.constructorName(), b.bindings(),
+                            b.bindingTypes(), body, b.patternVar())))
+                    .map(branches -> new PirTerm.DataMatch(scrutinee, branches)));
+            case PirTerm.ListMatch m -> map.apply(m.scrutinee()).then(scrutinee -> map.apply(m.nilBranch())
+                    .then(nil -> map.apply(m.consBranch()).map(cons -> new PirTerm.ListMatch(scrutinee, m.headName(),
+                            m.tailName(), nil, cons))));
+            case PirTerm.PairMatch m -> map.apply(m.scrutinee()).then(scrutinee -> map.apply(m.body())
+                    .map(body -> new PirTerm.PairMatch(scrutinee, m.pairType(), m.firstName(), m.secondName(), body)));
+            case PirTerm.IntegerCase c -> map.apply(c.scrutinee()).then(scrutinee -> Trampoline.each(c.branches(), map)
+                    .map(branches -> new PirTerm.IntegerCase(scrutinee, branches)));
+        };
+    }
+
+    /** The direct children of {@code term}, in {@link #mapChildren}'s order. */
+    public static List<PirTerm> children(PirTerm term) {
+        var children = new ArrayList<PirTerm>();
+        mapChildren(term, child -> {
+            children.add(child);
+            return child;
+        });
+        return children;
+    }
+
+    /**
+     * Whether {@code test} holds of {@code term} or of a term inside it, found without recursion (issue #327). Terms are
+     * tested in pre-order, children in {@link #mapChildren}'s order, stopping at the first that holds.
+     */
+    public static boolean anyTerm(PirTerm term, Predicate<PirTerm> test) {
+        var pending = new ArrayDeque<PirTerm>();
+        pending.push(term);
+        while (!pending.isEmpty()) {
+            var next = pending.pop();
+            if (test.test(next)) return true;
+            var children = children(next);
+            for (int i = children.size() - 1; i >= 0; i--) pending.push(children.get(i));
+        }
+        return false;
     }
 
     /**
@@ -233,13 +301,26 @@ public final class PirHelpers {
      * would fold to a constant that the optimizer does not copy into each read, so it is left to fold where it is read.
      */
     private static boolean isConstantArithmetic(PirTerm term) {
-        return term instanceof PirTerm.App(PirTerm.App(PirTerm.Builtin(var fun), var left), var right)
-                && (fun == DefaultFun.AddInteger || fun == DefaultFun.SubtractInteger || fun == DefaultFun.MultiplyInteger)
-                && isIntegerConstant(left) && isIntegerConstant(right);
+        if (arithmeticOperands(term) == null) return false;
+        // A work list over the operands, not recursion: a long sum of constants nests as deep as it is long (issue #327).
+        var pending = new ArrayDeque<PirTerm>();
+        pending.push(term);
+        while (!pending.isEmpty()) {
+            var next = pending.pop();
+            if (next instanceof PirTerm.Const(Constant.IntegerConst _)) continue;
+            var operands = arithmeticOperands(next);
+            if (operands == null) return false;
+            pending.push(operands.get(1));
+            pending.push(operands.get(0));
+        }
+        return true;
     }
 
-    private static boolean isIntegerConstant(PirTerm term) {
-        return term instanceof PirTerm.Const(Constant.IntegerConst _) || isConstantArithmetic(term);
+    /** The two operands of integer addition, subtraction or multiplication, or null. */
+    private static List<PirTerm> arithmeticOperands(PirTerm term) {
+        return term instanceof PirTerm.App(PirTerm.App(PirTerm.Builtin(var fun), var left), var right)
+                && (fun == DefaultFun.AddInteger || fun == DefaultFun.SubtractInteger || fun == DefaultFun.MultiplyInteger)
+                ? List.of(left, right) : null;
     }
 
     /**
@@ -645,30 +726,27 @@ public final class PirHelpers {
                 new PirTerm.Let(tVar.name(), target, search));
     }
 
-    /** Check if a PIR term contains a Var reference with the given name (for self-recursion detection). */
+    /**
+     * Check if a PIR term contains a Var reference with the given name (for self-recursion detection). Only a
+     * {@link PirTerm.PairMatch}'s fields hide the name. A work list, not recursion (issue #327).
+     */
     public static boolean containsVarRef(PirTerm term, String name) {
-        return switch (term) {
-            case PirTerm.Var v -> v.name().equals(name);
-            case PirTerm.Let l -> containsVarRef(l.value(), name) || containsVarRef(l.body(), name);
-            case PirTerm.LetRec lr -> lr.bindings().stream().anyMatch(b -> containsVarRef(b.value(), name))
-                    || containsVarRef(lr.body(), name);
-            case PirTerm.Lam lam -> containsVarRef(lam.body(), name);
-            case PirTerm.App app -> containsVarRef(app.function(), name) || containsVarRef(app.argument(), name);
-            case PirTerm.IfThenElse ite -> containsVarRef(ite.cond(), name)
-                    || containsVarRef(ite.thenBranch(), name) || containsVarRef(ite.elseBranch(), name);
-            case PirTerm.DataConstr dc -> dc.fields().stream().anyMatch(f -> containsVarRef(f, name));
-            case PirTerm.IntegerCase c -> containsVarRef(c.scrutinee(), name)
-                    || c.branches().stream().anyMatch(b -> containsVarRef(b, name));
-            case PirTerm.PairMatch m -> containsVarRef(m.scrutinee(), name)
-                    || (!m.firstName().equals(name) && !m.secondName().equals(name)
-                        && containsVarRef(m.body(), name));
-            case PirTerm.ListMatch m -> containsVarRef(m.scrutinee(), name)
-                    || containsVarRef(m.nilBranch(), name) || containsVarRef(m.consBranch(), name);
-            case PirTerm.DataMatch dm -> containsVarRef(dm.scrutinee(), name)
-                    || dm.branches().stream().anyMatch(b -> containsVarRef(b.body(), name));
-            case PirTerm.Trace t -> containsVarRef(t.message(), name) || containsVarRef(t.body(), name);
-            case PirTerm.Const _, PirTerm.Builtin _, PirTerm.Error _ -> false;
-        };
+        var pending = new ArrayDeque<PirTerm>();
+        pending.push(term);
+        while (!pending.isEmpty()) {
+            var next = pending.pop();
+            if (next instanceof PirTerm.Var v) {
+                if (v.name().equals(name)) return true;
+                continue;
+            }
+            if (next instanceof PirTerm.PairMatch m && (m.firstName().equals(name) || m.secondName().equals(name))) {
+                pending.push(m.scrutinee());
+                continue;
+            }
+            var children = children(next);
+            for (int i = children.size() - 1; i >= 0; i--) pending.push(children.get(i));
+        }
+        return false;
     }
 
     /** Convenience: None value (ConstrData(1, [])). */

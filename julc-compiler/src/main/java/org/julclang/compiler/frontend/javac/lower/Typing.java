@@ -27,6 +27,7 @@ import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.IdentityHashMap;
@@ -210,24 +211,35 @@ final class Typing {
         }
     }
 
-    private void collectArmTypes(PirTerm term, LinkedHashSet<PirType> leaves) {
-        switch (term) {
-            case PirTerm.Error ignored -> {
+    /**
+     * The types of the arms' values, in the order the arms are met: a work list, since an arm's {@code let}s, one per
+     * local, are as deep as the arm is long (issue #327). Each term's arms are pushed last first, so they are met in order.
+     */
+    private void collectArmTypes(PirTerm root, LinkedHashSet<PirType> leaves) {
+        var pending = new ArrayDeque<PirTerm>();
+        pending.push(root);
+        while (!pending.isEmpty()) {
+            var term = pending.pop();
+            var arms = new ArrayList<PirTerm>();
+            switch (term) {
+                case PirTerm.Error ignored -> {
+                }
+                case PirTerm.DataMatch match -> match.branches().forEach(branch -> arms.add(branch.body()));
+                case PirTerm.IntegerCase select -> arms.addAll(select.branches());
+                case PirTerm.IfThenElse branch -> {
+                    arms.add(branch.thenBranch());
+                    arms.add(branch.elseBranch());
+                }
+                case PirTerm.Let let -> arms.add(let.body());
+                case PirTerm.LetRec letRec -> arms.add(letRec.body());
+                case PirTerm.PairMatch match -> arms.add(match.body());
+                case PirTerm.ListMatch match -> {
+                    arms.add(match.nilBranch());
+                    arms.add(match.consBranch());
+                }
+                default -> leaves.add(facts.registry().resolveNamed(termTypes.infer(term)));
             }
-            case PirTerm.DataMatch match -> match.branches().forEach(branch -> collectArmTypes(branch.body(), leaves));
-            case PirTerm.IntegerCase select -> select.branches().forEach(branch -> collectArmTypes(branch, leaves));
-            case PirTerm.IfThenElse branch -> {
-                collectArmTypes(branch.thenBranch(), leaves);
-                collectArmTypes(branch.elseBranch(), leaves);
-            }
-            case PirTerm.Let let -> collectArmTypes(let.body(), leaves);
-            case PirTerm.LetRec letRec -> collectArmTypes(letRec.body(), leaves);
-            case PirTerm.PairMatch match -> collectArmTypes(match.body(), leaves);
-            case PirTerm.ListMatch match -> {
-                collectArmTypes(match.nilBranch(), leaves);
-                collectArmTypes(match.consBranch(), leaves);
-            }
-            default -> leaves.add(facts.registry().resolveNamed(termTypes.infer(term)));
+            for (int i = arms.size() - 1; i >= 0; i--) pending.push(arms.get(i));
         }
     }
 

@@ -18,6 +18,7 @@ import org.julclang.compiler.pir.PirHelpers;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.core.Constant;
+import org.julclang.core.recursion.Trampoline;
 
 import javax.lang.model.element.Element;
 import java.util.ArrayList;
@@ -55,7 +56,8 @@ final class Conditions {
 
     /** A condition, ready to choose between two continuations: each is called once, with its frame. */
     interface Choice {
-        PirTerm choose(Function<Frame, PirTerm> whenTrue, Function<Frame, PirTerm> whenFalse);
+        /** The choice; the continuations are stack-safe walks (issue #327), so an {@code else if} chain is one walk. */
+        Trampoline<PirTerm> choose(Function<Frame, Trampoline<PirTerm>> whenTrue, Function<Frame, Trampoline<PirTerm>> whenFalse);
     }
 
     private final JavacFacts facts;
@@ -69,8 +71,8 @@ final class Conditions {
     private final Set<Element> bound = new HashSet<>();
 
     /** The continuations of a value position: identities, so that a test with them can be the test itself. */
-    private static final Function<Frame, PirTerm> TRUE = frame -> new PirTerm.Const(Constant.bool(true));
-    private static final Function<Frame, PirTerm> FALSE = frame -> new PirTerm.Const(Constant.bool(false));
+    private static final Function<Frame, Trampoline<PirTerm>> TRUE = frame -> Trampoline.done(new PirTerm.Const(Constant.bool(true)));
+    private static final Function<Frame, Trampoline<PirTerm>> FALSE = frame -> Trampoline.done(new PirTerm.Const(Constant.bool(false)));
 
     Conditions(JavacFacts facts, Terms terms, Lowering lowering, TypeTests typeTests, Typing typing) {
         this.facts = facts;
@@ -82,7 +84,7 @@ final class Conditions {
 
     /** {@code condition} as a boolean value: a local's initializer, a {@code return}, an argument, a lambda body. */
     PirTerm value(ExpressionTree condition, Frame frame) {
-        return branch(condition, frame, TRUE, FALSE);
+        return branch(condition, frame, TRUE, FALSE).run();
     }
 
     /**
@@ -92,7 +94,8 @@ final class Conditions {
     Choice choice(ExpressionTree condition, Frame frame) {
         if (binds(condition, frame)) return (whenTrue, whenFalse) -> branch(condition, frame, whenTrue, whenFalse);
         var test = lowering.expr(condition, frame);
-        return (whenTrue, whenFalse) -> new PirTerm.IfThenElse(test, whenTrue.apply(frame), whenFalse.apply(frame));
+        return (whenTrue, whenFalse) -> whenTrue.apply(frame).then(then -> whenFalse.apply(frame)
+                .map(otherwise -> new PirTerm.IfThenElse(test, then, otherwise)));
     }
 
     /** Whether this class bound {@code variable}. */
@@ -199,9 +202,14 @@ final class Conditions {
         return unbound(facts, facts.firstUseOutside(variable, tree), variable);
     }
 
-    /** {@code condition} with its continuations. */
-    PirTerm branch(ExpressionTree condition, Frame frame, Function<Frame, PirTerm> whenTrue, Function<Frame, PirTerm> whenFalse) {
-        return switch (condition) {
+    /**
+     * {@code condition} with its continuations, stack-safe in them (issue #327, ADR-074): an {@code if} that introduces a
+     * pattern variable into the rest of its block continues with that rest, so a block of such guards is as deep as it is
+     * long. The recursion through the condition itself follows its nesting.
+     */
+    Trampoline<PirTerm> branch(ExpressionTree condition, Frame frame, Function<Frame, Trampoline<PirTerm>> whenTrue,
+                                   Function<Frame, Trampoline<PirTerm>> whenFalse) {
+        return Trampoline.defer(() -> switch (condition) {
             case ParenthesizedTree parenthesized -> branch(parenthesized.getExpression(), frame, whenTrue, whenFalse);
             case UnaryTree not when not.getKind() == Tree.Kind.LOGICAL_COMPLEMENT -> branch(not.getExpression(), frame, whenFalse, whenTrue);
             // No position here: in a value position Lowering.expr records the expression's, and in a statement the result is
@@ -217,13 +225,15 @@ final class Conditions {
             case InstanceOfTree test when test.getPattern() instanceof BindingPatternTree pattern ->
                     introduce(test, pattern, frame, whenTrue, whenFalse);
             default -> leaf(lowering.expr(condition, frame), frame, whenTrue, whenFalse);
-        };
+        });
     }
 
     /** A test that binds nothing: in a value position, the test itself, or its complement. */
-    private static PirTerm leaf(PirTerm test, Frame frame, Function<Frame, PirTerm> whenTrue, Function<Frame, PirTerm> whenFalse) {
-        if (whenTrue == TRUE && whenFalse == FALSE) return test;
-        return new PirTerm.IfThenElse(test, whenTrue.apply(frame), whenFalse.apply(frame));
+    private static Trampoline<PirTerm> leaf(PirTerm test, Frame frame, Function<Frame, Trampoline<PirTerm>> whenTrue,
+                                            Function<Frame, Trampoline<PirTerm>> whenFalse) {
+        if (whenTrue == TRUE && whenFalse == FALSE) return Trampoline.done(test);
+        return whenTrue.apply(frame).then(then -> whenFalse.apply(frame)
+                .map(otherwise -> new PirTerm.IfThenElse(test, then, otherwise)));
     }
 
     /**
@@ -231,18 +241,20 @@ final class Conditions {
      * trivial term copied to each call, anything else bound once around {@code body} as a {@code #cond-join-N} thunk, in
      * {@code frame}. The JLS guarantees the continuation needs no variable the paths introduce.
      */
-    private PirTerm shared(Function<Frame, PirTerm> continuation, Frame frame, Function<Function<Frame, PirTerm>, PirTerm> body) {
+    private Trampoline<PirTerm> shared(Function<Frame, Trampoline<PirTerm>> continuation, Frame frame,
+                                       Function<Function<Frame, Trampoline<PirTerm>>, Trampoline<PirTerm>> body) {
         if (continuation == TRUE || continuation == FALSE) return body.apply(continuation);
-        var term = continuation.apply(frame);
-        if (isTrivial(term)) return body.apply(unused -> {
-            var copy = terms.copied(term);
-            typing.copied(term, copy);
-            return copy;
+        return continuation.apply(frame).then(term -> {
+            if (isTrivial(term)) return body.apply(unused -> {
+                var copy = terms.copied(term);
+                typing.copied(term, copy);
+                return Trampoline.done(copy);
+            });
+            var name = "#cond-join-" + ++joins;
+            var type = new PirType.FunType(new PirType.UnitType(), typing.ofTerm(term));
+            return body.apply(unused -> Trampoline.done(new PirTerm.App(terms.generated(name, type), Statements.unit())))
+                    .map(result -> terms.generatedLet(name, terms.generatedLam("#unit", new PirType.UnitType(), term), result));
         });
-        var name = "#cond-join-" + ++joins;
-        var type = new PirType.FunType(new PirType.UnitType(), typing.ofTerm(term));
-        var result = body.apply(unused -> new PirTerm.App(terms.generated(name, type), Statements.unit()));
-        return terms.generatedLet(name, terms.generatedLam("#unit", new PirType.UnitType(), term), result);
     }
 
     private static boolean isTrivial(PirTerm term) {
@@ -254,16 +266,21 @@ final class Conditions {
      * {@code if tag(#operand) == k then (let v = #operand in whenTrue) else whenFalse}, with the operand bound once unless
      * it is a variable or a literal: the term {@code Ifs.patternIf} builds, in source order.
      */
-    private PirTerm introduce(InstanceOfTree test, BindingPatternTree pattern, Frame frame,
-                              Function<Frame, PirTerm> whenTrue, Function<Frame, PirTerm> whenFalse) {
-        return PirHelpers.readOnce(lowering.expr(test.getExpression(), frame), new PirType.DataType(), operand -> {
+    private Trampoline<PirTerm> introduce(InstanceOfTree test, BindingPatternTree pattern, Frame frame,
+                                          Function<Frame, Trampoline<PirTerm>> whenTrue,
+                                          Function<Frame, Trampoline<PirTerm>> whenFalse) {
+        return Terms.readOnce(lowering.expr(test.getExpression(), frame), new PirType.DataType(), operand -> {
             var tagTest = typeTests.instanceOf(test, frame, () -> operand);
             var variable = pattern.getVariable();
             var element = facts.element(variable);
             bound.add(element);
             var scope = frame.scope().bind(element, facts.pirType(element.asType(), variable.getType()));
-            var thenTerm = terms.introduced(scope.lookup(element), operand, typeTests.tag(test), whenTrue.apply(frame.in(scope)));
-            return new PirTerm.IfThenElse(tagTest, thenTerm, whenFalse.apply(frame));
+            var binder = scope.lookup(element);
+            var tag = typeTests.tag(test);
+            return whenTrue.apply(frame.in(scope)).then(then -> {
+                var thenTerm = terms.introduced(binder, operand, tag, then);
+                return whenFalse.apply(frame).map(otherwise -> new PirTerm.IfThenElse(tagTest, thenTerm, otherwise));
+            });
         });
     }
 }

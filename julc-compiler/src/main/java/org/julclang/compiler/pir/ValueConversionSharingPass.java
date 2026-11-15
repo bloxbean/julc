@@ -6,15 +6,19 @@ import org.julclang.compiler.debug.PirDebugProvenance;
 import org.julclang.core.BuiltinSemantics;
 import org.julclang.core.Constant;
 import org.julclang.core.DefaultFun;
+import org.julclang.core.recursion.Trampoline;
 import org.julclang.core.source.SourceLocation;
 import org.julclang.vm.ProtocolCapability;
 
 import java.math.BigInteger;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.UnaryOperator;
@@ -193,26 +197,34 @@ public final class ValueConversionSharingPass {
         collectSites(term, sites);
         sites.forEach((key, count) -> { if (count >= 2) candidates.add(key); });
         if (candidates.isEmpty()) return term;
-        return rewrite(term);
+        return rewrite(term).run();
     }
 
-    /** Pre-order: share at the outermost scope whose first non-trivial evaluation is the unit. */
-    private PirTerm rewrite(PirTerm term) {
-        for (var key : candidates) {
-            var lead = leadingUnit(term, key);
-            if (lead == null || countUnits(term, key) < 2) continue;
-            String shared = fresh(key.shape().namePrefix);
-            var body = mapUnits(term, key, use -> remember(use, new PirTerm.Var(shared, key.type())));
-            changed = true;
-            if (key.shape() == Shape.VALUE_CONVERSION) valueApplied = true; else projectionApplied = true;
-            // The inserted value is non-trivial, so a later candidate can only be shared below it:
-            // evaluation order between units is preserved.
-            return remember(term, new PirTerm.Let(shared, lead, rewrite(body)));
-        }
-        return remember(term, switch (term) {
-            case PirTerm.Let let when isDead(let) -> new PirTerm.Let(let.name(), let.value(), rewrite(let.body()));
-            case PirTerm.LetRec rec when isDead(rec) -> new PirTerm.LetRec(rec.bindings(), rewrite(rec.body()));
-            default -> PirHelpers.mapChildren(term, this::rewrite);
+    /**
+     * Pre-order: share at the outermost scope whose first non-trivial evaluation is the unit. Stack-safe, as are the
+     * walks below: a program's term nests as deeply as it has methods and statements (issue #327, ADR-074).
+     */
+    private Trampoline<PirTerm> rewrite(PirTerm term) {
+        return Trampoline.defer(() -> {
+            for (var key : candidates) {
+                var lead = leadingUnit(term, key);
+                if (lead == null || countUnits(term, key) < 2) continue;
+                String shared = fresh(key.shape().namePrefix);
+                var body = mapUnits(term, key, use -> remember(use, new PirTerm.Var(shared, key.type()))).run();
+                changed = true;
+                if (key.shape() == Shape.VALUE_CONVERSION) valueApplied = true; else projectionApplied = true;
+                // The inserted value is non-trivial, so a later candidate can only be shared below it:
+                // evaluation order between units is preserved.
+                return rewrite(body).map(rewritten -> remember(term, new PirTerm.Let(shared, lead, rewritten)));
+            }
+            Trampoline<PirTerm> rebuilt = switch (term) {
+                case PirTerm.Let let when isDead(let) ->
+                        rewrite(let.body()).map(body -> new PirTerm.Let(let.name(), let.value(), body));
+                case PirTerm.LetRec rec when isDead(rec) ->
+                        rewrite(rec.body()).map(body -> new PirTerm.LetRec(rec.bindings(), body));
+                default -> PirHelpers.traverseChildren(term, this::rewrite);
+            };
+            return rebuilt.map(replacement -> remember(term, replacement));
         });
     }
 
@@ -225,80 +237,107 @@ public final class ValueConversionSharingPass {
      * call, directly or through another live method, is bound this way.
      */
     private boolean isDead(PirTerm term) {
-        var known = deadBindings.get(term);
-        if (known != null) return known;
-        boolean dead = switch (term) {
-            case PirTerm.Let let -> let.value() instanceof PirTerm.Lam
-                    && !liveFree(let.body()).contains(let.name());
-            case PirTerm.LetRec rec -> rec.bindings().size() == 1
-                    && rec.bindings().getFirst().value() instanceof PirTerm.Lam
-                    && !liveFree(rec.body()).contains(rec.bindings().getFirst().name());
-            default -> false;
-        };
-        deadBindings.put(term, dead);
-        return dead;
+        return dead(term).run();
+    }
+
+    private Trampoline<Boolean> dead(PirTerm term) {
+        return Trampoline.defer(() -> {
+            var known = deadBindings.get(term);
+            if (known != null) return Trampoline.done(known);
+            Trampoline<Boolean> dead = switch (term) {
+                case PirTerm.Let let -> let.value() instanceof PirTerm.Lam
+                        ? liveFree(let.body()).map(free -> !free.contains(let.name()))
+                        : Trampoline.done(false);
+                case PirTerm.LetRec rec -> rec.bindings().size() == 1
+                        && rec.bindings().getFirst().value() instanceof PirTerm.Lam
+                        ? liveFree(rec.body()).map(free -> !free.contains(rec.bindings().getFirst().name()))
+                        : Trampoline.done(false);
+                default -> Trampoline.done(false);
+            };
+            return dead.map(result -> {
+                deadBindings.put(term, result);
+                return result;
+            });
+        });
     }
 
     /** Free variables of {@code term} with its dead bindings dropped (the optimiser's view of the term). */
-    private Set<String> liveFree(PirTerm term) {
-        var known = liveFreeVariables.get(term);
-        if (known != null) return known;
-        var free = new HashSet<String>();
-        switch (term) {
-            case PirTerm.Var v -> free.add(v.name());
-            case PirTerm.Const _, PirTerm.Builtin _, PirTerm.Error _ -> { }
-            case PirTerm.Lam l -> { free.addAll(liveFree(l.body())); free.remove(l.param()); }
-            case PirTerm.Let l -> {
-                free.addAll(liveFree(l.body()));
-                if (!isDead(l)) { free.remove(l.name()); free.addAll(liveFree(l.value())); }
-            }
-            case PirTerm.LetRec r -> {
-                free.addAll(liveFree(r.body()));
-                if (!isDead(r)) {
-                    r.bindings().forEach(b -> free.addAll(liveFree(b.value())));
-                    r.bindings().forEach(b -> free.remove(b.name()));
+    private Trampoline<Set<String>> liveFree(PirTerm term) {
+        return Trampoline.defer(() -> {
+            var known = liveFreeVariables.get(term);
+            if (known != null) return Trampoline.done(known);
+            var free = new HashSet<String>();
+            Trampoline<Void> filled = switch (term) {
+                case PirTerm.Var v -> {
+                    free.add(v.name());
+                    yield Trampoline.done(null);
                 }
-            }
-            case PirTerm.App a -> { free.addAll(liveFree(a.function())); free.addAll(liveFree(a.argument())); }
-            case PirTerm.IfThenElse i -> {
-                free.addAll(liveFree(i.cond()));
-                free.addAll(liveFree(i.thenBranch()));
-                free.addAll(liveFree(i.elseBranch()));
-            }
-            case PirTerm.Trace t -> { free.addAll(liveFree(t.message())); free.addAll(liveFree(t.body())); }
-            case PirTerm.DataConstr c -> c.fields().forEach(f -> free.addAll(liveFree(f)));
-            case PirTerm.IntegerCase c -> {
-                free.addAll(liveFree(c.scrutinee()));
-                c.branches().forEach(b -> free.addAll(liveFree(b)));
-            }
-            case PirTerm.ListMatch m -> {
-                free.addAll(liveFree(m.scrutinee()));
-                free.addAll(liveFree(m.nilBranch()));
-                var cons = new HashSet<>(liveFree(m.consBranch()));
-                cons.remove(m.headName());
-                cons.remove(m.tailName());
-                free.addAll(cons);
-            }
-            case PirTerm.PairMatch m -> {
-                free.addAll(liveFree(m.scrutinee()));
-                var body = new HashSet<>(liveFree(m.body()));
-                body.remove(m.firstName());
-                body.remove(m.secondName());
-                free.addAll(body);
-            }
-            case PirTerm.DataMatch m -> {
-                free.addAll(liveFree(m.scrutinee()));
-                for (var b : m.branches()) {
-                    var body = new HashSet<>(liveFree(b.body()));
-                    b.bindings().forEach(body::remove);
-                    if (b.patternVar() != null) body.remove(b.patternVar());
+                case PirTerm.Const _, PirTerm.Builtin _, PirTerm.Error _ -> Trampoline.done(null);
+                case PirTerm.Lam l -> liveFree(l.body()).map(body -> {
                     free.addAll(body);
-                }
-            }
-        }
-        var result = Set.copyOf(free);
-        liveFreeVariables.put(term, result);
-        return result;
+                    free.remove(l.param());
+                    return null;
+                });
+                case PirTerm.Let l -> addLiveFree(free, l.body()).then(ignored -> dead(l)).then(dead -> dead
+                        ? Trampoline.<Void>done(null)
+                        : liveFree(l.value()).map(value -> {
+                            free.remove(l.name());
+                            free.addAll(value);
+                            return null;
+                        }));
+                case PirTerm.LetRec r -> addLiveFree(free, r.body()).then(ignored -> dead(r)).then(dead -> dead
+                        ? Trampoline.<Void>done(null)
+                        : addLiveFree(free, r.bindings().stream().map(PirTerm.Binding::value).toList()).map(ignored -> {
+                            r.bindings().forEach(b -> free.remove(b.name()));
+                            return null;
+                        }));
+                case PirTerm.App a -> addLiveFree(free, List.of(a.function(), a.argument()));
+                case PirTerm.IfThenElse i -> addLiveFree(free, List.of(i.cond(), i.thenBranch(), i.elseBranch()));
+                case PirTerm.Trace t -> addLiveFree(free, List.of(t.message(), t.body()));
+                case PirTerm.DataConstr c -> addLiveFree(free, c.fields());
+                case PirTerm.IntegerCase c -> addLiveFree(free, c.scrutinee()).then(ignored -> addLiveFree(free, c.branches()));
+                case PirTerm.ListMatch m -> addLiveFree(free, List.of(m.scrutinee(), m.nilBranch()))
+                        .then(ignored -> liveFree(m.consBranch())).map(consFree -> {
+                            var cons = new HashSet<>(consFree);
+                            cons.remove(m.headName());
+                            cons.remove(m.tailName());
+                            free.addAll(cons);
+                            return null;
+                        });
+                case PirTerm.PairMatch m -> addLiveFree(free, m.scrutinee())
+                        .then(ignored -> liveFree(m.body())).map(bodyFree -> {
+                            var body = new HashSet<>(bodyFree);
+                            body.remove(m.firstName());
+                            body.remove(m.secondName());
+                            free.addAll(body);
+                            return null;
+                        });
+                case PirTerm.DataMatch m -> addLiveFree(free, m.scrutinee()).then(ignored ->
+                        Trampoline.each(m.branches(), b -> liveFree(b.body()).map(bodyFree -> {
+                            var body = new HashSet<>(bodyFree);
+                            b.bindings().forEach(body::remove);
+                            if (b.patternVar() != null) body.remove(b.patternVar());
+                            free.addAll(body);
+                            return (Void) null;
+                        }))).map(ignored -> null);
+            };
+            return filled.map(ignored -> {
+                var result = Set.copyOf(free);
+                liveFreeVariables.put(term, result);
+                return result;
+            });
+        });
+    }
+
+    private Trampoline<Void> addLiveFree(Set<String> free, PirTerm term) {
+        return liveFree(term).map(found -> {
+            free.addAll(found);
+            return null;
+        });
+    }
+
+    private Trampoline<Void> addLiveFree(Set<String> free, List<PirTerm> terms) {
+        return Trampoline.each(terms, term -> addLiveFree(free, term)).map(ignored -> null);
     }
 
     /**
@@ -310,76 +349,87 @@ public final class ValueConversionSharingPass {
      * lead.
      */
     private PirTerm leadingUnit(PirTerm term, Key key) {
-        var found = keyOf(term, key.shape());
-        if (key.equals(found)) return term;
-        // A unit of another key is a leaf: the raw chain inside a decode belongs to the decode
-        // and never leads on its own, exactly as the collector sees it.
-        if (found != null) return null;
-        return switch (term) {
-            case PirTerm.App app -> {
-                var inFunction = leadingUnit(app.function(), key);
-                if (inFunction != null) yield inFunction;
-                yield isTrivial(app.function()) ? leadingUnit(app.argument(), key) : null;
-            }
-            case PirTerm.Let let -> {
-                var inValue = leadingUnit(let.value(), key);
-                if (inValue != null) yield inValue;
-                // The shared binding is inserted above this Let, so the Let must not bind a free
-                // variable of the unit: neither the variable itself nor a wrapper alias (a
-                // wrapper-spelled conversion [w x] is free in both x and w).
-                yield isTrivial(let.value()) && !let.name().equals(key.variable()) && !aliases.contains(let.name())
-                        ? leadingUnit(let.body(), key) : null;
-            }
-            // A single recursive binding of a lambda only builds its closure (Z applied to a
-            // lambda: a fixed number of beta steps over values, the fact the UPLC optimiser
-            // relies on to drop an unused one), so its body can lead when the binding does not
-            // capture a free variable of the unit. The per-site JulcList.get lowering wraps every
-            // site in such a binding. The multi-binding (Bekić) lowering is not claimed.
-            case PirTerm.LetRec rec -> rec.bindings().size() == 1
-                    && rec.bindings().getFirst().value() instanceof PirTerm.Lam
-                    && !rec.bindings().getFirst().name().equals(key.variable())
-                    && !aliases.contains(rec.bindings().getFirst().name())
-                    ? leadingUnit(rec.body(), key) : null;
-            // Branches are exclusive: a unit leading in both arms of a conditional would be
-            // evaluated once per path either way, so sharing it above the conditional only adds
-            // a binding. Only the condition (or a scrutinee) can lead.
-            case PirTerm.IfThenElse ite -> leadingUnit(ite.cond(), key);
-            case PirTerm.DataMatch match -> leadingUnit(match.scrutinee(), key);
-            case PirTerm.ListMatch match -> leadingUnit(match.scrutinee(), key);
-            case PirTerm.PairMatch match -> leadingUnit(match.scrutinee(), key);
-            case PirTerm.IntegerCase c -> leadingUnit(c.scrutinee(), key);
-            case PirTerm.Var _, PirTerm.Const _, PirTerm.Builtin _, PirTerm.Lam _,
-                 PirTerm.Trace _, PirTerm.Error _, PirTerm.DataConstr _ -> null;
-        };
+        return leading(term, key).run();
+    }
+
+    private Trampoline<PirTerm> leading(PirTerm term, Key key) {
+        return Trampoline.defer(() -> {
+            var found = keyOf(term, key.shape());
+            if (key.equals(found)) return Trampoline.done(term);
+            // A unit of another key is a leaf: the raw chain inside a decode belongs to the decode
+            // and never leads on its own, exactly as the collector sees it.
+            if (found != null) return Trampoline.done(null);
+            return switch (term) {
+                case PirTerm.App app -> leading(app.function(), key).then(inFunction -> {
+                    if (inFunction != null) return Trampoline.done(inFunction);
+                    return isTrivial(app.function()) ? leading(app.argument(), key) : Trampoline.done(null);
+                });
+                case PirTerm.Let let -> leading(let.value(), key).then(inValue -> {
+                    if (inValue != null) return Trampoline.done(inValue);
+                    // The shared binding is inserted above this Let, so the Let must not bind a free
+                    // variable of the unit: neither the variable itself nor a wrapper alias (a
+                    // wrapper-spelled conversion [w x] is free in both x and w).
+                    return isTrivial(let.value()) && !let.name().equals(key.variable()) && !aliases.contains(let.name())
+                            ? leading(let.body(), key) : Trampoline.done(null);
+                });
+                // A single recursive binding of a lambda only builds its closure (Z applied to a
+                // lambda: a fixed number of beta steps over values, the fact the UPLC optimiser
+                // relies on to drop an unused one), so its body can lead when the binding does not
+                // capture a free variable of the unit. The per-site JulcList.get lowering wraps every
+                // site in such a binding. The multi-binding (Bekić) lowering is not claimed.
+                case PirTerm.LetRec rec -> rec.bindings().size() == 1
+                        && rec.bindings().getFirst().value() instanceof PirTerm.Lam
+                        && !rec.bindings().getFirst().name().equals(key.variable())
+                        && !aliases.contains(rec.bindings().getFirst().name())
+                        ? leading(rec.body(), key) : Trampoline.done(null);
+                // Branches are exclusive: a unit leading in both arms of a conditional would be
+                // evaluated once per path either way, so sharing it above the conditional only adds
+                // a binding. Only the condition (or a scrutinee) can lead.
+                case PirTerm.IfThenElse ite -> leading(ite.cond(), key);
+                case PirTerm.DataMatch match -> leading(match.scrutinee(), key);
+                case PirTerm.ListMatch match -> leading(match.scrutinee(), key);
+                case PirTerm.PairMatch match -> leading(match.scrutinee(), key);
+                case PirTerm.IntegerCase c -> leading(c.scrutinee(), key);
+                case PirTerm.Var _, PirTerm.Const _, PirTerm.Builtin _, PirTerm.Lam _,
+                     PirTerm.Trace _, PirTerm.Error _, PirTerm.DataConstr _ -> Trampoline.done(null);
+            };
+        });
     }
 
     /** Evaluation that cannot fail, trace, or run user code. */
     private boolean isTrivial(PirTerm term) {
-        return switch (term) {
-            case PirTerm.Var _, PirTerm.Const _, PirTerm.Builtin _, PirTerm.Lam _ -> true;
-            case PirTerm.App app -> isUnsaturatedSpine(app);
-            default -> false;
-        };
+        return trivial(term).run();
+    }
+
+    private Trampoline<Boolean> trivial(PirTerm term) {
+        return Trampoline.defer(() -> switch (term) {
+            case PirTerm.Var _, PirTerm.Const _, PirTerm.Builtin _, PirTerm.Lam _ -> Trampoline.done(true);
+            case PirTerm.App app -> unsaturatedSpine(app);
+            default -> Trampoline.done(false);
+        });
     }
 
     /** A builtin or once-bound lambda chain applied to fewer trivial arguments than its arity. */
-    private boolean isUnsaturatedSpine(PirTerm.App app) {
-        int arguments = 0;
+    private Trampoline<Boolean> unsaturatedSpine(PirTerm.App app) {
+        var arguments = new ArrayList<PirTerm>();
         PirTerm head = app;
         while (head instanceof PirTerm.App spine) {
-            if (!isTrivial(spine.argument())) return false;
-            arguments++;
+            arguments.add(spine.argument());
             head = spine.function();
         }
-        Integer arity = switch (head) {
-            case PirTerm.Builtin builtin -> {
-                var sig = BuiltinSemantics.find(builtin.fun());
-                yield sig == null ? null : sig.valueArity();
-            }
-            case PirTerm.Var var -> lambdaDepths.get(var.name());
-            default -> null;
-        };
-        return arity != null && arguments < arity;
+        PirTerm function = head;
+        return Trampoline.all(arguments, this::trivial).map(allTrivial -> {
+            if (!allTrivial) return false;
+            Integer arity = switch (function) {
+                case PirTerm.Builtin builtin -> {
+                    var sig = BuiltinSemantics.find(builtin.fun());
+                    yield sig == null ? null : sig.valueArity();
+                }
+                case PirTerm.Var var -> lambdaDepths.get(var.name());
+                default -> null;
+            };
+            return arity != null && arguments.size() < arity;
+        });
     }
 
     /** The key of {@code term} if it is a unit of {@code shape}, else null. */
@@ -472,7 +522,7 @@ public final class ValueConversionSharingPass {
 
     private int countUnits(PirTerm term, Key key) {
         int[] count = {0};
-        mapUnits(term, key, use -> { count[0]++; return use; });
+        mapUnits(term, key, use -> { count[0]++; return use; }).run();
         return count[0];
     }
 
@@ -481,67 +531,96 @@ public final class ValueConversionSharingPass {
      * matched unit is a leaf, a unit of another key of the same class is an opaque leaf (the
      * raw chain inside a decode is part of the decode), and rebindings are opaque.
      */
-    private PirTerm mapUnits(PirTerm term, Key key, UnaryOperator<PirTerm> use) {
-        var found = keyOf(term, key.shape());
-        if (key.equals(found)) return use.apply(term);
-        if (found != null) return term;
-        String variable = key.variable();
-        var result = switch (term) {
-            case PirTerm.Lam lam when lam.param().equals(variable) -> term;
-            case PirTerm.Let let when isDead(let) -> let.name().equals(variable) ? term
-                    : new PirTerm.Let(let.name(), let.value(), mapUnits(let.body(), key, use));
-            case PirTerm.Let let when let.name().equals(variable) ->
-                    new PirTerm.Let(let.name(), mapUnits(let.value(), key, use), let.body());
-            case PirTerm.LetRec rec when rec.bindings().stream().anyMatch(b -> b.name().equals(variable)) -> term;
-            case PirTerm.LetRec rec when isDead(rec) -> new PirTerm.LetRec(rec.bindings(), mapUnits(rec.body(), key, use));
-            case PirTerm.ListMatch match -> new PirTerm.ListMatch(
-                    mapUnits(match.scrutinee(), key, use), match.headName(), match.tailName(),
-                    mapUnits(match.nilBranch(), key, use),
-                    match.headName().equals(variable) || match.tailName().equals(variable) ? match.consBranch()
-                            : mapUnits(match.consBranch(), key, use));
-            case PirTerm.PairMatch match -> new PirTerm.PairMatch(
-                    mapUnits(match.scrutinee(), key, use), match.pairType(), match.firstName(),
-                    match.secondName(), match.firstName().equals(variable) || match.secondName().equals(variable)
-                            ? match.body() : mapUnits(match.body(), key, use));
-            case PirTerm.DataMatch match -> new PirTerm.DataMatch(mapUnits(match.scrutinee(), key, use),
-                    match.branches().stream().map(b -> new PirTerm.MatchBranch(b.constructorName(), b.bindings(),
-                            b.bindingTypes(), b.bindings().contains(variable) || variable.equals(b.patternVar())
-                                    ? b.body() : mapUnits(b.body(), key, use), b.patternVar())).toList());
-            default -> PirHelpers.mapChildren(term, child -> mapUnits(child, key, use));
-        };
-        return remember(term, result);
+    private Trampoline<PirTerm> mapUnits(PirTerm term, Key key, UnaryOperator<PirTerm> use) {
+        return Trampoline.defer(() -> {
+            var found = keyOf(term, key.shape());
+            if (key.equals(found)) return Trampoline.done(use.apply(term));
+            if (found != null) return Trampoline.done(term);
+            String variable = key.variable();
+            Trampoline<PirTerm> result = switch (term) {
+                case PirTerm.Lam lam when lam.param().equals(variable) -> Trampoline.done(term);
+                case PirTerm.Let let when isDead(let) -> let.name().equals(variable) ? Trampoline.done(term)
+                        : mapUnits(let.body(), key, use).map(body -> new PirTerm.Let(let.name(), let.value(), body));
+                case PirTerm.Let let when let.name().equals(variable) ->
+                        mapUnits(let.value(), key, use).map(value -> new PirTerm.Let(let.name(), value, let.body()));
+                case PirTerm.LetRec rec when rec.bindings().stream().anyMatch(b -> b.name().equals(variable)) ->
+                        Trampoline.done(term);
+                case PirTerm.LetRec rec when isDead(rec) ->
+                        mapUnits(rec.body(), key, use).map(body -> new PirTerm.LetRec(rec.bindings(), body));
+                case PirTerm.ListMatch match -> mapUnits(match.scrutinee(), key, use).then(scrutinee ->
+                        mapUnits(match.nilBranch(), key, use).then(nil ->
+                                (match.headName().equals(variable) || match.tailName().equals(variable)
+                                        ? Trampoline.done(match.consBranch()) : mapUnits(match.consBranch(), key, use))
+                                        .map(cons -> new PirTerm.ListMatch(scrutinee, match.headName(), match.tailName(),
+                                                nil, cons))));
+                case PirTerm.PairMatch match -> mapUnits(match.scrutinee(), key, use).then(scrutinee ->
+                        (match.firstName().equals(variable) || match.secondName().equals(variable)
+                                ? Trampoline.done(match.body()) : mapUnits(match.body(), key, use))
+                                .map(body -> new PirTerm.PairMatch(scrutinee, match.pairType(), match.firstName(),
+                                        match.secondName(), body)));
+                case PirTerm.DataMatch match -> mapUnits(match.scrutinee(), key, use).then(scrutinee ->
+                        Trampoline.each(match.branches(), b ->
+                                        (b.bindings().contains(variable) || variable.equals(b.patternVar())
+                                                ? Trampoline.done(b.body()) : mapUnits(b.body(), key, use))
+                                                .map(body -> new PirTerm.MatchBranch(b.constructorName(), b.bindings(),
+                                                        b.bindingTypes(), body, b.patternVar())))
+                                .map(branches -> new PirTerm.DataMatch(scrutinee, branches)));
+                default -> PirHelpers.traverseChildren(term, child -> mapUnits(child, key, use));
+            };
+            return result.map(replacement -> remember(term, replacement));
+        });
     }
 
-    /** Count every unit of the current shape by key; a matched unit is a leaf, a dead binding's value is skipped. */
-    private void collectSites(PirTerm term, Map<Key, Integer> sites) {
-        var key = keyOf(term, shape);
-        if (key != null) {
-            sites.merge(key, 1, Integer::sum);
-            return;
-        }
-        switch (term) {
-            case PirTerm.Let let when isDead(let) -> collectSites(let.body(), sites);
-            case PirTerm.LetRec rec when isDead(rec) -> collectSites(rec.body(), sites);
-            default -> PirHelpers.mapChildren(term, child -> { collectSites(child, sites); return child; });
+    /**
+     * Count every unit of the current shape by key, in pre-order; a matched unit is a leaf, a dead binding's value is
+     * skipped. A work list, not recursion (issue #327).
+     */
+    private void collectSites(PirTerm root, Map<Key, Integer> sites) {
+        var pending = new ArrayDeque<PirTerm>();
+        pending.push(root);
+        while (!pending.isEmpty()) {
+            var term = pending.pop();
+            var key = keyOf(term, shape);
+            if (key != null) {
+                sites.merge(key, 1, Integer::sum);
+                continue;
+            }
+            switch (term) {
+                case PirTerm.Let let when isDead(let) -> pending.push(let.body());
+                case PirTerm.LetRec rec when isDead(rec) -> pending.push(rec.body());
+                default -> pushChildren(pending, term);
+            }
         }
     }
 
-    private void collectBinders(PirTerm term) {
-        switch (term) {
-            case PirTerm.Var v -> names.add(v.name());
-            case PirTerm.Lam l -> bind(l.param());
-            case PirTerm.Let l -> { bind(l.name()); letValues.putIfAbsent(l.name(), l.value()); }
-            case PirTerm.LetRec r -> r.bindings().forEach(b -> bind(b.name()));
-            case PirTerm.ListMatch m -> { bind(m.headName()); bind(m.tailName()); }
-            case PirTerm.PairMatch m -> { bind(m.firstName()); bind(m.secondName()); }
-            case PirTerm.DataMatch m -> m.branches().forEach(b -> {
-                b.bindings().forEach(this::bind);
-                if (b.patternVar() != null) bind(b.patternVar());
-            });
-            case PirTerm.IntegerCase _, PirTerm.App _, PirTerm.Const _, PirTerm.Builtin _, PirTerm.Error _,
-                 PirTerm.IfThenElse _, PirTerm.Trace _, PirTerm.DataConstr _ -> { }
+    /** Every binder and variable name, and each let's first value, in pre-order. A work list, not recursion (issue #327). */
+    private void collectBinders(PirTerm root) {
+        var pending = new ArrayDeque<PirTerm>();
+        pending.push(root);
+        while (!pending.isEmpty()) {
+            var term = pending.pop();
+            switch (term) {
+                case PirTerm.Var v -> names.add(v.name());
+                case PirTerm.Lam l -> bind(l.param());
+                case PirTerm.Let l -> { bind(l.name()); letValues.putIfAbsent(l.name(), l.value()); }
+                case PirTerm.LetRec r -> r.bindings().forEach(b -> bind(b.name()));
+                case PirTerm.ListMatch m -> { bind(m.headName()); bind(m.tailName()); }
+                case PirTerm.PairMatch m -> { bind(m.firstName()); bind(m.secondName()); }
+                case PirTerm.DataMatch m -> m.branches().forEach(b -> {
+                    b.bindings().forEach(this::bind);
+                    if (b.patternVar() != null) bind(b.patternVar());
+                });
+                case PirTerm.IntegerCase _, PirTerm.App _, PirTerm.Const _, PirTerm.Builtin _, PirTerm.Error _,
+                     PirTerm.IfThenElse _, PirTerm.Trace _, PirTerm.DataConstr _ -> { }
+            }
+            pushChildren(pending, term);
         }
-        PirHelpers.mapChildren(term, child -> { collectBinders(child); return child; });
+    }
+
+    /** Pushes the children of {@code term} so that they pop in {@link PirHelpers#mapChildren}'s order. */
+    private static void pushChildren(ArrayDeque<PirTerm> pending, PirTerm term) {
+        var children = PirHelpers.children(term);
+        for (int i = children.size() - 1; i >= 0; i--) pending.push(children.get(i));
     }
 
     private void bind(String name) {

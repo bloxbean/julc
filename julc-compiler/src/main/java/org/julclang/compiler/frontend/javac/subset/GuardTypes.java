@@ -19,6 +19,7 @@ import com.sun.source.tree.UnaryTree;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacNames;
 import org.julclang.compiler.frontend.javac.SwitchResults;
+import org.julclang.core.recursion.Trampoline;
 
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
@@ -83,22 +84,31 @@ public final class GuardTypes {
 
     /** {@code tree}'s type, asking {@code leaf} of what no declaration says. */
     JType of(ExpressionTree tree, Function<ExpressionTree, JType> leaf) {
-        return switch (tree) {
-            case LiteralTree literal -> literal(literal);
-            case ParenthesizedTree parenthesized -> of(parenthesized.getExpression(), leaf);
-            case InstanceOfTree ignored -> JType.BOOLEAN;
+        return type(tree, leaf).run();
+    }
+
+    /**
+     * {@link #of}, stack-safe (issue #327): a local's type is its initializer's, and a chain of {@code var}s each
+     * initialized by the one before is as long as the source. Each step is the recursive form's, in its order.
+     */
+    private Trampoline<JType> type(ExpressionTree tree, Function<ExpressionTree, JType> leaf) {
+        return Trampoline.defer(() -> switch (tree) {
+            case LiteralTree literal -> Trampoline.done(literal(literal));
+            case ParenthesizedTree parenthesized -> type(parenthesized.getExpression(), leaf);
+            case InstanceOfTree ignored -> Trampoline.done(JType.BOOLEAN);
             case UnaryTree unary -> unary(unary, leaf);
             case BinaryTree binary -> binary(binary, leaf);
             case ConditionalExpressionTree conditional -> conditional(conditional, leaf);
             case TypeCastTree cast -> cast(cast, leaf);
             case IdentifierTree name -> name(name, leaf);
-            case MemberSelectTree select -> field(select, leaf);
-            case MethodInvocationTree call -> call(call, leaf);
+            case MemberSelectTree select -> Trampoline.done(field(select, leaf));
+            case MethodInvocationTree call -> Trampoline.done(call(call, leaf));
             case SwitchExpressionTree nested -> nested(nested, leaf);
-            case NewClassTree creation -> declared(facts.type(creation)) == JType.BOOLEAN_BOX ? JType.BOOLEAN_BOX : JType.OTHER;
-            case LambdaExpressionTree ignored -> JType.OTHER;
-            default -> leaf.apply(tree);
-        };
+            case NewClassTree creation -> Trampoline.done(
+                    declared(facts.type(creation)) == JType.BOOLEAN_BOX ? JType.BOOLEAN_BOX : JType.OTHER);
+            case LambdaExpressionTree ignored -> Trampoline.done(JType.OTHER);
+            default -> Trampoline.done(leaf.apply(tree));
+        });
     }
 
     private static JType literal(LiteralTree literal) {
@@ -111,19 +121,20 @@ public final class GuardTypes {
         };
     }
 
-    private JType unary(UnaryTree unary, Function<ExpressionTree, JType> leaf) {
-        var t = of(unary.getExpression(), leaf);
-        return switch (unary.getKind()) {
+    private Trampoline<JType> unary(UnaryTree unary, Function<ExpressionTree, JType> leaf) {
+        return type(unary.getExpression(), leaf).map(t -> switch (unary.getKind()) {
             case LOGICAL_COMPLEMENT -> isBoolean(t) ? JType.BOOLEAN : open(t, t);
             case UNARY_PLUS, UNARY_MINUS, BITWISE_COMPLEMENT -> isNumeric(t) ? JType.NUMERIC : open(t, t);
             default -> JType.OTHER;
-        };
+        });
     }
 
-    private JType conditional(ConditionalExpressionTree conditional, Function<ExpressionTree, JType> leaf) {
-        var c = of(conditional.getCondition(), leaf);
-        var a = of(conditional.getTrueExpression(), leaf);
-        var b = of(conditional.getFalseExpression(), leaf);
+    private Trampoline<JType> conditional(ConditionalExpressionTree conditional, Function<ExpressionTree, JType> leaf) {
+        return type(conditional.getCondition(), leaf).then(c -> type(conditional.getTrueExpression(), leaf)
+                .then(a -> type(conditional.getFalseExpression(), leaf).map(b -> conditional(c, a, b))));
+    }
+
+    private static JType conditional(JType c, JType a, JType b) {
         if (c == JType.SMALL || a == JType.SMALL || b == JType.SMALL) return JType.SMALL;
         if (!isBoolean(c) && c != JType.UNKNOWN) return JType.OTHER; // JLS 15.25: the condition must be boolean
         JType result;
@@ -141,17 +152,20 @@ public final class GuardTypes {
         return c == JType.UNKNOWN && result != JType.OTHER ? JType.UNKNOWN : result;
     }
 
-    private JType cast(TypeCastTree cast, Function<ExpressionTree, JType> leaf) {
+    private Trampoline<JType> cast(TypeCastTree cast, Function<ExpressionTree, JType> leaf) {
         var target = declared(facts.type(cast.getType()));
-        var operand = of(cast.getExpression(), leaf);
-        if (isBoolean(target)) return isBoolean(operand) ? target : open(operand, operand);
-        if (target == JType.NUMERIC) return isNumeric(operand) ? JType.NUMERIC : open(operand, operand);
-        return target == JType.SMALL ? JType.SMALL : JType.OTHER; // a reference cast loses its run-time check on-chain (#288)
+        return type(cast.getExpression(), leaf).map(operand -> {
+            if (isBoolean(target)) return isBoolean(operand) ? target : open(operand, operand);
+            if (target == JType.NUMERIC) return isNumeric(operand) ? JType.NUMERIC : open(operand, operand);
+            return target == JType.SMALL ? JType.SMALL : JType.OTHER; // a reference cast loses its run-time check on-chain (#288)
+        });
     }
 
-    private JType binary(BinaryTree binary, Function<ExpressionTree, JType> leaf) {
-        var a = of(binary.getLeftOperand(), leaf);
-        var b = of(binary.getRightOperand(), leaf);
+    private Trampoline<JType> binary(BinaryTree binary, Function<ExpressionTree, JType> leaf) {
+        return type(binary.getLeftOperand(), leaf).then(a -> type(binary.getRightOperand(), leaf).map(b -> binary(binary, a, b)));
+    }
+
+    private JType binary(BinaryTree binary, JType a, JType b) {
         if (a == JType.SMALL || b == JType.SMALL) return JType.SMALL;
         return switch (binary.getKind()) {
             case EQUAL_TO, NOT_EQUAL_TO -> {
@@ -178,17 +192,19 @@ public final class GuardTypes {
     }
 
     /** A local, a parameter or a field of a class around the name; a pattern variable has a record type. */
-    private JType name(IdentifierTree name, Function<ExpressionTree, JType> leaf) {
-        if (!(facts.elementOrNull(name) instanceof VariableElement variable)) return leaf.apply(name);
+    private Trampoline<JType> name(IdentifierTree name, Function<ExpressionTree, JType> leaf) {
+        if (!(facts.elementOrNull(name) instanceof VariableElement variable)) return Trampoline.done(leaf.apply(name));
         return switch (variable.getKind()) {
-            case PARAMETER -> facts.isInferred(facts.declaration(variable)) ? JType.OTHER : declared(variable.asType());
+            case PARAMETER -> Trampoline.done(facts.isInferred(facts.declaration(variable)) ? JType.OTHER : declared(variable.asType()));
             case LOCAL_VARIABLE -> {
                 var declaration = facts.declaration(variable);
-                if (declaration.getType() != null && !facts.isGenerated(declaration.getType())) yield declared(variable.asType());
-                yield declaration.getInitializer() == null ? JType.UNKNOWN : of(declaration.getInitializer(), leaf);
+                if (declaration.getType() != null && !facts.isGenerated(declaration.getType())) {
+                    yield Trampoline.done(declared(variable.asType()));
+                }
+                yield declaration.getInitializer() == null ? Trampoline.done(JType.UNKNOWN) : type(declaration.getInitializer(), leaf);
             }
-            case FIELD -> facts.encloses(variable.getEnclosingElement(), name) ? declared(variable.asType()) : leaf.apply(name);
-            default -> JType.OTHER;
+            case FIELD -> Trampoline.done(facts.encloses(variable.getEnclosingElement(), name) ? declared(variable.asType()) : leaf.apply(name));
+            default -> Trampoline.done(JType.OTHER);
         };
     }
 
@@ -277,10 +293,8 @@ public final class GuardTypes {
         return null;
     }
 
-    private JType nested(SwitchExpressionTree nested, Function<ExpressionTree, JType> leaf) {
-        var results = new ArrayList<JType>();
-        for (var result : SwitchResults.of(nested)) results.add(of(result, leaf));
-        return ofResults(results);
+    private Trampoline<JType> nested(SwitchExpressionTree nested, Function<ExpressionTree, JType> leaf) {
+        return Trampoline.each(SwitchResults.of(nested), result -> type(result, leaf)).map(GuardTypes::ofResults);
     }
 
     private static JType ofResults(List<JType> results) {

@@ -2,6 +2,7 @@ package org.julclang.core.flat;
 
 import org.julclang.core.*;
 import org.julclang.core.cbor.PlutusDataCborDecoder;
+import org.julclang.core.recursion.Trampoline;
 
 import java.math.BigInteger;
 import java.util.ArrayList;
@@ -59,63 +60,57 @@ public final class UplcFlatDecoder {
 
     /**
      * Decode a UPLC term.
+     * <p>
+     * The pending work is kept on the heap ({@link Trampoline}), so a deep term needs no more Java stack than a shallow
+     * one (issue #327, ADR-074). Bits are read in the same order, and the limits and errors are the same.
      */
     public Term readTerm() {
-        int tag = reader.bits8(4);
-        return switch (tag) {
-            case 0 -> { // Var
-                long idx = reader.word64();
-                yield new Term.Var(new NamedDeBruijn("i" + idx, (int) idx));
-            }
-            case 1 -> { // Delay
-                Term inner = readTerm();
-                yield new Term.Delay(inner);
-            }
-            case 2 -> { // LamAbs
-                Term body = readTerm();
-                yield new Term.Lam("i0", body);
-            }
-            case 3 -> { // Apply
-                Term function = readTerm();
-                Term argument = readTerm();
-                yield new Term.Apply(function, argument);
-            }
-            case 4 -> { // Const
-                yield new Term.Const(readConstant());
-            }
-            case 5 -> { // Force
-                Term inner = readTerm();
-                yield new Term.Force(inner);
-            }
-            case 6 -> new Term.Error(); // Error
-            case 7 -> { // Builtin
-                int code = reader.bits8(7);
-                yield new Term.Builtin(DefaultFun.fromFlatCode(code));
-            }
-            case 8 -> { // Constr
-                long constrTag = reader.word64();
-                List<Term> fields = readTermList(limits.maxConstructorFields());
-                yield new Term.Constr(constrTag, fields);
-            }
-            case 9 -> { // Case
-                Term scrutinee = readTerm();
-                List<Term> branches = readTermList(Integer.MAX_VALUE);
-                yield new Term.Case(scrutinee, branches);
-            }
-            default -> throw new FlatDecodingException("Unknown Term tag: " + tag);
-        };
+        return term().run();
     }
 
-    private List<Term> readTermList(int maximumSize) {
-        var terms = new ArrayList<Term>();
-        while (reader.listHasNext()) {
+    private Trampoline<Term> term() {
+        return Trampoline.defer(() -> {
+            int tag = reader.bits8(4);
+            return switch (tag) {
+                case 0 -> { // Var
+                    long idx = reader.word64();
+                    yield Trampoline.done(new Term.Var(new NamedDeBruijn("i" + idx, (int) idx)));
+                }
+                case 1 -> term().map(Term.Delay::new); // Delay
+                case 2 -> term().map(body -> new Term.Lam("i0", body)); // LamAbs
+                case 3 -> term().then(function -> term().map(argument -> new Term.Apply(function, argument))); // Apply
+                case 4 -> Trampoline.done(new Term.Const(readConstant())); // Const
+                case 5 -> term().map(Term.Force::new); // Force
+                case 6 -> Trampoline.done(new Term.Error()); // Error
+                case 7 -> { // Builtin
+                    int code = reader.bits8(7);
+                    yield Trampoline.done(new Term.Builtin(DefaultFun.fromFlatCode(code)));
+                }
+                case 8 -> { // Constr
+                    long constrTag = reader.word64();
+                    yield termList(limits.maxConstructorFields(), new ArrayList<>())
+                            .map(fields -> new Term.Constr(constrTag, fields));
+                }
+                case 9 -> term().then(scrutinee -> termList(Integer.MAX_VALUE, new ArrayList<>()) // Case
+                        .map(branches -> new Term.Case(scrutinee, branches)));
+                default -> throw new FlatDecodingException("Unknown Term tag: " + tag);
+            };
+        });
+    }
+
+    /** The rest of a FLAT list of terms, appended to {@code terms}. */
+    private Trampoline<List<Term>> termList(int maximumSize, List<Term> terms) {
+        return Trampoline.defer(() -> {
+            if (!reader.listHasNext()) return Trampoline.done(terms);
             if (terms.size() >= maximumSize) {
                 throw new FlatDecodingException(
                         "Constr has more than " + maximumSize + " fields");
             }
-            terms.add(readTerm());
-        }
-        return terms;
+            return term().then(term -> {
+                terms.add(term);
+                return termList(maximumSize, terms);
+            });
+        });
     }
 
     /**

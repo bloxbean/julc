@@ -6,13 +6,16 @@ import org.julclang.core.Constant;
 import org.julclang.core.DefaultFun;
 import org.julclang.core.ExpModIntegerSemantics;
 import org.julclang.core.Term;
+import org.julclang.core.recursion.Trampoline;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.function.UnaryOperator;
 
 /**
@@ -116,36 +119,58 @@ public class UplcOptimizer {
         return output;
     }
 
+    // ---- Stack safety (issue #327, ADR-074) ----
+    //
+    // A script nests as deeply as it is long (each binding a validator makes is a Lam inside an Apply), so every walk
+    // below keeps its pending work on the heap: a rewrite returns a Trampoline and is run once, at its entry point.
+    // Each rewrite visits children in the order the recursive form did, and each pass is a pure function of its
+    // input, so the result is the same term.
+
+    /**
+     * {@code term} rebuilt from its children, each rewritten by {@code map} one after another: a Lam's body, an
+     * Apply's function then argument, a Force's or Delay's term, a Constr's fields, a Case's scrutinee then branches.
+     * A Var, Const, Builtin or Error is returned as it is.
+     */
+    private static Trampoline<Term> mapChildren(Term term, Function<Term, Trampoline<Term>> map) {
+        return switch (term) {
+            case Term.Lam(var name, var body) -> map.apply(body).map(newBody -> Term.lam(name, newBody));
+            case Term.Apply(var fn, var arg) -> map.apply(fn).then(newFn -> map.apply(arg)
+                    .map(newArg -> Term.apply(newFn, newArg)));
+            case Term.Force(var inner) -> map.apply(inner).map(Term::force);
+            case Term.Delay(var inner) -> map.apply(inner).map(Term::delay);
+            case Term.Constr(var tag, var fields) -> Trampoline.each(fields, map)
+                    .map(newFields -> (Term) new Term.Constr(tag, newFields));
+            case Term.Case(var scrutinee, var branches) -> map.apply(scrutinee).then(newScrutinee ->
+                    Trampoline.each(branches, map).map(newBranches -> (Term) new Term.Case(newScrutinee, newBranches)));
+            default -> Trampoline.done(term); // Var, Const, Builtin, Error — no children
+        };
+    }
+
     // ---- Pass 1: Force/Delay cancellation ----
 
     Term forceDelayCancel(Term term) {
-        return switch (term) {
-            case Term.Force(var inner) -> {
-                var optimized = forceDelayCancel(inner);
-                if (optimized instanceof Term.Delay(var delayed)) {
-                    yield delayed; // Force(Delay(t)) → t
-                }
-                yield Term.force(optimized);
-            }
-            case Term.Delay(var inner) -> Term.delay(forceDelayCancel(inner));
-            case Term.Lam(var name, var body) -> Term.lam(name, forceDelayCancel(body));
-            case Term.Apply(var fn, var arg) -> Term.apply(forceDelayCancel(fn), forceDelayCancel(arg));
-            case Term.Constr(var tag, var fields) ->
-                    new Term.Constr(tag, fields.stream().map(this::forceDelayCancel).toList());
-            case Term.Case(var scrutinee, var branches) ->
-                    new Term.Case(forceDelayCancel(scrutinee),
-                            branches.stream().map(this::forceDelayCancel).toList());
-            default -> term; // Var, Const, Builtin, Error — no children to recurse
-        };
+        return forceDelayCancelWalk(term).run();
+    }
+
+    private Trampoline<Term> forceDelayCancelWalk(Term term) {
+        return Trampoline.defer(() -> switch (term) {
+            case Term.Force(var inner) -> forceDelayCancelWalk(inner).map(optimized ->
+                    optimized instanceof Term.Delay(var delayed)
+                            ? delayed // Force(Delay(t)) → t
+                            : Term.force(optimized));
+            default -> mapChildren(term, this::forceDelayCancelWalk);
+        });
     }
 
     // ---- Pass 2: Constant folding ----
 
     Term constantFold(Term term) {
-        return switch (term) {
-            case Term.Apply(var fn, var arg) -> {
-                var optFn = constantFold(fn);
-                var optArg = constantFold(arg);
+        return constantFoldWalk(term).run();
+    }
+
+    private Trampoline<Term> constantFoldWalk(Term term) {
+        return Trampoline.defer(() -> switch (term) {
+            case Term.Apply(var fn, var arg) -> constantFoldWalk(fn).then(optFn -> constantFoldWalk(arg).map(optArg -> {
                 // Check for Apply(Apply(Builtin(op), Const(a)), Const(b)).
                 // The builtin must appear bare: every foldable op has type arity 0,
                 // so a Force wrapper would make the application error at runtime
@@ -155,20 +180,12 @@ public class UplcOptimizer {
                         && optArg instanceof Term.Const(var constB)
                         && innerFn instanceof Term.Builtin(var fun)) {
                     var folded = foldBinaryOp(fun, constA, constB);
-                    if (folded != null) yield folded;
+                    if (folded != null) return folded;
                 }
-                yield Term.apply(optFn, optArg);
-            }
-            case Term.Force(var inner) -> Term.force(constantFold(inner));
-            case Term.Delay(var inner) -> Term.delay(constantFold(inner));
-            case Term.Lam(var name, var body) -> Term.lam(name, constantFold(body));
-            case Term.Constr(var tag, var fields) ->
-                    new Term.Constr(tag, fields.stream().map(this::constantFold).toList());
-            case Term.Case(var scrutinee, var branches) ->
-                    new Term.Case(constantFold(scrutinee),
-                            branches.stream().map(this::constantFold).toList());
-            default -> term;
-        };
+                return Term.apply(optFn, optArg);
+            }));
+            default -> mapChildren(term, this::constantFoldWalk);
+        });
     }
 
     /**
@@ -217,35 +234,30 @@ public class UplcOptimizer {
     }
 
     private Term foldLiteralExpMod(Term term, Set<Integer> expModAliases) {
-        var mapped = switch (term) {
-            case Term.Apply(Term.Lam(var name, var body), Term.Builtin(var fun))
-                    when fun == DefaultFun.ExpModInteger -> {
-                var withBinding = new LinkedHashSet<>(shiftAliases(expModAliases));
-                withBinding.add(1);
-                yield Term.apply(
-                        Term.lam(name, foldLiteralExpMod(body, Set.copyOf(withBinding))),
-                        Term.builtin(DefaultFun.ExpModInteger));
-            }
-            case Term.Apply(var fn, var arg) -> Term.apply(
-                    foldLiteralExpMod(fn, expModAliases),
-                    foldLiteralExpMod(arg, expModAliases));
-            case Term.Force(var inner) -> Term.force(
-                    foldLiteralExpMod(inner, expModAliases));
-            case Term.Delay(var inner) -> Term.delay(
-                    foldLiteralExpMod(inner, expModAliases));
-            case Term.Lam(var name, var body) -> Term.lam(
-                    name, foldLiteralExpMod(body, shiftAliases(expModAliases)));
-            case Term.Constr(var tag, var fields) -> new Term.Constr(
-                    tag, fields.stream()
-                            .map(field -> foldLiteralExpMod(field, expModAliases))
-                            .toList());
-            case Term.Case(var scrutinee, var branches) -> new Term.Case(
-                    foldLiteralExpMod(scrutinee, expModAliases),
-                    branches.stream()
-                            .map(branch -> foldLiteralExpMod(branch, expModAliases))
-                            .toList());
-            default -> term;
-        };
+        return foldLiteralExpModWalk(term, expModAliases).run();
+    }
+
+    private Trampoline<Term> foldLiteralExpModWalk(Term term, Set<Integer> expModAliases) {
+        return Trampoline.defer(() -> {
+            Trampoline<Term> mapped = switch (term) {
+                case Term.Apply(Term.Lam(var name, var body), Term.Builtin(var fun))
+                        when fun == DefaultFun.ExpModInteger -> {
+                    var withBinding = new LinkedHashSet<>(shiftAliases(expModAliases));
+                    withBinding.add(1);
+                    yield foldLiteralExpModWalk(body, Set.copyOf(withBinding)).map(newBody -> Term.apply(
+                            Term.lam(name, newBody),
+                            Term.builtin(DefaultFun.ExpModInteger)));
+                }
+                case Term.Lam(var name, var body) -> foldLiteralExpModWalk(body, shiftAliases(expModAliases))
+                        .map(newBody -> Term.lam(name, newBody));
+                default -> mapChildren(term, child -> foldLiteralExpModWalk(child, expModAliases));
+            };
+            return mapped.map(rewritten -> foldExpModCall(rewritten, expModAliases));
+        });
+    }
+
+    /** {@code mapped}, or the literal its successful all-literal ExpModInteger call evaluates to. */
+    private Term foldExpModCall(Term mapped, Set<Integer> expModAliases) {
         if (!context.resolvedTarget().featureProfile()
                 .isBuiltinAvailable(DefaultFun.ExpModInteger)) {
             return mapped;
@@ -299,67 +311,59 @@ public class UplcOptimizer {
     // ---- Pass 4: Dead code elimination ----
 
     Term deadCodeElimination(Term term) {
-        return switch (term) {
-            case Term.Apply(var fn, var arg) -> {
-                var optFn = deadCodeElimination(fn);
-                var optArg = deadCodeElimination(arg);
-                // Apply(Lam(x, body), arg) where x not free in body → body.
-                // Sound only when arg is pure: under call-by-value the argument
-                // is evaluated before the application, so discarding an argument
-                // that could error, diverge, or trace would change behavior.
-                if (optFn instanceof Term.Lam(var name, var body)) {
-                    if (!isFree(1, body) && isPure(optArg)) {
-                        yield shiftDown(body, 1);
-                    }
-                }
-                yield Term.apply(optFn, optArg);
-            }
-            case Term.Force(var inner) -> Term.force(deadCodeElimination(inner));
-            case Term.Delay(var inner) -> Term.delay(deadCodeElimination(inner));
-            case Term.Lam(var name, var body) -> Term.lam(name, deadCodeElimination(body));
-            case Term.Constr(var tag, var fields) ->
-                    new Term.Constr(tag, fields.stream().map(this::deadCodeElimination).toList());
-            case Term.Case(var scrutinee, var branches) ->
-                    new Term.Case(deadCodeElimination(scrutinee),
-                            branches.stream().map(this::deadCodeElimination).toList());
-            default -> term;
-        };
+        return deadCodeEliminationWalk(term).run();
+    }
+
+    private Trampoline<Term> deadCodeEliminationWalk(Term term) {
+        return Trampoline.defer(() -> switch (term) {
+            case Term.Apply(var fn, var arg) -> deadCodeEliminationWalk(fn).then(optFn ->
+                    deadCodeEliminationWalk(arg).map(optArg -> {
+                        // Apply(Lam(x, body), arg) where x not free in body → body.
+                        // Sound only when arg is pure: under call-by-value the argument
+                        // is evaluated before the application, so discarding an argument
+                        // that could error, diverge, or trace would change behavior.
+                        if (optFn instanceof Term.Lam(var name, var body)) {
+                            if (!isFree(1, body) && isPure(optArg)) {
+                                return shiftDown(body, 1);
+                            }
+                        }
+                        return Term.apply(optFn, optArg);
+                    }));
+            default -> mapChildren(term, this::deadCodeEliminationWalk);
+        });
     }
 
     // ---- Pass 5: Beta reduction ----
 
     Term betaReduce(Term term) {
-        return switch (term) {
-            case Term.Apply(var fn, var arg) -> {
-                var optFn = betaReduce(fn);
-                var optArg = betaReduce(arg);
+        return betaReduceWalk(term).run();
+    }
+
+    private Trampoline<Term> betaReduceWalk(Term term) {
+        return Trampoline.defer(() -> switch (term) {
+            case Term.Apply(var fn, var arg) -> betaReduceWalk(fn).then(optFn -> betaReduceWalk(arg).map(optArg -> {
                 // Apply(Lam(x, body), arg) → body[x:=arg] when x used exactly once
                 if (optFn instanceof Term.Lam(var name, var body)) {
                     int useCount = countUses(1, body);
                     if (useCount == 1 && isSimple(optArg)) {
-                        yield substitute(body, 1, optArg);
+                        return substitute(body, 1, optArg);
                     }
                 }
-                yield Term.apply(optFn, optArg);
-            }
-            case Term.Force(var inner) -> Term.force(betaReduce(inner));
-            case Term.Delay(var inner) -> Term.delay(betaReduce(inner));
-            case Term.Lam(var name, var body) -> Term.lam(name, betaReduce(body));
-            case Term.Constr(var tag, var fields) ->
-                    new Term.Constr(tag, fields.stream().map(this::betaReduce).toList());
-            case Term.Case(var scrutinee, var branches) ->
-                    new Term.Case(betaReduce(scrutinee),
-                            branches.stream().map(this::betaReduce).toList());
-            default -> term;
-        };
+                return Term.apply(optFn, optArg);
+            }));
+            default -> mapChildren(term, this::betaReduceWalk);
+        });
     }
 
     // ---- Pass 6: Eta reduction ----
 
     Term etaReduce(Term term) {
-        return switch (term) {
-            case Term.Lam(var name, var body) -> {
-                var optBody = etaReduce(body);
+        return etaReduceWalk(term).run();
+    }
+
+    private Trampoline<Term> etaReduceWalk(Term term) {
+        return Trampoline.defer(() -> switch (term) {
+            case Term.Lam(var name, var body) -> etaReduceWalk(body).map(optBody -> {
                 // Lam(x, Apply(f, Var(1))) → f when Var(1) refers to x and x is not
                 // free in f. Beyond that, f must be observationally Lam-like
                 // (see isEtaReducible): the reduced term is used in place of a
@@ -370,60 +374,49 @@ public class UplcOptimizer {
                         && arg instanceof Term.Var(var v) && v.index() == 1
                         && !isFree(1, f)
                         && isEtaReducible(f)) {
-                    yield shiftDown(f, 1);
+                    return shiftDown(f, 1);
                 }
-                yield Term.lam(name, optBody);
-            }
-            case Term.Apply(var fn, var arg) -> Term.apply(etaReduce(fn), etaReduce(arg));
-            case Term.Force(var inner) -> Term.force(etaReduce(inner));
-            case Term.Delay(var inner) -> Term.delay(etaReduce(inner));
-            case Term.Constr(var tag, var fields) ->
-                    new Term.Constr(tag, fields.stream().map(this::etaReduce).toList());
-            case Term.Case(var scrutinee, var branches) ->
-                    new Term.Case(etaReduce(scrutinee),
-                            branches.stream().map(this::etaReduce).toList());
-            default -> term;
-        };
+                return Term.lam(name, optBody);
+            });
+            default -> mapChildren(term, this::etaReduceWalk);
+        });
     }
 
     // ---- Pass 7: Constr/Case reduction ----
 
     Term constrCaseReduce(Term term) {
-        return switch (term) {
-            case Term.Case(var scrutinee, var branches) -> {
-                var optScrutinee = constrCaseReduce(scrutinee);
-                var optBranches = branches.stream().map(this::constrCaseReduce).toList();
-                // Case(Constr(tag, fields), branches) → apply branches[tag] to fields.
-                // The rewrite moves branch computation before field evaluation, and
-                // lets the branch body start running between field applications
-                // (CEK evaluates all Constr fields first, then the selected branch,
-                // then applies). That reordering is unobservable exactly when every
-                // field is a value: field evaluation is then effect-free, so only
-                // the branch can error, trace, or diverge — and it does so
-                // identically in both forms. The branch itself may be any term.
-                // (Gating fields on isPure instead would also be sound and slightly
-                // less conservative; isValue keeps this pass independent of the
-                // purity certification machinery.)
-                if (optScrutinee instanceof Term.Constr(var tag, var fields)
-                        && tag >= 0 && tag < optBranches.size()
-                        && fields.stream().allMatch(UplcOptimizer::isValue)) {
-                    Term branch = optBranches.get((int) tag);
-                    // Apply branch to each field
-                    for (var field : fields) {
-                        branch = Term.apply(branch, field);
-                    }
-                    yield branch;
-                }
-                yield new Term.Case(optScrutinee, optBranches);
-            }
-            case Term.Apply(var fn, var arg) -> Term.apply(constrCaseReduce(fn), constrCaseReduce(arg));
-            case Term.Force(var inner) -> Term.force(constrCaseReduce(inner));
-            case Term.Delay(var inner) -> Term.delay(constrCaseReduce(inner));
-            case Term.Lam(var name, var body) -> Term.lam(name, constrCaseReduce(body));
-            case Term.Constr(var tag, var fields) ->
-                    new Term.Constr(tag, fields.stream().map(this::constrCaseReduce).toList());
-            default -> term;
-        };
+        return constrCaseReduceWalk(term).run();
+    }
+
+    private Trampoline<Term> constrCaseReduceWalk(Term term) {
+        return Trampoline.defer(() -> switch (term) {
+            case Term.Case(var scrutinee, var branches) -> constrCaseReduceWalk(scrutinee).then(optScrutinee ->
+                    Trampoline.each(branches, this::constrCaseReduceWalk).map(optBranches -> {
+                        // Case(Constr(tag, fields), branches) → apply branches[tag] to fields.
+                        // The rewrite moves branch computation before field evaluation, and
+                        // lets the branch body start running between field applications
+                        // (CEK evaluates all Constr fields first, then the selected branch,
+                        // then applies). That reordering is unobservable exactly when every
+                        // field is a value: field evaluation is then effect-free, so only
+                        // the branch can error, trace, or diverge — and it does so
+                        // identically in both forms. The branch itself may be any term.
+                        // (Gating fields on isPure instead would also be sound and slightly
+                        // less conservative; isValue keeps this pass independent of the
+                        // purity certification machinery.)
+                        if (optScrutinee instanceof Term.Constr(var tag, var fields)
+                                && tag >= 0 && tag < optBranches.size()
+                                && fields.stream().allMatch(UplcOptimizer::isValue)) {
+                            Term branch = optBranches.get((int) tag);
+                            // Apply branch to each field
+                            for (var field : fields) {
+                                branch = Term.apply(branch, field);
+                            }
+                            return branch;
+                        }
+                        return (Term) new Term.Case(optScrutinee, optBranches);
+                    }));
+            default -> mapChildren(term, this::constrCaseReduceWalk);
+        });
     }
 
     // ---- Value / purity analysis ----
@@ -475,23 +468,38 @@ public class UplcOptimizer {
      * Unknown builtins are conservatively not values.
      */
     static boolean isValue(Term term) {
-        return switch (term) {
-            case Term.Var _, Term.Const _, Term.Builtin _, Term.Lam _, Term.Delay _ -> true;
-            case Term.Constr(_, var fields) -> fields.stream().allMatch(UplcOptimizer::isValue);
-            case Term.Force _, Term.Apply _ -> {
-                var spine = builtinSpine(term);
-                if (spine == null) yield false;
-                var sig = BuiltinSemantics.find(spine.fun());
-                if (sig == null) yield false;
-                if (spine.args().isEmpty()) {
-                    yield spine.forces() <= sig.typeArity();
+        // A conjunction over the term and the fields and arguments it requires to be values: checked with a work list,
+        // as a Constr can nest as deeply as a list literal is long (issue #327).
+        var pending = new ArrayDeque<Term>();
+        pending.push(term);
+        while (!pending.isEmpty()) {
+            var next = pending.pop();
+            switch (next) {
+                case Term.Var _, Term.Const _, Term.Builtin _, Term.Lam _, Term.Delay _ -> { }
+                case Term.Constr(_, var fields) -> pushAll(pending, fields);
+                case Term.Force _, Term.Apply _ -> {
+                    var spine = builtinSpine(next);
+                    if (spine == null) return false;
+                    var sig = BuiltinSemantics.find(spine.fun());
+                    if (sig == null) return false;
+                    if (spine.args().isEmpty()) {
+                        if (spine.forces() > sig.typeArity()) return false;
+                    } else {
+                        if (spine.forces() != sig.typeArity() || spine.args().size() >= sig.valueArity()) return false;
+                        pushAll(pending, spine.args());
+                    }
                 }
-                yield spine.forces() == sig.typeArity()
-                        && spine.args().size() < sig.valueArity()
-                        && spine.args().stream().allMatch(UplcOptimizer::isValue);
+                default -> {
+                    return false; // Error, Case
+                }
             }
-            default -> false; // Error, Case
-        };
+        }
+        return true;
+    }
+
+    /** Pushes {@code terms} so that they are popped in their order. */
+    private static void pushAll(ArrayDeque<Term> pending, List<Term> terms) {
+        for (int i = terms.size() - 1; i >= 0; i--) pending.push(terms.get(i));
     }
 
     /**
@@ -505,24 +513,36 @@ public class UplcOptimizer {
      * Error, partial builtins, unknown shapes — is impure.
      */
     static boolean isPure(Term term) {
-        if (isValue(term)) return true;
-        if (isFixpointOfFunction(term)) return true;
-        var lazyIf = lazyIf(term);
-        if (lazyIf != null) {
-            return argSatisfies(lazyIf.cond(), BuiltinSemantics.ArgType.BOOL)
-                    && isPure(lazyIf.thenBody()) && isPure(lazyIf.elseBody());
-        }
-        var spine = builtinSpine(term);
-        if (spine == null) return false;
-        var sig = BuiltinSemantics.find(spine.fun());
-        if (sig == null || !sig.total()) return false;
-        if (spine.forces() != sig.typeArity() || spine.args().size() != sig.valueArity()) {
-            return false;
-        }
-        for (int i = 0; i < spine.args().size(); i++) {
-            if (!argSatisfies(spine.args().get(i), sig.argTypes().get(i))) return false;
-        }
-        return true;
+        return pure(term).run();
+    }
+
+    /** {@link #isPure}, stack-safe: a pure conditional can nest as deeply as an else-if chain is long (issue #327). */
+    private static Trampoline<Boolean> pure(Term term) {
+        return Trampoline.defer(() -> {
+            if (isValue(term)) return Trampoline.done(true);
+            if (isFixpointOfFunction(term)) return Trampoline.done(true);
+            var lazyIf = lazyIf(term);
+            if (lazyIf != null) {
+                return satisfies(lazyIf.cond(), BuiltinSemantics.ArgType.BOOL).then(cond -> !cond
+                        ? Trampoline.done(false)
+                        : pure(lazyIf.thenBody()).then(then -> !then ? Trampoline.done(false) : pure(lazyIf.elseBody())));
+            }
+            var spine = builtinSpine(term);
+            if (spine == null) return Trampoline.done(false);
+            var sig = BuiltinSemantics.find(spine.fun());
+            if (sig == null || !sig.total()) return Trampoline.done(false);
+            if (spine.forces() != sig.typeArity() || spine.args().size() != sig.valueArity()) {
+                return Trampoline.done(false);
+            }
+            return argumentsSatisfy(spine.args(), sig.argTypes());
+        });
+    }
+
+    /** Whether each argument satisfies the type at its position, checked in order, stopping at the first that fails. */
+    private static Trampoline<Boolean> argumentsSatisfy(List<Term> args, List<BuiltinSemantics.ArgType> types) {
+        var positions = new ArrayList<Integer>(args.size());
+        for (int i = 0; i < args.size(); i++) positions.add(i);
+        return Trampoline.all(positions, i -> satisfies(args.get(i), types.get(i)));
     }
 
     /**
@@ -554,14 +574,16 @@ public class UplcOptimizer {
      * mkNilData/iData, including lazy-if-encoded booleans) certify as pure.
      * Polymorphic (ANY) positions accept any pure term.
      */
-    private static boolean argSatisfies(Term arg, BuiltinSemantics.ArgType expected) {
-        if (expected == BuiltinSemantics.ArgType.ANY) {
-            return isPure(arg);
-        }
-        if (arg instanceof Term.Const(var c)) {
-            return BuiltinSemantics.constantMatches(c, expected);
-        }
-        return BuiltinSemantics.typeSatisfies(certifiedTypeOf(arg), expected);
+    private static Trampoline<Boolean> satisfies(Term arg, BuiltinSemantics.ArgType expected) {
+        return Trampoline.defer(() -> {
+            if (expected == BuiltinSemantics.ArgType.ANY) {
+                return pure(arg);
+            }
+            if (arg instanceof Term.Const(var c)) {
+                return Trampoline.done(BuiltinSemantics.constantMatches(c, expected));
+            }
+            return certifiedType(arg).map(type -> BuiltinSemantics.typeSatisfies(type, expected));
+        });
     }
 
     /**
@@ -570,28 +592,27 @@ public class UplcOptimizer {
      * a typed constant, a saturated total builtin application with certified
      * arguments, or a lazy conditional whose branches certify to the same type.
      */
-    private static BuiltinSemantics.ArgType certifiedTypeOf(Term term) {
-        if (term instanceof Term.Const(var c)) {
-            return BuiltinSemantics.constantType(c);
-        }
-        var lazyIf = lazyIf(term);
-        if (lazyIf != null) {
-            if (!argSatisfies(lazyIf.cond(), BuiltinSemantics.ArgType.BOOL)) return null;
-            var thenType = certifiedTypeOf(lazyIf.thenBody());
-            var elseType = certifiedTypeOf(lazyIf.elseBody());
-            return thenType != null && thenType == elseType ? thenType : null;
-        }
-        var spine = builtinSpine(term);
-        if (spine == null) return null;
-        var sig = BuiltinSemantics.find(spine.fun());
-        if (sig == null || !sig.total() || sig.resultType() == null) return null;
-        if (spine.forces() != sig.typeArity() || spine.args().size() != sig.valueArity()) {
-            return null;
-        }
-        for (int i = 0; i < spine.args().size(); i++) {
-            if (!argSatisfies(spine.args().get(i), sig.argTypes().get(i))) return null;
-        }
-        return sig.resultType();
+    private static Trampoline<BuiltinSemantics.ArgType> certifiedType(Term term) {
+        return Trampoline.defer(() -> {
+            if (term instanceof Term.Const(var c)) {
+                return Trampoline.done(BuiltinSemantics.constantType(c));
+            }
+            var lazyIf = lazyIf(term);
+            if (lazyIf != null) {
+                return satisfies(lazyIf.cond(), BuiltinSemantics.ArgType.BOOL).then(cond -> !cond
+                        ? Trampoline.<BuiltinSemantics.ArgType>done(null)
+                        : certifiedType(lazyIf.thenBody()).then(thenType -> certifiedType(lazyIf.elseBody())
+                                .map(elseType -> thenType != null && thenType == elseType ? thenType : null)));
+            }
+            var spine = builtinSpine(term);
+            if (spine == null) return Trampoline.done(null);
+            var sig = BuiltinSemantics.find(spine.fun());
+            if (sig == null || !sig.total() || sig.resultType() == null) return Trampoline.done(null);
+            if (spine.forces() != sig.typeArity() || spine.args().size() != sig.valueArity()) {
+                return Trampoline.done(null);
+            }
+            return argumentsSatisfy(spine.args(), sig.argTypes()).map(all -> all ? sig.resultType() : null);
+        });
     }
 
     /**
@@ -628,26 +649,43 @@ public class UplcOptimizer {
      * Structural equality on De Bruijn terms ignoring binder display names.
      */
     static boolean alphaEquals(Term a, Term b) {
-        return switch (a) {
-            case Term.Var(var v) -> b instanceof Term.Var(var w) && v.index() == w.index();
-            case Term.Lam(_, var bodyA) -> b instanceof Term.Lam(_, var bodyB)
-                    && alphaEquals(bodyA, bodyB);
-            case Term.Apply(var fnA, var argA) -> b instanceof Term.Apply(var fnB, var argB)
-                    && alphaEquals(fnA, fnB) && alphaEquals(argA, argB);
-            case Term.Force(var innerA) -> b instanceof Term.Force(var innerB)
-                    && alphaEquals(innerA, innerB);
-            case Term.Delay(var innerA) -> b instanceof Term.Delay(var innerB)
-                    && alphaEquals(innerA, innerB);
-            case Term.Constr(var tagA, var fieldsA) -> b instanceof Term.Constr(var tagB, var fieldsB)
-                    && tagA == tagB && fieldsA.size() == fieldsB.size()
-                    && java.util.stream.IntStream.range(0, fieldsA.size())
-                            .allMatch(i -> alphaEquals(fieldsA.get(i), fieldsB.get(i)));
-            case Term.Case(var scrutA, var branchesA) -> b instanceof Term.Case(var scrutB, var branchesB)
-                    && alphaEquals(scrutA, scrutB) && branchesA.size() == branchesB.size()
-                    && java.util.stream.IntStream.range(0, branchesA.size())
-                            .allMatch(i -> alphaEquals(branchesA.get(i), branchesB.get(i)));
-            default -> a.equals(b); // Const, Builtin, Error
-        };
+        // A conjunction over corresponding subterms, compared with a work list (issue #327).
+        var pending = new ArrayDeque<Term>();
+        pending.push(b);
+        pending.push(a);
+        while (!pending.isEmpty()) {
+            Term x = pending.pop();
+            Term y = pending.pop();
+            boolean same = switch (x) {
+                case Term.Var(var v) -> y instanceof Term.Var(var w) && v.index() == w.index();
+                case Term.Lam(_, var bodyA) -> y instanceof Term.Lam(_, var bodyB) && pushPair(pending, bodyA, bodyB);
+                case Term.Apply(var fnA, var argA) -> y instanceof Term.Apply(var fnB, var argB)
+                        && pushPair(pending, argA, argB) && pushPair(pending, fnA, fnB);
+                case Term.Force(var innerA) -> y instanceof Term.Force(var innerB) && pushPair(pending, innerA, innerB);
+                case Term.Delay(var innerA) -> y instanceof Term.Delay(var innerB) && pushPair(pending, innerA, innerB);
+                case Term.Constr(var tagA, var fieldsA) -> y instanceof Term.Constr(var tagB, var fieldsB)
+                        && tagA == tagB && pushPairs(pending, fieldsA, fieldsB);
+                case Term.Case(var scrutA, var branchesA) -> y instanceof Term.Case(var scrutB, var branchesB)
+                        && pushPairs(pending, branchesA, branchesB) && pushPair(pending, scrutA, scrutB);
+                default -> x.equals(y); // Const, Builtin, Error
+            };
+            if (!same) return false;
+        }
+        return true;
+    }
+
+    /** Pushes the pair so that {@code a} and {@code b} are popped together; always true. */
+    private static boolean pushPair(ArrayDeque<Term> pending, Term a, Term b) {
+        pending.push(b);
+        pending.push(a);
+        return true;
+    }
+
+    /** Pushes corresponding elements as pairs, or answers false when the lists differ in length. */
+    private static boolean pushPairs(ArrayDeque<Term> pending, List<Term> a, List<Term> b) {
+        if (a.size() != b.size()) return false;
+        for (int i = a.size() - 1; i >= 0; i--) pushPair(pending, a.get(i), b.get(i));
+        return true;
     }
 
     /**
@@ -699,34 +737,83 @@ public class UplcOptimizer {
      * Check if variable at given De Bruijn index is free (used) in the term.
      */
     static boolean isFree(int index, Term term) {
-        return switch (term) {
-            case Term.Var(var v) -> v.index() == index;
-            case Term.Lam(_, var body) -> isFree(index + 1, body);
-            case Term.Apply(var fn, var arg) -> isFree(index, fn) || isFree(index, arg);
-            case Term.Force(var inner) -> isFree(index, inner);
-            case Term.Delay(var inner) -> isFree(index, inner);
-            case Term.Constr(_, var fields) -> fields.stream().anyMatch(f -> isFree(index, f));
-            case Term.Case(var scrutinee, var branches) ->
-                    isFree(index, scrutinee) || branches.stream().anyMatch(b -> isFree(index, b));
-            default -> false; // Const, Builtin, Error
-        };
+        var found = new boolean[1];
+        visitVariables(index, term, (wanted, occurrence) -> {
+            if (occurrence == wanted) found[0] = true;
+            return !found[0];
+        });
+        return found[0];
     }
 
     /**
      * Count how many times variable at given De Bruijn index is used in the term.
      */
     static int countUses(int index, Term term) {
-        return switch (term) {
-            case Term.Var(var v) -> v.index() == index ? 1 : 0;
-            case Term.Lam(_, var body) -> countUses(index + 1, body);
-            case Term.Apply(var fn, var arg) -> countUses(index, fn) + countUses(index, arg);
-            case Term.Force(var inner) -> countUses(index, inner);
-            case Term.Delay(var inner) -> countUses(index, inner);
-            case Term.Constr(_, var fields) -> fields.stream().mapToInt(f -> countUses(index, f)).sum();
-            case Term.Case(var scrutinee, var branches) ->
-                    countUses(index, scrutinee) + branches.stream().mapToInt(b -> countUses(index, b)).sum();
-            default -> 0;
-        };
+        var uses = new int[1];
+        visitVariables(index, term, (wanted, occurrence) -> {
+            if (occurrence == wanted) uses[0]++;
+            return true;
+        });
+        return uses[0];
+    }
+
+    /** Receives each variable occurrence's index with the index the variable sought has at that depth. */
+    private interface VariableVisitor {
+        /** Returns whether to keep visiting. */
+        boolean visit(int wanted, int index);
+    }
+
+    /**
+     * Visits every variable occurrence in {@code term}, with the index that the variable {@code index} has at its depth
+     * (one more under each Lam), using a work list instead of recursion (issue #327).
+     */
+    private static void visitVariables(int index, Term term, VariableVisitor visitor) {
+        var terms = new ArrayDeque<Term>();
+        var indexes = new ArrayDeque<Integer>();
+        terms.push(term);
+        indexes.push(index);
+        while (!terms.isEmpty()) {
+            Term next = terms.pop();
+            int wanted = indexes.pop();
+            switch (next) {
+                case Term.Var(var v) -> {
+                    if (!visitor.visit(wanted, v.index())) return;
+                }
+                case Term.Lam(_, var body) -> {
+                    terms.push(body);
+                    indexes.push(wanted + 1);
+                }
+                case Term.Apply(var fn, var arg) -> {
+                    terms.push(arg);
+                    indexes.push(wanted);
+                    terms.push(fn);
+                    indexes.push(wanted);
+                }
+                case Term.Force(var inner) -> {
+                    terms.push(inner);
+                    indexes.push(wanted);
+                }
+                case Term.Delay(var inner) -> {
+                    terms.push(inner);
+                    indexes.push(wanted);
+                }
+                case Term.Constr(_, var fields) -> {
+                    for (int i = fields.size() - 1; i >= 0; i--) {
+                        terms.push(fields.get(i));
+                        indexes.push(wanted);
+                    }
+                }
+                case Term.Case(var scrutinee, var branches) -> {
+                    for (int i = branches.size() - 1; i >= 0; i--) {
+                        terms.push(branches.get(i));
+                        indexes.push(wanted);
+                    }
+                    terms.push(scrutinee);
+                    indexes.push(wanted);
+                }
+                default -> { } // Const, Builtin, Error
+            }
+        }
     }
 
     /**
@@ -734,30 +821,24 @@ public class UplcOptimizer {
      * Adjusts De Bruijn indices correctly.
      */
     static Term substitute(Term term, int index, Term replacement) {
-        return switch (term) {
+        return substituteWalk(term, index, replacement).run();
+    }
+
+    private static Trampoline<Term> substituteWalk(Term term, int index, Term replacement) {
+        return Trampoline.defer(() -> switch (term) {
             case Term.Var(var v) -> {
                 if (v.index() == index) {
-                    yield replacement;
+                    yield Trampoline.done(replacement);
                 } else if (v.index() > index) {
                     // Shift down — the binding is removed
-                    yield Term.var(v.index() - 1);
+                    yield Trampoline.done(Term.var(v.index() - 1));
                 }
-                yield term;
+                yield Trampoline.done(term);
             }
-            case Term.Lam(var name, var body) ->
-                    Term.lam(name, substitute(body, index + 1, shiftUp(replacement, 1)));
-            case Term.Apply(var fn, var arg) ->
-                    Term.apply(substitute(fn, index, replacement), substitute(arg, index, replacement));
-            case Term.Force(var inner) -> Term.force(substitute(inner, index, replacement));
-            case Term.Delay(var inner) -> Term.delay(substitute(inner, index, replacement));
-            case Term.Constr(var tag, var fields) ->
-                    new Term.Constr(tag, fields.stream()
-                            .map(f -> substitute(f, index, replacement)).toList());
-            case Term.Case(var scrutinee, var branches) ->
-                    new Term.Case(substitute(scrutinee, index, replacement),
-                            branches.stream().map(b -> substitute(b, index, replacement)).toList());
-            default -> term; // Const, Builtin, Error
-        };
+            case Term.Lam(var name, var body) -> substituteWalk(body, index + 1, shiftUp(replacement, 1))
+                    .map(newBody -> Term.lam(name, newBody));
+            default -> mapChildren(term, child -> substituteWalk(child, index, replacement));
+        });
     }
 
     /**
@@ -775,24 +856,19 @@ public class UplcOptimizer {
     }
 
     private static Term shift(Term term, int amount, int cutoff) {
-        return switch (term) {
+        return shiftWalk(term, amount, cutoff).run();
+    }
+
+    private static Trampoline<Term> shiftWalk(Term term, int amount, int cutoff) {
+        return Trampoline.defer(() -> switch (term) {
             case Term.Var(var v) -> {
                 if (v.index() >= cutoff) {
-                    yield Term.var(v.index() + amount);
+                    yield Trampoline.done(Term.var(v.index() + amount));
                 }
-                yield term;
+                yield Trampoline.done(term);
             }
-            case Term.Lam(var name, var body) -> Term.lam(name, shift(body, amount, cutoff + 1));
-            case Term.Apply(var fn, var arg) ->
-                    Term.apply(shift(fn, amount, cutoff), shift(arg, amount, cutoff));
-            case Term.Force(var inner) -> Term.force(shift(inner, amount, cutoff));
-            case Term.Delay(var inner) -> Term.delay(shift(inner, amount, cutoff));
-            case Term.Constr(var tag, var fields) ->
-                    new Term.Constr(tag, fields.stream().map(f -> shift(f, amount, cutoff)).toList());
-            case Term.Case(var scrutinee, var branches) ->
-                    new Term.Case(shift(scrutinee, amount, cutoff),
-                            branches.stream().map(b -> shift(b, amount, cutoff)).toList());
-            default -> term; // Const, Builtin, Error
-        };
+            case Term.Lam(var name, var body) -> shiftWalk(body, amount, cutoff + 1).map(newBody -> Term.lam(name, newBody));
+            default -> mapChildren(term, child -> shiftWalk(child, amount, cutoff));
+        });
     }
 }
