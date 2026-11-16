@@ -1,7 +1,7 @@
 # ADR-077: npm packages for the WebAssembly engines, and `vm.applyParams`
 
 **Status:** Proposed (2026-11-16). Design only; no implementation in this change.
-**Date:** 2026-11-16 (r1 to r5)
+**Date:** 2026-11-16 (r1 to r6)
 **Risk class:** **medium**.
 - This is a public distribution with a lasting API. Package names and exported type names are hard to change once
   published.
@@ -373,6 +373,7 @@ A new operation in the `vm` group (illustrative TypeScript):
 
 ```ts
 vm.applyParams(request: {
+  language: 'V1' | 'V2' | 'V3';     // required; never inferred (D6a)
   script: ScriptInput;              // CBOR hex (single or double wrapped), flat, CIP-57 blueprint, text envelope;
                                     // not UPLC text; script.validator selects a blueprint's validator by its exact
                                     // title; script.params must be empty
@@ -419,20 +420,19 @@ Unlike `vm.decode`, `vm.applyParams` turns `ScriptDecoder`'s guesses into errors
 deployed. Each refusal is an `invalid-request` error (status 400), and names its cause.
 
 **Preparation, always checked:**
-- **Language,** taken only from evidence that determines it:
-  - the request's `script.language`;
-  - a text envelope's `type` (`PlutusScriptV1`, `V2` or `V3`);
-  - a CIP-57 blueprint's `preamble.plutusVersion`;
-  - or a blueprint hash that matches the script under exactly one language.
-
-  `ScriptDecoder`'s inferences from the program version (`version`) and from the builtins (`builtins`), and its
-  fallback (`default`), are not evidence.
-  - At protocol version 11, UPLC 1.1.0 is allowed under all three languages (`ProtocolFeatureRegistry`), so 1.1.0
-    tells nothing.
-  - Builtin codes tell nothing either, because builtins become available in older languages over time.
-
-  Without evidence, the operation fails with "state the language". When two sources of evidence disagree, it fails and
-  names both.
+- **Language: required, never inferred** (r6). The request must state `language`. `script.language` is not used by
+  this operation.
+  - A wrong tag gives a wrong hash, and the bytes cannot tell the language:
+    - UPLC 1.1.0 is allowed under all three languages at protocol version 11 (`ProtocolFeatureRegistry`);
+    - builtins become available in older languages over time;
+    - so `ScriptDecoder`'s inferences (`version`, `builtins`, `default`) are never used here.
+  - The caller always knows it: JuLC compiles validators as V3, and an Aiken blueprint states it in its preamble.
+  - **Cross-check.** When the input also carries language information, the operation compares it with `language` and
+    fails on a mismatch, naming both. This catches a wrong `language` before it can produce a wrong hash. The
+    information it compares:
+    - a text envelope's `type` (`PlutusScriptV1`, `V2` or `V3`);
+    - a CIP-57 blueprint's `preamble.plutusVersion`;
+    - a blueprint hash for the selected validator. This is the original-hash rule below, checked under `language`.
 - **Validator.**
   - A blueprint with more than one validator entry needs `script.validator`, even when the entries share one
     `compiledCode`. Entries with the same code can still declare different parameter counts, schemas and hashes, and
@@ -440,8 +440,8 @@ deployed. Each refusal is an `invalid-request` error (status 400), and names its
   - The selection is an exact title. `ScriptDecoder`'s numeric-index form is not accepted here.
   - A blueprint in which two entries share a title is refused.
   - Only a blueprint with exactly one entry is used without a selection.
-- **Original hash.** If a blueprint gives a hash for the selected validator, it must equal the hash of the script
-  before any parameter is applied. A mismatch is an error.
+- **Original hash.** If a blueprint gives a hash for the selected validator, it must equal the hash of the script under
+  `language`, before any parameter is applied. A mismatch is an error.
 - **No double application.** `script.params` must be empty; values go in `params` only.
 - **Canonical script bytes, at every layer** (r5):
   - Each CBOR byte-string wrapper must be definite, with a minimal length header, and must have no bytes after it.
@@ -987,7 +987,7 @@ provenance; only the first real publication does (M4).
 Independent evidence, not values the code under test produced:
 - **Application (I4).**
   - **The fixed vector.** Apply the integer 42 (`182a`) to `(program 1.1.0 (lam p (con unit ())))`, with
-    `script.language: 'V3'` (a raw script is not evidence of its language, D6a). Expect:
+    `language: 'V3'` (D6a). Expect:
     - `cborHex` `4c0101003249930102182a0001`;
     - `compiledCode` `4d4c0101003249930102182a0001`;
     - `scriptHash` `36f2b62169a767e3bcb49a0ff8dd3f473db91e15434ac69ace324ac6`.
@@ -1005,9 +1005,10 @@ Independent evidence, not values the code under test produced:
   - **Aiken's own schema check.** `aiken blueprint apply` checks the value against the blueprint's schema. The values
     it refuses for an Aiken blueprint must also be refused by `vm.applyParams`, and the ones it accepts must also be
     accepted.
-  - **Cross-language vectors.** The same raw script with `script.language` V1, V2 and V3 gives identical bytes and
-    three different hashes. Without a language it is refused. Two further cases are refused without a language too: a
-    V3 script at UPLC 1.0.0 that uses `serialiseData`, and a V2 script that uses a builtin added later.
+  - **Cross-language vectors.** The same raw script with `language` V1, V2 and V3 gives identical bytes and three
+    different hashes. A request without `language` is refused.
+  - **Cross-checks.** A stated `language` that disagrees with an envelope's `type`, a blueprint's
+    `preamble.plutusVersion`, or the blueprint hash is refused, naming both.
   - **Encodings.**
     - `58050101002499`, which wraps canonical FLAT in a non-minimal CBOR header, and an indefinite-length wrapper are
       refused.
@@ -1016,9 +1017,9 @@ Independent evidence, not values the code under test produced:
     - Strict values: `{"int":1.5}`, `{"constructor":"bogus","fields":[]}`, two JSON documents, an object with two
       shapes, and odd-length hex are refused. A map with a duplicate key keeps both entries, in order.
   - **Preparation (D6a).** Negative tests for each refusal:
-    - an ambiguous language without `script.language`, including a program at UPLC 1.1.0 and one identified only by
-      its builtins;
-    - two evidence sources that disagree on the language;
+    - a request without `language`, including for a program at UPLC 1.1.0, and for a blueprint whose preamble
+      states the language;
+    - a `language` that disagrees with the envelope, the preamble or the hash;
     - UPLC text input;
     - a blueprint with a duplicated title, and a numeric selection;
     - several validators without a selection;
@@ -1232,3 +1233,7 @@ the recommendation recorded with each.
     - M5 gets entry and exit criteria;
     - I2 names the variants;
     - the `dev` case.
+- r6 (2026-11-16), at the maintainer's suggestion: `vm.applyParams` takes `language` as a required request field and
+  never infers it. Language information in the input (an envelope's `type`, a blueprint's `preamble.plutusVersion`, the
+  blueprint hash) is cross-checked against it, and a mismatch is an error. This replaces r5's evidence ranking with a
+  simpler, stricter rule. The verification vectors are updated.
