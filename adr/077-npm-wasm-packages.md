@@ -1,7 +1,7 @@
 # ADR-077: npm packages for the WebAssembly engines, and `vm.applyParams`
 
 **Status:** Proposed (2026-11-16). Design only; no implementation in this change.
-**Date:** 2026-11-16 (r1 to r9)
+**Date:** 2026-11-16 (r1 to r10)
 **Risk class:** **medium**.
 - This is a public distribution with a lasting API. Package names and exported type names are hard to change once
   published.
@@ -684,8 +684,9 @@ that do not run the Gradle build get write access or credentials (`native-image-
   - That checks the identity in the Sigstore certificate, not strings in the attestation's predicate. So an attestation
     from a modified workflow, another branch or another tag fails.
   - Every job that verifies, including the build-once check in `wasm`, also holds `attestations: read`.
-- `github-release` runs only after `attest` succeeds (`needs: attest`), so a release never exists without its
-  attestation.
+- `github-release` runs only after `attest` succeeds, so a release never exists without its attestation. `attest` is
+  added to its existing prerequisites, which stay as they are: `needs: [validate, native-image, wasm,
+  native-image-playground, shadow-jars, attest]` (`native-image-release.yml`, line 382).
 
 **The `github-release` job** attaches the three tarballs and their checksum file to the GitHub release, beside the
 archives.
@@ -715,9 +716,13 @@ archives.
   - On dispatch, every build, `attest`, `github-release` and Homebrew job is skipped (`if: github.event_name ==
     'push'`).
   - `npm-publish` admits dispatch explicitly:
-    `if: github.event_name == 'workflow_dispatch' || (needs.github-release.result == 'success' &&
-    needs.attest.result == 'success')`. There is no bare `always()`, so a normal run whose `github-release` or `attest`
-    failed never publishes.
+    `if: !cancelled() && (github.event_name == 'workflow_dispatch' || (needs.github-release.result == 'success' &&
+    needs.attest.result == 'success'))`. The ref and property gates still apply on top of it.
+    - A status function is needed. A job whose `needs` were skipped is otherwise skipped too, because GitHub applies an
+      implicit `success()`. On dispatch, `attest` and `github-release` are skipped by design.
+    - There is no bare `always()`, so a normal run whose `github-release` or `attest` failed never publishes.
+  - `npm-verify` uses the same form:
+    `if: !cancelled() && needs.npm-publish.result == 'success' && needs.npm-publish.outputs.published == 'true'`.
   - It runs only `npm-publish` and `npm-verify`, on the release's existing assets, after verifying them against their
     attestation.
   - The entry lives in the same `native-image-release.yml`, because npm's trusted publisher validates the workflow
@@ -1119,6 +1124,8 @@ provenance; only the first real publication does (M4).
     - an attestation from a modified workflow fails verification;
     - a dispatch on a release-candidate tag, or with `npm_publish = false`, publishes nothing.
   - A normal run whose `attest` or `github-release` fails does not publish. An `attest` failure creates no release.
+  - The job conditions are tested against the real dependency graph: on dispatch, `npm-publish` and `npm-verify` run
+    although their `needs` were skipped. In a normal run, they don't run after a failed prerequisite.
   - Deleting a release asset after publication is detected by `npm-verify`.
   - Release assets edited between jobs fail attestation verification.
   - An interrupted upload that leaves a `starter` placeholder (a simulated HTTP 502) is cleaned up and retried with the
@@ -1470,3 +1477,10 @@ the recommendation recorded with each.
     failure, partial uploads and deleted assets.
   - **R22:** a per-tag concurrency group on `npm-publish`.
   - **Editorial:** I11's run-together bullet is split.
+- r10 (2026-11-16), responding to the final confirmations of r9. Both approved, with the same finding: Fable's R23 and
+  Codex's C32.
+  - `npm-publish`'s condition is now `!cancelled() && (dispatch || normal success)`, because without a status function
+    GitHub's implicit `success()` skips a job whose `needs` were skipped. That would have blocked the dispatch recovery.
+  - `npm-verify` uses the same form.
+  - `attest` is added to `github-release`'s existing prerequisites, which are kept.
+  - M4 tests the conditions against the real dependency graph.
