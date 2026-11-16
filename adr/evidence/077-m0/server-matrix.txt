@@ -1,0 +1,14 @@
+webpack target node emitted (cjs): 9638cf43b14781ed8402.js d343a4e2cfb2f8d6c847.wasm e59296f339f457a0df09.js f555026a2378e9ca0efe.js server.js 
+webpack 5.112.2 target node, CJS output, copied dir w/o package.json | v22.12.0 | compile | PASS | 
+webpack 5.112.2 target node, ESM output, copied dir type:module | v22.12.0 | compile | PASS | 
+webpack 5.112.2 target node, CJS output, copied dir w/o package.json | v22.12.0 | require | PASS | 
+webpack 5.112.2 target node, ESM output, copied dir type:module | v22.12.0 | require | FAIL | "error":"Error: Failed to parse URL from /private/tmp/claude-501/-Users-satya-work-bloxbean-julc/8f7b9fa0-e83f-45dd-ae52-f0b710be4f5f/scratchpad/m0/deploy/wp-es
+webpack 5.112.2 target node, CJS output, copied dir w/o package.json | v24.22.3 | compile | PASS | 
+webpack 5.112.2 target node, ESM output, copied dir type:module | v24.22.3 | compile | PASS | 
+webpack 5.112.2 target node, CJS output, copied dir w/o package.json | v24.22.3 | require | PASS | 
+webpack 5.112.2 target node, ESM output, copied dir type:module | v24.22.3 | require | FAIL | "error":"Error: Failed to parse URL from /private/tmp/claude-501/-Users-satya-work-bloxbean-julc/8f7b9fa0-e83f-45dd-ae52-f0b710be4f5f/scratchpad/m0/deploy/wp-es
+esbuild bundle emitted: server.mjs 
+esbuild 0.28.2 bundle platform=node esm | v22.12.0 | compile | FAIL | "error":"Error: Cannot find module '/private/tmp/claude-501/-Users-satya-work-bloxbean-julc/8f7b9fa0-e83f-45dd-ae52-f0b710be4f5f/scratchpad/m0/fixtures/esbuild/dist/node-worker.js' 
+esbuild 0.28.2 --packages=external | v22.12.0 | compile | PASS |
+esbuild 0.28.2 bundle platform=node esm | v24.22.3 | compile | FAIL | "error":"Error: Cannot find module '/private/tmp/claude-501/-Users-satya-work-bloxbean-julc/8f7b9fa0-e83f-45dd-ae52-f0b710be4f5f/scratchpad/m0/fixtures/esbuild/dist/node-worker.js' 
+esbuild 0.28.2 --packages=external | v24.22.3 | compile | PASS |

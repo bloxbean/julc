@@ -1,0 +1,18 @@
+v22.12.0 | node | compile | main.mjs | PASS | "exnrefState":{"checked":true,"supportedBefore":false,"flagSet":true} 
+v22.12.0 | node | compile | in-worker.mjs | PASS | "exnrefState":{"checked":true,"supportedBefore":false,"flagSet":true} 
+v22.12.0 | node | require | main.mjs | PASS | "exnrefState":{"checked":true,"supportedBefore":false,"flagSet":true} 
+v22.12.0 | node | require | in-worker.mjs | PASS | "exnrefState":{"checked":true,"supportedBefore":false,"flagSet":true} 
+v22.12.0 | node-esmdir | compile | main.mjs | PASS | "exnrefState":{"checked":true,"supportedBefore":false,"flagSet":true} 
+v22.12.0 | node-esmdir | compile | in-worker.mjs | PASS | "exnrefState":{"checked":true,"supportedBefore":false,"flagSet":true} 
+v22.12.0 | node-esmdir | require | main.mjs | FAIL | "exnrefState":{"checked":true,"supportedBefore":false,"flagSet":true} TypeError: Failed to parse URL from /private/tmp/claude-501/-Users-satya-work-bloxbean-julc/8f7b9fa0-e83f-45dd-ae52-f0b710be4f5f/scratchpad/m0/fixtures/node-esmdir/node_modules/@julclang/julc-vm-wasm/engine/julc-vm-b69c37c29c6b.js.wasm   [cause]: TypeError: In
+v22.12.0 | node-esmdir | require | in-worker.mjs | FAIL |  TypeError: Failed to parse URL from /private/tmp/claude-501/-Users-satya-work-bloxbean-julc/8f7b9fa0-e83f-45dd-ae52-f0b710be4f5f/scratchpad/m0/fixtures/node-esmdir/node_modules/@julclang/julc-vm-wasm/engine/julc-vm-b69c37c29c6b.js.wasm   [cause]: TypeError: In
+v24.22.3 | node | compile | main.mjs | PASS | "exnrefState":{"checked":true,"supportedBefore":true,"flagSet":false} 
+v24.22.3 | node | compile | in-worker.mjs | PASS | "exnrefState":{"checked":true,"supportedBefore":true,"flagSet":false} 
+v24.22.3 | node | require | main.mjs | PASS | "exnrefState":{"checked":true,"supportedBefore":true,"flagSet":false} 
+v24.22.3 | node | require | in-worker.mjs | PASS | "exnrefState":{"checked":true,"supportedBefore":true,"flagSet":false} 
+v24.22.3 | node-esmdir | compile | main.mjs | PASS | "exnrefState":{"checked":true,"supportedBefore":true,"flagSet":false} 
+v24.22.3 | node-esmdir | compile | in-worker.mjs | PASS | "exnrefState":{"checked":true,"supportedBefore":true,"flagSet":false} 
+v24.22.3 | node-esmdir | require | main.mjs | FAIL | "exnrefState":{"checked":true,"supportedBefore":true,"flagSet":false} [TypeError: Failed to parse URL from /private/tmp/claude-501/-Users-satya-work-bloxbean-julc/8f7b9fa0-e83f-45dd-ae52-f0b710be4f5f/scratchpad/m0/fixtures/node-esmdir/node_modules/@julclang/julc-vm-wasm/engine/julc-vm-b69c37c29c6b.js.wasm] {   [cause]: TypeError
+v24.22.3 | node-esmdir | require | in-worker.mjs | FAIL |  [TypeError: Failed to parse URL from /private/tmp/claude-501/-Users-satya-work-bloxbean-julc/8f7b9fa0-e83f-45dd-ae52-f0b710be4f5f/scratchpad/m0/fixtures/node-esmdir/node_modules/@julclang/julc-vm-wasm/engine/julc-vm-b69c37c29c6b.js.wasm] {   [cause]: TypeError
+v22.12.0 | node | compile | main.mjs, exnref flag suppressed | FAIL | {"node":"v22.12.0","loadMode":"compile","exnrefState":{"checked":true,"supportedBefore":false,"flagSet":false},"error":"Error: WebAssembly.instantiate(): Compiling function #74 failed: Invalid opcode 0x1f (enable with --experimental-wasm-exnref) @+2061493 |     at worker.onmessage (file:///private/t
+v24.22.3 | node | compile | main.mjs, exnref flag suppressed | PASS | {"node":"v24.22.3","loadMode":"compile","exnrefState":{"checked":true,"supportedBefore":true,"flagSet":false},"label":"main-thread client","ready":196,"version":"0.1.0-pre20","features":{"api":0,"variant":"vm","groups":["vm","debug"],"defaultProtocol":11,"bls":false},"hasRest":false,"uplcText":"(pro

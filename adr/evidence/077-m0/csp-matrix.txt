@@ -1,0 +1,10 @@
+Chromium 156.0.8078.4 (Playwright 1.64.1, headless shell 1248); fixture: fixtures/plain served by harness/serve.mjs with the CSP
+header on every response (page, worker script, launcher, wasm). 'sha256-+Qmq...' is the hash of the inline import map.
+All results identical for the classic and the module worker.
+
+1 default-src 'self'; script-src 'self' 'sha256-…'                                       FAIL  CompileError: WebAssembly.instantiate(): Compiling or instantiating WebAssembly module violates the following Content Security policy directive because 'unsafe-eval' is not an allowed source of script …
+2 default-src 'self'; script-src 'self' 'sha256-…' 'wasm-unsafe-eval'                    FAIL  EvalError: Evaluating a string as JavaScript violates the following Content Security Policy directive because 'unsafe-eval' is not an allowed source of script (thrown at launcher line 1371, (0, eval)(String(source)) in _JsApi.install); the client only fails after loadTimeoutMs: 'JuLC engine load timed out' after 120.6 s
+3 default-src 'self'; script-src 'self' 'sha256-…' 'wasm-unsafe-eval' 'unsafe-eval'      PASS
+4 default-src 'self'; script-src 'self' 'sha256-…' 'unsafe-eval'                         PASS
+5 as 3 plus worker-src 'self'                                                             PASS
+6 as 2 ('wasm-unsafe-eval' only) with the engine's runtime eval removed (patch-noeval.py, fixtures/plain-noeval)  PASS
