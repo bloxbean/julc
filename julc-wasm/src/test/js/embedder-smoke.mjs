@@ -39,6 +39,16 @@ try {
   assert.equal(profiled.status, 'success');
   console.log('ok cost model profile');
 
+  // An embedder that registers VmApi gains vm.applyParams (ADR-077); its records come from julc-wasm's metadata.
+  const applied = await api.vm.applyParams({language: 'V3', script: {script: '46450101002499'}, params: [{int: 42n}]});
+  assert.equal(applied.scriptHash, '36f2b62169a767e3bcb49a0ff8dd3f473db91e15434ac69ace324ac6');
+  const deep = await api.vm.applyParams({language: 'V3', script: {script: '0101002499'},
+    params: [{format: 'cbor', value: '9f'.repeat(10000) + '00' + 'ff'.repeat(10000)}]});
+  assert.equal(deep.paramsApplied, 1);
+  await assert.rejects(api.vm.applyParams({language: 'V3', script: {script: '0101002499'},
+    params: [{format: 'cbor', value: 80}]}), error => error.code === 'invalid-request');
+  console.log('ok vm.applyParams');
+
   for (const fixture of JSON.parse(readFileSync(vmFile))) {
     const request = JulcRuntime.decode(fixture.request);
     assert.deepEqual(await api.vm.evaluate(request), JulcRuntime.decode(fixture.evaluate), fixture.name);

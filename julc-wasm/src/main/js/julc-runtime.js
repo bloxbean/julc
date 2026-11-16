@@ -119,8 +119,9 @@
       parent[key] = BigInt(parent[key]);
     }
     if (envelope.status !== 200) {
-      // vm.applyParams names its two 422 kinds (ADR-077 D6b); every other 422 stays blueprint-error.
-      const code = envelope.status === 422 && (body?.code === 'invalid-schema' || body?.code === 'parameter-mismatch')
+      // vm.applyParams names some kinds of 400 and 422 (ADR-077); every other body keeps the status's code.
+      const named = ({400: ['work-limit-exceeded'], 422: ['invalid-schema', 'parameter-mismatch']})[envelope.status];
+      const code = named?.includes(body?.code)
         ? body.code : ({400: 'invalid-request', 404: 'not-found', 422: 'blueprint-error'})[envelope.status] || 'internal';
       throw Object.assign(new Error(body?.error || body?.diagnostics?.[0]?.message || code),
         { code, status: envelope.status, body });

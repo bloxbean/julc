@@ -1,16 +1,22 @@
 package org.julclang.wasm;
 
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.JsonToken;
 import com.fasterxml.jackson.core.StreamReadFeature;
+import com.fasterxml.jackson.databind.DeserializationContext;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.deser.std.StdScalarDeserializer;
 import com.fasterxml.jackson.databind.json.JsonMapper;
+import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.julclang.tools.model.MockTransaction.DataInput;
 import org.julclang.tools.model.VmModels;
 
+import java.io.IOException;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.math.BigInteger;
@@ -24,13 +30,32 @@ import java.util.Map;
 public final class JsMarshalling {
     static final ObjectMapper JSON = new ObjectMapper();
 
-    /** For requests read strictly ({@link ApiRegistry#addStrict}). */
+    /**
+     * For requests read strictly ({@link ApiRegistry#addStrict}): a repeated member, anything after the body, and a
+     * value of the wrong JSON type are refused. A string field takes only a JSON string (Jackson would otherwise turn
+     * {@code 80} or {@code true} into {@code "80"} or {@code "true"}), and a boolean or number field takes no string.
+     */
     static final ObjectMapper STRICT_JSON = JsonMapper.builder()
             .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
             .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
             .enable(DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES)
             .disable(MapperFeature.ALLOW_COERCION_OF_SCALARS)
+            .addModule(new SimpleModule("julc-strict-strings").addDeserializer(String.class, new StrictString()))
             .build();
+
+    /** A string field's value: a JSON string, or null. Numbers, booleans, arrays and objects are refused. */
+    static final class StrictString extends StdScalarDeserializer<String> {
+        StrictString() {
+            super(String.class);
+        }
+
+        @Override
+        public String deserialize(JsonParser parser, DeserializationContext context) throws IOException {
+            if (parser.hasToken(JsonToken.VALUE_STRING)) return parser.getText();
+            return (String) context.handleUnexpectedToken(String.class, parser.currentToken(), parser,
+                    "expected a JSON string, found %s", parser.currentToken());
+        }
+    }
 
     /** In the schema of JuLC's cost model record. It holds {@code true}, which no field's schema is. */
     static final String COST_MODEL_MARK = "$costModel";

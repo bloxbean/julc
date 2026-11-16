@@ -82,6 +82,28 @@ try {
     error => error.code === 'parameter-mismatch' && error.status === 422 && /^Parameter 1 \(owner\)/.test(error.body.error));
   await assert.rejects(api.vm.applyParams({language: 'V3', script: {script: ownerBlueprint('string')}, params: [{int: 1n}]}),
     error => error.code === 'invalid-schema' && error.status === 422);
+  // Review round 1: no scalar coercion (M2-C1), an empty wrapper (M2-C6), and depth 10,000 in every format (M2-C2).
+  for (const bad of [{params: [{format: 'cbor', value: 80}]}, {params: [{format: 'json', value: true}]},
+    {language: 3}, {language: true}, {partial: 'true'}, {checkSchema: 0}]) {
+    await assert.rejects(api.vm.applyParams({language: 'V3', script: {script: '0101002499'}, ...bad}),
+      error => error.code === 'invalid-request' && /^Invalid request body/.test(error.body.error), JSON.stringify(bad));
+  }
+  await assert.rejects(api.vm.applyParams({language: 'V3', script: {script: '40'}}),
+    error => error.code === 'invalid-request' && /holds no bytes/.test(error.body.error));
+  const depth = 10000;
+  const deepHashes = new Set();
+  for (const value of [{format: 'json', value: '{"list":['.repeat(depth) + '{"int":0}' + ']}'.repeat(depth)},
+    {format: 'cbor', value: '9f'.repeat(depth) + '00' + 'ff'.repeat(depth)},
+    {format: 'uplc', value: 'List ['.repeat(depth) + 'I 0' + ']'.repeat(depth)}]) {
+    const deep = await api.vm.applyParams({language: 'V3', script: {script: '0101002499'}, params: [value]});
+    deepHashes.add(deep.scriptHash);
+    const again = await api.vm.applyParams({language: 'V3', script: {script: deep.cborHex}});
+    assert.equal(again.cborHex, deep.cborHex, value.format);
+  }
+  assert.equal(deepHashes.size, 1);
+  await assert.rejects(api.vm.applyParams({language: 'V3', script: {script: '0101002499'},
+    params: [{format: 'cbor', value: '9f'.repeat(depth) + '8100' + 'ff'.repeat(depth)}]}),
+    error => error.code === 'invalid-request' && /canonical/.test(error.body.error));
   const checked = await api.vm.applyParams({language: 'V3', script: {script: ownerBlueprint('bytes')}, params: [{bytes: 'cafe'}]});
   assert.equal(checked.remainingParams, 0);
   assert.equal(checked.schemaChecked, true);

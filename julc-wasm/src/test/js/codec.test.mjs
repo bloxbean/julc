@@ -44,6 +44,10 @@ test('failure results remain results; service errors preserve bodies', () => {
   }
   assert.throws(() => decode({status: 422, body: {error: 'x', code: 'internal'}, integers: []}), e => e.code === 'blueprint-error');
   assert.throws(() => decode({status: 400, body: {error: 'x', code: 'invalid-schema'}, integers: []}), e => e.code === 'invalid-request');
+  assert.throws(() => decode({status: 400, body: {error: 'x', code: 'work-limit-exceeded'}, integers: []}),
+    e => e.code === 'work-limit-exceeded' && e.status === 400);
+  assert.throws(() => decode({status: 422, body: {error: 'x', code: 'work-limit-exceeded'}, integers: []}),
+    e => e.code === 'blueprint-error');
 });
 test('explicit script hashes remain script credentials in transaction templates', () => {
   const scriptHash = 'ab'.repeat(28);

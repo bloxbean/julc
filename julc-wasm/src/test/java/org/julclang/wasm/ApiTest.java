@@ -117,6 +117,63 @@ class ApiTest {
         assertEquals("invalid-schema", invalidSchema.at("/body/code").asText());
     }
 
+    /** M2-C1: the strict request reader turns no number or boolean into a string, and no string into a boolean. */
+    @Test
+    void applyParamsRequestsRefuseScalarsOfTheWrongJsonType() throws Exception {
+        var vm = JulcVmWasm.create();
+        String script = "\"script\":{\"script\":\"0101002499\"}";
+        String good = "{\"language\":\"V3\"," + script + ",\"params\":[{\"format\":\"cbor\",\"value\":\"80\"}]}";
+        assertEquals(200, JsMarshalling.JSON.readTree(vm.invoke("vm.applyParams", good)).get("status").intValue());
+        for (String body : List.of(
+                "{\"language\":\"V3\"," + script + ",\"params\":[{\"format\":\"cbor\",\"value\":80}]}",
+                "{\"language\":\"V3\"," + script + ",\"params\":[{\"format\":\"json\",\"value\":true}]}",
+                "{\"language\":\"V3\"," + script + ",\"params\":[{\"format\":1,\"value\":\"80\"}]}",
+                "{\"language\":\"V3\"," + script + ",\"params\":[{\"format\":\"cbor\",\"value\":{}}]}",
+                "{\"language\":3," + script + "}",
+                "{\"language\":true," + script + "}",
+                "{\"language\":[\"V3\"]," + script + "}",
+                "{\"language\":\"V3\",\"script\":{\"script\":101002499}}",
+                "{\"language\":\"V3\",\"script\":{\"script\":\"0101002499\",\"validator\":0}}",
+                "{\"language\":\"V3\",\"script\":{\"script\":\"0101002499\",\"language\":3}}",
+                "{\"language\":\"V3\"," + script + ",\"partial\":1}",
+                "{\"language\":\"V3\"," + script + ",\"partial\":\"true\"}",
+                "{\"language\":\"V3\"," + script + ",\"checkSchema\":\"false\"}",
+                "{\"language\":\"V3\"," + script + ",\"checkSchema\":0}",
+                "{\"language\":\"V3\"," + script + ",\"params\":{\"format\":\"cbor\",\"value\":\"80\"}}")) {
+            var refused = JsMarshalling.JSON.readTree(vm.invoke("vm.applyParams", body));
+            assertEquals(400, refused.get("status").intValue(), body + " -> " + refused);
+            assertTrue(refused.at("/body/error").asText().startsWith("Invalid request body"), refused.toString());
+        }
+    }
+
+    /** M2-C2: depth 10,000 in every format through the engine, on a thread with a 256 KiB stack. */
+    @Test
+    void applyParamsTakesDeepValuesInEveryFormat() throws Exception {
+        var vm = JulcVmWasm.create();
+        int depth = 10_000;
+        var values = List.of(
+                Map.of("format", "json", "value", "{\"list\":[".repeat(depth) + "{\"int\":0}" + "]}".repeat(depth)),
+                Map.of("format", "cbor", "value", "9f".repeat(depth) + "00" + "ff".repeat(depth)),
+                Map.of("format", "uplc", "value", "List [".repeat(depth) + "I 0" + "]".repeat(depth)));
+        var hashes = new HashSet<String>();
+        for (var value : values) {
+            String body = JsMarshalling.JSON.writeValueAsString(Map.of("language", "V3",
+                    "script", Map.of("script", "0101002499"), "params", List.of(value)));
+            var result = new String[1];
+            var thread = new Thread(null, () -> result[0] = vm.invoke("vm.applyParams", body), "small", 256 * 1024);
+            thread.start();
+            thread.join();
+            var envelope = JsMarshalling.JSON.readTree(result[0]);
+            assertEquals(200, envelope.get("status").intValue(), envelope.toString().substring(0, 300));
+            hashes.add(envelope.at("/body/scriptHash").asText());
+        }
+        assertEquals(1, hashes.size());
+        var empty = JsMarshalling.JSON.readTree(vm.invoke("vm.applyParams",
+                "{\"language\":\"V3\",\"script\":{\"script\":\"40\"}}"));
+        assertEquals(400, empty.get("status").intValue());
+        assertEquals("invalid-request", empty.at("/body/code").asText());
+    }
+
     @Test
     void sourceDebugRecordsAreRegisteredForNativeImageReflection() throws Exception {
         var resource = ApiTest.class.getResourceAsStream(

@@ -128,8 +128,9 @@ export interface VmGroups {
     hash(request: Input<M.UplcModels_DecodeRequest>): Promise<{scriptHash: string}>;
     /**
      * Applies a validator's parameters and gives the bytes and hash of the result, with nothing guessed (ADR-077).
-     * Refusals reject with code `invalid-request`; with a blueprint, a schema fault rejects with `invalid-schema` and a
-     * value that does not match its schema with `parameter-mismatch`. Only `remainingParams === 0` means the script
+     * Refusals reject with code `invalid-request`; with a blueprint, a schema fault rejects with `invalid-schema`, a
+     * value that does not match its schema with `parameter-mismatch`, and a check too large for its work bound with
+     * `work-limit-exceeded` (status 400; `checkSchema: false` applies without the check). Only `remainingParams === 0` means the script
      * is complete; `null` means the input declared no parameters.
      */
     applyParams(request: Input<Omit<M.ApplyParamsModels_Request, 'language'>> & {language: 'V1' | 'V2' | 'V3'}):
