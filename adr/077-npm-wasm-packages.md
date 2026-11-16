@@ -3,7 +3,7 @@
 **Status:** Accepted (2026-11-16) by the maintainer, after design approval from reviewer1 (r4) and the internal
 Fable and Codex reviews (r9; r10 applies their last shared finding). Design only; the implementation follows in
 milestones M0 to M5.
-**Date:** 2026-11-16 (r1 to r11)
+**Date:** 2026-11-16 (r1 to r12)
 **Risk class:** **medium**.
 - This is a public distribution with a lasting API. Package names and exported type names are hard to change once
   published.
@@ -39,8 +39,8 @@ the pre20 release:
 Both archives hold the same JavaScript SDK, built by `wasmBundle{Full,Vm}` in `julc-wasm/build.gradle`:
 - `julc-wasm.js`: `createJulc`, `isFullClient`;
 - `julc-worker.js` and `rest-adapter.js`;
-- `julc-runtime.js`, a copy of the runtime the tests use. The image installs its own copy from its resources
-  (`JsApi.install`), so the runtime belongs to the engine, not to the client;
+- `julc-runtime.js`, a copy of the runtime the tests use. The image installs its own copy from its resources, by
+  evaluating it as a string (`JsApi.install`). r11 and r12 change this (D2);
 - the declarations `julc-wasm.d.ts` and `julc-models.d.ts`.
 
 Beside the SDK are the engine's content-addressed launcher and module, and `engine.json`.
@@ -170,7 +170,7 @@ JuLC pins CIP-57 at revision `0ed8837a02ed78b64847e5646f9572ee1830c7ba`
 
 | Package | Contents | Depends on |
 |---|---|---|
-| `@julclang/wasm-client` | The client (`createJulc`, `isFullClient`, sessions), the worker, both halves of the Node bridge, and the declarations. No engine, no REST adapter; the runtime is inside each engine. | — |
+| `@julclang/wasm-client` | The client (`createJulc`, `isFullClient`, sessions), the worker, the stamped runtime file (D2), both halves of the Node bridge, and the declarations. No engine and no REST adapter. | — |
 | `@julclang/julc-vm-wasm` | The VM engine (launcher, module, `engine.json`) and `createJulcVm()` | `@julclang/wasm-client`, same version, exact |
 | `@julclang/julc-wasm` | The full engine and `createJulc()` | `@julclang/wasm-client`, same version, exact |
 
@@ -216,7 +216,7 @@ Two identities are checked, at run time, before the client returns.
 ### D2. ES-module entry points, CommonJS engine assets, static URLs
 
 - **Entry points.** Each package's entry points are ES modules (`"type": "module"` at the package root). Each package
-  declares `"engines": {"node": ">=22"}`.
+  declares `"engines": {"node": ">=22.3.0"}` (see "Other package fields").
 - **Engine assets.**
   - An engine package keeps the launcher, the module and `engine.json` in an `engine/` directory whose own
     `package.json` is `{ "type": "commonjs" }`, as JOUST's `joust-runtime/engine/` does.
@@ -240,19 +240,48 @@ Two identities are checked, at run time, before the client returns.
   - It is a **classic worker** (M0, open question 2). A module worker also worked in Chromium, by loading the unchanged
     launcher with `import()`, but that runs a script generated as a classic script as an ES module. It also needs
     ignore comments in each bundler. M0's evidence is in `adr/evidence/077-m0/`.
-- **The engine's runtime is a file, not a string** (r11, from M0).
-  - Today `JsApi.install` evaluates the runtime from a string (`(0, eval)(String(source))`). So a page's Content
-    Security Policy must allow `'unsafe-eval'`, not just `'wasm-unsafe-eval'`.
-  - From M1:
-    - the worker loads `julc-runtime.js` as a file before the launcher, by `importScripts` in browsers, or through the
-      Node shim's load path;
-    - `JsApi.install` uses the `globalThis.JulcRuntime` that is already loaded, and evaluates the string only when
-      none is.
-  - The runtime file therefore ships with the client (`@julclang/wasm-client` and the archives), and no longer only
-    inside the image. D1a's `julcVersion` check guarantees that it comes from the same `julc-wasm` build as the
-    image's copy.
-  - With the file loaded first, `script-src 'self' 'wasm-unsafe-eval'` is enough. M0 confirmed this with the `eval`
-    patched out.
+- **The engine's runtime is a file, not a string** (r11, from M0; revised in r12).
+  - Today `JsApi.install` evaluates the runtime from a string (`(0, eval)(String(source))`). So a Content Security
+    Policy must allow `'unsafe-eval'`, not just `'wasm-unsafe-eval'`.
+  - **A stamped runtime.**
+    - The build generates `julc-runtime.js` once, stamped with the JuLC version it was built as
+      (`JulcRuntime.julcVersion`), in the same way as `julc-wasm-version.properties`.
+    - That single stamped file is the image's embedded resource, and also the file shipped beside the worker in:
+      - `@julclang/wasm-client`;
+      - the archives and the playground;
+      - the jar's extractable SDK directory `META-INF/julc-wasm/js/`. ADR-064's embedder steps copy only that
+        directory, so the file must be there.
+    - All these copies are byte-equal.
+  - **Where the worker loads it from, first:**
+    - in package mode, from `@julclang/wasm-client`, named by the string literal
+      `new URL('./julc-runtime.js', import.meta.url)`, under D2a's checks for script URLs;
+    - in archive mode, the fixed file name `julc-runtime.js` beside the manifest, under ADR-064 I4's confinement;
+    - in Node, through the shim's load path (D3).
+  - **`JsApi.install` checks the runtime's identity before using it,** and never calls a runtime it has not checked:
+    - **No `globalThis.JulcRuntime`:** it evaluates its own embedded copy. This is the legacy and direct-load path,
+      for example a main-thread embedder that preloads nothing. If a CSP refuses the evaluation, that refusal is an
+      explicit start-up error.
+    - **A `JulcRuntime` whose `julcVersion` equals the image's `JsApi.julcVersion()`:** it uses that runtime.
+    - **A `JulcRuntime` that is malformed, unstamped, or stamped with another version:** a terminal start-up error
+      naming both versions. There is no recovery by evaluation.
+    - **A preload the worker or shim attempted that failed:** also terminal.
+    - The worker and the shim record that they preloaded, and the engine reports which runtime it used. The client
+      fails if a preload happened but the engine says it evaluated its own copy.
+  - **Why the stamp is needed.**
+    - D1a compares the image with the client. It never compares the runtime file with either.
+    - Several engines can share one global: an embedder that loads engines on the main thread, as JOUST does. A stale
+      file beside an archive's manifest is the other risk.
+    - The runtime is the wire codec (`encode`, `decode`, and the constructor-index bound D6a relies on). A runtime of
+      another build could mis-encode values silently.
+    - The stamp detects accidental mixing. It does not defend against malicious code already running inside the
+      worker, which is outside the threat model.
+  - **CSP.**
+    - With the stamped file loaded first, `script-src 'self' 'wasm-unsafe-eval'` is enough. M0 confirmed this with the
+      `eval` patched out.
+    - A worker served over HTTP(S) takes its policy from its own response, not the page's. So the requirement, and
+      M1's test, put the policy on the worker script's response, and on the launcher's and runtime's.
+    - A main-thread embedder that preloads nothing keeps the evaluation path, and so still needs `'unsafe-eval'`. The
+      README says so.
 - **The client never writes `new URL(<expression>, import.meta.url)`.** webpack builds a context module for it, and
   Turbopack fails the build (M0). Every asset URL it names is a string literal.
 - **The `exports` maps:**
@@ -276,7 +305,8 @@ Two identities are checked, at run time, before the client returns.
   - each package also exports `./package.json`;
   - each has a top-level `types` field, for TypeScript's older `node10` resolution, which ignores `exports`;
   - each sets `sideEffects` to the files that have them;
-  - `engines` is `{"node": ">=22.3"}`, because the shim takes Node's builtins from `process.getBuiltinModule` (M0).
+  - `engines` is `{"node": ">=22.3.0"}`, because the shim takes Node's builtins from `process.getBuiltinModule`, which
+    Node 22.3.0 added (M0). M1 tests an installed package at exactly 22.3.0.
 - **Bundler configuration.** Vite pre-bundles dependencies, which moves modules and can break
   `new URL(…, import.meta.url)`, and webpack may parse a `.js` file named that way.
   - M0 found:
@@ -324,6 +354,8 @@ Two identities are checked, at run time, before the client returns.
     versions (D1a). A mismatch disposes the worker.
   - Other origins are refused (open question 7).
 - **No mixing.** A client is in exactly one mode. Giving `baseUrl` together with `launcherUrl` or `moduleUrl` is an error.
+- **The runtime file** (r12) is a third script the worker loads, under the same rules: D2a's URL checks in package
+  mode, and a fixed file name beside the manifest in archive mode.
 
 ### D3. Node.js is supported, through a shipped bridge
 
@@ -870,7 +902,8 @@ provenance; only the first real publication does (M4).
   refuses to run unless all of these agree:
   - the engine's `api`, `variant` and `groups` with its manifest;
   - the engine's `features().julcVersion` with the client's own `CLIENT_VERSION`;
-  - for an engine whose `variant` is `full` or `vm`, the engine's `version()` with both.
+  - for an engine whose `variant` is `full` or `vm`, the engine's `version()` with both;
+  - a preloaded runtime's stamp with the image's version, checked by the image before the runtime is used (D2).
 
   Constrains D1, D1a, D2.
 - **I3 (VM image contents).** The VM engine contains no compiler, decompiler, JavaParser or cardano-client-lib code,
@@ -916,8 +949,9 @@ provenance; only the first real publication does (M4).
   Constrains D2, D2a, D3.
 - **I9 (archive compatibility).** An unchanged archive application, calling `createJulc({baseUrl})` and then any
   operation or `rest(…)`, behaves as it does on the previous release. Constrains D2a, D4.
-- **I10 (loading confinement).** In archive mode the worker loads only the plain launcher file name next to the
-  manifest (ADR-064 I4). In package mode it loads only URLs that pass D2a's checks. No mode loads a path taken from the
+- **I10 (loading confinement).** In archive mode the worker loads only the plain launcher file name and
+  `julc-runtime.js` next to the manifest (ADR-064 I4). In package mode it loads only launcher, module and runtime URLs
+  that pass D2a's checks. No mode loads a path taken from the
   manifest's `launcher` field. Constrains D2a.
 - **I11 (no rebuild, no overwrite).**
   - A publication or a retry uses only the tarballs packed by the build job. They are taken from the GitHub release
@@ -1025,8 +1059,11 @@ provenance; only the first real publication does (M4).
   - An embedder's TypeScript types should describe the operations its engine has (`Operations<T>`), not `VmClient`'s.
   - Its archive-style loading is unchanged, and it may use package mode and pass `expectedVersion`.
   - ADR-064's I3 (the jar's client files equal the bundles') extends to the npm package: for a version, every file that
-    `@julclang/wasm-client` and the `julc-wasm` jar both contain is byte-equal, except the generated
-    `client-defaults.js` and `client-defaults.d.ts` (D4).
+    `@julclang/wasm-client` and the `julc-wasm` jar both contain is byte-equal, including the stamped
+    `julc-runtime.js` (now also in the jar's `META-INF/julc-wasm/js/`), except the generated `client-defaults.js` and
+    `client-defaults.d.ts` (D4).
+  - An embedder that wants the strict CSP ships the jar's `julc-runtime.js` beside its worker. A main-thread embedder
+    that preloads nothing keeps the evaluation path, and needs `'unsafe-eval'` (D2).
     - The package adds the Node bridge.
     - The jar also has `rest-adapter.js`.
 
@@ -1049,6 +1086,9 @@ provenance; only the first real publication does (M4).
   - From M1 the engines need `script-src 'self' 'wasm-unsafe-eval'`. M0 found that pre20 needs `'unsafe-eval'`,
     because of the runtime's `eval`, which D2 removes.
   - The README documents the expression.
+- **I1 covers the package as installed, not an application's bundle.** webpack's default Terser minifies the
+  launcher. The engine still works, but the bytes an application serves are no longer the attested ones. The README
+  shows the configuration that keeps them identical (D2). Firefox and Safari are not yet tested (M0).
 - **Bundler behaviour changes.** The worker and asset patterns depend on how Vite and webpack recognise
   `new URL(…, import.meta.url)`. Mitigated by building fixture applications in CI, in development and production modes,
   from the packed tarballs (M1, M3).
@@ -1103,7 +1143,18 @@ provenance; only the first real publication does (M4).
   - The unchanged-archive-consumer fixture passes, including `rest` (I9).
   - The type checks under NodeNext without DOM, and under bundler with DOM, pass with `skipLibCheck: false`.
   - The alias coverage test passes.
-  - A page with `Content-Security-Policy: script-src 'self' 'wasm-unsafe-eval'` loads both engines.
+  - Both engines, with the real preload, load when `Content-Security-Policy: script-src 'self' 'wasm-unsafe-eval'` is
+    on the page and on the worker's, launcher's and runtime's responses. A probe confirms that string evaluation is
+    blocked in the worker. A negative control without `'wasm-unsafe-eval'` fails.
+  - The runtime identity cases:
+    - a matching preload is used;
+    - a mismatched or unstamped preload is refused, with no evaluation;
+    - no preload falls back to the embedded copy;
+    - two engines of different builds on one global make the second fail loudly;
+    - a stale runtime file beside an archive's manifest is refused.
+  - The embedder smoke preloads the runtime from the jar's SDK directory.
+  - An installed package loads at exactly Node 22.3.0, and on 22.12 and 24, on the main thread and in an application
+    worker, including the exception-references path.
   - A start-up failure rejects within seconds, naming its cause.
 
 **M2: `vm.applyParams`** (D6, D6a, D6b).
@@ -1382,7 +1433,8 @@ choosing the recommendation recorded with each.
     - **K8:** I1 is checked on the packed tarball against the extracted archive, and again from the registry.
     - **K9:** a pinned npm, the bootstrap details, and 2FA with tokens refused.
     - **K10:** publishing only with a GitHub release; deprecation, rolling `latest` back, and an advisory.
-    - **K12:** the runtime belongs to the engine.
+    - **K12:** the runtime belongs to the engine. (Superseded in r11 and r12: the runtime is a stamped file that
+      ships with the client too.)
     - **K13:** Scalus as a second oracle; same-path checks labelled as regression guards; Aiken's schema check as an
       acceptance oracle.
     - **K14:** the embedder effects, and ADR-064 I3 extended.
@@ -1537,3 +1589,21 @@ choosing the recommendation recorded with each.
   `'unsafe-eval'`. From M1, the worker loads `julc-runtime.js` as a file first, and `JsApi.install` uses it, so
   `'wasm-unsafe-eval'` is enough. The runtime file now ships with the client, and D1a's version check keeps it in
   step with the image. Also: start-up failures reject promptly (M1). The CSP risk is corrected.
+- r12 (2026-11-16), responding to the reviews of r11 by Fable (R24 to R27) and Codex (C33 to C36). Both found the same
+  P1 (R24 = C33), and every finding was accepted.
+  - **R24, C33 (P1):** the runtime is stamped with its JuLC version at build time. `JsApi.install` checks a preloaded
+    runtime's stamp against the image before calling it:
+    - absent: evaluate the embedded copy;
+    - matching: use it;
+    - malformed, unstamped or mismatched: a terminal error, with no evaluation;
+    - a failed preload: terminal too.
+
+    The engine reports which runtime it used. I2 is updated.
+  - **C34, R25:** the stamped runtime is also in the jar's `META-INF/julc-wasm/js/`, and all copies are byte-equal. The
+    load locations per mode are named. The runtime is under D2a and I10. Stale text is corrected (Context, the D1
+    table, K12). The embedder guidance and the I3 list are updated.
+  - **C35:** the CSP must be on the worker's own response, and M1 checks that evaluation is blocked inside the worker,
+    with a negative control.
+  - **C36, R25:** `engines` is `>=22.3.0` throughout, tested at exactly 22.3.0.
+  - **R26:** a preload recorded but not used makes the client fail.
+  - **R27:** a Risks note that I1 covers the package as installed, not an application's minified bundle.
