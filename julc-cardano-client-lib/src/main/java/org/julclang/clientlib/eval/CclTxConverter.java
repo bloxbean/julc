@@ -9,9 +9,9 @@ import co.nstant.in.cbor.model.Special;
 import co.nstant.in.cbor.model.UnsignedInteger;
 import com.bloxbean.cardano.client.api.UtxoSupplier;
 import com.bloxbean.cardano.client.api.model.Utxo;
-import com.bloxbean.cardano.client.api.util.ReferenceScriptUtil;
 import com.bloxbean.cardano.client.crypto.Blake2bUtil;
 import com.bloxbean.cardano.client.plutus.spec.Redeemer;
+import com.bloxbean.cardano.client.transaction.raw.RawScript;
 import com.bloxbean.cardano.client.transaction.spec.MultiAsset;
 import com.bloxbean.cardano.client.transaction.spec.Transaction;
 import com.bloxbean.cardano.client.transaction.spec.TransactionInput;
@@ -39,6 +39,10 @@ final class CclTxConverter {
     private static final int BODY_VALIDITY_START = 8;
     private static final int BODY_PROPOSAL_PROCEDURES = 20;
     private static final int BABBAGE_PROTOCOL_MAJOR = 7;
+    private static final int CONWAY_PROTOCOL_MAJOR = 9;
+    /** The {@code script_ref} type of the newest Plutus language of Babbage (PlutusV2) and of Conway (PlutusV3). */
+    private static final int BABBAGE_MAX_SCRIPT_TYPE = 2;
+    private static final int CONWAY_MAX_SCRIPT_TYPE = 3;
 
     private static final System.Logger LOG = System.getLogger(CclTxConverter.class.getName());
     private static volatile boolean slotConfigWarningLogged = false;
@@ -268,13 +272,44 @@ final class CclTxConverter {
         return new TxOut(address, value, datum, referenceScript);
     }
 
+    /**
+     * An output's reference script hash, as the ledger computes it: {@code hashScript}, blake2b-224 of the script type
+     * and the script's original bytes ({@code Cardano.Ledger.Core}); for a native script, the script as encoded, which
+     * re-encoding CCL's model would change for a non-canonical encoding (julc #243). Any language, native too.
+     *
+     * @throws IllegalStateException if the script is of a Plutus language the era's ledger cannot decode
+     *                               ({@code eraMaxLanguage}: PlutusV2 in Babbage, PlutusV3 in Conway), or the encoded
+     *                               output and CCL's model disagree on whether it has one
+     */
+    private Optional<ScriptHash> referenceScriptHash(RawScript script, TransactionOutput txOut, int index) {
+        if ((script != null) != (txOut.getScriptRef() != null)) {
+            throw new IllegalStateException("Failed to deserialize the reference script of output " + index
+                    + ": the encoded output and CCL's model disagree on whether it has one");
+        }
+        if (script == null) {
+            return Optional.empty();
+        }
+        int maxType = protocolMajorVersion >= CONWAY_PROTOCOL_MAJOR ? CONWAY_MAX_SCRIPT_TYPE : BABBAGE_MAX_SCRIPT_TYPE;
+        if (script.type() > maxType) {
+            throw new IllegalStateException("Failed to deserialize the reference script of output " + index
+                    + ": script type " + script.type() + " is not a language of protocol version "
+                    + protocolMajorVersion);
+        }
+        return Optional.of(ScriptHash.of(script.hash()));
+    }
+
     private JulcList<TxOut> convertOutputs(List<TransactionOutput> outputs) {
         if (outputs == null || outputs.isEmpty()) {
             return JulcList.empty();
         }
 
-        // Inline datums from the original bytes, like every datum the context holds
+        // Inline datums and reference scripts from the original bytes, like every datum and hash the context holds
         List<byte[]> inlineDatums = original.outputInlineDatums();
+        List<RawScript> referenceScripts = original.outputReferenceScripts();
+        if (referenceScripts.size() != outputs.size()) {
+            throw new IllegalStateException("The transaction encodes " + referenceScripts.size()
+                    + " outputs, its model has " + outputs.size());
+        }
         var result = new ArrayList<TxOut>(outputs.size());
         for (int i = 0; i < outputs.size(); i++) {
             TransactionOutput txOut = outputs.get(i);
@@ -294,18 +329,7 @@ final class CclTxConverter {
                 datum = new OutputDatum.NoOutputDatum();
             }
 
-            Optional<ScriptHash> refScript = Optional.empty();
-            if (txOut.getScriptRef() != null) {
-                // Any language, native too; one that can't be decoded fails the evaluation. Known limitation: CCL
-                // 0.7 hashes a native script's re-encoding, which is the ledger's hash (of the original bytes) only
-                // for a canonically encoded script; CCL 0.8's raw-view RawScript.hash() is exact (julc #243).
-                try {
-                    refScript = Optional.of(ScriptHash.of(
-                            ReferenceScriptUtil.deserializeScriptRef(txOut.getScriptRef()).getScriptHash()));
-                } catch (Exception e) {
-                    throw new IllegalStateException("Failed to deserialize the reference script of output " + i, e);
-                }
-            }
+            Optional<ScriptHash> refScript = referenceScriptHash(referenceScripts.get(i), txOut, i);
 
             result.add(new TxOut(address, value, datum, refScript));
         }

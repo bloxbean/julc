@@ -7,6 +7,26 @@ Each section below is a release, newest first.
 
 ## 0.1.0-pre21
 
+### Reference script hashes in the evaluator's context are the ledger's (#243)
+
+`JulcTransactionEvaluator` now hashes a transaction output's reference script from the script's bytes as they appear
+in the transaction, as the ledger does. Before, it decoded a native script and hashed CCL's re-encoding of it. For a
+script with a non-canonical encoding, such as an indefinite-length list or an integer in a wider head than it needs,
+`TxOut.referenceScript` then held a hash the ledger never computes, so a validator that checks it could pass in
+JuLC's evaluation and fail on-chain, or the other way round. Canonically encoded scripts, and every Plutus script, get
+the same hash as before.
+
+The evaluator also refuses a reference script the era's ledger cannot decode. The ledger rejects such a transaction
+before any script runs, and the evaluation now fails too. Before, most of these evaluated:
+- A Plutus V3 reference script before protocol version 9, because Babbage cannot decode PlutusV3. The evaluator takes
+  the version from your `ProtocolParamsSupplier`, so make sure it reports the current one.
+- A script reference that is not `[type, script]`, for example one with three items. Before, the extra items were
+  ignored. An indefinite-length `[type, script]` is still read, as the ledger reads it.
+- A chunked (indefinite-length) byte string: the script reference itself, a Plutus script, or a key hash in a
+  native script.
+- A tag on a native script or anywhere inside it, or on a Plutus script.
+- A native script with Dijkstra's `RequireGuard` (constructor 6), which no era before Dijkstra decodes.
+
 ### Each validator loads its own script, whatever its simple name (#326)
 
 `JulcScriptLoader.load(Class)` and the annotation processor used to key a compiled script by the class's simple name
