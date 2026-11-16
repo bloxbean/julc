@@ -25,6 +25,12 @@ const extract = (file, label) => {
   execFileSync('tar', ['-xzf', file, '-C', dir]);
   return dir;
 };
+/** An npm tarball holds nothing outside package/. */
+const checkEntries = (file, name) => {
+  const entries = execFileSync('tar', ['-tzf', file], {encoding: 'utf8'}).split('\n').filter(Boolean);
+  const outside = entries.filter(entry => !entry.startsWith('package/') || entry.split('/').includes('..'));
+  assert.deepEqual(outside, [], name + ': tarball entries outside package/');
+};
 const walk = (dir, prefix = '') => readdirSync(dir, {withFileTypes: true}).flatMap(entry => entry.isDirectory()
   ? walk(path.join(dir, entry.name), prefix + entry.name + '/') : [prefix + entry.name]).sort();
 const INSTALL_SCRIPTS = ['preinstall', 'install', 'postinstall', 'prepare', 'preprepare', 'postprepare'];
@@ -42,16 +48,32 @@ function checkCommonFields(pkg, name) {
   assert.equal(pkg.types, './index.d.ts', name + ' types');
   assert.equal(pkg.exports['./package.json'], './package.json', name + ' exports ./package.json');
   assert.deepEqual(pkg.exports['.'], {types: './index.d.ts', node: './node.js', default: './index.js'}, name + ' exports .');
+  for (const field of ['peerDependencies', 'optionalDependencies', 'bundledDependencies', 'bundleDependencies',
+    'peerDependenciesMeta']) {
+    assert.equal(pkg[field], undefined, name + ' has ' + field);
+  }
+}
+/** package.json's files lists exactly the packed top-level entries (npm adds package.json itself). */
+function checkFilesField(pkg, packed, name) {
+  const entries = readdirSync(packed, {withFileTypes: true}).filter(entry => entry.name !== 'package.json')
+    .map(entry => entry.isDirectory() ? entry.name + '/' : entry.name).sort();
+  assert.deepEqual([...pkg.files].sort(), entries, name + ' files');
 }
 
+checkEntries(tarballOf(CLIENT), CLIENT);
 const client = extract(tarballOf(CLIENT), 'client');
-checkCommonFields(JSON.parse(readFileSync(path.join(client, 'package', 'package.json'), 'utf8')), CLIENT);
+const clientPkg = JSON.parse(readFileSync(path.join(client, 'package', 'package.json'), 'utf8'));
+checkCommonFields(clientPkg, CLIENT);
+assert.equal(clientPkg.dependencies, undefined, CLIENT + ' has no dependencies');
+assert.deepEqual(clientPkg.sideEffects, ['./julc-worker.js', './node-worker.js', './julc-runtime.js'], CLIENT + ' sideEffects');
+checkFilesField(clientPkg, path.join(client, 'package'), CLIENT);
 assert.ok(!walk(path.join(client, 'package')).includes('rest-adapter.js'), 'the client ships no REST adapter (D4)');
 console.log(`ok ${CLIENT} ${version}: no scripts, ${path.basename(tarballOf(CLIENT))} sha256 ${sha256(readFileSync(tarballOf(CLIENT)))}`);
 
 for (const engine of ENGINES) {
   const tarball = tarballOf(engine.name);
   const archive = path.join(archivesDir, `${engine.archive}-${version}.tar.gz`);
+  checkEntries(tarball, engine.name);
   const packed = path.join(extract(tarball, engine.variant), 'package');
   const released = extract(archive, engine.variant + '-archive');
   const engineJson = readFileSync(path.join(released, 'engine.json'));
@@ -74,18 +96,29 @@ for (const engine of ENGINES) {
   assert.equal(readFileSync(path.join(packed, 'engine', 'package.json'), 'utf8'), '{"type": "commonjs"}\n');
 
   // I1: engine.js inlines engine/engine.json, and names the files beside it with string literals (D2).
+  // The public exports and engineFiles(), the wrapper's own copy, both carry engine.json's text exactly.
   const engineJs = readFileSync(path.join(packed, 'engine.js'), 'utf8');
-  const inline = `export const manifest = ${engineJson.toString('utf8').trim()};\n`;
-  assert.equal(engineJs.split(inline).length, 2, engine.name + ': engine.js does not inline engine/engine.json');
-  assert.ok(engineJs.includes(`new URL('./engine/${manifest.launcher}', import.meta.url)`), 'launcher URL literal');
-  assert.ok(engineJs.includes(`new URL('./engine/${manifest.launcher}.wasm', import.meta.url)`), 'module URL literal');
+  const json = engineJson.toString('utf8').trim();
+  assert.equal(engineJs.split(`export const manifest = freeze(${json});\n`).length, 2,
+    engine.name + ': engine.js does not export engine/engine.json');
+  assert.equal(engineJs.split(`    manifest: ${json},\n`).length, 2,
+    engine.name + ': engineFiles() does not return engine/engine.json');
+  for (const file of [manifest.launcher, manifest.launcher + '.wasm']) {
+    assert.equal(engineJs.split(`new URL('./engine/${file}', import.meta.url)`).length, 3, file + ' URL literals');
+  }
+  assert.equal(engineJs.split('new URL(').length, 5, 'four URLs, each named above');
   assert.doesNotMatch(engineJs, /new URL\((?!'[^']+', import\.meta\.url\))/, 'every URL is a string literal');
   const engineUrl = pathToFileURL(path.join(packed, 'engine.js'));
   const loaded = await import(engineUrl.href);
-  assert.deepEqual(loaded.manifest, manifest, engine.name + ': engine.js manifest');
-  assert.equal(loaded.launcherUrl.href, new URL(`./engine/${manifest.launcher}`, engineUrl).href);
-  assert.equal(loaded.moduleUrl.href, new URL(`./engine/${manifest.launcher}.wasm`, engineUrl).href);
-  assert.equal(loaded.version, version);
+  const expectedUrls = [`./engine/${manifest.launcher}`, `./engine/${manifest.launcher}.wasm`]
+    .map(file => new URL(file, engineUrl).href);
+  for (const described of [loaded, loaded.engineFiles()]) {
+    assert.deepEqual(described.manifest, manifest, engine.name + ': engine.js manifest');
+    assert.deepEqual([described.launcherUrl.href, described.moduleUrl.href], expectedUrls);
+    assert.equal(described.version, version);
+  }
+  assert.ok(Object.isFrozen(loaded.manifest) && Object.isFrozen(loaded.manifest.groups), 'the exported manifest is frozen');
+  assert.notEqual(loaded.engineFiles().launcherUrl, loaded.engineFiles().launcherUrl, 'engineFiles() returns new objects');
 
   // package.json (D2, D8, I7).
   const pkg = JSON.parse(readFileSync(path.join(packed, 'package.json'), 'utf8'));
@@ -93,10 +126,17 @@ for (const engine of ENGINES) {
   assert.deepEqual(pkg.dependencies, {[CLIENT]: version}, engine.name + ': the exact client dependency');
   assert.deepEqual(Object.keys(pkg.exports), ['.', './engine', './package.json']);
   assert.deepEqual(pkg.exports['./engine'], {types: './engine.d.ts', default: './engine.js'});
+  assert.deepEqual(pkg.sideEffects, ['./engine/*.js'], engine.name + ' sideEffects');
+  assert.deepEqual(pkg.files, ['LICENSE', 'README.md', 'engine/', 'engine.d.ts', 'engine.js', 'index.d.ts', 'index.js',
+    'node.js'], engine.name + ' files');
+  checkFilesField(pkg, packed, engine.name);
   assert.ok(!files.includes('rest-adapter.js'), 'no REST adapter (D4)');
   const entry = readFileSync(path.join(packed, 'index.js'), 'utf8');
   assert.match(entry, new RegExp(`export async function ${engine.entry}\\(`), engine.name + ' entry function');
+  assert.match(entry, /const \{manifest, launcherUrl, moduleUrl, version\} = engineFiles\(\);/, engine.name + ' copies');
   assert.match(entry, /expectedVersion: version, rest: false\}/, engine.name + ' passes its version and rest: false');
+  assert.doesNotMatch(entry, /import \{[^}]*\b(manifest|launcherUrl|moduleUrl)\b[^}]*\} from '\.\/engine\.js'/,
+    engine.name + ' must not use the public exports');
 
   console.log(`ok ${engine.name} ${version}: I1 against ${path.basename(archive)}; contents of ${path.basename(tarball)}`
     + ` (sha256 ${sha256(readFileSync(tarball))}, ${statSync(tarball).size} bytes):`);

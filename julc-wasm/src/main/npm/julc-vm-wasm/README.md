@@ -1,9 +1,11 @@
 # @julclang/julc-vm-wasm
 
-JuLC's Plutus V3 virtual machine, compiled to WebAssembly, for browsers and Node.js: decode, hash, apply parameters to,
-evaluate and debug Plutus scripts. It runs in a worker, through [`@julclang/wasm-client`](https://www.npmjs.com/package/@julclang/wasm-client),
-which this package depends on at its own exact version. For the Java compiler, the decompiler and source debugging as
-well, install [`@julclang/julc-wasm`](https://www.npmjs.com/package/@julclang/julc-wasm) instead.
+JuLC's Plutus virtual machine, compiled to WebAssembly, for browsers and Node.js. It decodes, hashes, evaluates and
+debugs Plutus V1, V2 and V3 scripts (UPLC 1.0.0 and 1.1.0), and applies parameters to them: `vm.applyParams` returns the
+applied script and its hash under the language the request states (V1, V2 or V3). It runs in a worker, through
+[`@julclang/wasm-client`](https://www.npmjs.com/package/@julclang/wasm-client), which this package depends on at its own
+exact version. For the Java compiler, the decompiler and source debugging as well, install
+[`@julclang/julc-wasm`](https://www.npmjs.com/package/@julclang/julc-wasm) instead.
 
 **Experimental.** The JavaScript API is version 0 and may change in any release before 1.0; the release notes list
 every change. JuLC is a research project: do not treat a result as proof that a contract is safe to deploy.
@@ -27,16 +29,22 @@ try {
 }
 ```
 
-Each client runs the engine in its own worker (`worker_threads` in Node.js); `dispose()` ends it. The package's
-version is the JuLC release, and the client refuses to run an engine, a manifest or a runtime file of another release.
+Each client runs the engine in its own worker (`worker_threads` in Node.js); `dispose()` ends it. The package's version
+is the JuLC release, and the client refuses to run an engine, a manifest or a runtime file of another release.
 `createJulcVm(options)` takes `timeoutMs`, `loadTimeoutMs` and `workerFactory`; the engine's files are always this
-package's. The types of every request and response are exported from the package root.
+package's. The types of every request and response are exported from the package root. The subpath `./engine` describes
+the engine: its frozen `manifest`, `launcherUrl`, `moduleUrl` and `version`, and `engineFiles()`, which returns new
+copies of them, for example for `@julclang/wasm-client`'s own `createJulc`.
 
 ## Size and requirements
 
 - The WebAssembly module is @MODULE_SIZE@ (uncompressed). Serve it compressed: it compresses well.
-- **Browsers:** WebAssembly GC and exception references (`exnref`). Tested in Chromium; Firefox and Safari are not
-  tested yet. BLS12-381 builtins are not available in WebAssembly.
+- **First load:** a client was ready in about 0.2 s in Node.js 22 and 24 and in Chromium on an Apple-silicon
+  laptop, with the module already on disk or in the HTTP cache. Network transfer comes on top.
+- **Browsers:** WebAssembly GC and exception references (`exnref`). Tested in Chromium 156.0.8078.4; Firefox and
+  Safari are not tested yet. BLS12-381 builtins are not available in WebAssembly.
+- **TypeScript 5.0 or later** for the declarations, which re-export `@julclang/wasm-client`'s types with
+  `export type *`.
 - **Node.js 22.3.0 or later.** Node 22 enables WebAssembly exception references only with
   `--experimental-wasm-exnref`: the client checks for them before it starts its first worker and, when they are
   missing, sets that flag with `v8.setFlagsFromString`. The flag is process-wide. Node 24 needs nothing. The engine
@@ -78,9 +86,9 @@ The engine's files are named by `new URL('./engine/…', import.meta.url)` in `e
   };
   ```
 - **Plain `<script type="module">`** with an import map naming both packages' `index.js` works without a bundler.
-- **Server bundles:** webpack with `target: 'node'` (its Terser minifies the launcher here too, which still works),
-  and Next.js with Turbopack (`next build`, `next dev` and `output: 'standalone'`), work as they are. **esbuild** does not copy files named by `new URL`: keep the packages
-  external (`--packages=external`, or `external: ['@julclang/*']`). **Next.js with `--webpack`** rewrites the URLs:
-  list both packages in `serverExternalPackages`.
+- **Server bundles:** webpack with `target: 'node'` (its Terser minifies the launcher here too, which still works), and
+  Next.js with Turbopack (`next build`, `next dev` and `output: 'standalone'`), work as they are. **esbuild** does not
+  copy files named by `new URL`: keep the packages external (`--packages=external`, or `external: ['@julclang/*']`).
+  **Next.js with `--webpack`** rewrites the URLs: list both packages in `serverExternalPackages`.
 
 Version @VERSION@. Source, issues and the design (ADR-077): https://github.com/bloxbean/julc

@@ -4,6 +4,8 @@
 // - vm.applyParams on ADR-077's fixed vector (Aiken v1.1.23 and Python's blake2b-224 agree on it);
 // - for the full engine, a compile, whose hash vm.decode must reproduce;
 // - the entry function refuses options that would name other engine files, another version or the REST adapter;
+// - given the packages' ./engine modules, the client is created while the public exports point at the other
+//   engine's files: the entry function must still load its own engine (M3 review), and the manifest is frozen;
 // - when given, the VM parity fixtures (build/wasm-parity/vm.json, the JVM's answers): evaluate and a debug replay.
 // No Node.js or DOM API is used, so the same file runs everywhere.
 
@@ -25,7 +27,7 @@ class AlwaysTrue {
 }
 `;
 
-const show = value => JSON.stringify(value, (key, v) => typeof v === 'bigint' ? v + 'n' : v);
+const show = value => JSON.stringify(value, (_key, v) => typeof v === 'bigint' ? v + 'n' : v);
 function same(actual, expected, label) {
   if (Object.is(actual, expected)) return;
   if (typeof actual === 'object' && typeof expected === 'object' && actual !== null && expected !== null
@@ -56,19 +58,45 @@ function decodeEnvelope(envelope) {
 }
 
 /**
- * Creates a client with create(), checks it, disposes it and returns a short report. Throws on any difference.
- * @param create () => Promise<client>, the package's createJulcVm or createJulc
- * @param options {variant: 'vm' | 'full', version?: string, fixtures?: Array}
+ * Points an engine package's exported URLs at another engine's files and tries to change its manifest, as a caller
+ * could; returns the function that undoes it.
  */
-export async function checkEngine(create, {variant, version, fixtures = []}) {
+function redirect(own, other) {
+  const saved = [own.launcherUrl.href, own.moduleUrl.href];
+  own.launcherUrl.href = other.launcherUrl.href;
+  own.moduleUrl.href = other.moduleUrl.href;
+  for (const change of [() => { own.manifest.variant = other.manifest.variant; },
+    () => { own.manifest.launcher = other.manifest.launcher; }, () => { own.manifest.groups.push('compiler'); }]) {
+    let refused = false;
+    try { change(); } catch { refused = true; }
+    if (!refused) throw new Error('the exported manifest can be changed');
+  }
+  return () => { [own.launcherUrl.href, own.moduleUrl.href] = saved; };
+}
+
+/**
+ * Creates a client with create(), checks it, disposes it and returns a short report. Throws on any difference.
+ * @param create (options?) => Promise<client>, the package's createJulcVm or createJulc
+ * @param options {variant: 'vm' | 'full', version?: string, fixtures?: Array, engines?: {own, other}}
+ */
+export async function checkEngine(create, {variant, version, fixtures = [], engines}) {
   // The package names its own engine: options that would choose other files, or the REST adapter, are refused.
   for (const option of [{launcherUrl: 'x.js'}, {moduleUrl: 'x.wasm'}, {manifest: {}}, {expectedVersion: '0'},
     {baseUrl: '/'}, {rest: true}]) {
     const refused = await create(option).then(client => { client.dispose(); return false; }, () => true);
     if (!refused) throw new Error('accepted ' + show(option));
   }
+  if (await create(null).then(client => { client.dispose(); return false; }, () => true)) {
+    throw new Error('create(null) is refused');
+  }
+  const restore = engines ? redirect(engines.own, engines.other) : () => {};
   const started = performance.now();
-  const client = await create();
+  let client;
+  try {
+    client = await create();
+  } finally {
+    restore();
+  }
   const ready = Math.round(performance.now() - started);
   try {
     same(client.features().variant, variant, 'variant');
@@ -102,14 +130,19 @@ export async function checkEngine(create, {variant, version, fixtures = []}) {
       await session.close();
     }
     return {variant, version: client.version(), ready, total: Math.round(performance.now() - started),
-      parity: fixtures.length, compiled};
+      parity: fixtures.length, compiled, redirected: Boolean(engines)};
   } finally {
     client.dispose();
   }
 }
 
-/** Both packages, one after the other, as an application imports them. */
-export async function checkBoth({createJulcVm, createJulc}, options = {}) {
-  return [await checkEngine(createJulcVm, {...options, variant: 'vm'}),
-    await checkEngine(createJulc, {...options, variant: 'full'})];
+/**
+ * Both packages, one after the other, as an application imports them. With engines ({vm, full}: the packages'
+ * ./engine modules), each is created while its exports point at the other's files.
+ */
+export async function checkBoth({createJulcVm, createJulc}, {engines, ...options} = {}) {
+  return [
+    await checkEngine(createJulcVm, {...options, variant: 'vm', engines: engines && {own: engines.vm, other: engines.full}}),
+    await checkEngine(createJulc, {...options, variant: 'full', engines: engines && {own: engines.full, other: engines.vm}}),
+  ];
 }

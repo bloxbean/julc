@@ -448,36 +448,58 @@ def engineArchivesDir = layout.buildDirectory.dir('wasm-archives')
             new File(dir, 'README.md').setText(new File(sources, 'README.md').getText('UTF-8')
                     .replace('@MODULE_SIZE@', megabytes(new File(bundle, launcher + '.wasm').length()))
                     .replace('@VERSION@', version), 'UTF-8')
+            // engine.js names every file with string literals. Its exports are the public description of the engine;
+            // createJulcVm() and createJulc() take fresh copies from engineFiles() instead, so a caller who changes the
+            // exported URLs cannot redirect them (M3 review). The manifest is frozen.
+            def manifestLiteral = manifestText.trim()
             new File(dir, 'engine.js').setText("""\
 // Generated at build time from engine/engine.json (ADR-077 D2): the engine files of ${packageName} ${version}.
 // Each is named by a string literal, so bundlers copy it and it resolves beside this module.
-export const manifest = ${manifestText.trim()};
+const freeze = value => {
+  for (const member of Object.values(value)) if (typeof member === 'object' && member !== null) freeze(member);
+  return Object.freeze(value);
+};
+export const manifest = freeze(${manifestLiteral});
 export const launcherUrl = new URL('./engine/${launcher}', import.meta.url);
 export const moduleUrl = new URL('./engine/${launcher}.wasm', import.meta.url);
 export const version = ${json(version)};
+
+/** New objects describing the engine on every call, independent of the exports above. */
+export function engineFiles() {
+  return {
+    manifest: ${manifestLiteral},
+    launcherUrl: new URL('./engine/${launcher}', import.meta.url),
+    moduleUrl: new URL('./engine/${launcher}.wasm', import.meta.url),
+    version: ${json(version)},
+  };
+}
 """, 'UTF-8')
             new File(dir, 'engine.d.ts').setText("""\
 // Generated at build time (ADR-077 D2): the engine files of ${packageName} ${version}.
 import type {Manifest} from '@julclang/wasm-client';
 
-/** engine/engine.json, inlined. */
-export declare const manifest: Manifest;
+/** engine/engine.json, inlined and frozen. */
+export declare const manifest: Readonly<Manifest>;
 /** The launcher, engine/${launcher}. */
 export declare const launcherUrl: URL;
 /** The WebAssembly module, engine/${launcher}.wasm. */
 export declare const moduleUrl: URL;
 /** The JuLC release of this package, its engine and the client it needs. */
 export declare const version: ${json(version)};
+/** New objects describing the engine on every call; createJulc's package mode takes them as they are. */
+export declare function engineFiles(): {manifest: Manifest; launcherUrl: URL; moduleUrl: URL; version: ${json(version)}};
 """, 'UTF-8')
             def files = (dir.list() as List).findAll { it != 'package.json' }.sort().collect { it == 'engine' ? 'engine/' : it }
             def packageJson = new LinkedHashMap([
                     name: packageName,
                     version: version,
                     description: variant == 'vm'
-                            ? 'JuLC\'s Plutus V3 VM as WebAssembly, for browsers and Node.js: decode, hash, apply '
-                                + 'parameters to, evaluate and debug scripts. Experimental: API version 0.'
-                            : 'The JuLC toolchain as WebAssembly, for browsers and Node.js: the Plutus V3 VM, the Java '
-                                + 'compiler, the decompiler and source debugging. Experimental: API version 0.',
+                            ? 'JuLC\'s Plutus VM as WebAssembly, for browsers and Node.js: decode, hash, apply '
+                                + 'parameters to, evaluate and debug Plutus V1, V2 and V3 scripts. Experimental: API '
+                                + 'version 0.'
+                            : 'The JuLC toolchain as WebAssembly, for browsers and Node.js: the Plutus VM (V1, V2 and '
+                                + 'V3), the Java compiler, the decompiler and source debugging. Experimental: API '
+                                + 'version 0.',
                     license: 'MIT',
                     repository: 'github:bloxbean/julc',
                     homepage: 'https://github.com/bloxbean/julc/tree/main/julc-wasm',

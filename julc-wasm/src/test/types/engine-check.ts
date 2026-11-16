@@ -6,7 +6,7 @@ import {
   type Input,
 } from '@julclang/julc-vm-wasm';
 import {createJulc, type FullPackageClient, type CompileRequest, type WorkerLike} from '@julclang/julc-wasm';
-import {manifest, launcherUrl, moduleUrl, version} from '@julclang/julc-vm-wasm/engine';
+import {manifest, launcherUrl, moduleUrl, version, engineFiles} from '@julclang/julc-vm-wasm/engine';
 import * as fullEngine from '@julclang/julc-wasm/engine';
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
@@ -36,6 +36,11 @@ export async function engines(): Promise<void> {
   const files: [Manifest, URL, URL, string] = [manifest, launcherUrl, moduleUrl, version];
   const fullFiles: [Manifest, URL, URL, string] = [fullEngine.manifest, fullEngine.launcherUrl, fullEngine.moduleUrl,
     fullEngine.version];
+  // @ts-expect-error: the exported manifest is frozen
+  manifest.variant = 'full';
+  const copy = engineFiles();
+  copy.manifest.variant = 'full';
+  expectType<Equal<typeof copy.version, typeof version>>();
   void files;
   void fullFiles;
 }
