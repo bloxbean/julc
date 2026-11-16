@@ -737,7 +737,7 @@ provenance; only the first real publication does (M4).
   - The CSP source expression the engines need, recorded.
 
 **M1: `@julclang/wasm-client`** (D1a, D2, D2a, D3, D4, D5).
-- Entry gate: M0 done; open question 1 decided.
+- Entry gate: M0 done (open question 1 is decided).
 - Work:
   - package mode and its checks;
   - the version check;
@@ -755,7 +755,7 @@ provenance; only the first real publication does (M4).
   - The alias coverage test passes.
 
 **M2: `vm.applyParams`** (D6, D6a, D6b).
-- Entry gate: M1 merged; open question 5 decided.
+- Entry gate: M1 merged (open question 5 is decided).
 - Work: the checker and the preparation rules in `julc-tools`, the `VmApi` operation, the declarations.
 - Exit, all tests listed under Verification:
   - I4's differential tests, including the fixed vector;
@@ -866,35 +866,38 @@ Independent evidence, not values the code under test produced:
 
 ## Open questions
 
+Only question 2 is still open, and M0's experiment decides it. The maintainer decided the others on 2026-11-16, choosing
+the recommendation recorded with each.
+
 1. **Package names.** `@julclang/wasm-client`, `@julclang/julc-vm-wasm` and `@julclang/julc-wasm`, or shorter ones
    (`@julclang/vm`, `@julclang/julc`)?
-   - Lean: the proposed names, which match the archive names.
+   - **Decided** (maintainer, 2026-11-16, r3): the proposed names, which match the archive names.
 2. **The worker form.** A classic worker, which keeps `importScripts`, or a module worker with another way to load the
    CommonJS launcher?
    - Decided by M0's experiment before M1 starts.
    - Lean: classic, the form proven today, if both bundlers handle it.
 3. **Addresses.** Should `applyParams` also return a bech32 address for a network ID?
    - The VM image has no cardano-client-lib, so this would need a small bech32 encoder.
-   - Lean: no; return the hash, and leave addresses to the application's Cardano library.
+   - **Decided** (maintainer, 2026-11-16, r3): no; return the hash, and leave addresses to the application's Cardano library.
 4. **Evaluation from transaction CBOR (#244, request 2).** Should it ship in the VM engine?
    - That needs `JulcTransactionEvaluator` and so cardano-client-lib, which I3 keeps out of the VM image.
-   - Lean: the full engine only, in its own ADR.
+   - **Decided** (maintainer, 2026-11-16, r3): the full engine only, in its own ADR.
 5. **The default for partial application.** Is refusing fewer values than declared, unless `partial: true` is given,
    the right default?
-   - Lean: yes, because a missing parameter is more often a mistake than intended.
+   - **Decided** (maintainer, 2026-11-16, r3): yes, because a missing parameter is more often a mistake than intended.
 6. **API version 1.** What makes the API stable?
-   - Lean: after M0 to M5 and one release of npm use, with the type aliases unchanged across that release.
+   - **Decided** (maintainer, 2026-11-16, r3): after M0 to M5 and one release of npm use, with the type aliases unchanged across that release.
 7. **Assets on another origin.** Should package mode accept launcher and module URLs on a CDN origin other than the
    page's?
    - Workers must be same-origin anyway.
-   - Lean: no until someone needs it. Then add an explicit allow-list option, never a default.
+   - **Decided** (maintainer, 2026-11-16, r3): no until someone needs it. Then add an explicit allow-list option, never a default.
 8. **Version naming.** Semver compares `preN` as text, so `pre100` sorts below `pre20`. Should JuLC move to
    `0.1.0-pre.N`, which semver compares as a number, before `pre99`?
    - That changes the Maven versions too, so it is a release-process decision.
-   - Lean: decide before `pre90`.
+   - **Decided** (maintainer, 2026-11-16, r3): decide before `pre90`.
 9. **Schema checks for inputs without a blueprint.** Should `vm.applyParams` accept the parameter schemas in the
    request, so that a staged application (a partial result, then the rest) keeps being checked?
-   - Lean: later, if asked for.
+   - **Decided** (maintainer, 2026-11-16, r3): later, if asked for.
 
 ## Revision history
 
@@ -957,3 +960,5 @@ Independent evidence, not values the code under test produced:
     - **K18:** pre17 had the archives; how #244 relates; `vm.hash`; 1-based parameter numbers.
     - **K19:** the Binaryen download is pinned.
     - **K20:** new alternatives (a peer dependency, one package, a CDN with SRI) and open question 9.
+- r3 (2026-11-16): records the maintainer's decisions on open questions 1 and 3 to 9, each as the recommendation it
+  already carried. Open question 2 stays with M0's experiment. No design change.
