@@ -6,7 +6,7 @@
  *   file: URLs under the Node bridge. The manifest's launcher field is never read in this mode.
  * The runtime file is loaded before the launcher, and the engine uses it (ADR-077 D2). Under Node.js the bridge's shim
  * (node-worker.js) defines self.JULC_NODE before this script runs; a browser worker never has it. */
-let engine, julcAdapter, starting = true, startupOutput = [];
+let engine, julcAdapter, initialised = false, starting = true, startupOutput = [];
 const launcherName = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*-[0-9a-f]{12}\.js$/;
 // What the engine prints while it starts: when main fails, its first lines name the cause. The Web Image launcher
 // keeps the console functions it finds when it loads, so they are wrapped before it loads.
@@ -93,8 +93,10 @@ function init(request) {
     fail('The engine stopped before it was ready (exit code ' + code + ')'
       + (output ? ': ' + output : '; its error is in the worker console'));
   };
-  // JsApi reports why it cannot install the engine, for example a runtime file of another build.
-  self.onJulcStartupError = message => fail(message);
+  // JsApi reports why it cannot install the engine, for example a runtime file of another build. In package mode that
+  // file comes with @julclang/wasm-client, so the remedy is the client of the engine's release.
+  self.onJulcStartupError = (message, detail) => fail(packageMode && detail?.runtimeJulcVersion !== undefined
+    ? message + ', or install the @julclang/wasm-client of JuLC ' + detail.engineJulcVersion : message);
   self.onJulcReady = api => {
     if (!starting) return;
     engine = api;
@@ -102,7 +104,7 @@ function init(request) {
     starting = false;
     startupOutput = [];
     self.postMessage({type: 'ready', version: api.version(), features: api.features(), schemas: api.__schemas,
-      runtime: {preloaded: self.JulcRuntime?.julcVersion ?? null, used: api.__runtime ?? null}});
+      runtime: {preloaded: self.JulcRuntime?.julcVersion ?? null, used: api[Symbol.for('julc.runtime')] ?? null}});
   };
   // Recorded for JsApi: the engine must then use this file, which must be stamped with its own JuLC version.
   self.JULC_RUNTIME_PRELOAD = 'pending';
@@ -114,7 +116,9 @@ function init(request) {
 self.onmessage = event => {
   const request = event.data;
   if (request.type === 'init') {
-    if (engine || !starting) return;
+    // One engine per worker: a second init, during start-up or after, is ignored.
+    if (initialised) return;
+    initialised = true;
     init(request);
     return;
   }

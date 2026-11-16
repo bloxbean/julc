@@ -84,7 +84,7 @@ test('the worker accepts any language\'s launcher name and loads it from the man
     'demo-lang2-0123456789ab.js']) {
     // A launcher that installs a stub engine, as JsApi does.
     writeFileSync(path.join(dir, launcher), `globalThis.onJulcReady({version: () => '${launcher}',
-      features: () => ({groups: ['vm']}), __schemas: {}, __runtime: 'preloaded'});`);
+      features: () => ({groups: ['vm']}), __schemas: {}, [Symbol.for('julc.runtime')]: 'preloaded'});`);
     const reply = await init({base: pathToFileURL(dir + '/').href, manifest: {...manifest, launcher}});
     assert.equal(reply.type, 'ready', reply.message);
     assert.equal(reply.version, launcher);

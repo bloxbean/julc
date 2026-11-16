@@ -58,13 +58,10 @@ julc-demo/
   index.html                  # create this below
   wasm/
     engine.json
-    julc-wasm.js               # import this SDK entry point
+    julc-wasm.js               # import this SDK entry point (one file)
     julc-wasm.d.ts
     julc-models.d.ts           # generated record types
-    julc-client.js             # the client, imported by julc-wasm.js
-    client-version.js          # the JuLC release the client belongs to
-    client-defaults.js         # the archive's defaults (the REST adapter is on)
-    client-defaults.d.ts
+    client-defaults.d.ts       # the archive's defaults (the REST adapter is on)
     julc-worker.js
     rest-adapter.js
     julc-runtime.js            # loaded by the worker before the engine

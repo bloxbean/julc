@@ -8,7 +8,7 @@ import {cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {CLIENT_VERSION, launcherText, npmDir, packageDir, runtimeStamped} from './support.mjs';
+import {CLIENT_VERSION, archiveDir, launcherText, npmDir, packageDir, runtimeStamped} from './support.mjs';
 
 const OTHER = '0.0.1-other';
 const tarball = fileURLToPath(new URL(readdirSync(npmDir).find(name => name.startsWith('julclang-wasm-client-')), npmDir));
@@ -54,7 +54,8 @@ test('the tarball holds exactly the package directory, and package.json follows 
     assert.deepEqual(readFileSync(path.join(packed, file)), readFileSync(new URL(file, packageDir)), file);
   }
   for (const file of ['julc-wasm.js', 'julc-client.js', 'julc-worker.js', 'julc-runtime.js', 'node.js', 'node-worker.js',
-    'index.js', 'index.d.ts', 'models.d.ts', 'client-defaults.js', 'client-defaults.d.ts', 'client-version.js']) {
+    'index.js', 'index.d.ts', 'models.d.ts', 'client-defaults.js', 'client-defaults.d.ts', 'client-version.js',
+    'README.md', 'LICENSE']) {
     assert.ok(files.includes(file), file);
   }
   assert.ok(!files.includes('rest-adapter.js'), 'the package has no REST adapter (D4)');
@@ -63,6 +64,15 @@ test('the tarball holds exactly the package directory, and package.json follows 
   assert.equal(manifest.version, CLIENT_VERSION);
   assert.equal(manifest.type, 'module');
   assert.equal(manifest.types, './index.d.ts');
+  assert.deepEqual(manifest.typesVersions, {'*': {models: ['./models.d.ts']}});
+  assert.equal(manifest.license, 'MIT');
+  assert.match(readFileSync(path.join(packed, 'LICENSE'), 'utf8'), /^MIT License/);
+  const readme = readFileSync(path.join(packed, 'README.md'), 'utf8');
+  for (const needed of ['Experimental', '22.3.0', '--experimental-wasm-exnref', 'process-wide', 'optimizeDeps',
+    'asset/resource', 'TerserPlugin', '--packages=external', 'serverExternalPackages',
+    "script-src 'self' 'wasm-unsafe-eval'"]) {
+    assert.ok(readme.includes(needed), 'README mentions ' + needed);
+  }
   assert.equal(manifest.repository, 'github:bloxbean/julc');
   assert.deepEqual(manifest.engines, {node: '>=22.3.0'});
   assert.deepEqual(manifest.exports, {
@@ -156,7 +166,8 @@ catch (error) { console.log('refused', error.message); }
   assert.equal(install(false), 'ok ' + CLIENT_VERSION);
   // The overridden client's runtime file is the first thing of another release the engine meets.
   assert.equal(install(true), `refused JuLC engine ${CLIENT_VERSION} cannot start: the runtime file julc-runtime.js `
-    + `loaded before it is JuLC ${OTHER}; serve the julc-runtime.js of JuLC ${CLIENT_VERSION} with this engine`);
+    + `loaded before it is JuLC ${OTHER}; serve the julc-runtime.js of JuLC ${CLIENT_VERSION} with this engine, `
+    + `or install the @julclang/wasm-client of JuLC ${CLIENT_VERSION}`);
 });
 
 test('every generated record an operation reaches has a plain name at the package root (D5)', () => {
@@ -183,4 +194,19 @@ test('every generated record an operation reaches has a plain name at the packag
   // The plain names are the root's; the generated names stay under ./models.
   assert.doesNotMatch(root, /\b\w+_\w+\b/);
   assert.match(read('models.d.ts'), /export \* from '\.\/julc-models\.js';/);
+});
+
+test('the archives\' client is one file, and the files both distributions hold are equal but two (M1-C1, I3)', () => {
+  const archive = readFileSync(new URL('julc-wasm.js', archiveDir), 'utf8');
+  // Every other script the archives load is versioned by its URL (?engine=), so nothing cached can pair with it.
+  assert.doesNotMatch(archive, /^\s*import\b/m);
+  assert.doesNotMatch(archive, /\bimport\s*\(/);
+  assert.match(archive, new RegExp(`const CLIENT_VERSION = ${JSON.stringify(CLIENT_VERSION).replace(/[.]/g, '\\.')};`));
+  assert.match(archive, /const REST_DEFAULT = true;/);
+  const archiveFiles = readdirSync(archiveDir).sort();
+  assert.deepEqual(archiveFiles, ['client-defaults.d.ts', 'julc-models.d.ts', 'julc-runtime.js', 'julc-wasm.d.ts',
+    'julc-wasm.js', 'julc-worker.js', 'rest-adapter.js']);
+  const differing = archiveFiles.filter(file => readdirSync(packageDir).includes(file)
+    && !readFileSync(new URL(file, archiveDir)).equals(readFileSync(new URL(file, packageDir))));
+  assert.deepEqual(differing, ['client-defaults.d.ts', 'julc-wasm.js']);
 });

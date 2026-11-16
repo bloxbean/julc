@@ -104,8 +104,10 @@ export async function startClient(options = {}, environment) {
   // One release (ADR-077 D1a): the engine was built with this client's julc-wasm, ...
   const julcVersion = info.features.julcVersion;
   if (julcVersion !== CLIENT_VERSION) {
-    refuse('The JuLC engine was built with JuLC ' + (julcVersion ?? 'before 0.1.0-pre21') + ', but this client is '
-      + 'JuLC ' + CLIENT_VERSION + '; use the client of the engine\'s own release');
+    refuse('The JuLC engine was built with '
+      + (julcVersion === undefined ? 'a JuLC release without features().julcVersion' : 'JuLC ' + julcVersion)
+      + ', but this client is JuLC ' + CLIENT_VERSION + '; use the client of the engine\'s own release'
+      + (packageMode && julcVersion !== undefined ? ', or install the @julclang/wasm-client of JuLC ' + julcVersion : ''));
   }
   if (manifest.julcVersion !== julcVersion) {
     refuse('The JuLC engine is JuLC ' + julcVersion + ', but its manifest says JuLC ' + manifest.julcVersion);

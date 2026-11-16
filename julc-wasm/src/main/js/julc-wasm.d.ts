@@ -210,6 +210,9 @@ export type DefaultClient = typeof RestDefault extends true ? VmClient | FullCli
 export function createJulc<C extends PackageClient = VmPackageClient | FullPackageClient>(options: PackageOptions): Promise<C>;
 export function createJulc<C extends EngineClient = VmClient | FullClient>(options: ArchiveOptions & {rest: true}): Promise<C>;
 export function createJulc<C extends PackageClient = VmPackageClient | FullPackageClient>(options: ArchiveOptions & {rest: false}): Promise<C>;
-export function createJulc<C extends PackageClient = DefaultClient>(options?: ArchiveOptions): Promise<C>;
+/** rest omitted: the distribution's default. */
+export function createJulc<C extends PackageClient = DefaultClient>(options?: ArchiveOptions & {rest?: undefined}): Promise<C>;
+/** rest not known when compiling (a boolean), or options typed as Options: rest() is there only after a check. */
+export function createJulc<C extends PackageClient = VmClient | FullClient | VmPackageClient | FullPackageClient>(options: Options): Promise<C>;
 export function isFullClient(client: EngineClient): client is FullClient;
 export function isFullClient(client: PackageClient): client is FullPackageClient;

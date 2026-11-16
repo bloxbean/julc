@@ -7,6 +7,8 @@ import vm from 'node:vm';
 import {CLIENT_VERSION, jsApiInstall, runtimeStamped, runtimeText} from './support.mjs';
 
 const A = '0.1.0-a', B = '0.1.0-b';
+// Which runtime the engine uses, as JsApi records it for the worker.
+const RUNTIME = Symbol.for('julc.runtime');
 // Objects made in another global scope have its prototypes.
 const plain = value => JSON.parse(JSON.stringify(value));
 /** A global scope like a worker's or a page's main thread; strings: false is a Content Security Policy without 'unsafe-eval'. */
@@ -34,7 +36,7 @@ test('a recorded preload of the image\'s own build is used, and nothing is evalu
   const target = scope({strings: false});
   preload(target, runtimeText);
   const api = install(target);
-  assert.equal(api.__runtime, 'preloaded');
+  assert.equal(api[RUNTIME], 'preloaded');
   assert.equal(api.features().julcVersion, CLIENT_VERSION);
   assert.deepEqual(plain(api.vm.echo({})), {method: 'vm.echo', julcVersion: CLIENT_VERSION});
 });
@@ -62,20 +64,20 @@ test('a recorded preload of another build, unstamped, malformed or failed stops 
 test('without a preload, an image evaluates its own runtime; a page that forbids that gets an explicit error', () => {
   const target = scope();
   const api = install(target);
-  assert.equal(api.__runtime, 'evaluated');
+  assert.equal(api[RUNTIME], 'evaluated');
   assert.equal(target.context.JulcRuntime.julcVersion, CLIENT_VERSION);
   const strict = scope({strings: false});
-  assert.throws(() => install(strict), /cannot start: the runtime file julc-runtime\.js was not loaded, and evaluating the engine's own copy failed \(a Content Security Policy without 'unsafe-eval' forbids it\): EvalError/);
+  assert.throws(() => install(strict), /cannot start: the runtime file julc-runtime\.js was not loaded, and evaluating the engine's own copy failed \(for example under a Content Security Policy without 'unsafe-eval'\): EvalError/);
   assert.match(strict.errors[0], /was not loaded, and evaluating the engine's own copy failed/);
 });
 
 test('engines of different builds share one main-thread global without a preload, and both work', () => {
   const target = scope();
   const first = install(target, {julcVersion: A, source: runtimeStamped(A), name: 'first'});
-  assert.equal(first.__runtime, 'evaluated');
+  assert.equal(first[RUNTIME], 'evaluated');
   const runtimeA = target.context.JulcRuntime;
   const second = install(target, {julcVersion: B, source: runtimeStamped(B), name: 'second'});
-  assert.equal(second.__runtime, 'evaluated');
+  assert.equal(second[RUNTIME], 'evaluated');
   // The second engine runs on its own build's runtime and leaves the global the first one uses.
   assert.equal(target.context.JulcRuntime, runtimeA);
   assert.equal(first.features().julcVersion, A);
@@ -84,7 +86,7 @@ test('engines of different builds share one main-thread global without a preload
   assert.deepEqual(plain(second.vm.echo({})), {method: 'vm.echo', julcVersion: B});
   // A third engine of the first build may use the runtime already there.
   const third = install(target, {julcVersion: A, source: runtimeStamped(A), name: 'third'});
-  assert.equal(third.__runtime, 'shared');
+  assert.equal(third[RUNTIME], 'shared');
 });
 
 test('an engine of this build loaded after a pre-ADR-077 engine (unstamped runtime) on one global works', () => {
@@ -93,7 +95,7 @@ test('an engine of this build loaded after a pre-ADR-077 engine (unstamped runti
   const old = target.context.JulcRuntime;
   assert.equal(old.julcVersion, undefined);
   const api = install(target);
-  assert.equal(api.__runtime, 'evaluated');
+  assert.equal(api[RUNTIME], 'evaluated');
   assert.equal(target.context.JulcRuntime, old);
   assert.deepEqual(plain(api.vm.echo({})), {method: 'vm.echo', julcVersion: CLIENT_VERSION});
 });

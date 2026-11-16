@@ -3,7 +3,7 @@
 import {
   createJulc, isFullClient, type Features, type FullClient, type FullPackageClient, type Manifest, type PackageClient,
   type ScriptInput, type DecodeRequest, type TestRunRequest, type TxOut, type VmClient, type VmPackageClient,
-  type WorkerLike, type PlutusData, type DataInput, type Evaluation,
+  type WorkerLike, type PlutusData, type DataInput, type Evaluation, type Options,
 } from '@julclang/wasm-client';
 import type {UplcModels_ScriptInput, MockTransaction_TxOut} from '@julclang/wasm-client/models';
 
@@ -12,6 +12,8 @@ function expectType<T extends true>(): void {}
 
 const manifest: Manifest = {api: 0, version: 'x', launcher: 'julc-vm-0123456789ab.js', variant: 'vm', julcVersion: '1'};
 const worker: WorkerLike = {postMessage() {}, terminate() {}, onmessage: null, onerror: null};
+declare const flag: boolean;
+declare const options: Options;
 
 export async function check(): Promise<void> {
   const omitted = await createJulc({baseUrl: '/engine/'});
@@ -21,6 +23,14 @@ export async function check(): Promise<void> {
   const withRest = await createJulc({baseUrl: '/engine/', rest: true});
   expectType<Equal<typeof withRest, VmClient | FullClient>>();
   void withRest.rest('GET', '/api/health');
+  // rest known only at run time, or options typed as the exported union: rest() only after a check.
+  const unknown = await createJulc({baseUrl: '/engine/', rest: flag});
+  expectType<Equal<typeof unknown, VmClient | FullClient | VmPackageClient | FullPackageClient>>();
+  // @ts-expect-error: not every client of that union has rest()
+  void unknown.rest('GET', '/api/health');
+  if ('rest' in unknown) void unknown.rest('GET', '/api/health');
+  const fromUnion = await createJulc(options);
+  expectType<Equal<typeof fromUnion, VmClient | FullClient | VmPackageClient | FullPackageClient>>();
   const without = await createJulc({baseUrl: '/engine/', rest: false, workerFactory: () => worker});
   expectType<Equal<typeof without, VmPackageClient | FullPackageClient>>();
   const packaged = await createJulc({launcherUrl: new URL('file:///e/julc-vm.js'), moduleUrl: 'file:///e/julc-vm.js.wasm',

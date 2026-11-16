@@ -3,10 +3,12 @@
 // REST adapter's default (D4) and prompt start-up errors (M1).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {rmSync} from 'node:fs';
+import {mkdtempSync, rmSync, writeFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {pathToFileURL} from 'node:url';
 import path from 'node:path';
 import {
-  CLIENT_VERSION, LAUNCHER, archiveBundle, archiveDir, launcherText, runtimeStamped, workerFactory,
+  CLIENT_VERSION, LAUNCHER, archiveBundle, archiveDir, launcherText, packageDir, runtimeStamped, workerFactory,
 } from './support.mjs';
 
 const {createJulc, isFullClient} = await import(new URL('julc-wasm.js', archiveDir));
@@ -105,8 +107,9 @@ test('the runtime file beside the manifest must be the engine\'s own build (arch
   // A missing runtime file is named.
   await assert.rejects(start(archiveBundle({runtime: null})), /Cannot load the runtime .*julc-runtime\.js\?engine=/);
   // An engine that reports it evaluated its own runtime although one was loaded: the client fails.
-  const evaluated = archiveBundle({launcher: launcherText().replace("Object.defineProperty(api, '__runtime', {value: origin});",
-    "Object.defineProperty(api, '__runtime', {value: 'evaluated'});")});
+  const evaluated = archiveBundle({launcher: launcherText().replace(
+    "Object.defineProperty(api, Symbol.for('julc.runtime'), {value: origin});",
+    "Object.defineProperty(api, Symbol.for('julc.runtime'), {value: 'evaluated'});")});
   await assert.rejects(start(evaluated), /did not use the runtime file julc-runtime\.js loaded before it \(it used evaluated\)/);
 });
 
@@ -166,4 +169,70 @@ test('an exit reported after the engine is ready does not break the client', asy
     await new Promise(resolve => setTimeout(resolve, 100));
     assert.deepEqual(await client.vm.echo({x: 1}), {method: 'vm.echo', body: {x: 1}});
   } finally { client.dispose(); }
+});
+
+test('an embedder may name an operation group __runtime: the runtime\'s provenance is not a group (M1-C2)', async () => {
+  const client = await start(lang({'__runtime.check': {}, 'lang.run': {}}, ['__runtime', 'lang']));
+  try {
+    assert.deepEqual(await client.__runtime.check({x: 1}), {method: '__runtime.check', body: {x: 1}});
+    assert.deepEqual(await client.lang.run({}), {method: 'lang.run', body: {}});
+  } finally { client.dispose(); }
+});
+
+test('a second init during start-up is ignored (M1-F5)', async () => {
+  const bundle = archiveBundle({launcher: `setTimeout(() => {\n${launcherText()}\n}, 100);`});
+  let sent = 0;
+  const twice = url => {
+    const worker = workerFactory(url);
+    const postMessage = worker.postMessage;
+    worker.postMessage = message => {
+      postMessage(message);
+      // The same init again, with another manifest, while the engine is starting.
+      if (message.type === 'init' && sent++ === 0) postMessage({...message, manifest: {...message.manifest, variant: 'Bad'}});
+    };
+    return worker;
+  };
+  const client = await createJulc({baseUrl: bundle.baseUrl, manifest: bundle.manifest, workerFactory: twice});
+  try {
+    assert.equal(client.features().variant, 'vm');
+    assert.deepEqual(await client.vm.echo({}), {method: 'vm.echo', body: {}});
+  } finally { client.dispose(); }
+});
+
+// Package mode in Node.js through the npm package's own entry and bridge.
+const node = await import(new URL('node.js', packageDir));
+function packageEngine(launcher) {
+  const dir = mkdtempSync(path.join(tmpdir(), 'julc-package-mode-'));
+  writeFileSync(path.join(dir, LAUNCHER), launcher);
+  writeFileSync(path.join(dir, LAUNCHER + '.wasm'), '');
+  return {launcherUrl: pathToFileURL(path.join(dir, LAUNCHER)), moduleUrl: pathToFileURL(path.join(dir, LAUNCHER + '.wasm')),
+    manifest: {api: 0, version: '0123456789ab', variant: 'vm', launcher: LAUNCHER, groups: ['vm'], julcVersion: CLIENT_VERSION}};
+}
+
+test('the Node bridge fails the client when its worker exits by itself (M1-F2)', async () => {
+  const started = performance.now();
+  await assert.rejects(node.createJulc(packageEngine('process.exit(3);')),
+    /^Error: The JuLC worker julc-worker\.js failed: the worker exited with code 3$/);
+  assert.ok(performance.now() - started < 5000);
+  // After the engine is ready, too: pending requests fail instead of waiting for their timeout.
+  const client = await node.createJulc(packageEngine(launcherText({schemas: {'vm.echo': {}, 'vm.exit': {}}})
+    .replace('argv => JSON.stringify(', 'argv => argv[0] === "vm.exit" ? process.exit(4) : JSON.stringify(')));
+  await assert.rejects(client.vm.exit({}), /the worker exited with code 4/);
+});
+
+test('in package mode, an engine of another release points to the client of its own release (M1-F3)', async () => {
+  // The engine checks the runtime file, which comes with this client, first.
+  const engine = packageEngine(launcherText({version: OTHER, julcVersion: OTHER, source: runtimeStamped(OTHER)}));
+  await assert.rejects(node.createJulc({...engine, manifest: {...engine.manifest, julcVersion: OTHER}}),
+    new RegExp(`loaded before it is JuLC ${escape(CLIENT_VERSION)}; serve the julc-runtime.js of JuLC ${escape(OTHER)} `
+      + `with this engine, or install the @julclang/wasm-client of JuLC ${escape(OTHER)}$`));
+  // An engine whose runtime check passes but which reports another build is refused by the client.
+  const reports = packageEngine(launcherText({version: OTHER}).replace(
+    'String(version), JSON.parse(String(groups)), own);', `String(version), JSON.parse(String(groups)), ${JSON.stringify(OTHER)});`));
+  await assert.rejects(node.createJulc({...reports, manifest: {...reports.manifest, julcVersion: OTHER}}),
+    new RegExp(`built with JuLC ${escape(OTHER)}, but this client is JuLC ${escape(CLIENT_VERSION)}; use the client of `
+      + `the engine's own release, or install the @julclang/wasm-client of JuLC ${escape(OTHER)}$`));
+  // In archive mode the hint is not given: the archive's files belong together.
+  await assert.rejects(start(archiveBundle({launcher: launcherText({version: OTHER, julcVersion: OTHER,
+    source: runtimeStamped(OTHER)})})), error => !error.message.includes('@julclang/wasm-client'));
 });

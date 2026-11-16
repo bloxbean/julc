@@ -11,7 +11,7 @@ export const archiveDir = new URL('wasm-client/archive/', build);
 export const packageDir = new URL('wasm-client/package/', build);
 export const npmDir = new URL('npm/', build);
 export const shimUrl = new URL('node-worker.js', packageDir);
-export const CLIENT_VERSION = /CLIENT_VERSION = "([^"]+)"/.exec(readFileSync(new URL('client-version.js', archiveDir), 'utf8'))[1];
+export const CLIENT_VERSION = /CLIENT_VERSION = "([^"]+)"/.exec(readFileSync(new URL('client-version.js', packageDir), 'utf8'))[1];
 export const runtimeText = readFileSync(new URL('julc-runtime.js', archiveDir), 'utf8');
 
 /** The stamped runtime with another stamp, as another build's file would be. */
@@ -51,9 +51,12 @@ install(argv => JSON.stringify({status: 200, body: {method: argv[0], body: JSON.
 /** The parent half of the bridge the npm package ships, driving the shipped shim. */
 export function workerFactory(url) {
   const worker = new Worker(shimUrl, {workerData: {workerUrl: url.href}});
-  const bridge = {postMessage: value => worker.postMessage(value), terminate: () => worker.terminate()};
+  let terminated = false;
+  const bridge = {postMessage: value => worker.postMessage(value),
+    terminate: () => { terminated = true; return worker.terminate(); }};
   worker.on('message', data => bridge.onmessage?.({data}));
   worker.on('error', error => bridge.onerror?.(error));
+  worker.on('exit', code => { if (!terminated) bridge.onerror?.({message: 'the worker exited with code ' + code}); });
   return bridge;
 }
 

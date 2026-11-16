@@ -1,5 +1,6 @@
 // ADR-077 D2/D4/D5: the declarations type-check from the packed @julclang/wasm-client with skipLibCheck: false, under
-// moduleResolution NodeNext without the DOM library, and under bundler with it; the archives' copy (rest: true) too.
+// moduleResolution NodeNext without the DOM library, under bundler with it, and under node10 (typesVersions); the
+// archives' copy (rest: true) too.
 // Installs pinned TypeScript and @types/node from the registry.
 //   node package-types.mjs <tarball> <archive client directory>
 import {execFileSync} from 'node:child_process';
@@ -15,6 +16,9 @@ const projects = {
   nodenext: {files: ['package-check.ts', 'archive-check.ts'], packages: [TYPESCRIPT, NODE_TYPES],
     compilerOptions: {module: 'NodeNext', moduleResolution: 'NodeNext', target: 'ES2022', lib: ['ES2022'],
       types: ['node']}},
+  node10: {files: ['node10-check.ts'], packages: [TYPESCRIPT],
+    compilerOptions: {module: 'ESNext', moduleResolution: 'node10', target: 'ES2022', lib: ['ES2022', 'DOM'],
+      types: [], ignoreDeprecations: '5.0'}},
   bundler: {files: ['package-check.ts', 'archive-check.ts', 'dom-check.ts'], packages: [TYPESCRIPT],
     compilerOptions: {module: 'ESNext', moduleResolution: 'bundler', target: 'ES2022', lib: ['ES2022', 'DOM'],
       types: []}},

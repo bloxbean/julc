@@ -46,12 +46,14 @@ public final class JsApi {
     // JULC_RUNTIME_PRELOAD is recorded by the worker (or the Node shim) that loaded julc-runtime.js: that runtime must
     // be this build's, or the engine fails to start, naming both versions. Without a recorded preload, a runtime some
     // other engine left on a shared global is used only when it is stamped with this build; otherwise the image
-    // evaluates its own copy, keeping the other engine's global. __runtime tells the worker which runtime the engine
+    // evaluates its own copy, keeping the other engine's global. The Symbol.for('julc.runtime') property tells the
+    // worker which runtime the engine uses; a symbol, so no operation group can take its name.
     // uses.
     @JS(args = {"fn", "schema", "name", "variant", "version", "groups", "julcVersion", "source"}, value = """
             const own = String(julcVersion);
-            const startupError = message => {
-                globalThis.onJulcStartupError?.(message);
+            // The worker hears the cause before main fails; detail names the runtime's build when it is the cause.
+            const startupError = (message, detail) => {
+                globalThis.onJulcStartupError?.(message, detail);
                 return new Error(message);
             };
             const found = globalThis.JulcRuntime;
@@ -64,15 +66,16 @@ public final class JsApi {
                     throw startupError('JuLC engine ' + own + ' cannot start: the runtime file julc-runtime.js loaded '
                         + 'before it is ' + (preload !== 'loaded' ? 'missing'
                             : typeof stamp === 'string' ? 'JuLC ' + stamp : 'not a stamped JuLC runtime')
-                        + '; serve the julc-runtime.js of JuLC ' + own + ' with this engine');
+                        + '; serve the julc-runtime.js of JuLC ' + own + ' with this engine',
+                        {engineJulcVersion: own, runtimeJulcVersion: typeof stamp === 'string' ? stamp : null});
                 }
             } else if (stamp !== own) {
                 try {
                     (0, eval)(String(source));
                 } catch (error) {
                     throw startupError('JuLC engine ' + own + ' cannot start: the runtime file julc-runtime.js was not '
-                        + "loaded, and evaluating the engine's own copy failed (a Content Security Policy without "
-                        + "'unsafe-eval' forbids it): " + error);
+                        + "loaded, and evaluating the engine's own copy failed (for example under a Content Security "
+                        + "Policy without 'unsafe-eval'): " + error);
                 }
                 runtime = globalThis.JulcRuntime;
                 if (found !== undefined) globalThis.JulcRuntime = found;
@@ -84,7 +87,7 @@ public final class JsApi {
             const api = runtime.install(
                 (method, body) => String(fn([method, body])), JSON.parse(String(schema)),
                 String(variant), String(version), JSON.parse(String(groups)), own);
-            Object.defineProperty(api, '__runtime', {value: origin});
+            Object.defineProperty(api, Symbol.for('julc.runtime'), {value: origin});
             globalThis[String(name)] = api;
             if (typeof globalThis.onJulcReady === 'function') {
                 setTimeout(() => globalThis.onJulcReady(api), 0);

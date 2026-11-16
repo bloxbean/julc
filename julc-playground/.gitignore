@@ -10,7 +10,6 @@ frontend/public/wasm/julc-*.js.wasm
 frontend/public/wasm/julc-*.d.ts
 frontend/public/wasm/rest-adapter.js
 frontend/public/wasm/client-defaults.*
-frontend/public/wasm/client-version.js
 frontend/public/wasm/catalogue.json
 
 # Static (WebAssembly-only) frontend build
