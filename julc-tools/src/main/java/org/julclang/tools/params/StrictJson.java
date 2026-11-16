@@ -20,9 +20,16 @@ final class StrictJson {
     /** Long enough for any integer a script could use; Jackson's default (1000 digits) is lower. */
     private static final int MAX_NUMBER_LENGTH = 100_000;
 
+    /**
+     * No practical nesting limit: Jackson builds trees without recursion, and so does every reader of the trees here.
+     * A value's depth is bounded by its length only. (Jackson's default is 500 levels, each Data level being two.)
+     */
+    private static final int MAX_NESTING_DEPTH = Integer.MAX_VALUE;
+
     private static final ObjectMapper MAPPER = JsonMapper.builder(JsonFactory.builder()
                     .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
-                    .streamReadConstraints(StreamReadConstraints.builder().maxNumberLength(MAX_NUMBER_LENGTH).build())
+                    .streamReadConstraints(StreamReadConstraints.builder().maxNumberLength(MAX_NUMBER_LENGTH)
+                            .maxNestingDepth(MAX_NESTING_DEPTH).build())
                     .build())
             .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
             .enable(DeserializationFeature.FAIL_ON_READING_DUP_TREE_KEY)

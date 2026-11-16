@@ -34,6 +34,9 @@ record CanonicalScript(Program program, byte[] flat, byte[] singleCbor, int wrap
         while (wrappers < 2 && isByteStringHead(current[0])) {
             current = unwrap(current, wrappers == 0 ? "outer" : "inner");
             wrappers++;
+            if (current.length == 0) {
+                throw ApplyParamsException.invalidRequest("The script's CBOR wrapper holds no bytes");
+            }
         }
         byte[] flat = current;
         Program program = decodeFlat(flat);
@@ -131,7 +134,11 @@ record CanonicalScript(Program program, byte[] flat, byte[] singleCbor, int wrap
         FlatReader reader = new FlatReader(flat);
         Program program;
         try {
-            program = new UplcFlatDecoder(reader, DecodeLimits.PV11.toFlatDecodeLimits()).readProgram();
+            // Data constants are read by a stack-safe reader that accepts only the canonical encoding.
+            program = new UplcFlatDecoder(reader, DecodeLimits.PV11.toFlatDecodeLimits(),
+                    new CanonicalDataCbor.ScriptConstants()).readProgram();
+        } catch (ApplyParamsException e) {
+            throw e;
         } catch (RuntimeException e) {
             throw ApplyParamsException.invalidRequest("The script is not a valid UPLC program: "
                     + (e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName()));

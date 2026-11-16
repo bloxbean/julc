@@ -35,7 +35,6 @@ final class DataSchemaChecker {
     /** Work units (pair visits plus their children) one check may spend. */
     static final long DEFAULT_WORK_BOUND = 1_000_000;
 
-    private static final BigInteger WORD64_LIMIT = BigInteger.ONE.shiftLeft(64);
     private static final String DEFINITIONS = "#/definitions/";
     private static final Set<String> ANNOTATIONS = Set.of("title", "description", "$comment");
     private static final Set<String> APPLICATORS = Set.of("allOf", "anyOf", "oneOf", "not");
@@ -143,6 +142,10 @@ final class DataSchemaChecker {
         String text = ref.textValue();
         if (!text.startsWith(DEFINITIONS)) {
             throw invalid(label, location, "$ref '" + text + "' is not local; only #/definitions/<name> is supported");
+        }
+        if (text.indexOf('%') >= 0) {
+            throw invalid(label, location, "$ref '" + text + "' uses percent-encoding, which is not supported; write"
+                    + " the definition name as it is, with only ~1 for / and ~0 for ~");
         }
         String name = unescape(text.substring(DEFINITIONS.length()), label, location, text);
         JsonNode target = definitions == null || !definitions.isObject() ? null : definitions.get(name);
@@ -265,9 +268,8 @@ final class DataSchemaChecker {
                 case "bytes" -> {
                     if (json.has("enum")) {
                         JsonNode values = json.get("enum");
-                        if (!values.isArray() || values.isEmpty()) {
-                            throw invalid(label, at, "enum must be a non-empty array of hex strings");
-                        }
+                        // An empty enum is well formed, and matches no value.
+                        if (!values.isArray()) throw invalid(label, at, "enum must be an array of hex strings");
                         var hex = new ArrayList<String>();
                         for (JsonNode value : values) {
                             if (!value.isTextual() || !value.textValue().matches("(?:[0-9a-fA-F]{2})*")) {
@@ -319,10 +321,9 @@ final class DataSchemaChecker {
                 case "constructor" -> {
                     if (!json.has("index")) throw invalid(label, at, "a constructor schema needs its index");
                     if (!json.has("fields")) throw invalid(label, at, "a constructor schema needs its fields");
+                    // CIP-57 asks only for a non-negative index. One of 2^64 or more is well formed, and matches no
+                    // value, because values are bounded (D6a).
                     schema.index = natural(json, "index", label, at);
-                    if (schema.index.compareTo(WORD64_LIMIT) >= 0) {
-                        throw invalid(label, at, "index must be below 2^64");
-                    }
                     if (!json.get("fields").isArray()) throw invalid(label, at, "fields must be an array of schemas");
                     schema.fields = schemas(json.get("fields"), schema, "fields", label, work);
                 }
@@ -598,11 +599,13 @@ final class DataSchemaChecker {
     /** The work spent and the memo of one check. */
     private final class Run {
         final Values values;
+        final String label;
         final LongBooleanMap memo = new LongBooleanMap();
         long work;
 
-        Run(Values values) {
+        Run(Values values, String label) {
             this.values = values;
+            this.label = label;
         }
 
         boolean result(Schema schema, int value) {
@@ -611,11 +614,17 @@ final class DataSchemaChecker {
             return state == 1;
         }
 
+        /** Once evaluation has ended, explaining a mismatch spends nothing. */
+        boolean explaining;
+
         void spend(long units) {
+            if (explaining) return;
             work += units;
             if (work > workBound) {
-                throw ApplyParamsException.invalidRequest("The schema check exceeded its work bound of " + workBound
-                        + " steps; the value or the schema is too large to check");
+                throw new ApplyParamsException(ApplyParamsException.Kind.WORK_LIMIT_EXCEEDED, label + ": the schema"
+                        + " check exceeded its work bound of " + workBound + " steps, so the value was neither accepted"
+                        + " nor refused. The value or the schema is too large to check; to apply it without the check,"
+                        + " set checkSchema: false.");
             }
         }
     }
@@ -634,8 +643,9 @@ final class DataSchemaChecker {
      */
     void check(Schema root, PlutusData value, String label) {
         var values = new Values(value);
-        var run = new Run(values);
+        var run = new Run(values, label);
         if (!evaluate(run, root, 0)) {
+            run.explaining = true;
             throw ApplyParamsException.mismatch(label + ": " + explain(run, root, 0, true));
         }
     }

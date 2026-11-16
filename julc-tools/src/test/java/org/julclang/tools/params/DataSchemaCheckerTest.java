@@ -301,8 +301,7 @@ class DataSchemaCheckerTest {
         invalid("{'dataType':'bytes','minLength':-1}", null, "minLength must not be negative");
         invalid("{'dataType':'bytes','maxLength':'2'}", null, "maxLength must be an integer");
         invalid("{'dataType':'bytes','maxLength':2.5}", null, "maxLength must be an integer");
-        invalid("{'dataType':'bytes','enum':'00'}", null, "enum must be a non-empty array");
-        invalid("{'dataType':'bytes','enum':[]}", null, "enum must be a non-empty array");
+        invalid("{'dataType':'bytes','enum':'00'}", null, "enum must be an array of hex strings");
         invalid("{'dataType':'bytes','enum':['abc']}", null, "even-length hex");
         invalid("{'dataType':'integer','multipleOf':0}", null, "multipleOf must be greater than 0");
         invalid("{'dataType':'integer','minimum':1.5}", null, "minimum must be an integer");
@@ -315,7 +314,6 @@ class DataSchemaCheckerTest {
         invalid("{'dataType':'constructor','fields':[]}", null, "needs its index");
         invalid("{'dataType':'constructor','index':0}", null, "needs its fields");
         invalid("{'dataType':'constructor','index':-1,'fields':[]}", null, "index must not be negative");
-        invalid("{'dataType':'constructor','index':18446744073709551616,'fields':[]}", null, "below 2^64");
         invalid("{'dataType':'constructor','index':0,'fields':{}}", null, "fields must be an array");
         invalid("{'anyOf':[]}", null, "anyOf must be a non-empty array");
         invalid("{'oneOf':{}}", null, "oneOf must be a non-empty array");
@@ -442,6 +440,89 @@ class DataSchemaCheckerTest {
         accepts("{'$ref':'#/definitions/M'}", viaMap, "{'map':[{'k':{'bytes':''},'v':{'map':[]}}]}");
     }
 
+    /** M2-C3: CIP-57 allows an empty enum; it matches nothing. */
+    @Test
+    void anEmptyEnumMatchesNoValue() {
+        String schema = "{'dataType':'bytes','enum':[]}";
+        checker(null).compile(q(schema), "P");
+        mismatch(schema, null, "{'bytes':''}", "expected one of [], found empty bytes");
+        mismatch(schema, null, "{'bytes':'00'}", "expected one of [], found 00");
+        accepts("{'anyOf':[{'dataType':'bytes','enum':[]},{'dataType':'integer'}]}", null, "{'int':1}");
+    }
+
+    /** M2-C4: a schema's index need only be non-negative; one of 2^64 or more matches no (bounded) value. */
+    @Test
+    void aConstructorIndexBeyond64BitsIsAWellFormedSchema() {
+        String schema = "{'dataType':'constructor','index':18446744073709551616,'fields':[]}";
+        checker(null).compile(q(schema), "P");
+        mismatch(schema, null, "{'constructor':18446744073709551615,'fields':[]}",
+                "expected constructor index 18446744073709551616, found 18446744073709551615");
+        invalid("{'dataType':'constructor','index':-1,'fields':[]}", null, "index must not be negative");
+    }
+
+    /** M2-R6: percent-encoding in a reference is refused, not taken literally. */
+    @Test
+    void percentEncodedReferencesAreRefused() {
+        String defs = "{'a/b':{'dataType':'integer'},'a%2Fb':{'dataType':'integer'},'a b':{'dataType':'bytes'}}";
+        invalid("{'$ref':'#/definitions/a%2Fb'}", defs, "uses percent-encoding, which is not supported");
+        invalid("{'$ref':'#/definitions/a%20b'}", defs, "uses percent-encoding");
+        accepts("{'$ref':'#/definitions/a~1b'}", defs, "{'int':1}");
+        accepts("{'$ref':'#/definitions/a b'}", defs, "{'bytes':''}");
+    }
+
+    /** M2-R5: explaining a mismatch spends no work, so a real mismatch near the bound is reported as one. */
+    @Test
+    void explainingAMismatchSpendsNoWork() {
+        String schema = "{'dataType':'list','uniqueItems':true}";
+        PlutusData value = v("{'list':[" + "{'int':1},".repeat(99) + "{'int':1}]}");
+        // Evaluation spends 1 for the pair and 100 for the uniqueness check; explaining repeats the check.
+        var checker = new DataSchemaChecker(null, 101);
+        var compiled = checker.compile(q(schema), "P");
+        var e = assertThrows(ApplyParamsException.class, () -> checker.check(compiled, value, "P"));
+        assertEquals(Kind.PARAMETER_MISMATCH, e.kind(), e.getMessage());
+        var tight = new DataSchemaChecker(null, 100);
+        var tightCompiled = tight.compile(q(schema), "P");
+        assertEquals(Kind.WORK_LIMIT_EXCEEDED, assertThrows(ApplyParamsException.class,
+                () -> tight.check(tightCompiled, value, "P")).kind());
+    }
+
+    /** M2-R7: with checkSchema, every declared parameter's schema is checked before any value is read. */
+    @Test
+    void everyDeclaredSchemaIsCheckedFirstInAPartialApplication() {
+        ObjectNode bp = ApplyParamsTest.blueprint("v3", ApplyParamsTest.SINGLE, null, "v");
+        var parameters = ((ObjectNode) bp.withArray("validators").get(0)).putArray("parameters");
+        parameters.addObject().put("title", "applied").putObject("schema").put("dataType", "integer");
+        parameters.addObject().put("title", "later").putObject("schema").put("$ref", "#/definitions/Missing");
+        parameters.addObject().put("title", "builtinLater").putObject("schema").put("$ref", "#/definitions/B");
+        bp.putObject("definitions").putObject("B").put("dataType", "#integer");
+        var badValue = List.of(new DataInput("json", "{\"int\":1.5}"));
+        var good = List.of(new DataInput("json", "{\"int\":1}"));
+        var e = assertThrows(ApplyParamsException.class, () -> ApplyParams.apply(ApplyParamsTest.request("V3",
+                new ScriptInput(bp.toString(), null, null, null), badValue, true, null)));
+        assertEquals(Kind.INVALID_SCHEMA, e.kind(), e.getMessage());
+        assertTrue(e.getMessage().startsWith("Parameter 2 (later): invalid schema"), e.getMessage());
+        // checkSchema false: the unapplied schemas are not examined, and the value is read.
+        var unchecked = ApplyParams.apply(ApplyParamsTest.request("V3", new ScriptInput(bp.toString(), null, null,
+                null), good, true, false));
+        assertEquals(2, unchecked.remainingParams());
+        // With the reference fixed, a later builtin parameter is no schema fault; it is refused only when applied.
+        bp.withObject("definitions").putObject("Missing").put("dataType", "integer");
+        var partial = ApplyParams.apply(ApplyParamsTest.request("V3", new ScriptInput(bp.toString(), null, null, null),
+                good, true, null));
+        assertTrue(partial.schemaChecked());
+        var all = List.of(good.get(0), good.get(0), good.get(0));
+        var builtin = assertThrows(ApplyParamsException.class, () -> ApplyParams.apply(ApplyParamsTest.request("V3",
+                new ScriptInput(bp.toString(), null, null, null), all, null, null)));
+        assertEquals(Kind.INVALID_REQUEST, builtin.kind());
+        assertTrue(builtin.getMessage().startsWith("Parameter 3 (builtinLater): its schema is the builtin type #integer"),
+                builtin.getMessage());
+        // A builtin type nested below the top of an unapplied parameter is still a schema fault.
+        bp.withObject("definitions").putObject("B").put("dataType", "list").putObject("items").put("dataType", "#integer");
+        assertEquals(Kind.INVALID_SCHEMA, assertThrows(ApplyParamsException.class, () -> ApplyParams.apply(
+                ApplyParamsTest.request("V3", new ScriptInput(bp.toString(), null, null, null), good, true, null)))
+                .kind());
+    }
+
     // ==== cost and depth ====
 
     @Test
@@ -472,8 +553,11 @@ class DataSchemaCheckerTest {
         var compiled = checker.compile(q("{'$ref':'#/definitions/T'}"), "P");
         PlutusData finalValue = value;
         var e = assertThrows(ApplyParamsException.class, () -> checker.check(compiled, finalValue, "P"));
-        assertEquals(Kind.INVALID_REQUEST, e.kind());
-        assertTrue(e.getMessage().contains("exceeded its work bound of 50 steps"), e.getMessage());
+        assertEquals(Kind.WORK_LIMIT_EXCEEDED, e.kind());
+        assertEquals(400, e.kind().status());
+        assertEquals("work-limit-exceeded", e.kind().code());
+        assertTrue(e.getMessage().startsWith("P: the schema check exceeded its work bound of 50 steps"), e.getMessage());
+        assertTrue(e.getMessage().contains("set checkSchema: false"), e.getMessage());
         // Within the default bound it passes.
         var roomy = checker(defs);
         roomy.check(roomy.compile(q("{'$ref':'#/definitions/T'}"), "P"), value, "P");

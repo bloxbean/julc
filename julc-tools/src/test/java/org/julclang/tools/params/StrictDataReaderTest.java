@@ -11,6 +11,8 @@ import org.junit.jupiter.params.provider.ValueSource;
 import java.math.BigInteger;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.concurrent.Callable;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -120,11 +122,15 @@ class StrictDataReaderTest {
         json(nestedOk);
         refusedJson(nestedOk.replace(MAX_TAG.toString(), TOO_BIG.toString()),
                 "at list[0].map[0].v: constructor index 18446744073709551616");
-        // UPLC text is held to the bound too; today's UPLC parser reads constructor indices only up to 2^31 - 1, so a
-        // larger index in UPLC text is refused by the parser (give it as JSON or CBOR).
-        StrictDataReader.read(new DataInput("uplc", "Constr 2147483647 []"));
-        refused(new DataInput("uplc", "Constr " + MAX_TAG + " []"), "the uplc value is not Plutus data");
-        refused(new DataInput("uplc", "Constr " + TOO_BIG + " []"), "the uplc value");
+        // UPLC text reads constructor indices as unsigned 64-bit words (M2-R4).
+        assertEquals(MAX_TAG, ((PlutusData.ConstrData) StrictDataReader.read(new DataInput("uplc",
+                "Constr " + MAX_TAG + " []"))).constructorTag());
+        assertEquals(new BigInteger("2147483648"), ((PlutusData.ConstrData) StrictDataReader.read(new DataInput("uplc",
+                "Constr 2147483648 []"))).constructorTag());
+        refused(new DataInput("uplc", "Constr " + TOO_BIG + " []"), "constructor index 18446744073709551616 is outside"
+                + " 0 to 2^64 - 1");
+        refused(new DataInput("uplc", "List [Constr " + TOO_BIG + " []]"), "outside 0 to 2^64 - 1");
+        refused(new DataInput("uplc", "Constr -1 []"), "expected a constructor index");
         // d866 821bffffffffffffffff 80: the canonical CBOR of Constr (2^64-1) [].
         StrictDataReader.read(new DataInput("cbor", "d866821bffffffffffffffff80"));
     }
@@ -190,10 +196,27 @@ class StrictDataReaderTest {
     void uplcValuesAreStrict() {
         assertEquals(new PlutusData.ConstrData(0, List.of(PlutusData.integer(42))),
                 StrictDataReader.read(new DataInput("uplc", "Constr 0 [I 42]")));
-        refused(new DataInput("uplc", "I 42 I 43"), "not Plutus data");
-        refused(new DataInput("uplc", "I 42)) (con integer 1"), "unbalanced parentheses");
-        refused(new DataInput("uplc", "I 42) (I 1"), "unbalanced parentheses");
-        refused(new DataInput("uplc", "Constr 0 [I 42"), "not Plutus data");
+        refused(new DataInput("uplc", "I 42 I 43"), "unexpected text after the value");
+        refused(new DataInput("uplc", "I 42)) (con integer 1"), "unexpected text after the value");
+        refused(new DataInput("uplc", "I 42) (I 1"), "unexpected text after the value");
+        refused(new DataInput("uplc", "Constr 0 [I 42"), "expected ']', found the end of the text");
+        refused(new DataInput("uplc", ""), "found the end of the text");
+        refused(new DataInput("uplc", "I 42x"), "unexpected character after a number");
+        refused(new DataInput("uplc", "B #abc"), "even number of hex digits");
+        refused(new DataInput("uplc", "Bogus 1"), "found 'Bogus'");
+        refused(new DataInput("uplc", "Map [(I 1 I 2)]"), "expected ','");
+        // M2-C5: a comment cannot hide or add structure; it ends at the end of its line.
+        refused(new DataInput("uplc", "-- ((\nI 42)) --"), "unexpected text after the value");
+        assertEquals(PlutusData.integer(42), StrictDataReader.read(new DataInput("uplc", "-- a (comment\n I 42 -- ) end")));
+        assertEquals(new PlutusData.ConstrData(0, List.of(PlutusData.integer(1), PlutusData.bytes(new byte[]{1}))),
+                StrictDataReader.read(new DataInput("uplc", "Constr 0 [ -- first (\n I 1, -- second )\n B #01 ]")));
+        // Parentheses, maps and every shape, as UplcParser reads them.
+        assertEquals(new PlutusData.MapData(List.of(new PlutusData.Pair(PlutusData.integer(1),
+                        new PlutusData.ListData(List.of(PlutusData.bytes(new byte[0])))),
+                        new PlutusData.Pair(PlutusData.integer(-2), PlutusData.integer(3)))),
+                StrictDataReader.read(new DataInput("uplc", " ( Map [((I 1), List [B #]), (I -2, (I +3))] ) ")));
+        assertEquals(new PlutusData.ListData(List.of()), StrictDataReader.read(new DataInput("uplc", "List []")));
+        assertEquals(new PlutusData.MapData(List.of()), StrictDataReader.read(new DataInput("uplc", "Map [ ]")));
     }
 
     @Test
@@ -204,6 +227,43 @@ class StrictDataReaderTest {
         refused(new DataInput("Json", "{\"int\":1}"), "unknown value format");
         refused(new DataInput("json", null), "missing");
         refused(null, "missing");
+    }
+
+    /** M2-C2: depth 10,000 in every format, read on a thread with a small stack. */
+    @Test
+    void deepValuesInEveryFormatNeedNoJavaStack() throws Exception {
+        int depth = 10_000;
+        var inputs = List.of(
+                new DataInput("json", "{\"list\":[".repeat(depth) + "{\"int\":0}" + "]}".repeat(depth)),
+                new DataInput("cbor", "9f".repeat(depth) + "00" + "ff".repeat(depth)),
+                new DataInput("uplc", "List [".repeat(depth) + "I 0" + "]".repeat(depth)));
+        for (var input : inputs) {
+            PlutusData data = onSmallStack(() -> StrictDataReader.read(input));
+            for (int i = 0; i < depth; i++) data = ((PlutusData.ListData) data).items().getFirst();
+            assertEquals(PlutusData.integer(0), data, input.format());
+        }
+        // Non-canonical deep CBOR is refused as such, not by exhausting a stack.
+        refused(new DataInput("cbor", "9f".repeat(depth) + "8100" + "ff".repeat(depth)), "not in the canonical encoding");
+    }
+
+    /** Runs {@code task} on a thread with a 256 KiB stack, as small as a Web Image's. */
+    static <T> T onSmallStack(Callable<T> task) throws Exception {
+        var result = new AtomicReference<Object>();
+        var thread = new Thread(null, () -> {
+            try {
+                result.set(task.call());
+            } catch (Throwable e) {
+                result.set(e);
+            }
+        }, "small-stack", 256 * 1024);
+        thread.start();
+        thread.join();
+        if (result.get() instanceof Throwable e) {
+            if (e instanceof Exception ex) throw ex;
+            throw new AssertionError(e);
+        }
+        @SuppressWarnings("unchecked") T value = (T) result.get();
+        return value;
     }
 
     @Test

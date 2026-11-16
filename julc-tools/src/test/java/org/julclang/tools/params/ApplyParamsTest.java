@@ -351,9 +351,11 @@ class ApplyParamsTest {
         assertEquals(canonicalFlat, HexFormat.of().formatHex(UplcFlatEncoder.encodeProgram(
                 UplcFlatDecoder.decodeProgram(HexFormat.of().parseHex(canonicalFlat)))));
         ApplyParams.apply(request("V3", canonicalFlat, List.of()));
-        refused(Kind.INVALID_REQUEST, request("V3", nonCanonical, List.of()), "not canonical");
+        refused(Kind.INVALID_REQUEST, request("V3", nonCanonical, List.of()),
+                "The script's data constant number 1 is not in the canonical Data encoding");
         // A data constant with bytes after its CBOR item: Plutus's decoder ignores them, so the bytes would change.
-        refused(Kind.INVALID_REQUEST, request("V3", flatWithDataConstant("182a00"), List.of()), "not canonical");
+        refused(Kind.INVALID_REQUEST, request("V3", flatWithDataConstant("182a00"), List.of()),
+                "data constant number 1 is not in the canonical Data encoding: 1 bytes follow the Plutus data item");
     }
 
     /** {@code (program 1.1.0 (con data <cbor>))} encoded by hand. */
@@ -380,6 +382,46 @@ class ApplyParamsTest {
         return "0".repeat(8 - s.length()) + s;
     }
 
+    /** M2-C6: a wrapper with nothing inside is a refusal, not an engine error. */
+    @Test
+    void emptyWrappersAreRefused() {
+        refused(Kind.INVALID_REQUEST, request("V3", "40", List.of()), "The script's CBOR wrapper holds no bytes");
+        refused(Kind.INVALID_REQUEST, request("V3", "4140", List.of(int42())), "The script's CBOR wrapper holds no bytes");
+        assertEquals(400, ApplyParams.run(request("V3", "40", List.of())).status());
+    }
+
+    /** M2-C2: deep values in every format, and a deep data constant in the script, on a small stack. */
+    @Test
+    void deepValuesAndConstantsNeedNoJavaStack() throws Exception {
+        int depth = 10_000;
+        var values = List.of(
+                new DataInput("json", "{\"list\":[".repeat(depth) + "{\"int\":0}" + "]}".repeat(depth)),
+                new DataInput("cbor", "9f".repeat(depth) + "00" + "ff".repeat(depth)),
+                new DataInput("uplc", "List [".repeat(depth) + "I 0" + "]".repeat(depth)));
+        String expected = null;
+        for (var value : values) {
+            var response = StrictDataReaderTest.onSmallStack(() -> ApplyParams.apply(request("V3", SINGLE,
+                    List.of(value))));
+            if (expected == null) expected = response.cborHex();
+            assertEquals(expected, response.cborHex(), value.format());
+        }
+        // Checked against a recursive schema, through a blueprint.
+        var bp = blueprint("v3", SINGLE, null, "v");
+        ((ObjectNode) bp.withArray("validators").get(0)).putArray("parameters").addObject().put("title", "deep")
+                .putObject("schema").put("$ref", "#/definitions/T");
+        var t = bp.withObject("definitions").putObject("T");
+        t.putArray("anyOf").addObject().put("dataType", "integer");
+        ((ArrayNode) t.get("anyOf")).addObject().put("dataType", "list").putObject("items").put("$ref", "#/definitions/T");
+        var checked = StrictDataReaderTest.onSmallStack(() -> ApplyParams.apply(request("V3", script(bp, null),
+                List.of(values.get(1)), null, null)));
+        assertEquals(expected, checked.cborHex());
+        assertTrue(checked.schemaChecked());
+        // The applied script, with its deep data constant, reads back through the canonical-bytes rule.
+        String applied = expected;
+        var again = StrictDataReaderTest.onSmallStack(() -> ApplyParams.apply(request("V3", applied, List.of())));
+        assertEquals(applied, again.cborHex());
+    }
+
     @Test
     void uplcTextAndBadHexAreRefused() {
         refused(Kind.INVALID_REQUEST, request("V3", "(program 1.1.0 (lam p (con unit ())))", List.of(int42())),
@@ -396,8 +438,9 @@ class ApplyParamsTest {
 
     @Test
     void scriptDecoderWarningsAreErrors() {
-        // ScriptDecoder warns about trailing bytes after the program; applyParams refuses them (before it would
-        // even ask ScriptDecoder).
+        // ScriptDecoder's warnings never pass vm.applyParams: trailing bytes after the program (refused by the
+        // canonical-bytes rule), a blueprint hash that does not match (refused, blueprintHashIsChecked...), and the
+        // default language (the language is required).
         var decoded = ScriptDecoder.decode(new ScriptInput("0101002499ff", List.of(), "V3", null));
         assertTrue(decoded.warnings().stream().anyMatch(w -> w.contains("trailing")), decoded.warnings().toString());
         refused(Kind.INVALID_REQUEST, request("V3", "0101002499ff", List.of()), "trailing bytes");

@@ -59,12 +59,40 @@ public final class ApplyParams {
         Source source = source(request.script(), language);
         CanonicalScript script = CanonicalScript.read(source.bytes());
         if (source.hash() != null) checkHash(source, script, language);
-        refuseWarnings(script, request.language());
+        // ScriptDecoder's warnings never pass: the language is stated, trailing bytes and any other non-canonical
+        // encoding are refused by CanonicalScript, and a blueprint hash that does not match is refused above.
 
         List<DataInput> given = request.params() == null ? List.of() : request.params();
         boolean partial = Boolean.TRUE.equals(request.partial());
         boolean checkSchema = request.checkSchema() == null || request.checkSchema();
         checkCount(source, given.size(), partial);
+
+        List<Parameter> declared = source.parameters();
+        var checker = declared == null ? null : new DataSchemaChecker(source.definitions(), workBound);
+        var compiled = new ArrayList<DataSchemaChecker.Schema>();
+        if (declared != null) {
+            // D6a: a builtin type at the top of an applied parameter's schema is refused whatever checkSchema says.
+            for (int i = 0; i < given.size(); i++) {
+                String builtin = builtinType(checker.resolveTop(declared.get(i).schema(), label(source, i)));
+                if (builtin != null) {
+                    throw ApplyParamsException.invalidRequest(label(source, i) + ": its schema is the builtin type "
+                            + builtin + ", not Plutus data. vm.applyParams applies only Plutus Data constants, so it"
+                            + " cannot apply this parameter.");
+                }
+            }
+            if (checkSchema) {
+                // D6b: every schema fault is found before any value is read, in every declared parameter's schema.
+                // A parameter left for later may be a builtin type: that is not a fault of the schema.
+                for (int i = 0; i < declared.size(); i++) {
+                    JsonNode schema = declared.get(i).schema();
+                    if (i >= given.size() && builtinType(checker.resolveTop(schema, label(source, i))) != null) {
+                        compiled.add(null);
+                        continue;
+                    }
+                    compiled.add(checker.compile(schema, label(source, i)));
+                }
+            }
+        }
 
         var values = new PlutusData[given.size()];
         for (int i = 0; i < values.length; i++) {
@@ -76,27 +104,9 @@ public final class ApplyParams {
         }
 
         boolean schemaChecked = false;
-        if (source.parameters() != null) {
-            var checker = new DataSchemaChecker(source.definitions(), workBound);
-            // D6a: a builtin type at the top of a parameter's schema is refused whatever checkSchema says.
-            for (int i = 0; i < values.length; i++) {
-                JsonNode resolved = checker.resolveTop(source.parameters().get(i).schema(), label(source, i));
-                if (resolved != null && resolved.isObject() && resolved.path("dataType").isTextual()
-                        && resolved.get("dataType").textValue().startsWith("#")) {
-                    throw ApplyParamsException.invalidRequest(label(source, i) + ": its schema is the builtin type "
-                            + resolved.get("dataType").textValue() + ", not Plutus data. vm.applyParams applies only"
-                            + " Plutus Data constants, so it cannot apply this parameter.");
-                }
-            }
-            if (checkSchema) {
-                // D6b: every schema fault is found before any value is looked at.
-                var compiled = new ArrayList<DataSchemaChecker.Schema>();
-                for (int i = 0; i < values.length; i++) {
-                    compiled.add(checker.compile(source.parameters().get(i).schema(), label(source, i)));
-                }
-                for (int i = 0; i < values.length; i++) checker.check(compiled.get(i), values[i], label(source, i));
-                schemaChecked = true;
-            }
+        if (declared != null && checkSchema) {
+            for (int i = 0; i < values.length; i++) checker.check(compiled.get(i), values[i], label(source, i));
+            schemaChecked = true;
         }
 
         byte[] singleCbor = values.length == 0 ? script.singleCbor()
@@ -331,13 +341,13 @@ public final class ApplyParams {
                 + languageName(language) + " it is " + computed + ")");
     }
 
-    /** Any warning ScriptDecoder would give is an error here (D6a); the language is the stated one. */
-    private static void refuseWarnings(CanonicalScript script, String language) {
-        var decoded = ScriptDecoder.decode(new ScriptInput(HEX_FORMAT.formatHex(script.singleCbor()), List.of(),
-                language, null));
-        if (!decoded.warnings().isEmpty()) {
-            throw ApplyParamsException.invalidRequest("The script is refused: " + String.join(" ", decoded.warnings()));
+    /** The builtin type ({@code #...}) a resolved schema names at its top, or {@code null}. */
+    private static String builtinType(JsonNode resolved) {
+        if (resolved != null && resolved.isObject() && resolved.path("dataType").isTextual()
+                && resolved.get("dataType").textValue().startsWith("#")) {
+            return resolved.get("dataType").textValue();
         }
+        return null;
     }
 
     private static void checkCount(Source source, int given, boolean partial) {

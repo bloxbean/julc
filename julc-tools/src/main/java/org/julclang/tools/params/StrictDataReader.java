@@ -1,18 +1,12 @@
 package org.julclang.tools.params;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import org.julclang.core.Constant;
 import org.julclang.core.PlutusData;
-import org.julclang.core.Term;
-import org.julclang.core.cbor.PlutusDataCborDecoder;
-import org.julclang.core.cbor.PlutusDataCborEncoder;
-import org.julclang.core.text.UplcParser;
 import org.julclang.tools.model.MockTransaction.DataInput;
 
 import java.math.BigInteger;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HexFormat;
 import java.util.IdentityHashMap;
@@ -30,9 +24,10 @@ import java.util.regex.Pattern;
  *   <li>a JSON value is one strict document, each object has exactly one shape, integers are integer tokens, bytes are
  *       even-length hex, map entries keep their order and duplicates, and unknown members are refused;</li>
  *   <li>a CBOR value is one item in the canonical encoding Plutus writes, with nothing after it;</li>
+ *   <li>a UPLC value is one data value in UPLC's notation, with nothing after it;</li>
  *   <li>every constructor index, at every depth and in every format, is in {@code 0 <= index < 2^64}.</li>
  * </ul>
- * Values are walked with an explicit stack, so deep values need no Java stack.
+ * Every format is read with an explicit stack, so deep values need no Java stack.
  */
 public final class StrictDataReader {
 
@@ -197,44 +192,20 @@ public final class StrictDataReader {
         if (hex.isEmpty() || !HEX.matcher(hex).matches()) {
             throw ApplyParamsException.invalidRequest("a cbor value must be non-empty, even-length hex");
         }
-        byte[] bytes = HexFormat.of().parseHex(hex);
-        PlutusData data;
         try {
-            // decode() refuses bytes after the item.
-            data = PlutusDataCborDecoder.decode(bytes);
-        } catch (RuntimeException e) {
-            throw ApplyParamsException.invalidRequest("the cbor value is not one Plutus data item: " + reason(e)
-                    + "; give the value as JSON (format json) instead");
+            return CanonicalDataCbor.read(HexFormat.of().parseHex(hex));
+        } catch (CanonicalDataCbor.NotCanonical e) {
+            throw ApplyParamsException.invalidRequest("the cbor value is " + (e.getMessage().startsWith("not in")
+                    ? "" : "not one Plutus data item in the canonical encoding Plutus writes: ") + e.getMessage()
+                    + ", so its script hash would depend on how it was written; give the value as JSON (format json)"
+                    + " instead");
         }
-        byte[] canonical = PlutusDataCborEncoder.encode(data);
-        if (!Arrays.equals(bytes, canonical)) {
-            throw ApplyParamsException.invalidRequest("the cbor value is not in the canonical encoding Plutus writes"
-                    + " (expected " + HexFormat.of().formatHex(canonical) + "), so its script hash would depend on"
-                    + " how it was written; give the value as JSON (format json) instead");
-        }
-        return data;
     }
 
     // ---- UPLC ----
 
     private static PlutusData fromUplc(String text) {
-        // The text goes inside a constant; it must not be able to close it early.
-        int depth = 0;
-        for (int i = 0; i < text.length(); i++) {
-            char c = text.charAt(i);
-            if (c == '(') depth++;
-            else if (c == ')' && --depth < 0) break;
-        }
-        if (depth != 0) throw ApplyParamsException.invalidRequest("the uplc value has unbalanced parentheses");
-        Term term;
-        try {
-            term = UplcParser.parseTerm("(con data (" + text + "))");
-        } catch (RuntimeException e) {
-            throw ApplyParamsException.invalidRequest("the uplc value is not Plutus data such as Constr 0 [I 42]: "
-                    + reason(e));
-        }
-        if (term instanceof Term.Const(Constant.DataConst(PlutusData data))) return data;
-        throw ApplyParamsException.invalidRequest("the uplc value is not Plutus data such as Constr 0 [I 42]");
+        return UplcDataText.parse(text);
     }
 
     // ---- shared ----

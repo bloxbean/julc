@@ -13,7 +13,9 @@ public final class ApplyParamsException extends RuntimeException {
         /** The blueprint's schemas are outside D6b's domain or ill-formed. */
         INVALID_SCHEMA(422, "invalid-schema"),
         /** A value does not match its declared schema. */
-        PARAMETER_MISMATCH(422, "parameter-mismatch");
+        PARAMETER_MISMATCH(422, "parameter-mismatch"),
+        /** The schema check would exceed its bound on work; neither the value nor the schema is known to be wrong. */
+        WORK_LIMIT_EXCEEDED(400, "work-limit-exceeded");
 
         private final int status;
         private final String code;
