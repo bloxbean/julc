@@ -8,28 +8,44 @@ import co.nstant.in.cbor.model.DataItem;
 import co.nstant.in.cbor.model.Map;
 import co.nstant.in.cbor.model.Special;
 import co.nstant.in.cbor.model.UnsignedInteger;
+import com.bloxbean.cardano.client.common.cbor.CborSerializationUtil;
+import com.bloxbean.cardano.client.common.cbor.CborSpan;
+import com.bloxbean.cardano.client.exception.CborDeserializationException;
+import com.bloxbean.cardano.client.transaction.raw.RawOutput;
+import com.bloxbean.cardano.client.transaction.raw.RawScript;
+import com.bloxbean.cardano.client.transaction.raw.RawTx;
+import com.bloxbean.cardano.client.transaction.spec.script.NativeScript;
 import com.bloxbean.cardano.client.transaction.util.TransactionUtil;
 
 import java.io.ByteArrayInputStream;
 import java.math.BigInteger;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * The parts of a transaction's original CBOR that cardano-ledger hashes or reads exactly: the body bytes (the
- * transaction id), the witness datums (keyed by the hash of their own bytes), and body fields whose presence CCL's
- * model does not keep. Re-serialising the CCL {@code Transaction} can change these bytes (CCL re-encodes canonically).
+ * transaction id), the witness datums (keyed by the hash of their own bytes), the outputs' reference scripts (hashed
+ * over their own bytes), and body fields whose presence CCL's model does not keep. Re-serialising the CCL
+ * {@code Transaction} can change these bytes (CCL re-encodes canonically).
  */
 final class OriginalTxBytes {
 
+    private static final int MAJOR_UNSIGNED = 0;
+    private static final int MAJOR_BYTES = 2;
     private static final int MAJOR_ARRAY = 4;
     private static final int MAJOR_MAP = 5;
     private static final int MAJOR_TAG = 6;
     private static final int SET_TAG = 258;
     private static final int BODY_OUTPUTS = 1;
     private static final int OUTPUT_DATUM = 2;
+    private static final int OUTPUT_SCRIPT_REF = 3;
+    private static final int NATIVE_SCRIPT_TYPE = 0;
+    /** Dijkstra's {@code RequireGuard}; Allegra's to Conway's {@code Timelock} has constructors 0 to 5 only. */
+    private static final int REQUIRE_GUARD = 6;
     private static final int WITNESS_DATUMS = 4;
     private static final int WITNESS_REDEEMERS = 5;
 
@@ -89,6 +105,99 @@ final class OriginalTxBytes {
             datums.add(datum);
         }
         return datums;
+    }
+
+    /**
+     * Each output's reference script ({@code script_ref = #6.24(bytes .cbor [type, script])}) exactly as encoded, or
+     * null when the output has none; in output order. A reference script is read as cardano-ledger decodes one
+     * (Babbage {@code TxOut}'s {@code decodeCIC}), so the script hashed is one the ledger can decode:
+     * <ul>
+     *   <li>the payload is a definite byte string ({@code decodeNestedCborBytes}: cborg's {@code decodeBytes} refuses
+     *       an indefinite one);</li>
+     *   <li>it holds {@code [type, script]}, two items, of any length encoding ({@code decodeRecordSum});</li>
+     *   <li>a Plutus script is a definite, untagged byte string ({@code PlutusBinary}, cborg's {@code decodeByteArray});
+     *   </li>
+     *   <li>a native script is a well-formed {@code Timelock} (CCL's {@code NativeScriptCodec}), with no tag and no
+     *       indefinite byte string anywhere in it, which cborg's decoders refuse and that codec accepts, and no
+     *       constructor above 5 (Dijkstra's {@code RequireGuard}, which that codec reads in any era).</li>
+     * </ul>
+     * The era's Plutus languages are checked by the caller, which knows the protocol version. Only this field of an
+     * output is read.
+     *
+     * @throws IllegalStateException if the outputs cannot be read, or an output's reference script is not one of these
+     */
+    List<RawScript> outputReferenceScripts() {
+        List<CborSpan> outputs;
+        try {
+            outputs = RawTx.lenient(tx).bodyField(BODY_OUTPUTS).map(CborSpan::items).orElse(List.of());
+        } catch (RuntimeException e) {
+            throw new IllegalStateException("Cannot read the transaction's outputs", e);
+        }
+        var scripts = new ArrayList<RawScript>(outputs.size());
+        for (int i = 0; i < outputs.size(); i++) {
+            try {
+                scripts.add(referenceScript(outputs.get(i)));
+            } catch (RuntimeException | CborDeserializationException e) {
+                throw new IllegalStateException("Failed to deserialize the reference script of output " + i + ": "
+                        + e.getMessage(), e);
+            }
+        }
+        return scripts;
+    }
+
+    /** An output's reference script, checked as {@link #outputReferenceScripts()} describes, or null if it has none. */
+    private static RawScript referenceScript(CborSpan output) throws CborDeserializationException {
+        Optional<RawScript> read = RawOutput.lenient(output).scriptRef();
+        if (read.isEmpty()) {
+            return null;
+        }
+        if (output.isTagged()) {
+            throw new IllegalArgumentException("a tagged output");
+        }
+        for (var entry : output.entries()) {
+            CborSpan key = entry.getKey();
+            if (key.majorType() == MAJOR_UNSIGNED && !key.isTagged() && key.asLong() == OUTPUT_SCRIPT_REF
+                    && entry.getValue().untag().isIndefinite()) {
+                throw new IllegalArgumentException("the script reference is an indefinite byte string");
+            }
+        }
+        RawScript script = read.get();
+        CborSpan body = script.span();
+        if (script.type() != NATIVE_SCRIPT_TYPE) {
+            if (body.isTagged() || body.majorType() != MAJOR_BYTES || body.isIndefinite()) {
+                throw new IllegalArgumentException("a Plutus script is a definite byte string");
+            }
+            return script;
+        }
+        // Iterative: a native script may nest as deep as the transaction allows
+        var pending = new ArrayDeque<CborSpan>();
+        pending.push(body);
+        while (!pending.isEmpty()) {
+            CborSpan item = pending.pop();
+            if (item.isTagged()) {
+                throw new IllegalArgumentException("a native script has a tag");
+            }
+            if (item.majorType() == MAJOR_BYTES && item.isIndefinite()) {
+                throw new IllegalArgumentException("a native script has an indefinite byte string");
+            }
+            if (item.majorType() == MAJOR_ARRAY) {
+                List<CborSpan> items = item.items();
+                // In a Timelock only a script's record starts with an integer, its constructor. CCL's codec reads
+                // Dijkstra's [6, credential] in any era; no era JuLC evaluates decodes it (Allegra decRaw: Invalid)
+                // (a constructor of 2^63 or more fails asLong, and the script is refused all the same)
+                if (!items.isEmpty() && items.getFirst().majorType() == MAJOR_UNSIGNED
+                        && items.getFirst().asLong() >= REQUIRE_GUARD) {
+                    throw new IllegalArgumentException("a native script has constructor " + items.getFirst().asLong()
+                            + ", which no era before Dijkstra decodes");
+                }
+                items.forEach(pending::push);
+            }
+        }
+        if (!(CborSerializationUtil.deserialize(body) instanceof Array array)) {
+            throw new IllegalArgumentException("a native script is an array");
+        }
+        NativeScript.deserialize(array);
+        return script;
     }
 
     /** The witness-set datums (key 4), each exactly as encoded, in witness order. */
