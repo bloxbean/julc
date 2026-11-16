@@ -191,9 +191,13 @@ jobs:
     # Builds the engine (build/wasm-bundle, also copied to frontend/public/wasm) and checks the parity fixtures
     # against the JVM in Node.js. A mismatch fails the release. It also checks @julclang/wasm-client (ADR-077 M1):
     # loading from its tarball in Node.js, in Chromium under a strict Content Security Policy, and its declarations.
+    # And the engine packages (ADR-077 M3): I1 against the archives, their declarations, and the fixtures that
+    # native-image-release.yml's wasm-package-checks runs (the bundlers come from the npm registry).
     - name: Build and verify engine
       run: >-
         ./gradlew :julc-wasm:wasmSmoke :julc-wasm:wasmBrowserSmoke :julc-wasm:wasmClientTypes
+        :julc-wasm:wasmEngineTypes :julc-wasm:wasmEngineFixtures
+        -PengineFixtures=node,plain,vite,webpack,webpack-keep,extension,webpack-node,esbuild,next
         "-PwasmSmokeNodes=$WASM_SMOKE_NODES" "-PplaywrightDir=$PLAYWRIGHT_DIR"
         -PskipSigning=true --no-daemon --stacktrace
       shell: bash
