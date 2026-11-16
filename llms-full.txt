@@ -2,8 +2,8 @@
 
 > Single-file dump of the JuLC docsite, suitable for AI agent ingestion.
 
-julcVersion: 0.1.0-pre21-rc2-b5d77b8-SNAPSHOT
-Generated: 2026-11-16T04:16:07.725Z
+julcVersion: 0.1.0-pre21-rc2-5d86471-SNAPSHOT
+Generated: 2026-11-16T04:36:26.459Z
 Site: https://julc.dev
 Repo: https://github.com/bloxbean/julc
 Examples: https://github.com/bloxbean/julc-examples
@@ -321,7 +321,7 @@ JuLC is a compiler from a **safe subset of Java 25** to **Plutus V3 UPLC** (Unty
 Key facts:
 
 - **On-chain only.** JuLC code runs on the Cardano CEK machine. It is the validator/minting-policy code, not the off-chain transaction-building code.
-- **Off-chain Java** (using cardano-client-lib `0.8.0-pre7`) is a separate concern; you can call the *same* JVM classes (records) off-chain to construct datums and redeemers, but the bodies of `@OnchainLibrary` and validator methods compile to UPLC, not run on the JVM.
+- **Off-chain Java** (using cardano-client-lib `0.8.0-pre8`) is a separate concern; you can call the *same* JVM classes (records) off-chain to construct datums and redeemers, but the bodies of `@OnchainLibrary` and validator methods compile to UPLC, not run on the JVM.
 - **Plutus V3 only** (Conway era). No V1/V2 support.
 - **The Java source is the authoring surface; UPLC is what runs.** Many "weird" rules below exist because UPLC has no notion of mutable state, no exceptions (except `error`), and no general recursion (only fixed-point combinators).
 
@@ -2120,7 +2120,7 @@ version = '1.0-SNAPSHOT'
 
 ext {
     julcVersion = '0.1.0-pre21'
-    cardanoClientLibVersion = '0.8.0-pre7'
+    cardanoClientLibVersion = '0.8.0-pre8'
 }
 
 repositories {
@@ -2169,7 +2169,7 @@ test {
 ```xml
 <properties>
     <julc.version>0.1.0-pre21</julc.version>
-    <ccl.version>0.8.0-pre7</ccl.version>
+    <ccl.version>0.8.0-pre8</ccl.version>
 </properties>
 
 <!-- Required for snapshot versions only -->
@@ -23986,7 +23986,7 @@ sealed interface Shape {
 | `julc-testkit` | `ValidatorTest` base class, `SourceDiscovery` for test-time compilation |
 | `julc-annotation-processor` | Java annotation processor — compiles validators at build time |
 | `julc-gradle-plugin` | Gradle plugin wrapping the annotation processor |
-| `julc-cardano-client-lib` | Integration with cardano-client-lib v0.8.0-pre7 |
+| `julc-cardano-client-lib` | Integration with cardano-client-lib v0.8.0-pre8 |
 | `julc-examples` | Example validators and library code |
 | `julc-e2e-tests` | End-to-end integration tests (CIP-113, etc.) |
 | `julc-plugin-test` | Tests for the Gradle plugin |
