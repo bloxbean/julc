@@ -3,7 +3,7 @@
 **Status:** Accepted (2026-11-16) by the maintainer, after design approval from reviewer1 (r4) and the internal
 Fable and Codex reviews (r9; r10 applies their last shared finding). Design only; the implementation follows in
 milestones M0 to M5.
-**Date:** 2026-11-16 (r1 to r15)
+**Date:** 2026-11-16 to 2026-11-17 (r1 to r16)
 **Risk class:** **medium**.
 - This is a public distribution with a lasting API. Package names and exported type names are hard to change once
   published.
@@ -177,7 +177,8 @@ JuLC pins CIP-57 at revision `0ed8837a02ed78b64847e5646f9572ee1830c7ba`
 | `@julclang/julc-wasm` | The full engine and `createJulc()` | `@julclang/wasm-client`, same version, exact |
 
 Reasons for this split:
-- An application that only evaluates scripts does not download the 24.5 MB engine.
+- An application that only evaluates scripts does not download the full engine: 24.5 MB in pre20, and 34.5 MB built
+  from main at M3. The VM engine is about 14.5 MB.
 - An engine an embedder builds (ADR-064) can depend on the client alone instead of copying it, when the engine is built
   on a published JuLC release (D1a). An embedder built on a JuLC release candidate or snapshot, which npm never gets
   (D8), keeps using the client files from the `julc-wasm` jar.
@@ -292,6 +293,10 @@ Two identities are checked, at run time, before the client returns.
       M1's test, put the policy on the worker script's response, and on the launcher's and runtime's.
     - A main-thread embedder that preloads nothing keeps the evaluation path, and so still needs `'unsafe-eval'`. The
       README says so.
+    - **A Chrome extension** (Manifest V3) declares the same `'wasm-unsafe-eval'` in its manifest:
+      `content_security_policy.extension_pages`, for example
+      `"script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"`. MV3's default policy refuses WebAssembly, and M3's
+      negative control shows the client fails at once, naming the CSP cause.
 - **The client never writes `new URL(<expression>, import.meta.url)`.** webpack builds a context module for it, and
   Turbopack fails the build (M0). Every asset URL it names is a string literal.
 - **The `exports` maps:**
@@ -1123,12 +1128,14 @@ provenance; only the first real publication does (M4).
     - the identity checks (I1, I11);
     - the client's run-time checks (D1a, D2a).
   - The scope's maintainers and 2FA are the developer's to keep, as for JOUST.
-- **Size.** Installs carry 14.3 MB or 24.5 MB of engine. The READMEs state it, and the first-load time (about 0.7 s
+- **Size.** Installs carry about 14.5 MB (VM) or 34.5 MB (full) of engine, as built at M3; pre20's were 14.3 MB and
+  24.5 MB. Each README states the size, generated at build time. The READMEs state it, and the first-load time (about 0.7 s
   for the full engine, measured by Yaci Viewer in #244).
 - **Browser support.** The engines need WebAssembly GC and exception handling (`exnref`). They are tested in Chrome
   (`julc-playground/BUILD_FROM_SOURCE.md`). The READMEs state the requirement, and M3 records which browser versions
   were tested.
-- **A Content Security Policy** that blocks WebAssembly compilation stops the engine loading.
+- **A Content Security Policy** that blocks WebAssembly compilation stops the engine loading. A Chrome extension sets
+  the policy in its manifest (D2). Tested at M3 in Chromium 156.0.8078.4.
   - From M1 the engines need `script-src 'self' 'wasm-unsafe-eval'`. M0 found that pre20 needs `'unsafe-eval'`,
     because of the runtime's `eval`, which D2 removes.
   - The README documents the expression.
@@ -1138,6 +1145,11 @@ provenance; only the first real publication does (M4).
 - **Checks that need a browser or extra Node versions** (the CSP browser smoke, the TypeScript checks, and the Node
   22.3.0 and 24 package runs) run in CI's `wasm` jobs (M1). The Node binaries are checksum-verified, and Playwright is
   installed with `--ignore-scripts`.
+- **Fixture tooling drift.** The fixtures' bundler toolchain is installed from a committed lockfile with
+  `npm ci --ignore-scripts`, so a check runs the same compiler and minifier code on a retry. A broken upstream
+  release is fixed by updating the lockfile, not by re-resolving dependencies in the release job (M3).
+- **TypeScript floor.** The declarations use `export type *`, so they need TypeScript 5.0 or later. The READMEs state
+  this, and a type-check project runs on TypeScript 5.0.x (M3).
 - **Bundler behaviour changes.** The worker and asset patterns depend on how Vite and webpack recognise
   `new URL(…, import.meta.url)`. Mitigated by building fixture applications in CI, in development and production modes,
   from the packed tarballs (M1, M3).
@@ -1698,3 +1710,12 @@ choosing the recommendation recorded with each.
   - the `wasm-package-checks` release job that `github-release` waits for.
 
   Evidence: `adr/evidence/077-m2-apply-params-evidence.md` (on the M2 branch).
+- r16 (2026-11-17), recording M3 as built and reviewed (Fable M3-F1 to F7, Codex M3-C1 to C3):
+  - the Chrome extension's manifest CSP requirement (D2, Risks);
+  - the engine sizes as built (full 34.5 MB, VM about 14.5 MB), with the READMEs generating them;
+  - the tested Chromium version;
+  - locked fixture tooling;
+  - the TypeScript 5.0 floor.
+
+  The wrappers take their engine URLs from private descriptors, which the public `./engine` exports cannot change
+  (M3-C1). Launcher byte-identity is asserted per fixture, with a negative control (M3-C2).
