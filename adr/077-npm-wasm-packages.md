@@ -1,7 +1,7 @@
 # ADR-077: npm packages for the WebAssembly engines, and `vm.applyParams`
 
 **Status:** Proposed (2026-11-16). Design only; no implementation in this change.
-**Date:** 2026-11-16 (r1 to r6)
+**Date:** 2026-11-16 (r1 to r7)
 **Risk class:** **medium**.
 - This is a public distribution with a lasting API. Package names and exported type names are hard to change once
   published.
@@ -281,10 +281,15 @@ Two identities are checked, at run time, before the client returns.
   - The URLs come only from the caller, normally from an engine package's `engine.js`. In this mode the manifest's
     `launcher` field is ignored, never read as a path.
   - **In a browser,** the worker accepts a URL only when:
-    - its origin equals the worker's own origin (`self.location.origin`), whatever the scheme. So `https:`, `http:`,
-      `chrome-extension:`, `moz-extension:`, and an Electron or Tauri app scheme all work, as long as the launcher is
-      served from the same origin as the worker;
-    - that origin is not opaque (`null`);
+    - its origin equals the worker's own origin (`self.location.origin`), and that origin is a tuple origin, not
+      opaque (`null`). This holds for `https:` and `http:`, and for any other scheme the browser gives a tuple origin.
+      - Chrome does so for `chrome-extension:`.
+      - Electron does so for a custom scheme only when it is registered as standard.
+      - Other hosts depend on their engine.
+      - Hosts whose scheme gets an opaque origin fail closed.
+      - A Chrome extension fixture is tested (M3). Other hosts are listed in the README as untested.
+      - An Electron page loaded from `file:` (`loadFile`) is refused; such an app serves the files through a
+        registered standard scheme instead.
     - its scheme is not `data:`, `blob:`, `javascript:` or `file:`;
     - it has no user name or password;
     - the launcher's path ends in `.js` and the module's in `.wasm`.
@@ -313,9 +318,14 @@ Two identities are checked, at run time, before the client returns.
   r1's all-ESM design did.
   - M0 tests loading the launcher's unchanged bytes as a function with an injected `require`, `module`, `exports`,
     `__filename` and `__dirname` (`vm.compileFunction`). That way, the directory's module type no longer matters.
-  - If it works, the shim uses it, and server-side bundling is supported.
-  - If it does not, server-side bundling is declared unsupported. The README then tells server applications to keep the
-    packages external to the bundle, and I8 names only unbundled Node.
+  - If that works, the shim uses it as its **only** load path, so unbundled Node and bundled Node take the same path.
+  - Loading the launcher this way is necessary but not enough. A server bundle must also emit the launcher, the
+    module, `julc-worker.js` and the shim as separate files, and keep their `new URL(…, import.meta.url)` references
+    resolvable.
+  - So support is claimed **per bundler**, each backed by a real server-bundle fixture: M0 first, then M3, I8 and
+    Verification. The candidates are webpack `target: node`, Next.js and esbuild.
+  - For any bundler without a passing fixture, the README tells server applications to keep the packages external to
+    the bundle.
 - **WebAssembly exception references.**
   - The first `createJulc` call checks whether the Node runtime supports them, by running `WebAssembly.validate` on a
     minimal module that uses them, rather than by reading the Node version.
@@ -350,6 +360,11 @@ Two identities are checked, at run time, before the client returns.
 - **Types:** the client returns `EngineClient`, which keeps `rest`, as ADR-064 defines it, when `rest` is on. Otherwise
   it returns `PackageClient`, which is `EngineClient` without `rest`. `VmClient` and `FullClient` have counterparts in
   the same way.
+  - Each distribution also generates `client-defaults.d.ts`, which exports its default as a literal type
+    (`true` or `false`). `createJulc`'s overloads use it, so the return type with `rest` omitted is right in each
+    distribution.
+  - The `julc-wasm` jar carries the archives' copy of both files (`rest: true`), as ADR-064's embedders expect.
+  - M1's type checks cover `rest` omitted, `true` and `false`, in both distributions.
 
 ### D5. Public type names
 
@@ -373,7 +388,7 @@ A new operation in the `vm` group (illustrative TypeScript):
 
 ```ts
 vm.applyParams(request: {
-  language: 'V1' | 'V2' | 'V3';     // required; never inferred (D6a)
+  language: 'V1' | 'V2' | 'V3';     // required, exactly one of these three strings; never inferred (D6a)
   script: ScriptInput;              // CBOR hex (single or double wrapped), flat, CIP-57 blueprint, text envelope;
                                     // not UPLC text; script.validator selects a blueprint's validator by its exact
                                     // title; script.params must be empty
@@ -420,8 +435,13 @@ Unlike `vm.decode`, `vm.applyParams` turns `ScriptDecoder`'s guesses into errors
 deployed. Each refusal is an `invalid-request` error (status 400), and names its cause.
 
 **Preparation, always checked:**
-- **Language: required, never inferred** (r6). The request must state `language`. `script.language` is not used by
-  this operation.
+- **Language: required, never inferred** (r6, r7).
+  - The request must state `language`, exactly `V1`, `V2` or `V3`. These map to `PLUTUS_V1`, `PLUTUS_V2` and
+    `PLUTUS_V3`.
+  - Any other value is refused, and so is a missing one. The legacy suffix parser (`ScriptDecoder.languageOf`, which
+    accepts anything ending in V1, V2 or V3) and its `auto` are not used.
+  - `script.language` must be empty, like `script.params`. A non-empty one is refused, so it cannot silently disagree
+    with `language`.
   - A wrong tag gives a wrong hash, and the bytes cannot tell the language:
     - UPLC 1.1.0 is allowed under all three languages at protocol version 11 (`ProtocolFeatureRegistry`);
     - builtins become available in older languages over time;
@@ -430,9 +450,11 @@ deployed. Each refusal is an `invalid-request` error (status 400), and names its
   - **Cross-check.** When the input also carries language information, the operation compares it with `language` and
     fails on a mismatch, naming both. This catches a wrong `language` before it can produce a wrong hash. The
     information it compares:
-    - a text envelope's `type` (`PlutusScriptV1`, `V2` or `V3`);
-    - a CIP-57 blueprint's `preamble.plutusVersion`;
+    - a text envelope's `type`, which must be exactly `PlutusScriptV1`, `PlutusScriptV2` or `PlutusScriptV3`;
+    - a CIP-57 blueprint's `preamble.plutusVersion`, which must be exactly `v1`, `v2` or `v3`;
     - a blueprint hash for the selected validator. This is the original-hash rule below, checked under `language`.
+  - **Information present but not recognised is an error,** whatever `language` says. Examples: an envelope `type` of
+    `PlutusScriptV4` or `SimpleScript`, or a `plutusVersion` of `v4`. It is never treated as absent.
 - **Validator.**
   - A blueprint with more than one validator entry needs `script.validator`, even when the entries share one
     `compiledCode`. Entries with the same code can still declare different parameter counts, schemas and hashes, and
@@ -440,8 +462,9 @@ deployed. Each refusal is an `invalid-request` error (status 400), and names its
   - The selection is an exact title. `ScriptDecoder`'s numeric-index form is not accepted here.
   - A blueprint in which two entries share a title is refused.
   - Only a blueprint with exactly one entry is used without a selection.
-- **Original hash.** If a blueprint gives a hash for the selected validator, it must equal the hash of the script under
-  `language`, before any parameter is applied. A mismatch is an error.
+- **Original hash.** If a blueprint gives a hash for the selected validator, it must equal the hash of the original
+  once-wrapped script under `language`, before any parameter is applied. A mismatch is an error. If the hash matches the
+  script under another language, the error says so, for example "the blueprint hash matches this script as V2, not V3".
 - **No double application.** `script.params` must be empty; values go in `params` only.
 - **Canonical script bytes, at every layer** (r5):
   - Each CBOR byte-string wrapper must be definite, with a minimal length header, and must have no bytes after it.
@@ -452,7 +475,15 @@ deployed. Each refusal is an `invalid-request` error (status 400), and names its
     wrapper has a non-minimal length".
   - M2 records which toolchains' scripts pass (Verification).
 - **No UPLC text.** A UPLC text input is refused, because it has no bytes to keep.
-- **No warnings.** Any warning `ScriptDecoder` would give is an error in this operation.
+- **No warnings.** Any warning `ScriptDecoder` would give is an error in this operation. The rule is evaluated after
+  the explicit `language` is applied, so the language warning never arises.
+- **Strict JSON everywhere** (r7). Every JSON input of this operation is read strictly: an envelope or blueprint, its
+  schemas, and the values.
+  - Exactly one document, with nothing after it.
+  - No object may repeat a member name. Duplicates are refused before any tree is built. For example, an envelope
+    with two `type` members is refused, whatever their order, so a cross-check can never pass on the last of two
+    contradictory values.
+  - Repeated keys inside a Data map's entry array remain legal, because they are entries, not members.
 
 **Values, always checked; strict and lossless** (r5):
 - **The forms accepted:** a `PlutusData` JSON object, or a `DataInput` with an explicit `format` (`json`, `cbor` or
@@ -462,7 +493,12 @@ deployed. Each refusal is an `invalid-request` error (status 400), and names its
   `applyParams` uses a strict reader of the same JSON shape instead:
   - each object has exactly one shape: `{int}`, `{bytes}`, `{list}`, `{map}`, or `{constructor, fields}`;
   - an `int` and a `constructor` index are JSON integer tokens, with no fraction and no exponent;
-  - a `constructor` index is non-negative, and `fields` is required;
+  - a `constructor` index satisfies 0 ≤ index < 2⁶⁴, at every depth and whatever `checkSchema` says, and `fields` is
+    required.
+    - A larger index would encode and apply, but the result cannot be decoded: Plutus `Data` constructor tags are
+      unsigned 64-bit words (`PlutusDataCborDecoder`).
+    - The JavaScript client already enforces this range for structured values (`julc-runtime.js`). JSON text must not
+      bypass it;
   - `bytes` is even-length hex;
   - map entries are kept in order, duplicates included, as Plutus `Data` maps allow;
   - unknown keys, and anything after the value, are refused.
@@ -486,7 +522,8 @@ deployed. Each refusal is an `invalid-request` error (status 400), and names its
   - Only a non-blueprint input (CBOR, flat, envelope) has no declaration.
 
 **Schema, checked unless `checkSchema: false`:** each value against its declared schema (D6b). `schemaChecked` is true
-only when this check ran for every value.
+when `checkSchema` is true and the input has a declaration, so every given value was checked. This includes the vacuous
+case of no values against a declaration. It is false whenever `checkSchema` is false, or the input has no declaration.
 
 The options combine like this:
 
@@ -498,7 +535,7 @@ The options combine like this:
 | yes | fewer | true | true / false | applied, with or without the shape check | declared − given | as `checkSchema` |
 | yes | more | any | any | error, naming the declared titles | — | — |
 | blueprint, no `parameters` field (declares 0) | any value given | any | any | error | — | — |
-| blueprint, no `parameters` field (declares 0) | none given | any | any | the script as it is | 0 | true |
+| blueprint, no `parameters` field (declares 0) | none given | any | any | the script as it is | 0 | as `checkSchema` |
 | no declaration (CBOR, flat, envelope) | — | any | any | applied, nothing to check against | `null` | false |
 
 ### D6b. The schema check: its domain and rules (r2)
@@ -633,20 +670,35 @@ that do not run the Gradle build get write access or credentials (`native-image-
   - it checks that `engine.js`'s inline manifest equals `engine/engine.json`.
 - It writes `julc-npm-<version>-SHA256SUMS.txt`, covering the three tarballs and the two archives.
 - It uploads all of them as the job's artifact.
+- It also emits the five SHA-256 digests as **job outputs**. Later jobs check the release assets against these outputs,
+  not against a checksum file from the release itself.
+  - A checksum file in the release proves only that the download arrived intact. Anyone able to edit release assets
+    could replace both the file and the tarballs.
+  - Job outputs survive "re-run failed jobs".
 
 **The `github-release` job** attaches the three tarballs and their checksum file to the GitHub release, beside the
-archives. Once a release exists, its exact npm files are kept there for good. Every publication and every retry takes
-them from there, never from a run artifact, which expires, and never from a rebuild.
+archives.
+- **Create-once.**
+  - Before uploading, it checks the release's existing assets. A same-named asset with different bytes stops the job,
+    and nothing is replaced. The upload runs with `overwrite_files: false`. Today's action defaults to `true`
+    (`native-image-release.yml`, lines 401–413).
+  - So a whole-workflow re-run, which rebuilds different bytes (ADR-057, open question 4), is refused before it can
+    change any asset.
+  - Recovery after a partial failure uses "re-run failed jobs" only, which keeps the original assets and the original
+    job outputs.
+- Once a release exists, its exact npm files are kept there for good. Every publication and every retry takes them
+  from there, never from a run artifact, which expires, and never from a rebuild.
 
 **A new `npm-publish` job:**
 - **Gate.**
   - It runs only when both `npm_publish` and `github_release` are `true` in `gradle.properties`; the default for
     `npm_publish` is `false`.
-  - It runs only after `github-release` has succeeded (`needs: [validate, github-release]`).
+  - It runs only after `github-release` has succeeded (`needs: [validate, wasm, github-release]`).
+  - It compares each downloaded release asset with the `wasm` job's digest outputs. A difference stops it.
   - So npm never gets a version whose archives are not public, and users can always check I1.
 - **Credentials.** It runs in the `release-staging` environment, which accepts only `v*` tags. It gets `id-token: write`
-  for npm trusted publishing (OIDC) and the read access needed to download artifacts, and nothing else. No npm token
-  exists.
+  for npm trusted publishing (OIDC) and `contents: read` to download the release assets, and nothing else. No npm
+  token exists.
 - **Tools.** Node ≥ 22.14, and npm installed at an exact pinned version ≥ 11.5.1. Trusted publishing needs these, and
   Node 22 bundles npm 10. JOUST installs `npm@latest` unpinned; JuLC does not.
 - **What it doesn't do.** It runs no Gradle, no `npm install` and no package scripts, and it does not check out or build
@@ -661,20 +713,27 @@ them from there, never from a run artifact, which expires, and never from a rebu
   `name@version`:
   - if it is absent, the job publishes it;
   - if it is present with the same tarball integrity (`dist.integrity` equals the tarball's SHA-512) and with a
-    provenance attestation from this workflow (below), the job skips it;
+    provenance attestation from this workflow, the job skips it.
+    - Here the attestation is read from the registry's metadata: its predicate's repository, workflow and ref. Its
+      signature is verified later, by `npm-verify`.
   - if it is present with different contents, or without that provenance (for example, published by hand), the job
     fails and publishes nothing more.
 - If a publish fails with "cannot publish over the previously published version", the registry was slow to show the
   version. The job then checks integrity and provenance as above, and counts a match as success.
 - A retry is the same job, run again on the same files.
+- The job outputs `published = true` when it published or skipped (as verified) every package. For a dry run, such as
+  a release candidate (D8), it outputs `published = false`.
 
 **A separate `npm-verify` job** checks what the registry serves, after `npm-publish`.
+- It runs only when `npm-publish` reports `published = true`. A dry run installs nothing and looks up no provenance.
 - It has only `contents: read`: no `id-token`, no environment and no secrets.
 - It installs the three exact versions into a fixture with `--ignore-scripts`, and runs `npm audit signatures`.
 - It downloads each published tarball (`npm pack name@version`) and compares it with the release asset.
 - It requires each version to carry a provenance attestation whose identity is this repository
   (`bloxbean/julc`), this workflow file (`.github/workflows/native-image-release.yml`) and this tag
-  (`refs/tags/v<version>`). `npm audit signatures` alone would accept a version that has no attestation.
+  (`refs/tags/v<version>`). It verifies the attestation's signature (`npm audit signatures` checks the attestations
+  that are present) and reads its identity from the verified bundle. `npm audit signatures` alone would accept a
+  version that has no attestation.
 - Any difference fails the job and the release record.
 
 **Bootstrap, once per package name, done by the maintainer:**
@@ -690,9 +749,11 @@ them from there, never from a run artifact, which expires, and never from a rebu
 - **Timing.** A newly configured trusted publisher expires unless its first publication succeeds within 2 days (npm's
   trusted-publishers documentation). So the configuration is done immediately before the first real release, after
   M4's dry runs. If it expires, it is created again.
-- **Once the first real version is published:**
-  - the maintainer sets each package to require 2FA and to refuse tokens;
-  - the maintainer deprecates the placeholder version, so `latest` can never fall back to it.
+- **Tokens are refused from the start.** The maintainer sets each package to require 2FA and to refuse tokens right
+  after publishing its placeholder, if npm allows this before a trusted publisher exists. Otherwise it is set as soon
+  as the trusted publisher is configured. Either way, no token-publishing window stays open until the first release.
+- **Once the first real version is published,** the maintainer deprecates the placeholder version, so `latest` can
+  never fall back to it.
 
 **A bad release:**
 - It is deprecated (`npm deprecate`), and `latest` is moved back to the previous good version (`npm dist-tag add`)
@@ -730,14 +791,21 @@ provenance; only the first real publication does (M4).
 - **I3 (VM image contents).** The VM engine contains no compiler, decompiler, JavaParser or cardano-client-lib code,
   including after `vm.applyParams` (the existing `-H:AbortOnTypeReachable` guards). Constrains D6.
 - **I4 (application is exact).** For any request `vm.applyParams` accepts (D6a):
-  - Its `compiledCode` and `scriptHash` equal `vm.decode`'s `info.compiledCode` and `info.scriptHash` with the same
-    values in `script.params`, and also the JVM's `ScriptDecoder.decode`, whenever the legacy reader reads the values
+  - Its `compiledCode` and `scriptHash` equal those of the reference request, a `vm.decode` call built by this
+    adapter: `script.language` set to the request's `language`, then `script.params` set to the values. They also
+    equal the JVM's `ScriptDecoder.decode` with the same input. This holds whenever the legacy reader reads the values
     the same way. It does not when a map has a duplicate key, which the legacy reader drops. This is the same code
     path, so it guards against regressions only. The independent checks are the ones below.
   - The values are compared in the canonical `Data` encoding (D6), and zero parameters return the input's bytes
     (D6a).
-  - For any accepted script, Scalus applying the same values gives the same `cborHex` and hash. Scalus is an
-    independent implementation, already a test dependency of `julc-cardano-client-lib`.
+  - For any accepted script within the pinned Scalus oracle's domain, Scalus applying the same values gives the same
+    `cborHex` and hash. Scalus is an independent implementation, already a test dependency of
+    `julc-cardano-client-lib`.
+    - Scalus 1.1.0's domain excludes constructor indices of 2⁶³ or more. For such a canonical script it fails ("Expected
+      Long but got OverLong").
+    - Valid JuLC inputs are not narrowed to suit it. That range is covered by Aiken's UPLC encoder and decoder, if M2
+      confirms that they handle the full unsigned 64-bit range, and otherwise by the Python hash with a JuLC decode
+      round trip.
   - For an Aiken blueprint:
     - `cborHex` equals the `compiledCode` that `aiken blueprint apply`, run independently, writes;
     - `compiledCode` equals that value wrapped once more as a CBOR byte string;
@@ -762,10 +830,12 @@ provenance; only the first real publication does (M4).
   manifest (ADR-064 I4). In package mode it loads only URLs that pass D2a's checks. No mode loads a path taken from the
   manifest's `launcher` field. Constrains D2a.
 - **I11 (no rebuild, no overwrite).** A publication or a retry uses only the tarballs packed by the build job, taken
-  from the GitHub release. A version already on npm with different contents, or without this workflow's provenance,
+  from the GitHub release and checked against the build job's digest outputs. The release's assets are never replaced
+  once created. A version already on npm with different contents, or without this workflow's provenance,
   stops the job. Constrains D8a.
-- **I12 (provenance).** Every published version of the three packages carries a verified provenance attestation naming
-  `bloxbean/julc`, `.github/workflows/native-image-release.yml` and the release tag. The `npm-verify` job checks it for
+- **I12 (provenance).** Every real release version of the three packages carries a verified provenance attestation
+  naming `bloxbean/julc`, `.github/workflows/native-image-release.yml` and the release tag. The sole exception is each
+  package's hand-published bootstrap placeholder (D8a), which is deprecated. The `npm-verify` job checks it for
   every version, including those a retry skipped. Constrains D8a.
 
 ## Alternatives rejected
@@ -856,7 +926,7 @@ provenance; only the first real publication does (M4).
   - Its archive-style loading is unchanged, and it may use package mode and pass `expectedVersion`.
   - ADR-064's I3 (the jar's client files equal the bundles') extends to the npm package: for a version, every file that
     `@julclang/wasm-client` and the `julc-wasm` jar both contain is byte-equal, except the generated
-    `client-defaults.js` (D4).
+    `client-defaults.js` and `client-defaults.d.ts` (D4).
     - The package adds the Node bridge.
     - The jar also has `rest-adapter.js`.
 
@@ -898,10 +968,13 @@ provenance; only the first real publication does (M4).
   - Vite in development and production modes;
   - a webpack production build;
   - plain `<script type="module">`;
-  - Node 22 and Node 24.
+  - Node 22 and Node 24, including the launcher loaded through `vm.compileFunction` with an injected `require` (D3);
+  - one real server bundle for each server bundler to be claimed: webpack `target: node`, Next.js and esbuild.
 - Exit:
   - Open question 2 decided, with the evidence recorded in this ADR's revision history.
   - The CSP source expression the engines need, recorded.
+  - D3's load path chosen (`vm.compileFunction` or the CommonJS directory), and the list of server bundlers with a
+    passing fixture recorded.
 
 **M1: `@julclang/wasm-client`** (D1a, D2, D2a, D3, D4, D5).
 - Entry gate: M0 done (open question 1 is decided).
@@ -968,8 +1041,14 @@ provenance; only the first real publication does (M4).
 - Exit:
   - A release candidate's run produces the tarballs and checksums.
   - Its publish job, in dry-run mode, lists the expected files and tags.
-  - The retry rules pass against a local registry, for these cases: already published and identical; already published
-    and different; and a failure after the first package.
+  - The retry rules pass against a local registry, for these cases:
+    - already published and identical;
+    - already published and different;
+    - a failure after the first package.
+  - A whole-workflow re-run, with deliberately different rebuilt bytes, is refused by the create-once rule without
+    changing any release asset. "Re-run failed jobs" then recovers from the original assets.
+  - Release assets edited between jobs are refused against the `wasm` job's digest outputs.
+  - A release candidate's dry run runs no `npm-verify`: it installs nothing and looks up no provenance.
   - Then, immediately before the first real release, the maintainer configures each trusted publisher, with direct
     publishing allowed (D8a, Timing). The first real publication follows within 2 days, by the maintainer's decision.
   - That publication is the only proof of authentication and provenance. Its tags, provenance (I12) and registry
@@ -1008,7 +1087,25 @@ Independent evidence, not values the code under test produced:
   - **Cross-language vectors.** The same raw script with `language` V1, V2 and V3 gives identical bytes and three
     different hashes. A request without `language` is refused.
   - **Cross-checks.** A stated `language` that disagrees with an envelope's `type`, a blueprint's
-    `preamble.plutusVersion`, or the blueprint hash is refused, naming both.
+    `preamble.plutusVersion`, or the blueprint hash is refused, naming both. When the hash matches another language,
+    the error names that language.
+  - **Language literals.** These are refused:
+    - `language` given as `v3`, `notV3`, `auto`, null or absent;
+    - a non-empty `script.language`;
+    - an envelope `type` of `PlutusScriptV4` or `SimpleScript`, and a `plutusVersion` of `v4`, whatever `language`
+      says.
+  - **The reference adapter.** Raw FLAT `0101002499` with the integer 42:
+    - `language: 'V2'` gives `c32369659a87707014447455f64c1dcf338d7a44748fb6b45a220439`, the same as the adapted
+      `vm.decode` call;
+    - `language: 'V3'` gives `36f2b62169a767e3bcb49a0ff8dd3f473db91e15434ac69ace324ac6`.
+  - **Strict JSON.** These are refused, in both member orders:
+    - an envelope with two `type` members;
+    - a blueprint with a duplicated member, at the top and nested;
+    - a value `{"int":1,"int":2}`;
+    - trailing JSON documents.
+  - **Constructor bounds.** Index 2⁶⁴ − 1 is accepted, and 2⁶⁴ refused, at the top and nested, given as structured
+    values and as JSON text. The applied FLAT of the accepted case decodes. The canonical script with index 2⁶⁴ − 1,
+    `010100324993010dd866821bffffffffffffffff800001`, is checked against the oracle that covers that range (I4).
   - **Encodings.**
     - `58050101002499`, which wraps canonical FLAT in a non-minimal CBOR header, and an indefinite-length wrapper are
       refused.
@@ -1237,3 +1334,31 @@ the recommendation recorded with each.
   never infers it. Language information in the input (an envelope's `type`, a blueprint's `preamble.plutusVersion`, the
   blueprint hash) is cross-checked against it, and a mismatch is an error. This replaces r5's evidence ranking with a
   simpler, stricter rule. The verification vectors are updated.
+- r7 (2026-11-16), responding to Fable's re-review of r6 (approved; R12 to R18) and Codex's round 3 on r6 (C20 to C26).
+  Every finding was checked against the code and accepted.
+  - **C21 (P1):** the strict reader bounds constructor indices to 0 ≤ index < 2⁶⁴, at every depth and whatever
+    `checkSchema` says.
+  - **R12:** M0 now contains the `vm.compileFunction` load and real server-bundle fixtures. Server bundlers are
+    supported per bundler, by fixture, with a single load path.
+  - **R13, C23:**
+    - the `wasm` job's digest outputs anchor the release assets;
+    - `github-release` is create-once (`overwrite_files: false`, and differing assets refused);
+    - a whole-workflow re-run is refused, and recovery is by "re-run failed jobs".
+  - **C24:** `npm-verify` runs only when `npm-publish` reports a real or verified publication.
+  - **R14, C26, R18:**
+    - `language` must be exactly V1, V2 or V3;
+    - unrecognised envelope or preamble language information is an error;
+    - `script.language` must be empty;
+    - the hash-mismatch error names the language that matches;
+    - I4's reference adapter carries `language`.
+  - **C20:** strict JSON for every input: one document, and no duplicate object members.
+  - **C22:** I4 states the pinned Scalus oracle's domain, and covers constructor indices of 2⁶³ or more otherwise.
+  - **C25:** I12 is scoped to real releases, and the bootstrap placeholder is the sole exception.
+  - **R15:** D2a's browser rule is worded as "a tuple origin". The tested hosts are named, and Electron `file:` pages
+    are refused.
+  - **R16:** a generated `client-defaults.d.ts`, the jar's default, and the type checks.
+  - **R17:**
+    - `schemaChecked` in the vacuous cases;
+    - the credentials wording;
+    - how the attestation identity is read and verified;
+    - tokens refused from the start.
