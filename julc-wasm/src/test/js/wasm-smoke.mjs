@@ -64,6 +64,27 @@ try {
   const decoded = await api.vm.decode({script: request.script});
   assert.equal((await api.vm.hash({script: request.script})).scriptHash, decoded.info.scriptHash);
   assert.equal((await api.vm.prettyPrint({script: request.script})).uplcText, decoded.uplcText);
+  // ADR-077 D6: vm.applyParams in the image. The fixed vector: Aiken v1.1.23 and Python's blake2b-224.
+  const applied = await api.vm.applyParams({language: 'V3', script: {script: '46450101002499'}, params: [{int: 42n}]});
+  assert.deepEqual(applied, {compiledCode: '4d4c0101003249930102182a0001', cborHex: '4c0101003249930102182a0001',
+    scriptHash: '36f2b62169a767e3bcb49a0ff8dd3f473db91e15434ac69ace324ac6', language: 'V3', paramsApplied: 1,
+    remainingParams: null, schemaChecked: false});
+  const maxTag = await api.vm.applyParams({language: 'V3', script: {script: '0101002499'},
+    params: [{constructor: (1n << 64n) - 1n, fields: []}]});
+  assert.equal(maxTag.cborHex, '57010100324993010dd866821bffffffffffffffff800001');
+  await assert.rejects(api.vm.applyParams({script: {script: '0101002499'}, params: []}),
+    error => error.code === 'invalid-request' && error.status === 400);
+  await assert.rejects(api.vm.applyParams({language: 'V3', script: {script: '0101002499'}, params: [{value: '42'}]}),
+    error => error.code === 'invalid-request' && /no format/.test(error.body.error));
+  const ownerBlueprint = dataType => JSON.stringify({preamble: {title: 't', version: '0', plutusVersion: 'v3'},
+    validators: [{title: 'v', compiledCode: '450101002499', parameters: [{title: 'owner', schema: {dataType}}]}]});
+  await assert.rejects(api.vm.applyParams({language: 'V3', script: {script: ownerBlueprint('bytes')}, params: [{int: 1n}]}),
+    error => error.code === 'parameter-mismatch' && error.status === 422 && /^Parameter 1 \(owner\)/.test(error.body.error));
+  await assert.rejects(api.vm.applyParams({language: 'V3', script: {script: ownerBlueprint('string')}, params: [{int: 1n}]}),
+    error => error.code === 'invalid-schema' && error.status === 422);
+  const checked = await api.vm.applyParams({language: 'V3', script: {script: ownerBlueprint('bytes')}, params: [{bytes: 'cafe'}]});
+  assert.equal(checked.remainingParams, 0);
+  assert.equal(checked.schemaChecked, true);
   await assert.rejects(api.vm.evaluate({...request, target: {protocol: 9}}), error =>
     error.code === 'invalid-request' && error.status === 400 && typeof error.body.error === 'string');
   await assert.rejects(api.vm.evaluate({...request, maxCpu: 1n << 63n}), error => error.status === 400);
