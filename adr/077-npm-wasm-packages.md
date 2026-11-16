@@ -3,7 +3,7 @@
 **Status:** Accepted (2026-11-16) by the maintainer, after design approval from reviewer1 (r4) and the internal
 Fable and Codex reviews (r9; r10 applies their last shared finding). Design only; the implementation follows in
 milestones M0 to M5.
-**Date:** 2026-11-16 (r1 to r10)
+**Date:** 2026-11-16 (r1 to r11)
 **Risk class:** **medium**.
 - This is a public distribution with a lasting API. Package names and exported type names are hard to change once
   published.
@@ -237,9 +237,24 @@ Two identities are checked, at run time, before the client returns.
   `baseUrl` mode stays for the archives.
 - **The worker in browsers.** `wasm-client` constructs it in the one form both Vite and webpack recognise, as a single
   expression: `new Worker(new URL('./julc-worker.js', import.meta.url), …)`. Each client owns one worker, as today.
-  - Whether it is a classic or a module worker is decided by M0's experiment (open question 2), before M1 starts.
-    `importScripts` exists only in classic workers. A module worker would have to load the CommonJS launcher in another
-    way, and M0 must prove that way before it is chosen.
+  - It is a **classic worker** (M0, open question 2). A module worker also worked in Chromium, by loading the unchanged
+    launcher with `import()`, but that runs a script generated as a classic script as an ES module. It also needs
+    ignore comments in each bundler. M0's evidence is in `adr/evidence/077-m0/`.
+- **The engine's runtime is a file, not a string** (r11, from M0).
+  - Today `JsApi.install` evaluates the runtime from a string (`(0, eval)(String(source))`). So a page's Content
+    Security Policy must allow `'unsafe-eval'`, not just `'wasm-unsafe-eval'`.
+  - From M1:
+    - the worker loads `julc-runtime.js` as a file before the launcher, by `importScripts` in browsers, or through the
+      Node shim's load path;
+    - `JsApi.install` uses the `globalThis.JulcRuntime` that is already loaded, and evaluates the string only when
+      none is.
+  - The runtime file therefore ships with the client (`@julclang/wasm-client` and the archives), and no longer only
+    inside the image. D1a's `julcVersion` check guarantees that it comes from the same `julc-wasm` build as the
+    image's copy.
+  - With the file loaded first, `script-src 'self' 'wasm-unsafe-eval'` is enough. M0 confirmed this with the `eval`
+    patched out.
+- **The client never writes `new URL(<expression>, import.meta.url)`.** webpack builds a context module for it, and
+  Turbopack fails the build (M0). Every asset URL it names is a string literal.
 - **The `exports` maps:**
 
   ```json
@@ -260,10 +275,15 @@ Two identities are checked, at run time, before the client returns.
 - **Other package fields:**
   - each package also exports `./package.json`;
   - each has a top-level `types` field, for TypeScript's older `node10` resolution, which ignores `exports`;
-  - each sets `sideEffects` to the files that have them.
+  - each sets `sideEffects` to the files that have them;
+  - `engines` is `{"node": ">=22.3"}`, because the shim takes Node's builtins from `process.getBuiltinModule` (M0).
 - **Bundler configuration.** Vite pre-bundles dependencies, which moves modules and can break
   `new URL(…, import.meta.url)`, and webpack may parse a `.js` file named that way.
-  - M0 finds what configuration each bundler needs, if any. For Vite, `optimizeDeps.exclude` is the likely one.
+  - M0 found:
+    - Vite 8 needs no configuration;
+    - the dev servers of Vite 5 to 7 need `optimizeDeps.exclude` for both packages;
+    - webpack 5 needs none, but its Terser minifies the launcher. An `asset/resource` rule plus a Terser `exclude`
+      keeps the launcher byte-identical, and the README shows it.
   - The READMEs state it.
   - The fixtures test both the development server and the production build.
 - **Types for both environments.**
@@ -312,9 +332,18 @@ Two identities are checked, at run time, before the client returns.
     (`wasm-smoke.mjs`, lines 13–18);
   - the worker-side shim, which provides `self`, `postMessage`, `addEventListener` and `importScripts`, and loads the
     launcher with `createRequire` (`node-worker.mjs`).
-- The shim works because the launcher's directory is CommonJS (D2).
-  - In package mode the shim loads the launcher at the URL it is given.
-  - It no longer recognises the launcher by its file name, which a bundler may change (`node-worker.mjs`, line 16).
+- **The shim's single load path is `vm.compileFunction`** (M0).
+  - The shim compiles the launcher's unchanged bytes as a function, and calls it with `createRequire(launcherPath)`
+    injected as `require`, plus `module`, `exports`, `__filename` and `__dirname`.
+  - This passed on Node 22 and 24, with the engine directory as CommonJS and as an ES module, on the main thread and
+    in an application worker. Loading with `createRequire` alone failed under a `"type":"module"` scope.
+  - The `engine/` directory stays CommonJS, but nothing relies on it.
+  - In package mode the shim loads the launcher at the URL it is given, and the runtime file first (D2). It no longer
+    recognises the launcher by its file name, which a bundler may change (`node-worker.mjs`, line 16).
+- **The shim is a plain file.** The Node entry names it with its own `const shimUrl = new URL('./node-worker.js',
+  import.meta.url)`, and the shim has no `import` statements.
+  - webpack 5.111.1 and 5.112.2 miscompile `new Worker(new URL(…))` from `node:worker_threads` for `target: 'node'`.
+  - A plain file, which bundlers copy as an asset, avoids that.
 - **Server-side bundling.** A server bundle (webpack `target: node`, Next.js, esbuild) can copy the launcher out of
   `engine/`, into a directory whose nearest `package.json` says `"type": "module"`. `createRequire` would then fail, as
   r1's all-ESM design did.
@@ -325,9 +354,11 @@ Two identities are checked, at run time, before the client returns.
     module, `julc-worker.js` and the shim as separate files, and keep their `new URL(…, import.meta.url)` references
     resolvable.
   - So support is claimed **per bundler**, each backed by a real server-bundle fixture: M0 first, then M3, I8 and
-    Verification. The candidates are webpack `target: node`, Next.js and esbuild.
-  - For any bundler without a passing fixture, the README tells server applications to keep the packages external to
-    the bundle.
+    Verification.
+  - M0 passed **webpack 5 `target: 'node'`** and **Next.js 16 with Turbopack**. These are claimed.
+  - esbuild does not copy files named by `new URL`, and Next `--webpack` rewrites asset URLs to site-relative paths.
+    The README tells their users to keep the packages external (`--packages=external`, `serverExternalPackages`), and
+    M0 confirmed that this works.
 - **WebAssembly exception references.**
   - The first `createJulc` call checks whether the Node runtime supports them, by running `WebAssembly.validate` on a
     minimal module that uses them, rather than by reading the Node version.
@@ -1014,8 +1045,10 @@ provenance; only the first real publication does (M4).
 - **Browser support.** The engines need WebAssembly GC and exception handling (`exnref`). They are tested in Chrome
   (`julc-playground/BUILD_FROM_SOURCE.md`). The READMEs state the requirement, and M3 records which browser versions
   were tested.
-- **A Content Security Policy** that blocks WebAssembly compilation stops the engine loading. M0 finds which source
-  expression the engines need, and the README documents it.
+- **A Content Security Policy** that blocks WebAssembly compilation stops the engine loading.
+  - From M1 the engines need `script-src 'self' 'wasm-unsafe-eval'`. M0 found that pre20 needs `'unsafe-eval'`,
+    because of the runtime's `eval`, which D2 removes.
+  - The README documents the expression.
 - **Bundler behaviour changes.** The worker and asset patterns depend on how Vite and webpack recognise
   `new URL(…, import.meta.url)`. Mitigated by building fixture applications in CI, in development and production modes,
   from the packed tarballs (M1, M3).
@@ -1052,7 +1085,11 @@ provenance; only the first real publication does (M4).
   - the version check;
   - the `rest` option;
   - the shipped Node bridge with the `exnref` handling;
-  - the worker in M0's form;
+  - the worker in M0's form (classic);
+  - the runtime loaded as a file before the launcher, and `JsApi.install` using it (D2);
+  - the shim as a plain file, on the `vm.compileFunction` path (D3);
+  - prompt start-up errors. A Java `main` that throws, or a worker script that fails to load, rejects at once with
+    the cause. M0 saw both wait out the 120 s load timeout instead;
   - `WorkerLike` and `PackageClient`, and the type aliases.
 - Exit:
   - The existing client and worker tests pass, including ADR-064 I4's.
@@ -1066,6 +1103,8 @@ provenance; only the first real publication does (M4).
   - The unchanged-archive-consumer fixture passes, including `rest` (I9).
   - The type checks under NodeNext without DOM, and under bundler with DOM, pass with `skipLibCheck: false`.
   - The alias coverage test passes.
+  - A page with `Content-Security-Policy: script-src 'self' 'wasm-unsafe-eval'` loads both engines.
+  - A start-up failure rejects within seconds, naming its cause.
 
 **M2: `vm.applyParams`** (D6, D6a, D6b).
 - Entry gate: this ADR accepted (open question 5 is decided).
@@ -1261,16 +1300,15 @@ Independent evidence, not values the code under test produced:
 
 ## Open questions
 
-Only question 2 is still open, and M0's experiment decides it. The maintainer decided the others on 2026-11-16, choosing
-the recommendation recorded with each.
+All questions are decided. M0's experiment decided question 2. The maintainer decided the others on 2026-11-16,
+choosing the recommendation recorded with each.
 
 1. **Package names.** `@julclang/wasm-client`, `@julclang/julc-vm-wasm` and `@julclang/julc-wasm`, or shorter ones
    (`@julclang/vm`, `@julclang/julc`)?
    - **Decided** (maintainer, 2026-11-16, r3): the proposed names, which match the archive names.
 2. **The worker form.** A classic worker, which keeps `importScripts`, or a module worker with another way to load the
    CommonJS launcher?
-   - Decided by M0's experiment before M1 starts.
-   - Lean: classic, the form proven today, if both bundlers handle it.
+   - **Decided** by M0's experiment (r11): a classic worker. The evidence is in `adr/evidence/077-m0/REPORT.md`.
 3. **Addresses.** Should `applyParams` also return a bech32 address for a network ID?
    - The VM image has no cardano-client-lib, so this would need a small bech32 encoder.
    - **Decided** (maintainer, 2026-11-16, r3): no; return the hash, and leave addresses to the application's Cardano library.
@@ -1486,3 +1524,16 @@ the recommendation recorded with each.
   - `npm-verify` uses the same form.
   - `attest` is added to `github-release`'s existing prerequisites, which are kept.
   - M4 tests the conditions against the real dependency graph.
+- r11 (2026-11-16), M0's results (`adr/evidence/077-m0/`):
+  - open question 2 decided: a classic worker;
+  - D3's single load path is `vm.compileFunction`;
+  - the server bundlers claimed are webpack `target: 'node'` and Next.js with Turbopack; esbuild and Next
+    `--webpack` need externals;
+  - the bundler configuration needed is documented;
+  - `engines` is `node >=22.3`, and the shim is a plain file;
+  - the client never builds a URL from an expression.
+
+  **One amendment the evidence forced:** the engine evaluates its runtime from a string, so pre20 needs CSP
+  `'unsafe-eval'`. From M1, the worker loads `julc-runtime.js` as a file first, and `JsApi.install` uses it, so
+  `'wasm-unsafe-eval'` is enough. The runtime file now ships with the client, and D1a's version check keeps it in
+  step with the image. Also: start-up failures reject promptly (M1). The CSP risk is corrected.
