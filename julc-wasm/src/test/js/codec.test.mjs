@@ -141,3 +141,57 @@ test('the costModel profile shorthand applies only where costModel is JuLC\'s co
   // Another record named costModel is not JuLC's: a string is not turned into it.
   assert.throws(() => api.lang.tune({costModel: 'custom-model'}), /Expected request object/);
 });
+
+test('dataText is iterative and gives the recursive version\'s text and errors, byte for byte', async () => {
+  const {dataText: recursive} = await import('./data-text-recursive.mjs');
+  // A small deterministic generator (mulberry32), so a failure is reproducible from its seed.
+  let seed = 0x5eed1234;
+  const random = () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const pick = items => items[Math.floor(random() * items.length)];
+  const invalidNode = () => pick([null, 1, 'x', [], {}, {int: 1}, {int: 1n, bytes: ''}, {bytes: 'abc'}, {bytes: 7},
+    {constructor: -1n, fields: []}, {constructor: 1n << 64n, fields: []}, {constructor: 0n}, {constructor: 0n, fields: {}},
+    {list: 'x'}, {map: {}}, {map: [{k: {int: 1n}}]}, {map: [null]}, {int: 1n, extra: true}]);
+  const sparse = items => { const copy = [...items]; if (copy.length > 1 && random() < 0.3) delete copy[1]; return copy; };
+  const generate = (depth, bad) => {
+    if (bad && random() < 0.05) return invalidNode();
+    const kind = depth <= 0 ? pick(['int', 'bytes']) : pick(['int', 'bytes', 'list', 'map', 'constructor']);
+    const many = () => Array.from({length: Math.floor(random() * 4)}, () => generate(depth - 1, bad));
+    switch (kind) {
+      case 'int': return {int: BigInt(Math.floor((random() - 0.5) * 2 ** 40)) * (random() < 0.2 ? 1n << 70n : 1n)};
+      case 'bytes': return {bytes: Array.from({length: Math.floor(random() * 6)}, () => pick(['00', 'ab', 'FF', '7e'])).join('')};
+      case 'list': return {list: sparse(many())};
+      case 'constructor': return {constructor: pick([0n, 1n, 121n, (1n << 64n) - 1n]), fields: sparse(many())};
+      case 'map': return {map: sparse(many().map(k => ({k, v: generate(depth - 1, bad)})))};
+    }
+  };
+  const outcome = (f, value) => { try { return {text: f(value)}; } catch (error) { return {error: error.message}; } };
+  let valid = 0, invalid = 0;
+  for (let i = 0; i < 3000; i++) {
+    const value = generate(1 + Math.floor(random() * 5), i % 2 === 1);
+    const expected = outcome(recursive, value);
+    assert.deepEqual(outcome(dataText, value), expected, 'seed case ' + i);
+    if (expected.error) invalid++; else valid++;
+  }
+  assert.ok(valid > 1000 && invalid > 150, `both kinds compared: ${valid} valid, ${invalid} invalid`);
+});
+
+test('dataText encodes Data nested 100,000 deep, which the recursive version cannot', async () => {
+  const {dataText: recursive} = await import('./data-text-recursive.mjs');
+  const depth = 100000;
+  let value = {int: 42n};
+  for (let i = 0; i < depth; i++) {
+    value = i % 3 === 0 ? {list: [value]} : i % 3 === 1 ? {constructor: 0n, fields: [{bytes: ''}, value]}
+      : {map: [{k: {int: BigInt(i)}, v: value}]};
+  }
+  assert.throws(() => recursive(value), RangeError);
+  const text = dataText(value);
+  // The engine's JSON reader is not this one, so check the shape here: every level is present once, in order.
+  assert.equal(text.split('{"list":[').length - 1, Math.ceil(depth / 3));
+  assert.match(text, /\{"int":42\}/);
+  assert.equal(encode(value, 'data').value, text);
+});
