@@ -1,6 +1,8 @@
 # ADR-077: npm packages for the WebAssembly engines, and `vm.applyParams`
 
-**Status:** Proposed (2026-11-16). Design only; no implementation in this change.
+**Status:** Accepted (2026-11-16) by the maintainer, after design approval from reviewer1 (r4) and the internal
+Fable and Codex reviews (r9; r10 applies their last shared finding). Design only; the implementation follows in
+milestones M0 to M5.
 **Date:** 2026-11-16 (r1 to r10)
 **Risk class:** **medium**.
 - This is a public distribution with a lasting API. Package names and exported type names are hard to change once
