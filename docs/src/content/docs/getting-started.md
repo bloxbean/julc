@@ -49,7 +49,7 @@ version = '1.0-SNAPSHOT'
 
 ext {
     julcVersion = '0.1.0-pre21'
-    cardanoClientLibVersion = '0.8.0-pre7'
+    cardanoClientLibVersion = '0.8.0-pre8'
 }
 
 repositories {
@@ -98,7 +98,7 @@ test {
 ```xml
 <properties>
     <julc.version>0.1.0-pre21</julc.version>
-    <ccl.version>0.8.0-pre7</ccl.version>
+    <ccl.version>0.8.0-pre8</ccl.version>
 </properties>
 
 <!-- Required for snapshot versions only -->

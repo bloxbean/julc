@@ -483,6 +483,10 @@ final class CclTxConverter {
                 }
                 yield new ScriptPurpose.Proposing(BigInteger.valueOf(index), proposals.get(index));
             }
+            // A Dijkstra-era guard script's redeemer: a Plutus V3 ScriptContext has no purpose for it.
+            case Guarding -> throw new IllegalArgumentException(
+                    "Guarding redeemer " + index + " has no Plutus V3 script purpose: guard scripts belong to the"
+                    + " Dijkstra era, and JuLC evaluates Plutus V3 scripts");
         };
     }
 

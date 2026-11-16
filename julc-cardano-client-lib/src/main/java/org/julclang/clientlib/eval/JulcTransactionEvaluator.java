@@ -603,6 +603,8 @@ public class JulcTransactionEvaluator implements TransactionEvaluator {
             case PLUTUS_V1 -> PlutusLanguage.PLUTUS_V1;
             case PLUTUS_V2 -> PlutusLanguage.PLUTUS_V2;
             case PLUTUS_V3 -> PlutusLanguage.PLUTUS_V3;
+            // Read by CCL from 0.8.0-pre8 (Dijkstra era); the JuLC VM evaluates Plutus V1 to V3 only.
+            case PLUTUS_V4 -> throw new IllegalArgumentException("Plutus V4 is not supported: JuLC evaluates Plutus V1 to V3");
         };
     }
 }
