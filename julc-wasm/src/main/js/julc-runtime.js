@@ -119,7 +119,9 @@
       parent[key] = BigInt(parent[key]);
     }
     if (envelope.status !== 200) {
-      const code = ({400: 'invalid-request', 404: 'not-found', 422: 'blueprint-error'})[envelope.status] || 'internal';
+      // vm.applyParams names its two 422 kinds (ADR-077 D6b); every other 422 stays blueprint-error.
+      const code = envelope.status === 422 && (body?.code === 'invalid-schema' || body?.code === 'parameter-mismatch')
+        ? body.code : ({400: 'invalid-request', 404: 'not-found', 422: 'blueprint-error'})[envelope.status] || 'internal';
       throw Object.assign(new Error(body?.error || body?.diagnostics?.[0]?.message || code),
         { code, status: envelope.status, body });
     }

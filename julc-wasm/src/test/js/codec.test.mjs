@@ -38,6 +38,12 @@ test('structured tags and nested Data have decimal text without rounding', () =>
 test('failure results remain results; service errors preserve bodies', () => {
   assert.deepEqual(decode({status: 200, body: {success: false, cpu: '12'}, integers: [['cpu']]}), {success: false, cpu: 12n});
   assert.throws(() => decode({status: 422, body: {diagnostics: []}, integers: []}), e => e.code === 'blueprint-error' && e.status === 422);
+  // vm.applyParams names its two 422 kinds; no other 422 body can choose its code.
+  for (const code of ['invalid-schema', 'parameter-mismatch']) {
+    assert.throws(() => decode({status: 422, body: {error: 'x', code}, integers: []}), e => e.code === code && e.status === 422);
+  }
+  assert.throws(() => decode({status: 422, body: {error: 'x', code: 'internal'}, integers: []}), e => e.code === 'blueprint-error');
+  assert.throws(() => decode({status: 400, body: {error: 'x', code: 'invalid-schema'}, integers: []}), e => e.code === 'invalid-request');
 });
 test('explicit script hashes remain script credentials in transaction templates', () => {
   const scriptHash = 'ab'.repeat(28);

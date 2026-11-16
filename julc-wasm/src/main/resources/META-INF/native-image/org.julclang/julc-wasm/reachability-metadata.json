@@ -85,6 +85,18 @@
       "allDeclaredConstructors": true
     },
     {
+      "type": "org.julclang.tools.model.ApplyParamsModels$Request",
+      "allDeclaredFields": true,
+      "allDeclaredMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "org.julclang.tools.model.ApplyParamsModels$Response",
+      "allDeclaredFields": true,
+      "allDeclaredMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
       "type": "org.julclang.tools.model.UplcModels$ScriptInput",
       "allDeclaredFields": true,
       "allDeclaredMethods": true,

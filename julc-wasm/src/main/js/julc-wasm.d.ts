@@ -126,6 +126,14 @@ export interface VmGroups {
   vm: {
     decode(request: Input<M.UplcModels_DecodeRequest>): Promise<M.UplcModels_DecodeResponse>;
     hash(request: Input<M.UplcModels_DecodeRequest>): Promise<{scriptHash: string}>;
+    /**
+     * Applies a validator's parameters and gives the bytes and hash of the result, with nothing guessed (ADR-077).
+     * Refusals reject with code `invalid-request`; with a blueprint, a schema fault rejects with `invalid-schema` and a
+     * value that does not match its schema with `parameter-mismatch`. Only `remainingParams === 0` means the script
+     * is complete; `null` means the input declared no parameters.
+     */
+    applyParams(request: Input<Omit<M.ApplyParamsModels_Request, 'language'>> & {language: 'V1' | 'V2' | 'V3'}):
+      Promise<M.ApplyParamsModels_Response & {language: 'V1' | 'V2' | 'V3'}>;
     prettyPrint(request: {script: Input<M.UplcModels_ScriptInput>; width?: number}): Promise<{uplcText: string}>;
     evaluate(request: VmRequest): Promise<Evaluation>;
     debug(request: VmRequest): Promise<DebugSession>;

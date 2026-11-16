@@ -1,7 +1,11 @@
 package org.julclang.wasm;
 
+import com.fasterxml.jackson.core.StreamReadFeature;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.julclang.tools.model.MockTransaction.DataInput;
@@ -19,6 +23,14 @@ import java.util.Map;
 /** Lossless private JSON wire format. Only small Java ints become JSON numbers. */
 public final class JsMarshalling {
     static final ObjectMapper JSON = new ObjectMapper();
+
+    /** For requests read strictly ({@link ApiRegistry#addStrict}). */
+    static final ObjectMapper STRICT_JSON = JsonMapper.builder()
+            .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
+            .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+            .enable(DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES)
+            .disable(MapperFeature.ALLOW_COERCION_OF_SCALARS)
+            .build();
 
     /** In the schema of JuLC's cost model record. It holds {@code true}, which no field's schema is. */
     static final String COST_MODEL_MARK = "$costModel";
