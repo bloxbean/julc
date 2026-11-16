@@ -351,9 +351,9 @@ jobs:
     # three tarballs, in Node.js 22.3.0, 22 and 24 (main thread and an application worker, with the VM parity
     # fixtures), in Chromium (plain <script type="module">, Vite 8 development and production, webpack production with
     # and without the README's configuration, a Chrome extension), and in server bundles (webpack target: 'node',
-    # esbuild with external packages, Next.js with Turbopack: build and standalone). Bundler versions are pinned in the
-    # script. Left to local runs, to keep this job short: next dev and next build --webpack (each another full Next.js
-    # compile of the same route) and Vite 7's development server.
+    # esbuild with external packages, Next.js with Turbopack: build and standalone). Bundler versions are locked by the
+    # fixtures' lockfiles. Left out to keep this job short: next build --webpack and Vite 7's development server (run by
+    # native-image-dev.yml) and next dev (local runs only), each another compile of the same application.
     - name: Load the engine packages in Node.js, Chromium and bundlers
       shell: bash
       run: |
