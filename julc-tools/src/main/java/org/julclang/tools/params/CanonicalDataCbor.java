@@ -228,9 +228,10 @@ final class CanonicalDataCbor {
             try {
                 return read(cbor);
             } catch (NotCanonical e) {
-                throw ApplyParamsException.invalidRequest("The script's data constant number " + count
-                        + " is not in the canonical Data encoding: " + e.getMessage()
-                        + ". A non-canonical script is refused rather than silently normalised.");
+                String reason = e.getMessage().startsWith("not in the canonical") ? e.getMessage()
+                        : "not in the canonical Data encoding: " + e.getMessage();
+                throw ApplyParamsException.invalidRequest("The script's data constant number " + count + " is "
+                        + reason + ". A non-canonical script is refused rather than silently normalised.");
             }
         }
     }

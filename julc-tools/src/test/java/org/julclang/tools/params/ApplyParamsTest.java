@@ -352,7 +352,7 @@ class ApplyParamsTest {
                 UplcFlatDecoder.decodeProgram(HexFormat.of().parseHex(canonicalFlat)))));
         ApplyParams.apply(request("V3", canonicalFlat, List.of()));
         refused(Kind.INVALID_REQUEST, request("V3", nonCanonical, List.of()),
-                "The script's data constant number 1 is not in the canonical Data encoding");
+                "The script's data constant number 1 is not in the canonical encoding Plutus writes (expected 182a)");
         // A data constant with bytes after its CBOR item: Plutus's decoder ignores them, so the bytes would change.
         refused(Kind.INVALID_REQUEST, request("V3", flatWithDataConstant("182a00"), List.of()),
                 "data constant number 1 is not in the canonical Data encoding: 1 bytes follow the Plutus data item");

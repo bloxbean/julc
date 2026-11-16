@@ -188,7 +188,7 @@ class AikenOracleTest {
         for (String blueprint : List.of("out/anydata-noncanonical-input.json", "out/anydata-definite-list.json")) {
             var e = assertThrows(ApplyParamsException.class, () -> ApplyParams.apply(new Request("V3",
                     new ScriptInput(resource(blueprint), null, null, ANYDATA), List.of(), true, null)));
-            assertEquals(true, e.getMessage().contains("data constant number 1 is not in the canonical Data encoding"),
+            assertEquals(true, e.getMessage().contains("data constant number 1 is not in the canonical encoding Plutus writes"),
                     e.getMessage());
         }
     }
