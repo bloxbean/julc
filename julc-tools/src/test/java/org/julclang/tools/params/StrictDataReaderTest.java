@@ -130,6 +130,20 @@ class StrictDataReaderTest {
     }
 
     @Test
+    void theBoundIsCheckedOnEveryDecodedValue() {
+        // CBOR and UPLC text cannot reach 2^64 through today's decoders (CBOR refuses a bignum tag, the UPLC parser an
+        // index over 2^31 - 1), so the check after decoding is exercised directly.
+        var inside = new PlutusData.ListData(List.of(PlutusData.integer(1),
+                new PlutusData.ConstrData(TOO_BIG, List.of())));
+        var e = assertThrows(ApplyParamsException.class, () -> StrictDataReader.checkConstructorIndices(
+                new PlutusData.MapData(List.of(new PlutusData.Pair(PlutusData.integer(0), inside)))));
+        assertEquals("at map[0].v.list[1]: constructor index 18446744073709551616 is outside 0 to 2^64 - 1; Plutus data"
+                + " constructor tags are unsigned 64-bit words", e.getMessage());
+        StrictDataReader.checkConstructorIndices(new PlutusData.ConstrData(MAX_TAG, List.of(inside.items().getFirst())));
+        refused(new DataInput("cbor", "d86682c24901000000000000000080"), "the cbor value is not one Plutus data item");
+    }
+
+    @Test
     void maximalConstructorIndexAppliesAndTheResultDecodes() {
         var response = ApplyParams.apply(ApplyParamsTest.request("V3", ApplyParamsTest.FLAT, List.of(
                 new DataInput("json", "{\"constructor\":" + MAX_TAG + ",\"fields\":[]}"))));
