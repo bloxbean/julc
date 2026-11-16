@@ -20,4 +20,5 @@ export {
   type SourceDebugOpenRequest, type SourceDebugOpenResponse, type SourceDebugActionResponse,
   type SourceDebugLocalsResponse, type SourceDebugChildrenResponse, type SourceScope, type SourceLocal,
   type SourceValue, type SourceChild, type SourceRange, type LocalsCapability,
+  type ApplyParamsRequest, type ApplyParamsResponse,
 } from './julc-wasm.js';

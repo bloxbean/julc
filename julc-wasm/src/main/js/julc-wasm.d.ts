@@ -50,6 +50,9 @@ export type SourceValue = M.SourceDebugModels_DebugValue;
 export type SourceChild = M.SourceDebugModels_ChildValue;
 export type SourceRange = M.SourceDebugModels_SourceRange;
 export type LocalsCapability = M.SourceDebugModels_LocalsCapability;
+/** vm.applyParams' request and result (ADR-077 D6). */
+export type ApplyParamsRequest = M.ApplyParamsModels_Request;
+export type ApplyParamsResponse = M.ApplyParamsModels_Response;
 
 /** Missing record fields use the Java service's documented defaults. */
 export type Input<T> = T extends ReadonlyArray<infer E> ? Input<E>[]
@@ -130,8 +133,8 @@ export interface VmGroups {
      * Applies a validator's parameters and gives the bytes and hash of the result, with nothing guessed (ADR-077).
      * Refusals reject with code `invalid-request`; with a blueprint, a schema fault rejects with `invalid-schema`, a
      * value that does not match its schema with `parameter-mismatch`, and a check too large for its work bound with
-     * `work-limit-exceeded` (status 400; `checkSchema: false` applies without the check). Only `remainingParams === 0` means the script
-     * is complete; `null` means the input declared no parameters.
+     * `work-limit-exceeded` (status 400; `checkSchema: false` applies without the check). Only
+     * `remainingParams === 0` means the script is complete; `null` means the input declared no parameters.
      */
     applyParams(request: Input<Omit<M.ApplyParamsModels_Request, 'language'>> & {language: 'V1' | 'V2' | 'V3'}):
       Promise<M.ApplyParamsModels_Response & {language: 'V1' | 'V2' | 'V3'}>;
