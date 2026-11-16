@@ -1,7 +1,7 @@
 # ADR-077: npm packages for the WebAssembly engines, and `vm.applyParams`
 
 **Status:** Proposed (2026-11-16). Design only; no implementation in this change.
-**Date:** 2026-11-16 (r1 to r7)
+**Date:** 2026-11-16 (r1 to r8)
 **Risk class:** **medium**.
 - This is a public distribution with a lasting API. Package names and exported type names are hard to change once
   published.
@@ -670,22 +670,38 @@ that do not run the Gradle build get write access or credentials (`native-image-
   - it checks that `engine.js`'s inline manifest equals `engine/engine.json`.
 - It writes `julc-npm-<version>-SHA256SUMS.txt`, covering the three tarballs and the two archives.
 - It uploads all of them as the job's artifact.
-- It also emits the five SHA-256 digests as **job outputs**. Later jobs check the release assets against these outputs,
-  not against a checksum file from the release itself.
-  - A checksum file in the release proves only that the download arrived intact. Anyone able to edit release assets
-    could replace both the file and the tarballs.
-  - Job outputs survive "re-run failed jobs".
+- It also emits the five SHA-256 digests as job outputs, for the checks within the same run.
+
+**A new `attest` job** (r8) makes the durable anchor.
+- It has no build. It downloads the `wasm` artifact, and holds only `id-token: write` and `attestations: write`.
+- It creates a GitHub artifact attestation, signed with Sigstore under this workflow's identity, for the three
+  tarballs and the two archives.
+- This attestation, not a checksum file from the release, is what every later check trusts. A checksum file in the
+  release proves only that the download arrived intact: anyone able to edit release assets could replace both the
+  file and the tarballs. Job outputs belong to a single run attempt.
+- Every later job verifies a release asset with `gh attestation verify`. The attestation must name repository
+  `bloxbean/julc`, signer workflow `.github/workflows/native-image-release.yml` and the tag's ref.
 
 **The `github-release` job** attaches the three tarballs and their checksum file to the GitHub release, beside the
 archives.
 - **Create-once.**
-  - Before uploading, it checks the release's existing assets. A same-named asset with different bytes stops the job,
-    and nothing is replaced. The upload runs with `overwrite_files: false`. Today's action defaults to `true`
-    (`native-image-release.yml`, lines 401–413).
-  - So a whole-workflow re-run, which rebuilds different bytes (ADR-057, open question 4), is refused before it can
-    change any asset.
-  - Recovery after a partial failure uses "re-run failed jobs" only, which keeps the original assets and the original
-    job outputs.
+  - Before uploading, it checks the release's existing assets, using GitHub's asset `state`:
+    - a completed asset (`uploaded`) with the same name and different bytes stops the job, and nothing is replaced;
+    - a failed upload's placeholder (`starter`, which GitHub documents an HTTP 502 can leave behind, and which is safe
+      to delete) is deleted, and only then are the original bytes uploaded again.
+  - The upload runs with `overwrite_files: false`. Today's action defaults to `true` (`native-image-release.yml`, lines
+    401–413).
+- **A release is built once.**
+  - The `wasm` job starts by checking whether the tag's GitHub release already holds attested npm tarballs. If it does,
+    the job stops before building, with a message pointing to recovery.
+  - So a whole-workflow re-run, which would rebuild different bytes (ADR-057, open question 4), changes nothing.
+- **Recovery** never rebuilds:
+  - it is either "re-run failed jobs" in the original attempt;
+  - or the workflow's manual `workflow_dispatch` entry for the tag.
+  - That entry runs only `npm-publish` and `npm-verify`, on the release's existing assets. It verifies them against
+    their attestation, which does not depend on any run attempt's outputs.
+  - The entry lives in the same `native-image-release.yml`, because npm's trusted publisher validates the workflow
+    file, and it runs in the same `release-staging` environment.
 - Once a release exists, its exact npm files are kept there for good. Every publication and every retry takes them
   from there, never from a run artifact, which expires, and never from a rebuild.
 
@@ -693,8 +709,9 @@ archives.
 - **Gate.**
   - It runs only when both `npm_publish` and `github_release` are `true` in `gradle.properties`; the default for
     `npm_publish` is `false`.
-  - It runs only after `github-release` has succeeded (`needs: [validate, wasm, github-release]`).
-  - It compares each downloaded release asset with the `wasm` job's digest outputs. A difference stops it.
+  - It runs only after `github-release` and `attest` have succeeded, or from the recovery entry.
+  - It verifies each downloaded release asset against its attestation (`gh attestation verify`). In a normal run it
+    also compares the asset with the `wasm` job's digest outputs. Any difference stops it.
   - So npm never gets a version whose archives are not public, and users can always check I1.
 - **Credentials.** It runs in the `release-staging` environment, which accepts only `v*` tags. It gets `id-token: write`
   for npm trusted publishing (OIDC) and `contents: read` to download the release assets, and nothing else. No npm
@@ -728,7 +745,9 @@ archives.
 - It runs only when `npm-publish` reports `published = true`. A dry run installs nothing and looks up no provenance.
 - It has only `contents: read`: no `id-token`, no environment and no secrets.
 - It installs the three exact versions into a fixture with `--ignore-scripts`, and runs `npm audit signatures`.
-- It downloads each published tarball (`npm pack name@version`) and compares it with the release asset.
+- It downloads each published tarball (`npm pack name@version`) and compares it with the release asset. That asset is
+  itself verified against its attestation, and, in a normal run, against the `wasm` job's digest outputs, so the final
+  check does not rest on the release alone.
 - It requires each version to carry a provenance attestation whose identity is this repository
   (`bloxbean/julc`), this workflow file (`.github/workflows/native-image-release.yml`) and this tag
   (`refs/tags/v<version>`). It verifies the attestation's signature (`npm audit signatures` checks the attestations
@@ -821,17 +840,24 @@ provenance; only the first real publication does (M4).
 - **I7 (no install-time code).** No package has `preinstall`, `install` or `postinstall` scripts. The publish job runs
   no build, no install and no package scripts. The verify job installs with `--ignore-scripts` and holds no
   credentials. Constrains D8a.
-- **I8 (loads as installed).** An engine package installed from its tarball loads in Node 22 and Node 24, both on the
-  main thread and inside an application's own `worker_threads` worker. It also loads from Vite and webpack production
-  builds. In none of these cases does the caller pass flags or change files. Constrains D2, D3.
+- **I8 (loads as installed).** An engine package installed from its tarball loads without the caller passing flags or
+  changing files:
+  - in Node 22 and Node 24, both on the main thread and inside an application's own `worker_threads` worker;
+  - from Vite and webpack production builds;
+  - from each server bundler that M0 recorded as passing;
+  - in a Chrome extension.
+
+  Constrains D2, D2a, D3.
 - **I9 (archive compatibility).** An unchanged archive application, calling `createJulc({baseUrl})` and then any
   operation or `rest(…)`, behaves as it does on the previous release. Constrains D2a, D4.
 - **I10 (loading confinement).** In archive mode the worker loads only the plain launcher file name next to the
   manifest (ADR-064 I4). In package mode it loads only URLs that pass D2a's checks. No mode loads a path taken from the
   manifest's `launcher` field. Constrains D2a.
-- **I11 (no rebuild, no overwrite).** A publication or a retry uses only the tarballs packed by the build job, taken
-  from the GitHub release and checked against the build job's digest outputs. The release's assets are never replaced
-  once created. A version already on npm with different contents, or without this workflow's provenance,
+- **I11 (no rebuild, no overwrite).**
+  - A publication or a retry uses only the tarballs packed by the build job. They are taken from the GitHub release
+    and verified against their attestation (and, in the same run, the digest outputs).
+  - A tag's release is built once.
+  - A completed release asset is never replaced. Only an incomplete upload's `starter` placeholder is ever removed. A version already on npm with different contents, or without this workflow's provenance,
   stops the job. Constrains D8a.
 - **I12 (provenance).** Every real release version of the three packages carries a verified provenance attestation
   naming `bloxbean/julc`, `.github/workflows/native-image-release.yml` and the release tag. The sole exception is each
@@ -1024,7 +1050,8 @@ provenance; only the first real publication does (M4).
 - Exit:
   - `npm pack` contents are listed and checked.
   - I1 is checked against locally built archives.
-  - I6 and I8 hold for both engine packages, installed from their tarballs.
+  - I6 and I8 hold for both engine packages, installed from their tarballs, including the per-bundler server-bundle
+    fixtures M0 recorded and the Chrome extension fixture (D2a).
   - READMEs with size, browser and CSP notes.
 
 **M4: publishing** (D8, D8a).
@@ -1036,7 +1063,7 @@ provenance; only the first real publication does (M4).
   - packing and checksums in `wasm`;
   - the attachments in `github-release`;
   - the `npm-publish` job, with its gate, `needs`, OIDC permissions, ordering, retry rules and dist-tags;
-  - the `npm-verify` job;
+  - the `npm-verify` and `attest` jobs, the build-once check in `wasm`, and the `workflow_dispatch` recovery entry;
   - pinning the `wasm` job's Binaryen download by SHA-256 (today it pipes `curl` into `tar`, lines 200–204).
 - Exit:
   - A release candidate's run produces the tarballs and checksums.
@@ -1045,9 +1072,13 @@ provenance; only the first real publication does (M4).
     - already published and identical;
     - already published and different;
     - a failure after the first package.
-  - A whole-workflow re-run, with deliberately different rebuilt bytes, is refused by the create-once rule without
-    changing any release asset. "Re-run failed jobs" then recovers from the original assets.
-  - Release assets edited between jobs are refused against the `wasm` job's digest outputs.
+  - The full three-attempt sequence, against a test repository:
+    1. Attempt 1 releases and attests bytes A, then fails in `npm-publish`.
+    2. A whole-workflow re-run stops in `wasm` before building, so no bytes B ever exist.
+    3. Recovery, through "re-run failed jobs" and also through the `workflow_dispatch` entry, publishes A.
+  - Release assets edited between jobs fail attestation verification.
+  - An interrupted upload that leaves a `starter` placeholder (a simulated HTTP 502) is cleaned up and retried with the
+    original bytes. A differing completed asset still stops the job.
   - A release candidate's dry run runs no `npm-verify`: it installs nothing and looks up no provenance.
   - Then, immediately before the first real release, the maintainer configures each trusted publisher, with direct
     publishing allowed (D8a, Timing). The first real publication follows within 2 days, by the maintainer's decision.
@@ -1162,6 +1193,7 @@ Independent evidence, not values the code under test produced:
   - The VM parity fixtures run through each package entry, installed from its tarball, in Node 22, Node 24 and Chrome.
   - Node loading from the main thread and from an application worker, with no flags (I8).
   - Vite (development and production) and webpack (production) fixture builds.
+  - The server-bundle fixture for each bundler M0 recorded as passing, and a Chrome extension fixture.
   - The negative loading tests (I10), and the unchanged-archive-consumer fixture (I9).
   - A check that no `package.json` has install scripts.
   - Tests that a client refuses an engine of another release, and that an engine package's matching engine and wrapper
@@ -1362,3 +1394,16 @@ the recommendation recorded with each.
     - the credentials wording;
     - how the attestation identity is read and verified;
     - tokens refused from the start.
+- r8 (2026-11-16), responding to Codex's round 4 on r7 (approved; C27, C28) and Fable's re-review of r7 (approved; R19,
+  R20):
+  - **C27:** the durable anchor is a GitHub artifact attestation, made by a new build-free `attest` job, instead of
+    one run attempt's job outputs.
+    - A tag's release is built once: `wasm` stops before building when the release already holds attested tarballs.
+    - Recovery never rebuilds. It is "re-run failed jobs", or a `workflow_dispatch` entry in the same workflow file,
+      which publishes the existing assets after verifying their attestation.
+    - M4 tests the full three-attempt sequence.
+  - **C28:** create-once distinguishes completed assets from a failed upload's `starter` placeholder, which is deleted
+    before the original bytes are retried. I11 and M4 are updated.
+  - **R19:** the per-bundler server fixtures and the Chrome extension fixture are in I8, M3's exit and Verification.
+  - **R20:** `npm-verify` also checks the release asset against its attestation and, in a normal run, the digest
+    outputs.
