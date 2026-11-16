@@ -3,7 +3,7 @@
 **Status:** Accepted (2026-11-16) by the maintainer, after design approval from reviewer1 (r4) and the internal
 Fable and Codex reviews (r9; r10 applies their last shared finding). Design only; the implementation follows in
 milestones M0 to M5.
-**Date:** 2026-11-16 (r1 to r13)
+**Date:** 2026-11-16 (r1 to r14)
 **Risk class:** **medium**.
 - This is a public distribution with a lasting API. Package names and exported type names are hard to change once
   published.
@@ -275,6 +275,8 @@ Two identities are checked, at run time, before the client returns.
     - The global is not deleted after install, because `rest-adapter.js` reads `JulcRuntime.legacy`.
     - The worker and the shim record that they preloaded, and the engine reports which runtime it used. The client
       fails if a preload happened but the engine says it evaluated its own copy.
+    - The report travels as a property keyed by `Symbol.for('julc.runtime')`, not by a string, so it can never
+      collide with an engine's operation group (M1 review).
   - **Why the stamp is needed.**
     - D1a compares the image with the client. It never compares the runtime file with either.
     - Several engines can share one global: an embedder that loads engines on the main thread, as JOUST does. A stale
@@ -414,11 +416,16 @@ Two identities are checked, at run time, before the client returns.
 
 ### D4. The REST adapter: kept for archives, left out of packages (r2, revised in r5)
 
-- **The default depends on the distribution.** Each distribution generates a small `client-defaults.js` beside the
-  client:
-  - the archives' copy sets `rest: true`;
-  - `@julclang/wasm-client`'s sets `rest: false`.
-  - `createJulc`'s `rest` option overrides it.
+- **The default depends on the distribution** (revised in r14, from M1's review):
+  - `@julclang/wasm-client` ships a generated `client-defaults.js` with `rest: false`, beside its split client files.
+  - The archives and the jar ship a generated **single-file** `julc-wasm.js`, with the client core, its version and
+    `rest: true` inlined, and no imports.
+    - The playground versions `julc-wasm.js` with `?engine=<hash>`. Imports from it would not carry that query, so
+      after a deployment a browser could pair a new engine with a cached old client.
+    - Every other script an archive page loads also carries `?engine=`. The launcher is versioned by its
+      content-addressed name.
+  - Both distributions ship a `client-defaults.d.ts` with the default as a literal type.
+  - `createJulc`'s `rest` option overrides the default.
 - **Archive clients:** the archives ship their own copy of the client, with `rest: true`. The worker loads
   `rest-adapter.js` from beside the manifest, and the client exposes `rest`, exactly as today. An archive application
   that calls `createJulc({baseUrl}).rest(…)` keeps working unchanged (I9).
@@ -434,9 +441,11 @@ Two identities are checked, at run time, before the client returns.
   it returns `PackageClient`, which is `EngineClient` without `rest`. `VmClient` and `FullClient` have counterparts in
   the same way.
   - Each distribution also generates `client-defaults.d.ts`, which exports its default as a literal type
-    (`true` or `false`). `createJulc`'s overloads use it, so the return type with `rest` omitted is right in each
-    distribution.
-  - The `julc-wasm` jar carries the archives' copy of both files (`rest: true`), as ADR-064's embedders expect.
+    (`true` or `false`). `createJulc`'s overloads use it:
+    - with `rest` omitted, the return type is right for that distribution;
+    - a `boolean` `rest` gives the union;
+    - `createJulc(options: Options)` type-checks.
+  - The `julc-wasm` jar carries the archives' files (`rest: true`), as ADR-064's embedders expect.
   - M1's type checks cover `rest` omitted, `true` and `false`, in both distributions.
 
 ### D5. Public type names
@@ -1068,8 +1077,10 @@ provenance; only the first real publication does (M4).
   - Its archive-style loading is unchanged, and it may use package mode and pass `expectedVersion`.
   - ADR-064's I3 (the jar's client files equal the bundles') extends to the npm package: for a version, every file that
     `@julclang/wasm-client` and the `julc-wasm` jar both contain is byte-equal, including the stamped
-    `julc-runtime.js` (now also in the jar's `META-INF/julc-wasm/js/`), except the generated `client-defaults.js` and
-    `client-defaults.d.ts` (D4).
+    `julc-runtime.js` (now also in the jar's `META-INF/julc-wasm/js/`), `julc-worker.js`, `julc-wasm.d.ts` and
+    `julc-models.d.ts`. There are two exceptions (D4):
+    - `julc-wasm.js`: the archives' generated single file, against the package's split entry;
+    - `client-defaults.d.ts`: `rest: true` against `rest: false`.
   - **An embedder that uses the worker must ship the jar's `julc-runtime.js` beside its manifest.** The worker preloads
     it, and a missing file is a start-up error that names it. It is not optional.
   - A main-thread embedder that preloads nothing keeps the evaluation path. It needs `'unsafe-eval'`, and keeps working
@@ -1099,6 +1110,9 @@ provenance; only the first real publication does (M4).
 - **I1 covers the package as installed, not an application's bundle.** webpack's default Terser minifies the
   launcher. The engine still works, but the bytes an application serves are no longer the attested ones. The README
   shows the configuration that keeps them identical (D2). Firefox and Safari are not yet tested (M0).
+- **Checks that need a browser or extra Node versions** (the CSP browser smoke, the TypeScript checks, and the Node
+  22.3.0 and 24 package runs) run in CI's `wasm` jobs (M1). The Node binaries are checksum-verified, and Playwright is
+  installed with `--ignore-scripts`.
 - **Bundler behaviour changes.** The worker and asset patterns depend on how Vite and webpack recognise
   `new URL(…, import.meta.url)`. Mitigated by building fixture applications in CI, in development and production modes,
   from the packed tarballs (M1, M3).
@@ -1643,3 +1657,11 @@ choosing the recommendation recorded with each.
   - **C33:** negative tests for a malformed preload, a failed preload, and a preload reported as evaluated.
   - **C37:** a build-failing byte comparison of the stamped runtime across every copy, and its stamp against
     `julc-wasm-version.properties`.
+- r14 (2026-11-16), from M1's implementation review (Codex M1-C1 to C3, Fable M1-F1 to F5):
+  - **The archives' client is one generated file** (`julc-wasm.js`), with its version and `rest: true` inlined.
+    - Unversioned module imports could pair a new engine with a cached old client after a deployment.
+    - Every archive script is versioned by `?engine=`.
+    - The npm package keeps split files, and ships `client-defaults.js` with `rest: false`.
+  - **D4 and the I3 exception list** become `julc-wasm.js` and `client-defaults.d.ts`.
+  - **The runtime-provenance report** is keyed by `Symbol.for('julc.runtime')`.
+  - **The browser, TypeScript and Node-matrix checks run in CI's `wasm` jobs.**
