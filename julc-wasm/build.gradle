@@ -424,8 +424,54 @@ tasks.register('wasmSmokeEmbedder', Exec) {
                 layout.buildDirectory.file('wasm-parity/vm.json').get().asFile.absolutePath
     }
 }
+// ADR-077 M1: the packed @julclang/wasm-client loads both images in package mode, in Node.js with no flags (I8).
+// More Node.js binaries to run it with (for example 22.3.0 and 24): -PwasmSmokeNodes=/path/node,/other/node
+tasks.register('wasmSmokePackage', Exec) {
+    group = 'verification'
+    dependsOn 'wasmBundleFull', 'wasmBundleVm', 'wasmClientPack', 'vmParityExpected', 'jsTest'
+    outputs.upToDateWhen { false }
+    executable 'node'
+    doFirst {
+        def tarball = npmDir.get().asFile.listFiles().find { it.name.startsWith('julclang-wasm-client-') }
+        args file('src/test/js/package-smoke.mjs').absolutePath, tarball.absolutePath,
+                layout.buildDirectory.dir('wasm-bundle-vm').get().asFile.absolutePath,
+                layout.buildDirectory.dir('wasm-bundle-full').get().asFile.absolutePath,
+                layout.buildDirectory.file('wasm-parity/vm.json').get().asFile.absolutePath
+        def extra = providers.gradleProperty('wasmSmokeNodes').getOrElse('')
+        if (extra) args extra.split(',').toList()
+    }
+}
+// ADR-077 M1 in Chromium, under Content-Security-Policy: script-src 'self' 'wasm-unsafe-eval' on every response.
+// Needs Playwright with its Chromium: -PplaywrightDir=<…/node_modules/playwright>
+tasks.register('wasmBrowserSmoke', Exec) {
+    group = 'verification'
+    dependsOn 'wasmBundleFull', 'wasmBundleVm', 'wasmClientPackage'
+    outputs.upToDateWhen { false }
+    executable 'node'
+    doFirst {
+        def playwright = providers.gradleProperty('playwrightDir').orNull
+        if (!playwright) throw new GradleException('Pass -PplaywrightDir=<directory of the playwright npm package>')
+        args file('src/test/js/browser-smoke.mjs').absolutePath, clientPackage.get().asFile.absolutePath,
+                layout.buildDirectory.dir('wasm-bundle-vm').get().asFile.absolutePath,
+                layout.buildDirectory.dir('wasm-bundle-full').get().asFile.absolutePath, playwright
+    }
+}
+// ADR-077 D2: the declarations type-check from the packed package (NodeNext without DOM, bundler with DOM,
+// skipLibCheck: false). Installs pinned TypeScript and @types/node from the npm registry.
+tasks.register('wasmClientTypes', Exec) {
+    group = 'verification'
+    dependsOn 'wasmClientPack', 'wasmClientArchive'
+    inputs.dir('src/test/types')
+    outputs.upToDateWhen { false }
+    executable 'node'
+    doFirst {
+        def tarball = npmDir.get().asFile.listFiles().find { it.name.startsWith('julclang-wasm-client-') }
+        args file('src/test/js/package-types.mjs').absolutePath, tarball.absolutePath,
+                clientArchive.get().asFile.absolutePath
+    }
+}
 tasks.register('wasmBundle') { dependsOn 'wasmBundleFull', 'wasmBundleVm' }
-tasks.register('wasmSmoke') { dependsOn 'wasmSmokeFull', 'wasmSmokeVm', 'wasmSmokeEmbedder' }
+tasks.register('wasmSmoke') { dependsOn 'wasmSmokeFull', 'wasmSmokeVm', 'wasmSmokeEmbedder', 'wasmSmokePackage' }
 tasks.register('wasmParityExpected', JavaExec) {
     classpath = sourceSets.test.runtimeClasspath
     mainClass = 'org.julclang.wasm.ParityFixtures'

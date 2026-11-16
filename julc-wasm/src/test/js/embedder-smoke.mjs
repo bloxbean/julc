@@ -11,10 +11,6 @@ const baseUrl = pathToFileURL(path.resolve(bundle) + '/');
 const {createJulc, isFullClient} = await import(new URL('julc-wasm.js', baseUrl));
 await import(new URL('julc-runtime.js', baseUrl));
 const manifest = JSON.parse(readFileSync(new URL('engine.json', baseUrl)));
-  worker.on('message', data => bridge.onmessage?.({data}));
-  worker.on('error', error => bridge.onerror?.(error));
-  return bridge;
-};
 assert.match(manifest.launcher, /^demo-lang-[0-9a-f]{12}\.js$/);
 const started = performance.now();
 // Node's fetch cannot read file: URLs, so the manifest is passed in.

@@ -61,9 +61,13 @@ julc-demo/
     julc-wasm.js               # import this SDK entry point
     julc-wasm.d.ts
     julc-models.d.ts           # generated record types
+    julc-client.js             # the client, imported by julc-wasm.js
+    client-version.js          # the JuLC release the client belongs to
+    client-defaults.js         # the archive's defaults (the REST adapter is on)
+    client-defaults.d.ts
     julc-worker.js
     rest-adapter.js
-    julc-runtime.js
+    julc-runtime.js            # loaded by the worker before the engine
     julc-<hash>.js             # julc-vm-<hash>.js in the VM-only bundle
     julc-<hash>.js.wasm
 ```
@@ -341,7 +345,7 @@ try {
 | `createJulc(options?)` | Importable factory; initializes a client asynchronously. |
 | `isFullClient(client)` | Importable synchronous capability/type guard. |
 | `julc.version()` | Synchronous JuLC version string, distinct from the manifest's content hash. |
-| `julc.features()` | Synchronous `{api, variant, groups, defaultProtocol, bls}` capabilities. |
+| `julc.features()` | Synchronous `{api, variant, groups, defaultProtocol, bls, julcVersion}` capabilities. `julcVersion` is the JuLC release the engine was built with; the client refuses an engine, a manifest or a `julc-runtime.js` of another release. |
 | `julc.dispose()` | Synchronously marks the client closed and terminates its worker; all sessions are lost. |
 | `session.step()` | Advance one machine transition. |
 | `session.goto(step)` | Replay to an absolute step, supplied as `bigint`. |
@@ -511,9 +515,10 @@ but it can exceed the worker's request timeout.
   pairing, but do not mix an SDK, manifest, worker, or playground frontend from
   different releases/builds. `engine.json` and `features()` expose the supported
   groups so a host can reject a stale engine before invoking an unavailable method.
-- Strict Content Security Policies must allow the worker, Wasm compilation and the
-  generated/runtime JavaScript bootstrap (which currently uses dynamic evaluation).
-  Review this with your application's security policy rather than disabling CSP globally.
+- A strict Content Security Policy needs `script-src 'self' 'wasm-unsafe-eval'` for the
+  page and the worker: the worker loads `julc-runtime.js` as a file before the engine, so
+  no string evaluation is needed. Without `'wasm-unsafe-eval'` the engine cannot compile,
+  and `createJulc` rejects with that error.
 - The first load downloads a sizeable engine; the VM-only bundle is smaller. Reuse
   a client when practical and call `dispose()` during application teardown.
 - Native BLS12-381 functionality is unavailable. Check `julc.features().bls`; use a
