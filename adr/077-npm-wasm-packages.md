@@ -3,7 +3,7 @@
 **Status:** Accepted (2026-11-16) by the maintainer, after design approval from reviewer1 (r4) and the internal
 Fable and Codex reviews (r9; r10 applies their last shared finding). Design only; the implementation follows in
 milestones M0 to M5.
-**Date:** 2026-11-16 (r1 to r14)
+**Date:** 2026-11-16 (r1 to r15)
 **Risk class:** **medium**.
 - This is a public distribution with a lasting API. Package names and exported type names are hard to change once
   published.
@@ -492,6 +492,16 @@ vm.applyParams(request: {
 **Application.** It applies the parameters as `ScriptDecoder.decode` does: `Program.applyParams`, which wraps each
 value as a Plutus `Data` constant, then the same hash.
 
+**Stack safety along the whole path** (M2):
+- julc-core's Plutus `Data` CBOR encoder is iterative. A differential test against the previous recursive encoder
+  confirms its output is byte-identical.
+- `vm.applyParams` reads `cbor` and `uplc` values, and the script's own data constants, with its own stack-safe
+  canonical readers. It reaches the data constants through a reader hook on `UplcFlatDecoder`, and the JSON reader has
+  no nesting cap.
+- Depth 10,000 in every format passes on 256 KiB JVM stacks and in the Web Images.
+- The VM's own decoder for data constants (`PlutusDataCborDecoder`) is unchanged and still recursive. Making it
+  stack-safe is out of this ADR's scope.
+
 **The applied constants' encoding is part of the contract.**
 - Each applied value is encoded in the canonical form of Plutus `Data` that `PlutusDataCborEncoder` writes, matching
   Plutus's `encodeData`. The rules:
@@ -628,8 +638,15 @@ The options combine like this:
 - A **mismatch** is a fault of a value.
 - The checker finds every schema fault first, in a pass over the parameter schemas and the definitions they reach,
   before it looks at any value. So `not` cannot turn a schema fault into a success, and `anyOf` cannot hide one.
-- The two kinds are reported with different codes: `invalid-schema` and `parameter-mismatch`, both with status 422.
-  D6a's refusals are `invalid-request`, with status 400.
+- The two kinds are reported with different codes. The full table, as implemented in M2:
+
+  | Code | Status | When |
+  |---|---|---|
+  | `invalid-request` | 400 | Every D6a refusal, and a request body the strict reader refuses. |
+  | `work-limit-exceeded` | 400 | The schema check exceeded its work bound (default 1,000,000 units). The message suggests `checkSchema: false`. |
+  | `invalid-schema` | 422 | A D6b fault in any declared parameter schema; also an applied parameter's top-level `$ref` that cannot be followed, even with `checkSchema: false`, because the builtin rule needs it resolved. |
+  | `parameter-mismatch` | 422 | A value does not match its declared schema. |
+  | `internal` | 500 | An unexpected engine error. |
 
 **Supported domain.** Exactly the keywords in the CIP-57 table in Context, with these meanings:
 - **Annotations** (`title`, `description`, `$comment`) never affect the result.
@@ -689,6 +706,10 @@ O(|schema| × |value|) node visits.
 - Without memoisation, branches that share a recursive schema would cost exponential time. An example:
   `T = anyOf[{list, items: $ref T}, {list, items: $ref T}]`, against a list nested n deep, costs 2ⁿ checks.
 - A bound on the work is still enforced. Exceeding it is its own error, not a timeout of the client.
+
+**Partial application** (M2): when `checkSchema` is true, every declared parameter schema is compiled before any value
+is read, including those of parameters a partial application leaves unapplied. So a schema fault is reported first,
+as `invalid-schema`. The builtin refusal applies only to parameters receiving values.
 
 **Depth.** The checker walks schemas and values with an explicit stack, not Java recursion. Deep data or deeply nested
 applicators cannot exhaust the small stack of a Web Image (as ADR-074 does for the compiler's walks).
@@ -855,6 +876,10 @@ archives.
 - A retry is the same job, run again on the same files.
 - The job outputs `published = true` when it published or skipped (as verified) every package. For a dry run, such as
   a release candidate (D8), it outputs `published = false`.
+
+**A `wasm-package-checks` job** (M1) runs the browser CSP smoke, the TypeScript checks, and the package smoke on Node
+22.3.0 and 24 against the `wasm` job's packed output. It has a read-only token, no secrets and no Gradle, and
+`github-release` waits for it.
 
 **A separate `npm-verify` job** checks what the registry serves, after `npm-publish`.
 - It runs only when `npm-publish` reports `published = true`. A dry run installs nothing and looks up no provenance.
@@ -1665,3 +1690,11 @@ choosing the recommendation recorded with each.
   - **D4 and the I3 exception list** become `julc-wasm.js` and `client-defaults.d.ts`.
   - **The runtime-provenance report** is keyed by `Symbol.for('julc.runtime')`.
   - **The browser, TypeScript and Node-matrix checks run in CI's `wasm` jobs.**
+- r15 (2026-11-16), recording M1 and M2 as built and reviewed:
+  - the error-code table, with `work-limit-exceeded` as its own code;
+  - the partial-application schema rule;
+  - stack safety along the `applyParams` path (an iterative julc-core encoder; its own canonical readers; the VM's
+    decoder unchanged);
+  - the `wasm-package-checks` release job that `github-release` waits for.
+
+  Evidence: `adr/evidence/077-m2-apply-params-evidence.md` (on the M2 branch).
