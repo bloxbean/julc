@@ -1,0 +1,7 @@
+refuse-config-3fields exit=101
+refuse-config-mode2 exit=1
+refuse-config-tags-bytes exit=1
+refuse-deadline-bytes exit=1
+refuse-limit-bytes exit=1
+refuse-limit-index2 exit=1
+refuse-owner-int exit=1

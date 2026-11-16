@@ -1,0 +1,144 @@
+{
+  "preamble": {
+    "title": "julc/params_oracle",
+    "description": "Aiken contracts for project 'julc/params_oracle'",
+    "version": "0.0.0",
+    "plutusVersion": "v3",
+    "compiler": {
+      "name": "Aiken",
+      "version": "v1.1.23+8949565"
+    },
+    "license": "Apache-2.0"
+  },
+  "validators": [
+    {
+      "title": "oracle.anydata.else",
+      "redeemer": {
+        "schema": {}
+      },
+      "parameters": [
+        {
+          "title": "anything",
+          "schema": {
+            "$ref": "#/definitions/Data"
+          }
+        },
+        {
+          "title": "limit",
+          "schema": {
+            "$ref": "#/definitions/Option<Int>"
+          }
+        }
+      ],
+      "compiledCode": "58470101002229800aba1aab9eaab9dab9a4888966002b30013370e900018011baa0068acc004cdc4240006eb4c010c00cdd500344cdd7803803c52820028a504005149a26cac80081",
+      "hash": "fec191c8d00aa44fb16e9c247d7bbb45f6e136ad965c972c7a68f979"
+    },
+    {
+      "title": "oracle.oracle.else",
+      "redeemer": {
+        "schema": {}
+      },
+      "parameters": [
+        {
+          "title": "config",
+          "schema": {
+            "$ref": "#/definitions/oracle~1Config"
+          }
+        }
+      ],
+      "compiledCode": "588f0101003322229800aba2aba1aab9eab9a9bae0049bad003488888966002b30013371e0046eb8c014c010dd5004456600266e212000337000026eb4c014c018c010dd500446600266ebc01c01e942945003452820068a50400d149a26cac80189811e581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa004c01091b0000018bcfe568000001",
+      "hash": "e47363f6830382b9b84fb455b993f6af1bbac45cfd5dc399db99d4e0"
+    }
+  ],
+  "definitions": {
+    "ByteArray": {
+      "dataType": "bytes"
+    },
+    "Data": {
+      "title": "Data",
+      "description": "Any Plutus data."
+    },
+    "Int": {
+      "dataType": "integer"
+    },
+    "List<Int>": {
+      "dataType": "list",
+      "items": {
+        "$ref": "#/definitions/Int"
+      }
+    },
+    "Option<Int>": {
+      "title": "Option",
+      "anyOf": [
+        {
+          "title": "Some",
+          "description": "An optional value.",
+          "dataType": "constructor",
+          "index": 0,
+          "fields": [
+            {
+              "$ref": "#/definitions/Int"
+            }
+          ]
+        },
+        {
+          "title": "None",
+          "description": "Nothing.",
+          "dataType": "constructor",
+          "index": 1,
+          "fields": []
+        }
+      ]
+    },
+    "oracle/Config": {
+      "title": "Config",
+      "anyOf": [
+        {
+          "title": "Config",
+          "dataType": "constructor",
+          "index": 0,
+          "fields": [
+            {
+              "title": "owner",
+              "$ref": "#/definitions/ByteArray"
+            },
+            {
+              "title": "threshold",
+              "$ref": "#/definitions/Int"
+            },
+            {
+              "title": "tags",
+              "$ref": "#/definitions/List<Int>"
+            },
+            {
+              "title": "mode",
+              "$ref": "#/definitions/oracle~1Mode"
+            }
+          ]
+        }
+      ]
+    },
+    "oracle/Mode": {
+      "title": "Mode",
+      "anyOf": [
+        {
+          "title": "Fast",
+          "dataType": "constructor",
+          "index": 0,
+          "fields": []
+        },
+        {
+          "title": "Slow",
+          "dataType": "constructor",
+          "index": 1,
+          "fields": [
+            {
+              "title": "delay",
+              "$ref": "#/definitions/Int"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

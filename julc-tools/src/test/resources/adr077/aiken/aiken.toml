@@ -1,0 +1,13 @@
+name = "julc/params_oracle"
+version = "0.0.0"
+compiler = "v1.1.23"
+plutus = "v3"
+license = "Apache-2.0"
+description = "Aiken contracts for project 'julc/params_oracle'"
+
+[repository]
+user = "julc"
+project = "params_oracle"
+platform = "github"
+
+[config]
