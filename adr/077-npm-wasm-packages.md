@@ -1,7 +1,7 @@
 # ADR-077: npm packages for the WebAssembly engines, and `vm.applyParams`
 
 **Status:** Proposed (2026-11-16). Design only; no implementation in this change.
-**Date:** 2026-11-16 (r1, r2)
+**Date:** 2026-11-16 (r1 to r5)
 **Risk class:** **medium**.
 - This is a public distribution with a lasting API. Package names and exported type names are hard to change once
   published.
@@ -174,7 +174,11 @@ JuLC pins CIP-57 at revision `0ed8837a02ed78b64847e5646f9572ee1830c7ba`
 
 Reasons for this split:
 - An application that only evaluates scripts does not download the 24.5 MB engine.
-- An engine an embedder builds (ADR-064), such as JOUST's, can depend on the client alone instead of copying it.
+- An engine an embedder builds (ADR-064) can depend on the client alone instead of copying it, when the engine is built
+  on a published JuLC release (D1a). An embedder built on a JuLC release candidate or snapshot, which npm never gets
+  (D8), keeps using the client files from the `julc-wasm` jar.
+- JOUST today uses neither the client nor a manifest: `load.js` loads `engine/joust-runtime.js` on the main thread.
+  Moving it onto `wasm-client` is a larger change, for JOUST to decide (M5).
 
 The exact dependency stops npm from pairing an engine package with another release's client. D1a checks the pairing
 again at run time, for the cases dependency resolution cannot cover: `overrides`, duplicated installs, an application
@@ -195,10 +199,12 @@ Two identities are checked, at run time, before the client returns.
   - This is what catches a different client, whether from `overrides`, a duplicated install or a stale copy. The
     engine's runtime and the client must come from the same `julc-wasm` build (ADR-064 I3, extended to the npm client
     in Compatibility).
-  - A build that recorded no version reports `dev`, which matches only a client also built as `dev`.
+  - A build always records its version, because `wasmVersion` writes `project.version`. `dev` is reported only when
+    that resource is missing, and it matches only a client also built as `dev`.
 - **The engine's own release.**
-  - For JuLC's variants (`full`, `vm`), `version()` is the JuLC version too, so the client also requires
-    `version() === features().julcVersion`.
+  - For JuLC's variants, meaning an engine whose `variant` is `full` or `vm`, `version()` is the JuLC version too, so
+    the client also requires `version() === features().julcVersion`. An embedder that names its variant `full` or
+    `vm` is held to this rule as well.
   - An embedder's engine (ADR-064) reports its own application version as `version()`, which may differ. For it, the
     client compares `version()` only with an `expectedVersion` the caller passes.
 - **The wrappers.** `createJulcVm()` and `createJulc()` pass their package version as `expectedVersion`. With the two
@@ -266,7 +272,7 @@ Two identities are checked, at run time, before the client returns.
     - with `moduleResolution: "bundler"` and the DOM library;
     - in both cases with `skipLibCheck: false`.
 
-### D2a. Two loading modes, each confined (amends ADR-064 I4; r2)
+### D2a. Two loading modes, each confined (amends ADR-064 I4; r2, revised in r5)
 
 - **Archive mode** (`baseUrl`, the manifest's `launcher` field): unchanged. The worker loads only a plain file name next
   to the manifest: lowercase words joined by hyphens, a 12-hex-digit hash, then `.js`, with no path, query or scheme
@@ -274,15 +280,22 @@ Two identities are checked, at run time, before the client returns.
 - **Package mode** (`launcherUrl` and `moduleUrl` given):
   - The URLs come only from the caller, normally from an engine package's `engine.js`. In this mode the manifest's
     `launcher` field is ignored, never read as a path.
-  - The worker accepts a URL only when all of these hold:
-    - its scheme is `https:` or `http:` and its origin equals the worker script's origin (browsers), or its scheme is
-      `file:` (Node);
+  - **In a browser,** the worker accepts a URL only when:
+    - its origin equals the worker's own origin (`self.location.origin`), whatever the scheme. So `https:`, `http:`,
+      `chrome-extension:`, `moz-extension:`, and an Electron or Tauri app scheme all work, as long as the launcher is
+      served from the same origin as the worker;
+    - that origin is not opaque (`null`);
+    - its scheme is not `data:`, `blob:`, `javascript:` or `file:`;
     - it has no user name or password;
     - the launcher's path ends in `.js` and the module's in `.wasm`.
+  - **In Node,** the worker accepts only `file:` URLs, with the same extension rule.
+    - The worker knows it runs in Node because the Node bridge's shim marks the worker's global scope before the worker
+      script runs (D3).
+    - A browser worker never has that mark, so `file:` is always refused there.
   - Bundlers may rename the files, so the file-name pattern is not checked in this mode. Its role passes to the
     identity checks the engine must pass after loading: `api`, `variant` and `groups` against the manifest, and the
-    version (D1a). A mismatch disposes the worker.
-  - `data:`, `blob:`, `javascript:` and other schemes are refused, as are other origins (open question 7).
+    versions (D1a). A mismatch disposes the worker.
+  - Other origins are refused (open question 7).
 - **No mixing.** A client is in exactly one mode. Giving `baseUrl` together with `launcherUrl` or `moduleUrl` is an error.
 
 ### D3. Node.js is supported, through a shipped bridge
@@ -295,6 +308,14 @@ Two identities are checked, at run time, before the client returns.
 - The shim works because the launcher's directory is CommonJS (D2).
   - In package mode the shim loads the launcher at the URL it is given.
   - It no longer recognises the launcher by its file name, which a bundler may change (`node-worker.mjs`, line 16).
+- **Server-side bundling.** A server bundle (webpack `target: node`, Next.js, esbuild) can copy the launcher out of
+  `engine/`, into a directory whose nearest `package.json` says `"type": "module"`. `createRequire` would then fail, as
+  r1's all-ESM design did.
+  - M0 tests loading the launcher's unchanged bytes as a function with an injected `require`, `module`, `exports`,
+    `__filename` and `__dirname` (`vm.compileFunction`). That way, the directory's module type no longer matters.
+  - If it works, the shim uses it, and server-side bundling is supported.
+  - If it does not, server-side bundling is declared unsupported. The README then tells server applications to keep the
+    packages external to the bundle, and I8 names only unbundled Node.
 - **WebAssembly exception references.**
   - The first `createJulc` call checks whether the Node runtime supports them, by running `WebAssembly.validate` on a
     minimal module that uses them, rather than by reading the Node version.
@@ -308,16 +329,27 @@ Two identities are checked, at run time, before the client returns.
   main thread.)
 - The caller passes no flags and changes no files (I8).
 
-### D4. The REST adapter: kept for archives, left out of packages (r2)
+### D4. The REST adapter: kept for archives, left out of packages (r2, revised in r5)
 
-- **Archive clients and direct `wasm-client` users:** `createJulc` gains a `rest` option that defaults to `true`. With
-  it, the worker loads `rest-adapter.js` and the client exposes `rest`, exactly as today. An archive application that
-  calls `createJulc({baseUrl}).rest(…)` keeps working unchanged (I9).
-- **The engine packages:** `createJulcVm()` and `createJulc()` pass `rest: false`. None of the three packages ships
-  `rest-adapter.js`, so `rest: true` against a package-mode engine fails with a clear error.
-- **Types:** the client returns `EngineClient`, which keeps `rest`, as ADR-064 defines it, in archive mode. In package
-  mode it returns `PackageClient`, which is `EngineClient` without `rest`. `VmClient` and `FullClient` have
-  package-mode counterparts in the same way.
+- **The default depends on the distribution.** Each distribution generates a small `client-defaults.js` beside the
+  client:
+  - the archives' copy sets `rest: true`;
+  - `@julclang/wasm-client`'s sets `rest: false`.
+  - `createJulc`'s `rest` option overrides it.
+- **Archive clients:** the archives ship their own copy of the client, with `rest: true`. The worker loads
+  `rest-adapter.js` from beside the manifest, and the client exposes `rest`, exactly as today. An archive application
+  that calls `createJulc({baseUrl}).rest(…)` keeps working unchanged (I9).
+- **Where the adapter is loaded from:**
+  - in archive mode, only from beside the manifest, as today;
+  - in package mode, never. `rest: true` with package mode is an error.
+- **`@julclang/wasm-client` used directly** with `baseUrl`, for example by an embedder: `rest` defaults to `false`. With
+  `rest: true`, the adapter must sit beside the manifest. Otherwise the client fails with an error that names the
+  missing file.
+- **The engine packages** use package mode, so they never load the adapter. None of the three packages ships
+  `rest-adapter.js`.
+- **Types:** the client returns `EngineClient`, which keeps `rest`, as ADR-064 defines it, when `rest` is on. Otherwise
+  it returns `PackageClient`, which is `EngineClient` without `rest`. `VmClient` and `FullClient` have counterparts in
+  the same way.
 
 ### D5. Public type names
 
@@ -342,7 +374,8 @@ A new operation in the `vm` group (illustrative TypeScript):
 ```ts
 vm.applyParams(request: {
   script: ScriptInput;              // CBOR hex (single or double wrapped), flat, CIP-57 blueprint, text envelope;
-                                    // script.validator selects a blueprint's validator; script.params must be empty
+                                    // not UPLC text; script.validator selects a blueprint's validator by its exact
+                                    // title; script.params must be empty
   params: Array<PlutusData | DataInput>;
   partial?: boolean;                // default false
   checkSchema?: boolean;            // default true: check values against the declared schemas (D6b)
@@ -354,11 +387,22 @@ vm.applyParams(request: {
   language: 'V1' | 'V2' | 'V3';
   paramsApplied: number;
   remainingParams: number | null;   // declared minus applied; null when the input declares no parameter list
+  schemaChecked: boolean;           // true only when every value was checked against a declared schema
 }>;
 ```
 
 **Application.** It applies the parameters as `ScriptDecoder.decode` does: `Program.applyParams`, which wraps each
 value as a Plutus `Data` constant, then the same hash.
+
+**The applied constants' encoding is part of the contract.**
+- Each applied value is encoded in the canonical form of Plutus `Data` that `PlutusDataCborEncoder` writes, matching
+  Plutus's `encodeData`. The rules:
+  - non-empty lists and constructor fields are indefinite arrays, and empty ones definite;
+  - byte strings, and bignum payloads, over 64 bytes are indefinite strings of 64-byte chunks;
+  - maps are definite.
+- The bytes, and so the hash, depend on this form. Another tool that encodes the same value differently, for example
+  with definite-length lists, produces a different script and hash, and the README says so.
+- The independent oracles (I4) are given the values in this form.
 - `vm.decode` and `vm.hash` with `script.params` stay as they are, guesses included.
 - The new operation is the documented way, with the rules of D6a and D6b.
 - Only `remainingParams: 0` means the script is complete and ready to deploy. A partial result (`remainingParams` > 0),
@@ -369,36 +413,71 @@ include them. `wasmImageVm` keeps its `-H:AbortOnTypeReachable` guards for the c
 image build fails if the checker pulls either in (I3). Being in `julc-tools`, JVM callers, such as the CLI later, can use
 the same checker.
 
-### D6a. What `vm.applyParams` refuses to guess, and what it always checks (r2)
+### D6a. What `vm.applyParams` refuses to guess, and what it always checks (r2, revised in r4 and r5)
 
 Unlike `vm.decode`, `vm.applyParams` turns `ScriptDecoder`'s guesses into errors, because its output is what gets
-deployed.
+deployed. Each refusal is an `invalid-request` error (status 400), and names its cause.
 
 **Preparation, always checked:**
-- **Language.** If the language cannot be told from the input, the request must state it (`script.language`). In
-  `ScriptDecoder`'s terms, that is when `languageSource` would be `default`. Otherwise the operation fails with "state
-  the language".
-- **Validator.** A blueprint with more than one validator entry needs `script.validator`, even when the entries share
-  one `compiledCode`.
-  - Entries with the same code can still declare different parameter counts, schemas and hashes, and those decide
-    whether the request is accepted.
-  - So implicit selection could depend on the entries' order.
+- **Language,** taken only from evidence that determines it:
+  - the request's `script.language`;
+  - a text envelope's `type` (`PlutusScriptV1`, `V2` or `V3`);
+  - a CIP-57 blueprint's `preamble.plutusVersion`;
+  - or a blueprint hash that matches the script under exactly one language.
+
+  `ScriptDecoder`'s inferences from the program version (`version`) and from the builtins (`builtins`), and its
+  fallback (`default`), are not evidence.
+  - At protocol version 11, UPLC 1.1.0 is allowed under all three languages (`ProtocolFeatureRegistry`), so 1.1.0
+    tells nothing.
+  - Builtin codes tell nothing either, because builtins become available in older languages over time.
+
+  Without evidence, the operation fails with "state the language". When two sources of evidence disagree, it fails and
+  names both.
+- **Validator.**
+  - A blueprint with more than one validator entry needs `script.validator`, even when the entries share one
+    `compiledCode`. Entries with the same code can still declare different parameter counts, schemas and hashes, and
+    those decide whether the request is accepted, so implicit selection could depend on the entries' order.
+  - The selection is an exact title. `ScriptDecoder`'s numeric-index form is not accepted here.
+  - A blueprint in which two entries share a title is refused.
   - Only a blueprint with exactly one entry is used without a selection.
 - **Original hash.** If a blueprint gives a hash for the selected validator, it must equal the hash of the script
   before any parameter is applied. A mismatch is an error.
 - **No double application.** `script.params` must be empty; values go in `params` only.
-- **Exact script bytes.**
-  - There must be no bytes after the script's CBOR item.
-  - Decoding the program and encoding it again must give the input's FLAT bytes exactly. So the hash after application
-    covers the same code the input holds, and a non-canonical encoding is refused rather than silently normalised.
+- **Canonical script bytes, at every layer** (r5):
+  - Each CBOR byte-string wrapper must be definite, with a minimal length header, and must have no bytes after it.
+  - Decoding the program and encoding it again must give the input's FLAT bytes exactly.
+  - So the output is the re-encoding, and equals the input's bytes, whether or not parameters are applied: zero
+    parameters return the input unchanged. A non-canonical input is refused rather than silently normalised.
+  - The error names the cause, for example "constant at term 14 is not in the canonical Data encoding", or "the CBOR
+    wrapper has a non-minimal length".
+  - M2 records which toolchains' scripts pass (Verification).
+- **No UPLC text.** A UPLC text input is refused, because it has no bytes to keep.
 - **No warnings.** Any warning `ScriptDecoder` would give is an error in this operation.
 
-**Application, always checked:**
-- **Data only, never guessed.** Every value is either a `PlutusData` JSON object, or a `DataInput` with an explicit
-  `format`: `json`, `cbor` or `uplc`. A missing format, or `auto`, is refused, because auto-detection is ambiguous
-  (Context item 6).
-- **Builtin parameters.** If a declared parameter's schema is a builtin type (`#…`), the operation fails, whatever
-  `checkSchema` says. It applies Plutus `Data` constants only, so it cannot apply a builtin integer or byte string.
+**Values, always checked; strict and lossless** (r5):
+- **The forms accepted:** a `PlutusData` JSON object, or a `DataInput` with an explicit `format` (`json`, `cbor` or
+  `uplc`). A missing format, or `auto`, is refused, because auto-detection is ambiguous (Context item 6).
+- **A strict reader, separate from `vm.decode`'s.** The legacy `PlutusDataJson` coerces: `{"int":1.5}` becomes 1, and
+  `{"constructor":"bogus"}` becomes constructor 0. It also drops duplicate map keys and ignores trailing documents.
+  `applyParams` uses a strict reader of the same JSON shape instead:
+  - each object has exactly one shape: `{int}`, `{bytes}`, `{list}`, `{map}`, or `{constructor, fields}`;
+  - an `int` and a `constructor` index are JSON integer tokens, with no fraction and no exponent;
+  - a `constructor` index is non-negative, and `fields` is required;
+  - `bytes` is even-length hex;
+  - map entries are kept in order, duplicates included, as Plutus `Data` maps allow;
+  - unknown keys, and anything after the value, are refused.
+
+  JavaScript `bigint` values reach the engine as exact integer tokens.
+- **A `cbor` value** must be exactly one item, in the canonical encoding above. It must have no trailing bytes, and
+  encoding the decoded value again must give it back unchanged. Otherwise it is refused, and the error points to the
+  JSON form.
+- **A `uplc` value** is read strictly too, with nothing after it.
+- **Builtin parameters.** The check reads a declared parameter's schema after resolving its `$ref`; Aiken's parameter
+  schemas are always `$ref`s.
+  - If the resolved top-level schema is a builtin type (`#…`), the operation fails, whatever `checkSchema` says. It
+    applies Plutus `Data` constants only, so it cannot apply a builtin integer or byte string.
+  - A builtin type nested inside a Data schema is an invalid schema (D6b). It is found only when `checkSchema` is
+    true.
 - **Count.** For a blueprint input, the selected validator declares its parameters. A validator without a `parameters`
   field declares none (JuLC omits the field then, `BlueprintGenerator`, lines 77–81).
   - More values than declared is an error, so extra values can never shift into the datum, redeemer or context
@@ -406,20 +485,21 @@ deployed.
   - Fewer is an error unless `partial: true`.
   - Only a non-blueprint input (CBOR, flat, envelope) has no declaration.
 
-**Schema, checked unless `checkSchema: false`:** each value against its declared schema (D6b).
+**Schema, checked unless `checkSchema: false`:** each value against its declared schema (D6b). `schemaChecked` is true
+only when this check ran for every value.
 
 The options combine like this:
 
-| Input declares parameters? | Values vs declared | `partial` | `checkSchema` | Result | `remainingParams` |
-|---|---|---|---|---|---|
-| yes | equal | any | true | applied if every value matches its schema | 0 |
-| yes | equal | any | false | applied, shapes not checked | 0 |
-| yes | fewer | false | any | error, naming the missing titles | — |
-| yes | fewer | true | true / false | applied, with or without the shape check | declared − given |
-| yes | more | any | any | error, naming the declared titles | — |
-| blueprint, no `parameters` field (declares 0) | any value given | any | any | error | — |
-| blueprint, no `parameters` field (declares 0) | none given | any | any | the script as it is | 0 |
-| no declaration (CBOR, flat, envelope) | — | any | any | applied, nothing to check against | `null` |
+| Input declares parameters? | Values vs declared | `partial` | `checkSchema` | Result | `remainingParams` | `schemaChecked` |
+|---|---|---|---|---|---|---|
+| yes | equal | any | true | applied if every value matches its schema | 0 | true |
+| yes | equal | any | false | applied, shapes not checked | 0 | false |
+| yes | fewer | false | any | error, naming the missing titles | — | — |
+| yes | fewer | true | true / false | applied, with or without the shape check | declared − given | as `checkSchema` |
+| yes | more | any | any | error, naming the declared titles | — | — |
+| blueprint, no `parameters` field (declares 0) | any value given | any | any | error | — | — |
+| blueprint, no `parameters` field (declares 0) | none given | any | any | the script as it is | 0 | true |
+| no declaration (CBOR, flat, envelope) | — | any | any | applied, nothing to check against | `null` | false |
 
 ### D6b. The schema check: its domain and rules (r2)
 
@@ -429,7 +509,8 @@ The options combine like this:
 - A **mismatch** is a fault of a value.
 - The checker finds every schema fault first, in a pass over the parameter schemas and the definitions they reach,
   before it looks at any value. So `not` cannot turn a schema fault into a success, and `anyOf` cannot hide one.
-- The two kinds are reported with different error codes.
+- The two kinds are reported with different codes: `invalid-schema` and `parameter-mismatch`, both with status 422.
+  D6a's refusals are `invalid-request`, with status 400.
 
 **Supported domain.** Exactly the keywords in the CIP-57 table in Context, with these meanings:
 - **Annotations** (`title`, `description`, `$comment`) never affect the result.
@@ -445,12 +526,12 @@ The options combine like this:
 
   Choosing a constructor branch by its `index` is allowed only as a shortcut that gives the same answer. It is not
   the rule, because branches may share an index, or be primitives.
-- **`bytes`:** the length is in bytes. `enum` compares the value's hex form.
+- **`bytes`:** the length is in bytes. `enum` compares the value's hex form, ignoring case.
 - **`integer`:** bounds and `multipleOf` are evaluated at arbitrary precision.
 - **`list`:**
   - a single `items` schema applies to every element;
   - an `items` array requires exactly that many elements, matched by position;
-  - `uniqueItems` compares elements as Plutus data.
+  - `uniqueItems` compares elements as Plutus data: by their canonical encoding, using a hash set.
 - **`map`:** `keys` and `values` apply to every pair. `minItems` and `maxItems` count the pairs.
 - **`constructor`:** the value's index equals `index`, and its fields match `fields` by position. The field count must
   be equal.
@@ -460,6 +541,8 @@ The options combine like this:
 - `$ref` is local only: `#/definitions/<name>`, with JSON Pointer escaping (`~1` for `/`, `~0` for `~`). Aiken
   blueprints use `~1` in definition names.
 - Any other form, and a reference to a missing definition, is an invalid schema.
+- A schema with `$ref` may also carry annotations (`title`, `description`, `$comment`). Any other keyword beside `$ref`
+  makes it an invalid schema.
 
 **Cycles.** The supported domain is a deliberate subset of CIP-57's schemas, chosen so that every check ends.
 - Before checking values, the checker builds the graph of references and applicators reachable from each parameter
@@ -477,9 +560,16 @@ The options combine like this:
     not because each is meaningless, and they can be added later with a precise rule.
 
 **Mismatch paths under applicators.**
+- For `allOf`, the error reports the first listed schema that fails, at its path.
 - For `anyOf` and `oneOf`, the error is reported at the applicator's path. It lists each branch's first failure, or,
   for `oneOf`, the branches that matched.
 - For `not`, it reports that the value matched the schema it must not.
+
+**Cost.** The checker memoises the result for each pair of a schema node and a value node, so a check costs at most
+O(|schema| × |value|) node visits.
+- Without memoisation, branches that share a recursive schema would cost exponential time. An example:
+  `T = anyOf[{list, items: $ref T}, {list, items: $ref T}]`, against a list nested n deep, costs 2ⁿ checks.
+- A bound on the work is still enforced. Exceeding it is its own error, not a timeout of the client.
 
 **Depth.** The checker walks schemas and values with an explicit stack, not Java recursion. Deep data or deeply nested
 applicators cannot exhaust the small stack of a Web Image (as ADR-074 does for the compiler's walks).
@@ -510,8 +600,10 @@ refers to itself without consuming data`.
      release, and Dependabot would propose it.
    - JOUST, which matches `-pre` first, publishes its candidates to `latest` (`0.1.0-pre1-rc9` is its `latest`). JuLC
      deliberately differs.
-2. **A `-beta` version** goes to `beta`.
+2. **A `-beta` version** goes to `beta`. JuLC uses no `-beta` versions before 1.0. Semver compares `beta1` as text, so
+   it sorts below every `preN`.
 3. **Before 1.0, any other prerelease (`-preN`)** goes to `latest`.
+4. **A version with no prerelease part** (for example `0.1.0`, or `1.0.0`) goes to `latest`.
 
 At 1.0 this table is revisited.
 
@@ -543,19 +635,22 @@ that do not run the Gradle build get write access or credentials (`native-image-
 - It uploads all of them as the job's artifact.
 
 **The `github-release` job** attaches the three tarballs and their checksum file to the GitHub release, beside the
-archives. Once a release exists, its exact npm files are kept there for good, and a later retry uses them, never a
-rebuild.
+archives. Once a release exists, its exact npm files are kept there for good. Every publication and every retry takes
+them from there, never from a run artifact, which expires, and never from a rebuild.
 
 **A new `npm-publish` job:**
-- **Gate.** It runs only when both `npm_publish` and `github_release` are `true` in `gradle.properties`; the default for
-  `npm_publish` is `false`. npm never gets a version whose archives are not public, so users can always check I1.
+- **Gate.**
+  - It runs only when both `npm_publish` and `github_release` are `true` in `gradle.properties`; the default for
+    `npm_publish` is `false`.
+  - It runs only after `github-release` has succeeded (`needs: [validate, github-release]`).
+  - So npm never gets a version whose archives are not public, and users can always check I1.
 - **Credentials.** It runs in the `release-staging` environment, which accepts only `v*` tags. It gets `id-token: write`
   for npm trusted publishing (OIDC) and the read access needed to download artifacts, and nothing else. No npm token
   exists.
 - **Tools.** Node ≥ 22.14, and npm installed at an exact pinned version ≥ 11.5.1. Trusted publishing needs these, and
   Node 22 bundles npm 10. JOUST installs `npm@latest` unpinned; JuLC does not.
 - **What it doesn't do.** It runs no Gradle, no `npm install` and no package scripts, and it does not check out or build
-  the code. It downloads the tarballs and verifies them against the checksum file.
+  the code. It downloads the tarballs and the checksum file from the GitHub release's assets, and verifies them.
 - **Publishing.** It publishes in dependency order: `@julclang/wasm-client`, then `@julclang/julc-vm-wasm`, then
   `@julclang/julc-wasm`. Each is published with `npm publish <tarball> --access public --tag <tag> --provenance
   --ignore-scripts`.
@@ -565,26 +660,45 @@ rebuild.
 - npm never lets a version be overwritten. Before publishing each package, the job asks the registry for that
   `name@version`:
   - if it is absent, the job publishes it;
-  - if it is present with the same tarball integrity (`dist.integrity` equals the tarball's SHA-512), the job skips it;
-  - if it is present with different contents, the job fails and publishes nothing more.
+  - if it is present with the same tarball integrity (`dist.integrity` equals the tarball's SHA-512) and with a
+    provenance attestation from this workflow (below), the job skips it;
+  - if it is present with different contents, or without that provenance (for example, published by hand), the job
+    fails and publishes nothing more.
+- If a publish fails with "cannot publish over the previously published version", the registry was slow to show the
+  version. The job then checks integrity and provenance as above, and counts a match as success.
 - A retry is the same job, run again on the same files.
 
-**After publishing**, the job checks what the registry now serves:
-- it downloads each published `name@version` (`npm pack name@version`) and compares it with the build's tarball;
-- it runs `npm audit signatures` on a fixture that installs the three packages.
+**A separate `npm-verify` job** checks what the registry serves, after `npm-publish`.
+- It has only `contents: read`: no `id-token`, no environment and no secrets.
+- It installs the three exact versions into a fixture with `--ignore-scripts`, and runs `npm audit signatures`.
+- It downloads each published tarball (`npm pack name@version`) and compares it with the release asset.
+- It requires each version to carry a provenance attestation whose identity is this repository
+  (`bloxbean/julc`), this workflow file (`.github/workflows/native-image-release.yml`) and this tag
+  (`refs/tags/v<version>`). `npm audit signatures` alone would accept a version that has no attestation.
+- Any difference fails the job and the release record.
 
 **Bootstrap, once per package name, done by the maintainer:**
 - npm configures a trusted publisher per package, and a package must exist before one can be configured. So for each new
   name the maintainer publishes a placeholder version by hand, with 2FA, as JOUST did.
   - JOUST used `0.0.0-oidc-bootstrap.0` on a `bootstrap` dist-tag. It briefly became `latest`, until the first real
     version replaced it.
-- The maintainer then configures the trusted publisher: repository `bloxbean/julc`, workflow file
-  `native-image-release.yml` (npm validates that the publish command is in that file), environment `release-staging`.
-- Once publishing works, the maintainer sets each package to require 2FA and to refuse tokens.
+- The maintainer then configures the trusted publisher:
+  - repository `bloxbean/julc`;
+  - workflow file `native-image-release.yml` (npm validates that the publish command is in that file);
+  - environment `release-staging`;
+  - **with direct `npm publish` allowed.** npm always allows staged publication, but direct publishing must be chosen.
+- **Timing.** A newly configured trusted publisher expires unless its first publication succeeds within 2 days (npm's
+  trusted-publishers documentation). So the configuration is done immediately before the first real release, after
+  M4's dry runs. If it expires, it is created again.
+- **Once the first real version is published:**
+  - the maintainer sets each package to require 2FA and to refuse tokens;
+  - the maintainer deprecates the placeholder version, so `latest` can never fall back to it.
 
 **A bad release:**
 - It is deprecated (`npm deprecate`), and `latest` is moved back to the previous good version (`npm dist-tag add`)
   until a fixed version is published.
+- The maintainer does both by hand, with 2FA. Managing dist-tags through trusted publishing is a separate permission,
+  off by default, and it stays off.
 - It is not unpublished, because that breaks every project that depends on it, and npm allows it only within 72 hours
   and without dependents.
 - A wrong result from `vm.applyParams` is a security issue, because funds can be locked or misdirected. It also gets a
@@ -610,15 +724,18 @@ provenance; only the first real publication does (M4).
   refuses to run unless all of these agree:
   - the engine's `api`, `variant` and `groups` with its manifest;
   - the engine's `features().julcVersion` with the client's own `CLIENT_VERSION`;
-  - for JuLC's variants, the engine's `version()` with both.
+  - for an engine whose `variant` is `full` or `vm`, the engine's `version()` with both.
 
   Constrains D1, D1a, D2.
 - **I3 (VM image contents).** The VM engine contains no compiler, decompiler, JavaParser or cardano-client-lib code,
   including after `vm.applyParams` (the existing `-H:AbortOnTypeReachable` guards). Constrains D6.
 - **I4 (application is exact).** For any request `vm.applyParams` accepts (D6a):
   - Its `compiledCode` and `scriptHash` equal `vm.decode`'s `info.compiledCode` and `info.scriptHash` with the same
-    values in `script.params`. They also equal the JVM's `ScriptDecoder.decode`. This is the same code path, so it
-    guards against regressions only. The independent checks are the ones below.
+    values in `script.params`, and also the JVM's `ScriptDecoder.decode`, whenever the legacy reader reads the values
+    the same way. It does not when a map has a duplicate key, which the legacy reader drops. This is the same code
+    path, so it guards against regressions only. The independent checks are the ones below.
+  - The values are compared in the canonical `Data` encoding (D6), and zero parameters return the input's bytes
+    (D6a).
   - For any accepted script, Scalus applying the same values gives the same `cborHex` and hash. Scalus is an
     independent implementation, already a test dependency of `julc-cardano-client-lib`.
   - For an Aiken blueprint:
@@ -634,7 +751,8 @@ provenance; only the first real publication does (M4).
 - **I6 (same answers everywhere).** The packages give the same results in a browser, in Node 22 and in Node 24, and the
   same as the release archives, when installed from their tarballs. Constrains D2, D3.
 - **I7 (no install-time code).** No package has `preinstall`, `install` or `postinstall` scripts. The publish job runs
-  no build and no package scripts. Constrains D8a.
+  no build, no install and no package scripts. The verify job installs with `--ignore-scripts` and holds no
+  credentials. Constrains D8a.
 - **I8 (loads as installed).** An engine package installed from its tarball loads in Node 22 and Node 24, both on the
   main thread and inside an application's own `worker_threads` worker. It also loads from Vite and webpack production
   builds. In none of these cases does the caller pass flags or change files. Constrains D2, D3.
@@ -643,8 +761,12 @@ provenance; only the first real publication does (M4).
 - **I10 (loading confinement).** In archive mode the worker loads only the plain launcher file name next to the
   manifest (ADR-064 I4). In package mode it loads only URLs that pass D2a's checks. No mode loads a path taken from the
   manifest's `launcher` field. Constrains D2a.
-- **I11 (no rebuild, no overwrite).** A publication or a retry uses only the tarballs packed by the build job. A version
-  already on npm with different contents stops the job. Constrains D8a.
+- **I11 (no rebuild, no overwrite).** A publication or a retry uses only the tarballs packed by the build job, taken
+  from the GitHub release. A version already on npm with different contents, or without this workflow's provenance,
+  stops the job. Constrains D8a.
+- **I12 (provenance).** Every published version of the three packages carries a verified provenance attestation naming
+  `bloxbean/julc`, `.github/workflows/native-image-release.yml` and the release tag. The `npm-verify` job checks it for
+  every version, including those a retry skipped. Constrains D8a.
 
 ## Alternatives rejected
 
@@ -677,6 +799,11 @@ provenance; only the first real publication does (M4).
   An exact dependency, plus the run-time check (D1a), is stricter.
 - **One package with sub-path exports for both engines.** Every install would carry both engines, 38.8 MB, as with one
   package.
+- **Keeping a non-canonical input's original bytes, or splicing the application onto them.**
+  - FLAT encodes an application before its function, so applying a value cannot simply append bits.
+  - Splicing would mean re-encoding the prefix and shifting the original term by a bit offset: a second, bit-level
+    encoder, for the JVM and Aiken to differ from.
+  - Refusing non-canonical input (D6a) gives no wrong hash, and M2 records which toolchains it affects.
 - **Fetching the engine at run time from a CDN, with subresource integrity.** It would mean no offline install, a CSP
   allowance for another origin, and two sources of truth for one version. It could be added later, beside the packages.
 
@@ -718,12 +845,20 @@ provenance; only the first real publication does (M4).
 - **Embedders (ADR-064):**
   - An embedder image that calls `VmApi.register`, as the demo fixture does (`DemoLangWasm`, line 31), gains
     `vm.applyParams` and the checker's code with the new `julc-wasm` version.
-  - An older embedder engine used with a newer `wasm-client` lacks the operation at run time. The client builds its
-    methods from the engine's schemas, so the method is simply absent. An embedder's TypeScript types should describe
-    the operations its engine has (`Operations<T>`), not `VmClient`'s.
+  - **The npm client works only with engines built on the identical published JuLC version** (D1a).
+    - An engine built on another JuLC release, or before `features().julcVersion` existed, is refused before the
+      client returns.
+    - An embedder therefore keeps the client that matches its engine: the files from the same `julc-wasm` jar. Or it
+      rebuilds its engine on the new JuLC release and moves to that release's client.
+    - An embedder built on a JuLC release candidate or snapshot uses the jar's client files, because npm never gets
+      those versions (D8).
+  - An embedder's TypeScript types should describe the operations its engine has (`Operations<T>`), not `VmClient`'s.
   - Its archive-style loading is unchanged, and it may use package mode and pass `expectedVersion`.
-  - ADR-064's I3 (the jar's client files equal the bundles') extends to the npm package: for a version,
-    `@julclang/wasm-client`'s files equal the `julc-wasm` jar's.
+  - ADR-064's I3 (the jar's client files equal the bundles') extends to the npm package: for a version, every file that
+    `@julclang/wasm-client` and the `julc-wasm` jar both contain is byte-equal, except the generated
+    `client-defaults.js` (D4).
+    - The package adds the Node bridge.
+    - The jar also has `rest-adapter.js`.
 
 ## Risks
 
@@ -791,18 +926,26 @@ provenance; only the first real publication does (M4).
   - The alias coverage test passes.
 
 **M2: `vm.applyParams`** (D6, D6a, D6b).
-- Entry gate: M1 merged (open question 5 is decided).
-- Work: the checker and the preparation rules in `julc-tools`, the `VmApi` operation, the declarations.
+- Entry gate: this ADR accepted (open question 5 is decided).
+  - M2 does not depend on M1: the checker and `VmApi` are Java, independent of the JavaScript client. Only its
+    TypeScript declarations wait for M1's aliases.
+- Work: the checker, the strict value reader and the preparation rules in `julc-tools`, the `VmApi` operation, and the
+  declarations.
 - Exit, all tests listed under Verification:
   - I4's differential tests, including the fixed vector;
   - the Aiken oracle;
-  - the option matrix of D6a, each row;
+  - the option matrix of D6a, each row, including `schemaChecked`;
+  - a corpus check of the canonical-bytes rule. It records which of these pass and which are refused:
+    - JuLC's output;
+    - Aiken v1.1.23, and at least one older Aiken release;
+    - a PlutusTx script;
+    - scripts already partially applied by Aiken and by Scalus;
   - I5's tests for each keyword, applicator, reference form and cycle kind;
   - the VM image still builds under its guards (I3);
   - a mutation check on each schema rule and each D6a refusal.
 
 **M3: the engine packages** (D1, D2, D8a).
-- Entry gate: M1 and M2 merged.
+- Entry gate: M1 and M2 merged, M0's server-side bundling result applied (D3).
 - Work: Gradle tasks that assemble `@julclang/julc-vm-wasm` and `@julclang/julc-wasm` from `wasm-bundle-{vm,full}`,
   with the CommonJS `engine/` directory and the generated `engine.js`, plus `npm pack`.
 - Exit:
@@ -814,20 +957,28 @@ provenance; only the first real publication does (M4).
 **M4: publishing** (D8, D8a).
 - Entry gate:
   - M3 merged;
-  - the maintainer has published a placeholder for each of the three names and configured each trusted publisher;
+  - the maintainer has published a placeholder for each of the three names;
   - `npm_publish` stays `false` until the maintainer decides.
-- Work: packing and checksums in `wasm`, the attachments in `github-release`, and the `npm-publish` job with its gate,
-  OIDC permissions, ordering, retry rules and dist-tags.
+- Work:
+  - packing and checksums in `wasm`;
+  - the attachments in `github-release`;
+  - the `npm-publish` job, with its gate, `needs`, OIDC permissions, ordering, retry rules and dist-tags;
+  - the `npm-verify` job;
+  - pinning the `wasm` job's Binaryen download by SHA-256 (today it pipes `curl` into `tar`, lines 200–204).
 - Exit:
   - A release candidate's run produces the tarballs and checksums.
   - Its publish job, in dry-run mode, lists the expected files and tags.
   - The retry rules pass against a local registry, for these cases: already published and identical; already published
     and different; and a failure after the first package.
-  - Then the first real publication, by the maintainer's decision. It is the only proof of authentication and
-    provenance, and its tags are checked on the registry.
+  - Then, immediately before the first real release, the maintainer configures each trusted publisher, with direct
+    publishing allowed (D8a, Timing). The first real publication follows within 2 days, by the maintainer's decision.
+  - That publication is the only proof of authentication and provenance. Its tags, provenance (I12) and registry
+    contents are checked by `npm-verify`.
 
 **M5: documentation and adopters.**
+- Entry gate: M4's first real publication.
 - Work: the npm section of `javascript-wasm.md`, release notes, and an `applyParams` example.
+- Exit: the guide's examples run against the published packages, in a browser fixture and in Node.
 - Optional, in JOUST's own repository and by its decision: `@julclang/joust-runtime` moves its loader onto
   `@julclang/wasm-client`.
 
@@ -835,7 +986,8 @@ provenance; only the first real publication does (M4).
 
 Independent evidence, not values the code under test produced:
 - **Application (I4).**
-  - **The fixed vector.** Apply the integer 42 (`182a`) to `(program 1.1.0 (lam p (con unit ())))`. Expect:
+  - **The fixed vector.** Apply the integer 42 (`182a`) to `(program 1.1.0 (lam p (con unit ())))`, with
+    `script.language: 'V3'` (a raw script is not evidence of its language, D6a). Expect:
     - `cborHex` `4c0101003249930102182a0001`;
     - `compiledCode` `4d4c0101003249930102182a0001`;
     - `scriptHash` `36f2b62169a767e3bcb49a0ff8dd3f473db91e15434ac69ace324ac6`.
@@ -853,8 +1005,22 @@ Independent evidence, not values the code under test produced:
   - **Aiken's own schema check.** `aiken blueprint apply` checks the value against the blueprint's schema. The values
     it refuses for an Aiken blueprint must also be refused by `vm.applyParams`, and the ones it accepts must also be
     accepted.
+  - **Cross-language vectors.** The same raw script with `script.language` V1, V2 and V3 gives identical bytes and
+    three different hashes. Without a language it is refused. Two further cases are refused without a language too: a
+    V3 script at UPLC 1.0.0 that uses `serialiseData`, and a V2 script that uses a builtin added later.
+  - **Encodings.**
+    - `58050101002499`, which wraps canonical FLAT in a non-minimal CBOR header, and an indefinite-length wrapper are
+      refused.
+    - A `cbor` value in a non-canonical encoding (`d8799f01ff` is canonical for a one-field constructor, because
+      non-empty fields are indefinite arrays; `d8798101` is not) is refused; the canonical one is accepted.
+    - Strict values: `{"int":1.5}`, `{"constructor":"bogus","fields":[]}`, two JSON documents, an object with two
+      shapes, and odd-length hex are refused. A map with a duplicate key keeps both entries, in order.
   - **Preparation (D6a).** Negative tests for each refusal:
-    - an ambiguous language without `script.language`;
+    - an ambiguous language without `script.language`, including a program at UPLC 1.1.0 and one identified only by
+      its builtins;
+    - two evidence sources that disagree on the language;
+    - UPLC text input;
+    - a blueprint with a duplicated title, and a numeric selection;
     - several validators without a selection;
     - a blueprint hash that does not match;
     - values in `script.params`;
@@ -889,6 +1055,8 @@ Independent evidence, not values the code under test produced:
     - a definition named `Data` that is a constructor, which must be checked as a constructor;
     - opaque, annotation-only data;
     - names with `~1` and `~0` escapes.
+  - **Cost.** The exponential case of D6b (`anyOf` of two branches that recurse, against a list nested 30 deep) ends
+    within the memoised bound. The work bound's error is tested separately.
   - **Real blueprints.** The blueprints JuLC generates for every `@Param` type in `julc-examples` must accept the values
     their own tests apply. A sample of Aiken blueprints must accept the values of their own tests.
 - **Packages (I1, I2, I6–I11).**
@@ -900,9 +1068,11 @@ Independent evidence, not values the code under test produced:
   - A check that no `package.json` has install scripts.
   - Tests that a client refuses an engine of another release, and that an engine package's matching engine and wrapper
     are refused with an overridden client of another release (I2).
-  - The publish job's retry cases against a local registry (I11).
-  - The comparison of the published files from the registry, and `npm audit signatures`, after the first real
-    publication (M4).
+  - The publish job's retry cases against a local registry (I11): identical with provenance (skipped), identical
+    without provenance (fails), different contents (fails), "already exists" with a match (success), and a failure
+    after the first package.
+  - `npm-verify` after the first real publication: the registry comparison, `npm audit signatures`, and the provenance
+    identity of each version (I12).
 - **No regression.** The existing `julc-wasm` tests, `wasmSmoke{Full,Vm}`, the embedder smoke test and the
   playground's static build keep passing.
 
@@ -984,8 +1154,8 @@ the recommendation recorded with each.
   - **An internal Claude review of `6addf2d7` (K1 to K20).** K1, K2, K5, K6 and K11 match the findings above. New
     changes:
     - **K3:** D6a refuses values without an explicit format, and scripts with trailing bytes or that don't round-trip.
-    - **K4:** a blueprint validator without `parameters` declares zero; selection is needed only when codes differ;
-      the count and builtin checks are always on.
+    - **K4:** a blueprint validator without `parameters` declares zero; the count and builtin checks are always on.
+      (Its "selection only when codes differ" was superseded in r4, by F8.)
     - **K7:** release candidates are not published, because semver orders them above their final release (checked
       with npm's `semver`); open question 8.
     - **K8:** I1 is checked on the packed tarball against the extracted archive, and again from the registry.
@@ -1013,3 +1183,52 @@ the recommendation recorded with each.
   - **F9:** D6b's cycle rule is now the per-cycle condition: every cycle contains a consuming edge. That supports
     recursive sum types and alias recursion, which r2's rule would have rejected. Cycles through `not` are described as
     a deliberately unsupported subset. Verification adds both recursion cases.
+- r5 (2026-11-16), responding to reviewer1's F10 (round 3, approval of `e05d2012`), a Fable review of `e05d2012` (R1 to
+  R11) and Codex's second review of `e05d2012` (C14 to C19). Every finding was checked against the code, and against
+  npm's trusted-publishers documentation for C18, and accepted.
+  - **R1 = C14 (P1):** D6a takes the language only from evidence (request, envelope `type`, blueprint preamble, a hash
+    under exactly one language). `version` and `builtins` inferences are refused, because UPLC 1.1.0 is allowed under
+    all languages at protocol 11. Adds cross-language vectors; the fixed vector states V3.
+  - **C15 (P1):** a strict, lossless value reader for `applyParams`. No coercions, exactly one shape per object,
+    integer tokens only, nothing trailing, and map entries kept with duplicates and order. I4 is qualified where the
+    legacy reader differs.
+  - **R2:** the applied constants' canonical `Data` encoding is part of D6's contract. Non-canonical `cbor` values are
+    refused, and the oracles get canonical values.
+  - **R3, C16:** canonical bytes at the CBOR-wrapper layer too, so zero parameters return the input unchanged and I4
+    holds. Errors name the cause. M2 runs a toolchain corpus check. A new rejected alternative covers keeping or
+    splicing original bytes.
+  - **R4, F10:** the embedder compatibility consequence is stated: the npm client works only with engines built on the
+    identical published JuLC version; release-candidate and snapshot embedders use the jar's client. JOUST's
+    description is corrected.
+  - **R5:** D2a's browser rule is same-origin with the worker, whatever the scheme (extensions and app schemes work).
+    `file:` is accepted only in Node. M0 tests an injected-`require` launcher load for server-side bundling, or the
+    README declares it unsupported.
+  - **R6:** `rest`'s default is set per distribution (`client-defaults.js`), with where the adapter is loaded from in
+    each mode. The I3 extension is reworded.
+  - **R7, C19:** `npm-publish` needs `github-release`, and takes its tarballs from the release. A separate `npm-verify`
+    job without credentials installs, audits and compares.
+  - **C17:** provenance must be present and match this workflow, including for skipped versions. New invariant I12.
+  - **C18:** direct publishing must be allowed in the trusted publisher, and the configuration is made immediately
+    before the first release, because it expires after 2 days unused.
+  - **R8:** memoised checking, O(|schema| × |value|), with a work bound; `allOf` mismatch reporting.
+  - **R9:**
+    - UPLC text refused;
+    - exact unique titles;
+    - the builtin check after `$ref`;
+    - a `schemaChecked` field;
+    - `enum` compared ignoring case;
+    - `$ref` siblings limited to annotations;
+    - the error codes.
+  - **R10:**
+    - the tag table covers non-prerelease versions and `beta`;
+    - the placeholder is deprecated;
+    - dist-tag changes and deprecation are done by hand with 2FA;
+    - registry lag;
+    - the Binaryen pin is listed in M4.
+  - **R11:**
+    - the header date;
+    - K4 annotated as superseded;
+    - M2 independent of M1;
+    - M5 gets entry and exit criteria;
+    - I2 names the variants;
+    - the `dev` case.
