@@ -2,8 +2,8 @@
 
 > Single-file dump of the JuLC docsite, suitable for AI agent ingestion.
 
-julcVersion: 0.1.0-pre21-rc2-b529e18-SNAPSHOT
-Generated: 2026-11-15T14:29:54.483Z
+julcVersion: 0.1.0-pre21-rc2-ffea6d2-SNAPSHOT
+Generated: 2026-11-16T03:13:19.051Z
 Site: https://julc.dev
 Repo: https://github.com/bloxbean/julc
 Examples: https://github.com/bloxbean/julc-examples
@@ -3260,10 +3260,14 @@ Section 2. The processor:
 1. Finds classes annotated with `@SpendingValidator`, `@MintingValidator`, `@MultiValidator`, etc.
 2. Reads the source file via the compiler's `Trees` API
 3. Compiles to UPLC, FLAT-encodes, and double-CBOR-wraps
-4. Writes to `META-INF/plutus/<ClassName>.plutus.json`
+4. Writes to `META-INF/plutus/<package path>/<ClassName>.plutus.json`, for example
+   `META-INF/plutus/com/example/VestingValidator.plutus.json`, and to
+   `META-INF/plutus/<ClassName>.plutus.json` for older loaders
 
 The compiled script ends up on the classpath alongside `.class` files and can be
-loaded at runtime with `JulcScriptLoader`.
+loaded at runtime with `JulcScriptLoader`, which reads the copy under the class's
+qualified name. Validators in different packages can share a simple name; one
+compilation cannot hold two of them, so give them separate modules or rename one.
 
 ##### Gradle Plugin
 
@@ -14752,6 +14756,29 @@ Each section below is a release, newest first.
 
 #### 0.1.0-pre21
 
+##### Each validator loads its own script, whatever its simple name (#326)
+
+`JulcScriptLoader.load(Class)` and the annotation processor used to key a compiled script by the class's simple name
+only, so `com.a.VaultValidator` and `com.b.VaultValidator` on one class path both loaded the first copy of
+`META-INF/plutus/VaultValidator.plutus.json`.
+
+- The processor now also writes each script and source map under the class's qualified name, for example
+  `META-INF/plutus/com/b/VaultValidator.plutus.json`, and records the class in the JSON (`"validator":
+  "com.b.VaultValidator"`). It still writes the simple-name copy, for older loaders.
+- `JulcScriptLoader` reads the qualified copy. For a module compiled before this release, it reads the simple-name
+  copy that sits beside the class's `.class` file. It never uses a copy that records another class. When no copy
+  is the class's own, or two different copies are, it throws an `IllegalArgumentException` that names them. The
+  source map always comes from beside the script that was used.
+- `ValidatorOutput` gains a `validator` component, the class's binary name, which is empty for older metadata. The
+  existing constructors are kept, and `toJson()` writes the field only when it is known.
+- Two validators with one simple name in one compilation now fail with an error that names both, instead of a
+  `FilerException`.
+
+Migration: recompile the modules that hold your validators. Until you do, one case still goes undetected: a fat jar
+that merges two such older modules with same-named validators keeps one simple-name copy, which both classes read.
+Exclude validator packages from relocation by shading plugins. A validator whose package gained a prefix is now
+refused, because its script records its original name. One whose package was replaced is not detected.
+
 ##### Long programs compile on small stacks (#327)
 
 The compiler's walks over a program no longer recurse on the Java stack as deep as the program is long. This covers:
@@ -19911,6 +19938,18 @@ public class FeeValidator { ... }   // calls FeeLib.fee(...)
 
 ---
 
+##### 3.14 `Two validators in this compilation are named VaultValidator: com.a.VaultValidator and com.b.VaultValidator`
+
+**Cause:** The annotation processor also writes each script under its simple
+name, as `META-INF/plutus/VaultValidator.plutus.json`, and the CIP-57 blueprint
+uses the simple name as the validator's title. One compilation therefore cannot
+hold two validators with one simple name.
+
+**Fix:** Rename one of them, or compile them in separate modules. Validators
+with one simple name in different modules load their own scripts.
+
+---
+
 #### 4. Type Resolution Errors
 
 These errors are raised while the compiler registers and resolves types.
@@ -20207,6 +20246,41 @@ compiler error but a chain-level constraint.
 - Use stdlib methods from `julc-stdlib` (compiled once, shared via reference)
 - Simplify logic, reduce the number of record types and sealed interfaces
 - Use `@Param` fields to move configuration data off-chain (applied at deployment)
+
+---
+
+##### 5.5 `Found 2 different compiled Plutus scripts for com.b.VaultValidator at META-INF/plutus/com/b/VaultValidator.plutus.json`
+
+**Cause:** Two different builds of the same validator are on the class path,
+such as a stale jar beside fresh classes. `JulcScriptLoader` refuses rather than
+guess which one you meant. The message lists each copy's location.
+
+**Fix:** Keep one build of the validator on the class path, for example by
+cleaning the build or removing the old jar.
+
+---
+
+##### 5.6 `No compiled Plutus script for com.b.VaultValidator is on the class path`
+
+**Cause:** The class has no script of its own. Copies of
+`META-INF/plutus/VaultValidator.plutus.json` exist, but each belongs to another
+class:
+
+- A copy that names a class, such as `(com.a.VaultValidator)`, was written for
+  that class.
+- A copy that names no class was compiled by a JuLC release before 0.1.0-pre21.
+  JuLC uses it only when every jar or directory that holds the class's
+  `.class` file holds the same copy.
+
+**Fix:** Make sure the JuLC annotation processor ran when the class was
+compiled: the processor is on the annotation processor path, and the class
+carries a validator annotation such as `@SpendingValidator`. If the class was
+compiled by an older JuLC, recompile it with 0.1.0-pre21 or later.
+
+If the message says `shaded.com.b.VaultValidator looks relocated`, or that the
+script `was written for com.b.VaultValidator, not for
+shaded.com.b.VaultValidator`, the class was relocated, for example by a shading
+plugin. Exclude its package from relocation, or recompile it in its new package.
 
 ---
 

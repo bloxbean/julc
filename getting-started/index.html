@@ -1074,10 +1074,14 @@ Section 2. The processor:</p>
 <li>Finds classes annotated with <code dir="auto">@SpendingValidator</code>, <code dir="auto">@MintingValidator</code>, <code dir="auto">@MultiValidator</code>, etc.</li>
 <li>Reads the source file via the compiler’s <code dir="auto">Trees</code> API</li>
 <li>Compiles to UPLC, FLAT-encodes, and double-CBOR-wraps</li>
-<li>Writes to <code dir="auto">META-INF/plutus/&lt;ClassName&gt;.plutus.json</code></li>
+<li>Writes to <code dir="auto">META-INF/plutus/&lt;package path&gt;/&lt;ClassName&gt;.plutus.json</code>, for example
+<code dir="auto">META-INF/plutus/com/example/VestingValidator.plutus.json</code>, and to
+<code dir="auto">META-INF/plutus/&lt;ClassName&gt;.plutus.json</code> for older loaders</li>
 </ol>
 <p>The compiled script ends up on the classpath alongside <code dir="auto">.class</code> files and can be
-loaded at runtime with <code dir="auto">JulcScriptLoader</code>.</p>
+loaded at runtime with <code dir="auto">JulcScriptLoader</code>, which reads the copy under the class’s
+qualified name. Validators in different packages can share a simple name; one
+compilation cannot hold two of them, so give them separate modules or rename one.</p>
 <div class="sl-heading-wrapper level-h3"><h3 id="gradle-plugin">Gradle Plugin</h3><a class="sl-anchor-link" href="#gradle-plugin"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Gradle Plugin”</span></a></div>
 <p>For projects that prefer separate validator source files, apply the Gradle plugin:</p>
 <div class="expressive-code"><figure class="frame has-title not-content"><figcaption class="header"><span class="title">build.gradle</span></figcaption><pre data-language="groovy"><code><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">plugins {</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#D6DEEB;--1:#403F53">    </span></span><span style="--0:#D6DEEB;--1:#403F53">id </span><span style="--0:#D9F5DD;--1:#111111">'</span><span style="--0:#ECC48D;--1:#984E4D">org.julclang.julc</span><span style="--0:#D9F5DD;--1:#111111">'</span><span style="--0:#D6DEEB;--1:#403F53"> version </span><span style="--0:#D9F5DD;--1:#111111">'</span><span style="--0:#ECC48D;--1:#984E4D">0.1.0-pre21</span><span style="--0:#D9F5DD;--1:#111111">'</span></div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">}</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="plugins {    id &#x27;org.julclang.julc&#x27; version &#x27;0.1.0-pre21&#x27;}"><div></div></button></div></figure></div>
