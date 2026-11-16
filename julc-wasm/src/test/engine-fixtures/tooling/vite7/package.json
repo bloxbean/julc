@@ -1,0 +1,8 @@
+{
+  "name": "julc-engine-fixtures-vite7",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "vite": "7.3.8"
+  }
+}

@@ -2,7 +2,14 @@
 // @julclang/wasm-client from their packed tarballs (never linked), in the environments the packages claim. Every
 // fixture runs src/test/engine-fixtures/shared/check.js through the packages' entry points: vm.decode, vm.evaluate,
 // vm.applyParams on the fixed vector and, for the full engine, a compile. The Node.js and plain-browser fixtures also
-// run the VM parity fixtures. Each bundler's output is searched for the launcher's exact bytes.
+// run the VM parity fixtures, and point the packages' exported URLs at the other engine before creating each client.
+// Each fixture states which launcher bytes it must ship (on disk and as served), and fails otherwise.
+//
+// The tools (Vite, webpack, esbuild, Next.js) are locked: src/test/engine-fixtures/tooling/<app|next|vite7> hold a
+// package.json and package-lock.json each. A fixture directory is installed with npm ci --ignore-scripts from them,
+// then the three tarballs are added without saving, and the installed tree is checked against the lock. To move a
+// tool to another version, edit its package.json there and regenerate the lock:
+//   npm install --package-lock-only --ignore-scripts   (in that tooling directory), then commit both files.
 //
 //   node engine-fixtures.mjs --npm <dir of the three tarballs> --version <JuLC version> --work <empty work dir>
 //     [--parity <vm.json>] [--playwright <playwright package dir>] [--nodes <node binary>,...] [--only <fixture>,...]
@@ -36,10 +43,6 @@ const tarballs = ['wasm-client', 'julc-vm-wasm', 'julc-wasm'].map(name => {
   if (!existsSync(file)) throw new Error('Missing ' + file);
   return file;
 });
-// Exact versions of the tools; the browser fixtures' versions are those M0 tested.
-const TOOLS = {vite: 'vite@8.3.8', vite7: 'vite@7.3.8', webpack: 'webpack@5.112.2', webpackCli: 'webpack-cli@7.3.1',
-  terser: 'terser-webpack-plugin@5.6.1', esbuild: 'esbuild@0.28.2', next: 'next@16.4.6', react: 'react@19.3.1',
-  reactDom: 'react-dom@19.3.1'};
 const results = [];
 const env = {...process.env, NEXT_TELEMETRY_DISABLED: '1', NO_COLOR: '1'};
 
@@ -56,11 +59,33 @@ function run(command, commandArgs, cwd, {timeout = 600000, extraEnv = {}} = {}) 
 }
 /** The last JSON line a program printed. */
 const lastJson = text => JSON.parse(text.trim().split('\n').filter(line => line.startsWith('{')).pop());
-function install(dir, tools) {
+const NPM = ['--ignore-scripts', '--no-audit', '--no-fund'];
+/** The locked tools of src/test/engine-fixtures/tooling/<name>, installed with npm ci, unchanged by what follows. */
+function installTooling(dir, name) {
   mkdirSync(dir, {recursive: true});
-  writeFileSync(path.join(dir, 'package.json'), JSON.stringify({name: path.basename(dir), private: true,
-    type: 'module'}, null, 2));
-  run('npm', ['install', ...tarballs, ...tools, '--ignore-scripts', '--no-audit', '--no-fund', '--save-exact'], dir);
+  for (const file of ['package.json', 'package-lock.json']) {
+    cpSync(path.join(fixturesDir, 'tooling', name, file), path.join(dir, file));
+  }
+  run('npm', ['ci', ...NPM], dir);
+}
+/** Every package the lock names is installed at its locked version (platform packages of other systems aside). */
+function checkLocked(dir, name) {
+  const lock = JSON.parse(readFileSync(path.join(fixturesDir, 'tooling', name, 'package-lock.json'), 'utf8'));
+  for (const [where, entry] of Object.entries(lock.packages)) {
+    if (!where) continue;
+    const manifest = path.join(dir, where, 'package.json');
+    if (!existsSync(manifest)) {
+      assert.ok(entry.optional, `${name}: ${where} ${entry.version} is locked but not installed`);
+      continue;
+    }
+    assert.equal(JSON.parse(readFileSync(manifest, 'utf8')).version, entry.version, `${name}: ${where} moved`);
+  }
+}
+/** A fixture directory: the locked tools, then the three tarballs, added without re-resolving the tools. */
+function install(dir, name) {
+  installTooling(dir, name);
+  run('npm', ['install', ...tarballs, '--no-save', ...NPM], dir);
+  checkLocked(dir, name);
   for (const name of ['wasm-client', 'julc-vm-wasm', 'julc-wasm']) {
     const installed = path.join(dir, 'node_modules', '@julclang', name);
     assert.ok(!statSync(installed, {throwIfNoEntry: false})?.isSymbolicLink(), name + ' must be installed, not linked');
@@ -88,9 +113,29 @@ function servedIdentity(appDir, outcome) {
   return Object.fromEntries(Object.entries(launchers(appDir)).map(([name, digest]) =>
     [name, outcome.served.get(digest) ?? 'changed or not seen']));
 }
+/**
+ * Why the launcher bytes break the rule, or null. Rules: 'identical' (byte for byte), 'dev' (identical, or the same
+ * code with a development server's source-map comment appended). launcher: on disk; servedLauncher: as served.
+ */
+function identityProblem(entry, rules) {
+  const allowed = {identical: value => value.startsWith('identical'),
+    dev: value => value.startsWith('identical') || value === 'same code + source-map comment'};
+  for (const [kind, rule, values] of [['on disk', rules.disk, entry.launcher], ['served', rules.served, entry.servedLauncher]]) {
+    if (!rule) continue;
+    if (!values) return `launcher ${kind}: not measured`;
+    for (const [name, value] of Object.entries(values)) {
+      if (!allowed[rule](value)) return `launcher ${kind} for ${name}: ${value}, expected ${rule}`;
+    }
+  }
+  return null;
+}
+/** Records a run. extra.expect ({disk, served}) is the launcher identity the fixture must show. */
 function record(fixture, environment, outcome, extra = {}) {
   const {served, ...rest} = outcome;
-  const entry = {fixture, environment, ...rest, ...extra};
+  const {expect, ...measured} = extra;
+  const entry = {fixture, environment, ...rest, ...measured, ...(expect ? {expectedLauncher: expect} : {})};
+  const problem = entry.ok && expect ? identityProblem(entry, expect) : null;
+  if (problem) Object.assign(entry, {ok: false, error: problem});
   results.push(entry);
   console.log(`${entry.ok ? 'PASS' : 'FAIL'} ${fixture} | ${environment}`
     + (entry.ok ? ' | ' + summary(entry.report) : ' | ' + String(entry.error).slice(0, 2000))
@@ -106,6 +151,7 @@ function verify(outcome, parity) {
     assert.deepEqual(outcome.report.map(r => r.variant), ['vm', 'full']);
     for (const r of outcome.report) assert.equal(r.version, version, r.variant + ' version');
     assert.match(outcome.report[1].compiled ?? '', /^[0-9a-f]{56}$/);
+    for (const r of outcome.report) assert.equal(r.redirected, true, r.variant + ' created with redirected exports');
     if (parity) for (const r of outcome.report) assert.equal(r.parity, parity, r.variant + ' parity fixtures run');
     return outcome;
   } catch (error) {
@@ -211,14 +257,16 @@ async function inPage(context, url) {
     await page.close();
   }
 }
-async function browserFixture(fixture, root, pagePath, {policy, appDir, outputDir, parity = false} = {}) {
+async function browserFixture(fixture, root, pagePath, {policy, appDir, outputDir, parity = false, expect} = {}) {
   const b = await chromium();
   const server = await serveStatic(root, policy);
   try {
     const query = parity ? '?parity=' + encodeURIComponent('/parity/vm.json') : '';
     const outcome = verify(await inPage(b, server.url + pagePath + query), parity ? parityCount : 0);
-    record(fixture, `Chromium ${b.version()}` + (policy ? `, CSP ${policy}` : ''), outcome,
-      {launcher: outputDir ? launcherIdentity(appDir, outputDir) : undefined, servedLauncher: servedIdentity(app, outcome)});
+    const measured = {launcher: outputDir ? launcherIdentity(appDir, outputDir) : undefined,
+      servedLauncher: servedIdentity(app, outcome)};
+    record(fixture, `Chromium ${b.version()}` + (policy ? `, CSP ${policy}` : ''), outcome, {...measured, expect});
+    return {outcome, measured};
   } finally {
     server.close();
   }
@@ -232,7 +280,7 @@ mkdirSync(work, {recursive: true});
 const app = path.join(work, 'app');
 const needsApp = [...only].some(name => !name.startsWith('next'));
 if (needsApp) {
-  install(app, [TOOLS.vite, TOOLS.webpack, TOOLS.webpackCli, TOOLS.terser, TOOLS.esbuild]);
+  install(app, 'app');
   for (const dir of ['node', 'browser', 'server', 'webpack', 'extension']) {
     cpSync(path.join(fixturesDir, dir), path.join(app, dir), {recursive: true});
   }
@@ -259,7 +307,8 @@ if (only.has('plain')) {
   const hash = createHash('sha256').update(importMap).digest('base64');
   await guard('plain', 'setup', async () => {
     await browserFixture('plain <script type="module">', app, '/browser/plain.html',
-      {policy: `script-src 'self' 'wasm-unsafe-eval' 'sha256-${hash}'`, parity: Boolean(parityFile)});
+      {policy: `script-src 'self' 'wasm-unsafe-eval' 'sha256-${hash}'`, parity: Boolean(parityFile),
+        expect: {served: 'identical'}});
   });
 }
 async function viteDev(fixture, config, viteBin = bin(app, 'vite')) {
@@ -271,7 +320,7 @@ async function viteDev(fixture, config, viteBin = bin(app, 'vite')) {
     const b = await chromium();
     const outcome = verify(await inPage(b, `http://127.0.0.1:${port}/index.html`));
     record(fixture, `${viteVersion} dev (${config}), Chromium ${b.version()}`, outcome,
-      {servedLauncher: servedIdentity(app, outcome)});
+      {servedLauncher: servedIdentity(app, outcome), expect: {served: 'dev'}});
   } finally {
     await server.stop();
   }
@@ -281,15 +330,15 @@ if (only.has('vite')) {
   await guard('vite', 'build', async () => {
     run(bin(app, 'vite'), ['build', '--config', 'vite.config.mjs'], app);
     await browserFixture('vite build', path.join(app, 'dist', 'vite'), '/index.html',
-      {policy: "script-src 'self' 'wasm-unsafe-eval'", appDir: app, outputDir: path.join(app, 'dist', 'vite')});
+      {policy: "script-src 'self' 'wasm-unsafe-eval'", appDir: app, outputDir: path.join(app, 'dist', 'vite'),
+        expect: {disk: 'identical', served: 'identical'}});
   });
 }
 if (only.has('vite7-dev')) {
   // The README's optimizeDeps.exclude for the development servers of Vite 5 to 7, with Vite 7.
   const vite7 = path.join(work, 'vite7');
-  mkdirSync(vite7);
-  writeFileSync(path.join(vite7, 'package.json'), '{"private": true}');
-  run('npm', ['install', TOOLS.vite7, '--ignore-scripts', '--no-audit', '--no-fund'], vite7);
+  installTooling(vite7, 'vite7');
+  checkLocked(vite7, 'vite7');
   await guard('vite7-dev', 'dev', () => viteDev('vite 7 dev', 'vite.exclude.config.mjs', bin(vite7, 'vite'))
     );
 }
@@ -300,9 +349,34 @@ for (const [fixture, config, output] of [['webpack', 'webpack.config.cjs', 'webp
     run(bin(app, 'webpack'), ['--config', path.join('webpack', config)], app);
     const dist = path.join(app, 'dist', output);
     writeFileSync(path.join(dist, 'index.html'), '<!doctype html><meta charset="utf-8"><script src="main.js"></script>');
-    await browserFixture(`webpack ${JSON.parse(readFileSync(path.join(app, 'node_modules/webpack/package.json'))).version}`
-      + ` production (${config})`, dist, '/index.html',
-    {policy: "script-src 'self' 'wasm-unsafe-eval'", appDir: app, outputDir: dist});
+    const webpackVersion = JSON.parse(readFileSync(path.join(app, 'node_modules/webpack/package.json'))).version;
+    // With no configuration Terser rewrites the launcher, which still works: recorded, not required. The README's
+    // configuration must ship it unchanged.
+    const rules = fixture === 'webpack-keep' ? {disk: 'identical', served: 'identical'} : undefined;
+    await browserFixture(`webpack ${webpackVersion} production (${config})`, dist, '/index.html',
+      {policy: "script-src 'self' 'wasm-unsafe-eval'", appDir: app, outputDir: dist, expect: rules});
+    if (!rules) return;
+    // The negative control: the same output with each launcher changed by one appended comment, which still loads,
+    // must fail the identity rule, on disk and as served.
+    const tampered = path.join(app, 'dist', output + '-tampered');
+    rmSync(tampered, {recursive: true, force: true});
+    cpSync(dist, tampered, {recursive: true});
+    for (const value of Object.values(launcherIdentity(app, dist))) {
+      writeFileSync(path.join(tampered, /^identical \((.*)\)$/.exec(value)[1]), '\n// changed\n', {flag: 'a'});
+    }
+    const server = await serveStatic(tampered, "script-src 'self' 'wasm-unsafe-eval'");
+    try {
+      const outcome = verify(await inPage(await chromium(), server.url + '/index.html'));
+      const measured = {launcher: launcherIdentity(app, tampered), servedLauncher: servedIdentity(app, outcome)};
+      const disk = identityProblem(measured, {disk: 'identical'});
+      const served = identityProblem(measured, {served: 'identical'});
+      record(`webpack ${webpackVersion} production (${config}), launchers changed (negative control)`,
+        'the identity rule must fail', outcome.ok && disk && served ? {ok: true}
+          : {ok: false, error: `loaded: ${outcome.ok} ${outcome.error ?? ''}; on disk: ${disk}; served: ${served}`},
+        {failures: [disk, served]});
+    } finally {
+      server.close();
+    }
   });
 }
 if (only.has('extension')) {
@@ -319,7 +393,8 @@ if (only.has('extension')) {
       const outcome = verify(await inPage(context, `chrome-extension://${id}/index.html`));
       if (outcome.ok) assert.equal(outcome.origin, `chrome-extension://${id}`);
       record('chrome extension', `Chromium ${context.browser()?.version() ?? ''} (unpacked, MV3)`.trim(), outcome,
-        {launcher: launcherIdentity(app, dist), servedLauncher: servedIdentity(app, outcome)});
+        {launcher: launcherIdentity(app, dist), servedLauncher: servedIdentity(app, outcome),
+          expect: {disk: 'identical', served: 'identical'}});
     } finally {
       await context.close();
     }
@@ -381,7 +456,7 @@ if (only.has('esbuild')) {
 // --- Next.js ---
 const nextDir = path.join(work, 'next');
 if ([...only].some(name => name.startsWith('next'))) {
-  install(nextDir, [TOOLS.next, TOOLS.react, TOOLS.reactDom]);
+  install(nextDir, 'next');
   cpSync(path.join(fixturesDir, 'next', 'app'), path.join(nextDir, 'app'), {recursive: true});
   const nextVersion = JSON.parse(readFileSync(path.join(nextDir, 'node_modules/next/package.json'), 'utf8')).version;
   const nextConfig = name => cpSync(path.join(fixturesDir, 'next', name), path.join(nextDir, 'next.config.mjs'));
@@ -391,8 +466,9 @@ if ([...only].some(name => name.startsWith('next'))) {
       cwd, `http://127.0.0.1:${port}/`, {PORT: String(port), HOSTNAME: '127.0.0.1', ...extraEnv});
     try {
       const response = await fetch(`http://127.0.0.1:${port}/api/check`, {signal: AbortSignal.timeout(300000)});
-      record(fixture, environment, verify(await response.json()),
-        outputDir ? {launcher: launcherIdentity(nextDir, outputDir)} : {});
+      // Turbopack copies the launchers into its output unchanged; with external packages they are read in place.
+      record(fixture, environment, verify(await response.json()), outputDir
+        ? {launcher: launcherIdentity(nextDir, outputDir), expect: {disk: 'identical'}} : {});
     } finally {
       await server.stop();
     }
@@ -402,13 +478,13 @@ if ([...only].some(name => name.startsWith('next'))) {
       nextConfig('next.config.mjs');
       run(bin(nextDir, 'next'), ['build'], nextDir);
       await check(`Next.js ${nextVersion} Turbopack: next build, next start`, process.version, bin(nextDir, 'next'),
-        ['start'], nextDir, {}, path.join(nextDir, '.next'));
+        ['start'], nextDir, {}, path.join(nextDir, '.next', 'server'));
       // The standalone output, copied away from the application, as it is deployed.
       const standalone = path.join(work, 'deploy', 'next-standalone');
       rmSync(standalone, {recursive: true, force: true});
       cpSync(path.join(nextDir, '.next', 'standalone'), standalone, {recursive: true});
       await check(`Next.js ${nextVersion} Turbopack: output standalone, copied`, process.version, process.execPath,
-        ['server.js'], standalone, {}, standalone);
+        ['server.js'], standalone, {}, path.join(standalone, '.next', 'server'));
     });
   }
   if (only.has('next-dev')) {
@@ -416,7 +492,7 @@ if ([...only].some(name => name.startsWith('next'))) {
       nextConfig('next.config.mjs');
       rmSync(path.join(nextDir, '.next'), {recursive: true, force: true});
       await check(`Next.js ${nextVersion} Turbopack: next dev`, process.version, bin(nextDir, 'next'), ['dev'], nextDir,
-        {}, path.join(nextDir, '.next'));
+        {}, path.join(nextDir, '.next', 'dev'));
     });
   }
   if (only.has('next-webpack')) {
