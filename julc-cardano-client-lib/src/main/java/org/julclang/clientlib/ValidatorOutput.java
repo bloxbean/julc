@@ -13,9 +13,11 @@ import java.util.List;
  * @param hash        script hash (28 bytes hex), empty for parameterized validators
  * @param params      comma-separated param metadata, e.g. "owner:byte[],deadline:BigInteger"
  * @param sizeBytes   FLAT-encoded script size in bytes, or -1 if unknown
+ * @param validator   the validator class's binary name, e.g. "com.b.VaultValidator"; empty when unknown, as in
+ *                    metadata written before issue #326
  */
 public record ValidatorOutput(String type, String purpose, String description, String cborHex,
-                              String hash, String params, int sizeBytes) {
+                              String hash, String params, int sizeBytes, String validator) {
 
     public ValidatorOutput {
         var typeParts = splitLegacyType(type);
@@ -24,6 +26,15 @@ public record ValidatorOutput(String type, String purpose, String description, S
             purpose = typeParts.purpose();
         }
         params = params != null ? params : "";
+        validator = validator != null ? validator : "";
+    }
+
+    /**
+     * Constructor without the validator's class name.
+     */
+    public ValidatorOutput(String type, String purpose, String description, String cborHex,
+                           String hash, String params, int sizeBytes) {
+        this(type, purpose, description, cborHex, hash, params, sizeBytes, "");
     }
 
     /**
@@ -98,20 +109,22 @@ public record ValidatorOutput(String type, String purpose, String description, S
     }
 
     /**
-     * Serialize to JSON text envelope format.
+     * Serialize to JSON text envelope format. The {@code validator} field is written only when it is known, so an
+     * output without it serializes as before issue #326.
      */
     public String toJson() {
+        String validatorField = validator.isEmpty() ? "" : "\n  \"validator\": \"" + validator + "\",";
         return """
                 {
                   "type": "%s",
                   "purpose": "%s",
-                  "description": "%s",
+                  "description": "%s",%s
                   "cborHex": "%s",
                   "hash": "%s",
                   "params": "%s",
                   "sizeBytes": %d
                 }
-                """.formatted(type, purpose != null ? purpose : "", description, cborHex,
+                """.formatted(type, purpose != null ? purpose : "", description, validatorField, cborHex,
                 hash, params != null ? params : "", sizeBytes);
     }
 
@@ -127,7 +140,8 @@ public record ValidatorOutput(String type, String purpose, String description, S
         String hash = extractField(json, "hash");
         String params = extractFieldOptional(json, "params");
         int sizeBytes = extractIntFieldOptional(json, "sizeBytes", -1);
-        return new ValidatorOutput(type, purpose, description, cborHex, hash, params, sizeBytes);
+        String validator = extractFieldOptional(json, "validator");
+        return new ValidatorOutput(type, purpose, description, cborHex, hash, params, sizeBytes, validator);
     }
 
     private static TypeParts splitLegacyType(String type) {
@@ -149,36 +163,23 @@ public record ValidatorOutput(String type, String purpose, String description, S
     private record TypeParts(String type, String purpose) {}
 
     private static String extractField(String json, String field) {
-        String key = "\"" + field + "\"";
-        int keyIdx = json.indexOf(key);
-        if (keyIdx < 0) {
+        int colonIdx = colonAfterKey(json, field);
+        if (colonIdx < 0) {
             throw new IllegalArgumentException("Missing field: " + field);
         }
-        int colonIdx = json.indexOf(':', keyIdx + key.length());
-        int quoteStart = json.indexOf('"', colonIdx + 1);
-        int quoteEnd = json.indexOf('"', quoteStart + 1);
-        return json.substring(quoteStart + 1, quoteEnd);
+        return stringValue(json, colonIdx);
     }
 
     private static String extractFieldOptional(String json, String field) {
-        String key = "\"" + field + "\"";
-        int keyIdx = json.indexOf(key);
-        if (keyIdx < 0) {
-            return "";
-        }
-        int colonIdx = json.indexOf(':', keyIdx + key.length());
-        int quoteStart = json.indexOf('"', colonIdx + 1);
-        int quoteEnd = json.indexOf('"', quoteStart + 1);
-        return json.substring(quoteStart + 1, quoteEnd);
+        int colonIdx = colonAfterKey(json, field);
+        return colonIdx < 0 ? "" : stringValue(json, colonIdx);
     }
 
     private static int extractIntFieldOptional(String json, String field, int defaultValue) {
-        String key = "\"" + field + "\"";
-        int keyIdx = json.indexOf(key);
-        if (keyIdx < 0) {
+        int colonIdx = colonAfterKey(json, field);
+        if (colonIdx < 0) {
             return defaultValue;
         }
-        int colonIdx = json.indexOf(':', keyIdx + key.length());
         // Skip whitespace after colon, then read digits (possibly with leading minus)
         int start = colonIdx + 1;
         while (start < json.length() && Character.isWhitespace(json.charAt(start))) start++;
@@ -190,6 +191,28 @@ public record ValidatorOutput(String type, String purpose, String description, S
         } catch (NumberFormatException e) {
             return defaultValue;
         }
+    }
+
+    /**
+     * The index of the colon after {@code "field"} used as a key, or -1. A string value that spells the key, such as
+     * {@code "description": "validator"}, is followed by a comma rather than a colon, so it is skipped.
+     */
+    private static int colonAfterKey(String json, String field) {
+        String key = "\"" + field + "\"";
+        for (int keyIdx = json.indexOf(key); keyIdx >= 0; keyIdx = json.indexOf(key, keyIdx + 1)) {
+            int i = keyIdx + key.length();
+            while (i < json.length() && Character.isWhitespace(json.charAt(i))) i++;
+            if (i < json.length() && json.charAt(i) == ':') {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private static String stringValue(String json, int colonIdx) {
+        int quoteStart = json.indexOf('"', colonIdx + 1);
+        int quoteEnd = json.indexOf('"', quoteStart + 1);
+        return json.substring(quoteStart + 1, quoteEnd);
     }
 
     /**

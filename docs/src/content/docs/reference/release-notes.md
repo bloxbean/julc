@@ -7,6 +7,29 @@ Each section below is a release, newest first.
 
 ## 0.1.0-pre21
 
+### Each validator loads its own script, whatever its simple name (#326)
+
+`JulcScriptLoader.load(Class)` and the annotation processor used to key a compiled script by the class's simple name
+only, so `com.a.VaultValidator` and `com.b.VaultValidator` on one class path both loaded the first copy of
+`META-INF/plutus/VaultValidator.plutus.json`.
+
+- The processor now also writes each script and source map under the class's qualified name, for example
+  `META-INF/plutus/com/b/VaultValidator.plutus.json`, and records the class in the JSON (`"validator":
+  "com.b.VaultValidator"`). It still writes the simple-name copy, for older loaders.
+- `JulcScriptLoader` reads the qualified copy. For a module compiled before this release, it reads the simple-name
+  copy that sits beside the class's `.class` file. It never uses a copy that records another class. When no copy
+  is the class's own, or two different copies are, it throws an `IllegalArgumentException` that names them. The
+  source map always comes from beside the script that was used.
+- `ValidatorOutput` gains a `validator` component, the class's binary name, which is empty for older metadata. The
+  existing constructors are kept, and `toJson()` writes the field only when it is known.
+- Two validators with one simple name in one compilation now fail with an error that names both, instead of a
+  `FilerException`.
+
+Migration: recompile the modules that hold your validators. Until you do, one case still goes undetected: a fat jar
+that merges two such older modules with same-named validators keeps one simple-name copy, which both classes read.
+Exclude validator packages from relocation by shading plugins. A validator whose package gained a prefix is now
+refused, because its script records its original name. One whose package was replaced is not detected.
+
 ### Long programs compile on small stacks (#327)
 
 The compiler's walks over a program no longer recurse on the Java stack as deep as the program is long. This covers:
