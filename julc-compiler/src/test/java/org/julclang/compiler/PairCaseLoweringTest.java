@@ -157,7 +157,11 @@ class PairCaseLoweringTest {
             assertTrue(compiled.optimizationReport().appliedRules().containsAll(List.of(
                     "pv11.o1.drop-list", "pv11.o2.case-bool", "pv11.o3.case-list", "pv11.o4.case-pair",
                     "pv11.o13.exp-mod-literal-fold")), compiled.optimizationReport().toString());
-            assertTrue(UplcFlatEncoder.encodeProgram(compiled.program()).length < UplcFlatEncoder.encodeProgram(baseline.program()).length);
+            // The rules under test are held to their own size and budget guarantees without ADR-076's sharing, and the
+            // program with it to ADR-076's.
+            var unshared = compileWithoutAdr076(source, level, false);
+            int shared = Adr076Sharing.assertSharesOnlyClosedValues(compiled, unshared, level.name());
+            assertTrue(UplcFlatEncoder.encodeProgram(unshared.program()).length < UplcFlatEncoder.encodeProgram(baseline.program()).length);
             for (var input : inputs) {
                 EvalResult javaResult = null;
                 for (String provider : List.of("Java", "Truffle", "Scalus")) {
@@ -171,8 +175,11 @@ class PairCaseLoweringTest {
                     if (provider.equals("Java")) javaResult = after;
                     if (provider.equals("Truffle")) assertEquals(javaResult.budgetConsumed(), after.budgetConsumed());
                     if (!provider.equals("Scalus")) {
-                        assertTrue(after.budgetConsumed().cpuSteps() <= before.budgetConsumed().cpuSteps());
-                        assertTrue(after.budgetConsumed().memoryUnits() <= before.budgetConsumed().memoryUnits());
+                        var plain = evaluate(vm, provider, unshared.program(), input.redeemer());
+                        assertTrue(plain.budgetConsumed().cpuSteps() <= before.budgetConsumed().cpuSteps());
+                        assertTrue(plain.budgetConsumed().memoryUnits() <= before.budgetConsumed().memoryUnits());
+                        Adr076Sharing.assertBudgetWithin(after.budgetConsumed(), plain.budgetConsumed(), shared,
+                                "aggregate/" + level + "/" + provider + "/" + input);
                     }
                 }
             }
@@ -220,9 +227,13 @@ class PairCaseLoweringTest {
                     var compiled = compile(sources.get(i), level, maps);
                     assertFalse(compiled.hasErrors(), compiled.diagnostics().toString());
                     var program = compiled.program();
+                    // O4 is held to its own size and budget guarantees without ADR-076's sharing, and the program
+                    // with it to ADR-076's.
+                    var unshared = compileWithoutAdr076(sources.get(i), level, maps);
+                    int shared = Adr076Sharing.assertSharesOnlyClosedValues(compiled, unshared, i + "/" + level + "/" + maps);
                     if (level.pv11SafeRulesEnabled()) {
                         assertTrue(compiled.optimizationReport().appliedRules().contains("pv11.o4.case-pair"));
-                        assertTrue(UplcFlatEncoder.encodeProgram(program).length < UplcFlatEncoder.encodeProgram(old).length);
+                        assertTrue(UplcFlatEncoder.encodeProgram(unshared.program()).length < UplcFlatEncoder.encodeProgram(old).length);
                         assertNotEquals(JulcScriptAdapter.scriptHash(old), JulcScriptAdapter.scriptHash(program));
                     }
                     for (var scenario : all) {
@@ -243,8 +254,10 @@ class PairCaseLoweringTest {
                             if (provider.equals("Java")) javaResult = after;
                             if (provider.equals("Truffle")) assertEquals(javaResult.budgetConsumed(), after.budgetConsumed(), label);
                             if (level.pv11SafeRulesEnabled() && !provider.equals("Scalus")) {
-                                assertTrue(after.budgetConsumed().cpuSteps() <= before.budgetConsumed().cpuSteps(), label);
-                                assertTrue(after.budgetConsumed().memoryUnits() <= before.budgetConsumed().memoryUnits(), label);
+                                var plain = evaluate(vm, provider, unshared.program(), scenario.redeemer());
+                                assertTrue(plain.budgetConsumed().cpuSteps() <= before.budgetConsumed().cpuSteps(), label);
+                                assertTrue(plain.budgetConsumed().memoryUnits() <= before.budgetConsumed().memoryUnits(), label);
+                                Adr076Sharing.assertBudgetWithin(after.budgetConsumed(), plain.budgetConsumed(), shared, label);
                             }
                             if (level == OptimizationLevel.PV11_SAFE && !maps && provider.equals("Java")) {
                                 System.out.println("PAIR_COST " + i + " " + scenario + " " + before.budgetConsumed() + " -> " + after.budgetConsumed());
@@ -277,8 +290,16 @@ class PairCaseLoweringTest {
     }
 
     static CompileResult compile(String source, OptimizationLevel level, boolean maps) {
-        return new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()
-                .setOptimizationLevel(level).setSourceMapEnabled(maps)
-                .setOptimizationCostProfile(OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1)).compile(source);
+        return new JulcCompiler(StdlibRegistry.defaultRegistry(), options(level, maps)).compile(source);
+    }
+
+    /** {@link #compile} with both ADR-076 rules off. */
+    static CompileResult compileWithoutAdr076(String source, OptimizationLevel level, boolean maps) {
+        return new JulcCompiler(StdlibRegistry.defaultRegistry(), Adr076Sharing.off(options(level, maps))).compile(source);
+    }
+
+    private static CompilerOptions options(OptimizationLevel level, boolean maps) {
+        return new CompilerOptions().setOptimizationLevel(level).setSourceMapEnabled(maps)
+                .setOptimizationCostProfile(OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1);
     }
 }

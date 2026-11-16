@@ -26,6 +26,7 @@ import org.junit.jupiter.api.Test;
 import java.io.IOException;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -100,12 +101,17 @@ class O15ProjectionSharingTest {
 
                     var old = golden(i, level, maps);
                     var oldBytes = UplcFlatEncoder.encodeProgram(old);
+                    // O15 is held to its own byte, size and budget guarantees without ADR-076's sharing, and the
+                    // program with it to ADR-076's.
+                    var unshared = compileWithoutAdr076(fixture.source(), fixture.method(), level, maps);
+                    int shared = Adr076Sharing.assertSharesOnlyClosedValues(compiled, unshared, label);
+                    var unsharedBytes = UplcFlatEncoder.encodeProgram(unshared.program());
                     // The golden is reproducible at this commit with the rule switched off, up to ADR-075's library order.
-                    LibraryOrderEquivalence.assertSameUpToLibraryOrder(old,
-                            compile(fixture.source(), fixture.method(), level, maps, ValueConversionSharingPass.PROJECTION_RULE).program(),
+                    LibraryOrderEquivalence.assertSameUpToLibraryOrder(old, compileWithoutAdr076(fixture.source(),
+                            fixture.method(), level, maps, ValueConversionSharingPass.PROJECTION_RULE).program(),
                             label + " with the rule off");
                     if (!expectRule) {
-                        LibraryOrderEquivalence.assertSameUpToLibraryOrder(old, program, label);
+                        LibraryOrderEquivalence.assertSameUpToLibraryOrder(old, unshared.program(), label);
                     } else {
                         // Sharing k sites of a chain of n builtin applications removes (k-1)·n
                         // applications (and their forces) for one lambda, one application and k
@@ -113,9 +119,9 @@ class O15ProjectionSharingTest {
                         // at the costed level the O9 handoff may add an array conversion, and
                         // source-map builds skip the UPLC optimiser.
                         if (!maps && level == OptimizationLevel.PV11_SAFE) {
-                            assertTrue(bytes.length < oldBytes.length, label + " " + oldBytes.length + " -> " + bytes.length);
+                            assertTrue(unsharedBytes.length < oldBytes.length, label + " " + oldBytes.length + " -> " + unsharedBytes.length);
                         } else if (!maps) {
-                            assertTrue(bytes.length <= oldBytes.length + 1, label + " " + oldBytes.length + " -> " + bytes.length);
+                            assertTrue(unsharedBytes.length <= oldBytes.length + 1, label + " " + oldBytes.length + " -> " + unsharedBytes.length);
                         }
                         assertNotEquals(JulcScriptAdapter.scriptHash(old), JulcScriptAdapter.scriptHash(program), label);
                     }
@@ -147,18 +153,20 @@ class O15ProjectionSharingTest {
                                 System.out.println("PROJECTION_SHARING_COST " + fixture.name() + " " + input + " "
                                         + before.budgetConsumed() + " -> " + after.budgetConsumed());
                             }
-                            if (expectRule && !handoff && input.success() && provider.equals("Java")) {
-                                // A path that reaches a later occurrence saves that projection; a path
-                                // that reaches only the leading one pays the binding: one lambda, one
-                                // application and one variable lookup per shared binding on the path.
-                                var bound = bindingOverhead();
-                                int bindings = fixture.fieldBindings() + fixture.prefixBindings();
-                                assertTrue(after.budgetConsumed().cpuSteps()
-                                        <= before.budgetConsumed().cpuSteps() + bindings * bound.cpuSteps(), inputLabel
-                                        + " " + before.budgetConsumed() + " -> " + after.budgetConsumed());
-                                assertTrue(after.budgetConsumed().memoryUnits()
-                                        <= before.budgetConsumed().memoryUnits() + bindings * bound.memoryUnits(), inputLabel
-                                        + " " + before.budgetConsumed() + " -> " + after.budgetConsumed());
+                            if (provider.equals("Java")) {
+                                var plain = evaluate(unshared.program(), input.args(), provider).budgetConsumed();
+                                Adr076Sharing.assertBudgetWithin(after.budgetConsumed(), plain, shared, inputLabel);
+                                if (expectRule && !handoff && input.success()) {
+                                    // A path that reaches a later occurrence saves that projection; a path
+                                    // that reaches only the leading one pays the binding: one lambda, one
+                                    // application and one variable lookup per shared binding on the path.
+                                    var bound = bindingOverhead();
+                                    int bindings = fixture.fieldBindings() + fixture.prefixBindings();
+                                    assertTrue(plain.cpuSteps() <= before.budgetConsumed().cpuSteps() + bindings * bound.cpuSteps(),
+                                            inputLabel + " " + before.budgetConsumed() + " -> " + plain);
+                                    assertTrue(plain.memoryUnits() <= before.budgetConsumed().memoryUnits() + bindings * bound.memoryUnits(),
+                                            inputLabel + " " + before.budgetConsumed() + " -> " + plain);
+                                }
                             }
                         }
                     }
@@ -748,6 +756,14 @@ class O15ProjectionSharingTest {
                 .setOptimizationLevel(level).setSourceMapEnabled(maps).setOptimizationCostProfile(PROFILE);
         for (var rule : disabledRules) options.disableOptimizationRule(rule);
         return new JulcCompiler(StdlibRegistry.defaultRegistry(), options).compileMethod(source, method);
+    }
+
+    /** {@link #compile} with both ADR-076 rules off as well as {@code disabledRules}. */
+    private static CompileResult compileWithoutAdr076(String source, String method, OptimizationLevel level, boolean maps,
+            String... disabledRules) {
+        var rules = new ArrayList<>(Adr076Sharing.RULES);
+        rules.addAll(List.of(disabledRules));
+        return compile(source, method, level, maps, rules.toArray(String[]::new));
     }
 
     /** The validator entry point with its PIR captured (the plain {@code compile} drops it). */

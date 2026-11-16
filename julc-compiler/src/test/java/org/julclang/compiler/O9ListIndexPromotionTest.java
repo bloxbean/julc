@@ -80,12 +80,17 @@ class O9ListIndexPromotionTest {
                     }
                     assertFalse(containsBuiltin(compiled.pirTerm(), DefaultFun.MultiIndexArray), label);
                     var old = golden(i, level, maps);
+                    // O9 is held to its own byte, size and budget guarantees without ADR-076's sharing, and the
+                    // program with it to ADR-076's.
+                    var unshared = compileWithoutAdr076(fixture.source(), fixture.method(), level, maps);
+                    int shared = Adr076Sharing.assertSharesOnlyClosedValues(compiled, unshared, label);
+                    var unsharedBytes = UplcFlatEncoder.encodeProgram(unshared.program());
                     if (!expectRule) {
-                        LibraryOrderEquivalence.assertSameUpToLibraryOrder(old, compiled.program(), label);
+                        LibraryOrderEquivalence.assertSameUpToLibraryOrder(old, unshared.program(), label);
                     } else {
                         // Every promoted site drops a recursive binding (a fixpoint combinator and a
                         // two-parameter lambda) for one builtin application, so the program shrinks.
-                        assertTrue(bytes.length < UplcFlatEncoder.encodeProgram(old).length, label);
+                        assertTrue(unsharedBytes.length < UplcFlatEncoder.encodeProgram(old).length, label);
                         assertNotEquals(JulcScriptAdapter.scriptHash(old), JulcScriptAdapter.scriptHash(program), label);
                     }
                     for (var input : fixture.inputs()) {
@@ -115,8 +120,10 @@ class O9ListIndexPromotionTest {
                                 System.out.println("LIST_TO_ARRAY_COST " + fixture.name() + " " + input + " "
                                         + before.budgetConsumed() + " -> " + after.budgetConsumed());
                             }
-                            if (expectRule && provider.equals("Java")) {
-                                assertBudgetPath(input, before.budgetConsumed(), after.budgetConsumed(), model, inputLabel);
+                            if (provider.equals("Java")) {
+                                var plain = evaluate(unshared.program(), input.args(), provider).budgetConsumed();
+                                if (expectRule) assertBudgetPath(input, before.budgetConsumed(), plain, model, inputLabel);
+                                Adr076Sharing.assertBudgetWithin(after.budgetConsumed(), plain, shared, inputLabel);
                             }
                         }
                     }
@@ -1154,10 +1161,18 @@ class O9ListIndexPromotionTest {
      * pin O9 alone, so O15 is switched off here; the O15 suite pins the O15-then-O9 handoff.
      */
     static CompileResult compile(String source, String method, OptimizationLevel level, boolean maps) {
-        return new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()
-                .setOptimizationLevel(level).setSourceMapEnabled(maps)
-                .disableOptimizationRule(ValueConversionSharingPass.PROJECTION_RULE))
+        return new JulcCompiler(StdlibRegistry.defaultRegistry(), options(level, maps)).compileMethod(source, method);
+    }
+
+    /** {@link #compile} with both ADR-076 rules off as well. */
+    private static CompileResult compileWithoutAdr076(String source, String method, OptimizationLevel level, boolean maps) {
+        return new JulcCompiler(StdlibRegistry.defaultRegistry(), Adr076Sharing.off(options(level, maps)))
                 .compileMethod(source, method);
+    }
+
+    private static CompilerOptions options(OptimizationLevel level, boolean maps) {
+        return new CompilerOptions().setOptimizationLevel(level).setSourceMapEnabled(maps)
+                .disableOptimizationRule(ValueConversionSharingPass.PROJECTION_RULE);
     }
 
     private static EvalResult evaluate(Program program, List<PlutusData> args, String provider) {

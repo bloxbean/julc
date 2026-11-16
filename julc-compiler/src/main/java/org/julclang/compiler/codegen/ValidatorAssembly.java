@@ -13,6 +13,7 @@ import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.resolve.LibraryMethodRegistry.LibraryMethod;
 import org.julclang.compiler.resolve.TypeRegistry;
+import org.julclang.compiler.uplc.HandlerBindings;
 import org.julclang.compiler.util.MethodDependencyResolver;
 import org.julclang.core.source.SourceLocation;
 
@@ -169,13 +170,23 @@ public final class ValidatorAssembly {
         wrapped = bindParams(validator.params(), wrapped, frontend);
         frontend.finalCheck().accept(wrapped);
         var lowered = PirBackend.lower(wrapped, context, frontend.positions(), true, frontend.provenance(),
-                bindings(validator.helpers(), validator.statics(), validator.libraries()));
+                bindings(validator.helpers(), validator.statics(), validator.libraries(), handlerBindings(validator)));
         var program = lowered.program();
         var result = new CompileResult(
                 program, context.diagnostics(), paramInfos(validator.params()),
                 captureDetails ? lowered.pir() : null, captureDetails ? program.term() : null, lowered.sourceMap(),
                 context.target(), context.optimizationReport(), context.javacProvenance());
         return new Assembled(result, lowered);
+    }
+
+    /**
+     * ADR-076 D1: under auto-dispatch, the methods each handler binds that every handler may share. The optimizer shares
+     * those its output binds the same way in every handler, once it has optimized each handler as it would without D1.
+     */
+    private static HandlerBindings handlerBindings(Validator validator) {
+        if (!validator.autoDispatch()) return HandlerBindings.NONE;
+        return new HandlerBindings(SharedBindings.candidates(validator.entries().stream().map(Entry::function).toList(),
+                validator.helpers(), validator.statics(), validator.libraries()), validator.entries().size());
     }
 
     /** Steps 13 to 15b: the bindings around each entry point, and the wrapper. */
@@ -344,12 +355,17 @@ public final class ValidatorAssembly {
 
     /** The binders {@link org.julclang.compiler.pir.DelayedMethodPass} reads: a method with no parameters that may fail runs at each call. */
     private static PirBackend.Bindings bindings(List<Method> methods, List<StaticField> statics, Collection<LibraryMethod> libraries) {
+        return bindings(methods, statics, libraries, HandlerBindings.NONE);
+    }
+
+    private static PirBackend.Bindings bindings(List<Method> methods, List<StaticField> statics, Collection<LibraryMethod> libraries,
+                                                HandlerBindings handlers) {
         var binders = new LinkedHashSet<String>();
         methods.forEach(method -> binders.add(method.name()));
         libraries.forEach(method -> binders.add(method.qualifiedName()));
         var fields = new LinkedHashSet<String>();
         statics.forEach(field -> fields.add(field.name()));
-        return new PirBackend.Bindings(binders, fields);
+        return new PirBackend.Bindings(binders, fields, handlers);
     }
 
     private static boolean containsVarRef(PirTerm term, String name) {

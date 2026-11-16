@@ -94,9 +94,13 @@ class O3ListCaseLoweringTest {
                 if (!key[2].equals("PV11_SAFE")) {
                     assertEquals(parts[1], HexFormat.of().formatHex(bytes(result)), parts[0]);
                 } else {
+                    // O3 is held to its own size and budget guarantees without ADR-076's sharing, and the program
+                    // with it to ADR-076's.
+                    var unshared = compileWithoutAdr076(key[0], OptimizationLevel.PV11_SAFE, Boolean.parseBoolean(key[1]));
+                    int shared = Adr076Sharing.assertSharesOnlyClosedValues(result, unshared, parts[0]);
                     var oldBytes = HexFormat.of().parseHex(parts[1]);
-                    assertTrue(bytes(result).length <= oldBytes.length,
-                            parts[0] + ": old=" + oldBytes.length + " new=" + bytes(result).length);
+                    assertTrue(bytes(unshared).length <= oldBytes.length,
+                            parts[0] + ": old=" + oldBytes.length + " new=" + bytes(unshared).length);
                     var old = org.julclang.core.flat.UplcFlatDecoder.decodeProgram(oldBytes);
                     var input = key[0].equals("nested")
                             ? PlutusData.list(PlutusData.list(PlutusData.integer(3)))
@@ -105,9 +109,11 @@ class O3ListCaseLoweringTest {
                     for (var xs : List.of(PlutusData.list(), input)) {
                         var before = vm.evaluateWithArgs(old, List.of(xs));
                         var after = vm.evaluateWithArgs(result.program(), List.of(xs));
+                        var plain = vm.evaluateWithArgs(unshared.program(), List.of(xs));
                         assertSameOutcome(before, after, parts[0]);
-                        assertTrue(after.budgetConsumed().cpuSteps() <= before.budgetConsumed().cpuSteps(), parts[0]);
-                        assertTrue(after.budgetConsumed().memoryUnits() <= before.budgetConsumed().memoryUnits(), parts[0]);
+                        assertTrue(plain.budgetConsumed().cpuSteps() <= before.budgetConsumed().cpuSteps(), parts[0]);
+                        assertTrue(plain.budgetConsumed().memoryUnits() <= before.budgetConsumed().memoryUnits(), parts[0]);
+                        Adr076Sharing.assertBudgetWithin(after.budgetConsumed(), plain.budgetConsumed(), shared, parts[0]);
                         System.out.printf("previous-safe %s %s bytes=%d/%d cpu=%d/%d memory=%d/%d%n",
                                 parts[0], xs.equals(input) ? "nonempty" : "empty", oldBytes.length, bytes(result).length,
                                 before.budgetConsumed().cpuSteps(), after.budgetConsumed().cpuSteps(),
@@ -223,6 +229,12 @@ class O3ListCaseLoweringTest {
 
     private static CompileResult compile(String method, OptimizationLevel level, boolean maps) {
         var options = new CompilerOptions().setOptimizationLevel(level).setSourceMapEnabled(maps);
+        return new JulcCompiler(StdlibRegistry.defaultRegistry(), options).compileMethod(SOURCE, method);
+    }
+
+    /** {@link #compile} with both ADR-076 rules off. */
+    private static CompileResult compileWithoutAdr076(String method, OptimizationLevel level, boolean maps) {
+        var options = Adr076Sharing.off(new CompilerOptions().setOptimizationLevel(level).setSourceMapEnabled(maps));
         return new JulcCompiler(StdlibRegistry.defaultRegistry(), options).compileMethod(SOURCE, method);
     }
 

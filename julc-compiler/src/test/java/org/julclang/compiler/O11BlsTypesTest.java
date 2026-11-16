@@ -73,8 +73,23 @@ class O11BlsTypesTest {
     /**
      * PV11_SAFE size and script hash of the #240 fixtures (ADR-047 Amendment 1 evidence), so a
      * lowering change shows up here and not only in the printed artifact lines.
+     * <p>
+     * ADR-076 D2 moved every pin but G2_CONS: each binds a repeated forced builtin or fixpoint combinator once at the
+     * root. With both ADR-076 rules off each program keeps its earlier pin ({@link #CONS_ARTIFACTS_WITHOUT_ADR076}), and
+     * substituting the root bindings back gives it term for term (checked at every level below).
      */
     private static final Map<String, String> CONS_ARTIFACTS = Map.of(
+            "CONS_RECURSION", "191 adb07d5d5645b53f0ae5cf504f41fa1d70942a2c7db6a42d6b5948dd",
+            "VALIDATE_ONCE", "227 9433ba0c4ed0ec18bcfc5af2504f72f1aaf9a81ae4c64f58d1bd0bf6",
+            "CONS_ORDER", "341 4e51b8e474952f6c39d554774374066e608bd89f0a9a51903790965c",
+            "G2_CONS", "225 59cd134e35a4738698c9afdfff040ea2b26d2a49296757600d42dd3a",
+            "CONS_EMPTY_AND_MIXED", "363 86e3e305062bb9855f739fc9ed1f8df288a6370e1cd8f6e27a7b165d",
+            "CONS_LOOPS", "446 2e1ef9ea8c814be00242f8047cd37f35f052ca29d9220965285f15a9",
+            "CONS_SWITCH", "296 10f612f49c9c97aa6373090c74f6c354490b31cabc1aacf280d990d7",
+            "CAST_VIEWS", "154 f3375175a8cd08a406b2570844c233bf94bc141d3da405b8fba820c8");
+
+    /** The pins as they were before ADR-076, which the programs keep with both of its rules off. */
+    private static final Map<String, String> CONS_ARTIFACTS_WITHOUT_ADR076 = Map.of(
             "CONS_RECURSION", "222 8be19c3e5bb0d7295ea15e66fb4b7cbeab0ec099bc5421c4d4c104b6",
             "VALIDATE_ONCE", "274 77949aa1bd08c80cf52d4f7822dbcff9d80ef347d57f5cdabcdd987e",
             "CONS_ORDER", "421 f32127c89146678d6af4e2f00eb3a29922c6fa3e8663e801cbc33693",
@@ -100,6 +115,9 @@ class O11BlsTypesTest {
                 assertArrayEquals(bytes, UplcFlatEncoder.encodeProgram(compile(fixture.source(), fixture.method(), level, false).program()),
                         label + " determinism");
                 assertFalse(result.hasErrors(), label);
+                // ADR-076 D2 binds repeated closed values at the root; substituting them back gives the program without it.
+                var unshared = compileWithoutAdr076(fixture.source(), fixture.method(), level);
+                Adr076Sharing.assertSharesOnlyClosedValues(result, unshared, label);
                 compile(fixture.source(), fixture.method(), level, true); // source maps compile too
                 for (var input : fixture.inputs()) {
                     EvalResult javaResult = null;
@@ -135,6 +153,8 @@ class O11BlsTypesTest {
                     System.out.println("BLS_TYPED_ARTIFACT " + fixture.name() + " " + artifact);
                     if (CONS_ARTIFACTS.containsKey(fixture.name())) {
                         assertEquals(CONS_ARTIFACTS.get(fixture.name()), artifact, label + " artifact");
+                        assertEquals(CONS_ARTIFACTS_WITHOUT_ADR076.get(fixture.name()), UplcFlatEncoder.encodeProgram(unshared.program()).length
+                                + " " + JulcScriptAdapter.scriptHash(unshared.program()), label + " artifact without ADR-076");
                     }
                 }
             }
@@ -593,6 +613,12 @@ class O11BlsTypesTest {
 
     static CompileResult compile(String source, String method, OptimizationLevel level, boolean maps) {
         var options = new CompilerOptions().setOptimizationLevel(level).setSourceMapEnabled(maps).setOptimizationCostProfile(PROFILE);
+        return new JulcCompiler(StdlibRegistry.defaultRegistry(), options).compileMethod(source, method);
+    }
+
+    /** {@link #compile} without source maps and with both ADR-076 rules off. */
+    private static CompileResult compileWithoutAdr076(String source, String method, OptimizationLevel level) {
+        var options = Adr076Sharing.off(new CompilerOptions().setOptimizationLevel(level).setOptimizationCostProfile(PROFILE));
         return new JulcCompiler(StdlibRegistry.defaultRegistry(), options).compileMethod(source, method);
     }
 

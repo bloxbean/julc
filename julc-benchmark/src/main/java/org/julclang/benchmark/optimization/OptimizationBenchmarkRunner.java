@@ -100,7 +100,10 @@ public final class OptimizationBenchmarkRunner {
         }
     }
 
-    /** Artifact properties plus the independently selected evaluation model identity. */
+    /**
+     * Artifact properties plus the independently selected evaluation model identity. {@code sharedRootValues} counts
+     * the closed values ADR-076 D2 bound at the program's root, each of which adds at most five machine steps to a run.
+     */
     public record ArtifactMeasurement(
             OptimizationLevel level,
             String targetId,
@@ -109,7 +112,8 @@ public final class OptimizationBenchmarkRunner {
             int flatBytes,
             String scriptHash,
             TermMetrics termMetrics,
-            List<String> appliedRules) {
+            List<String> appliedRules,
+            int sharedRootValues) {
         public ArtifactMeasurement {
             appliedRules = List.copyOf(appliedRules);
         }
@@ -307,6 +311,20 @@ public final class OptimizationBenchmarkRunner {
                 List.of(Backend.javaVm(), Backend.truffleVm()));
     }
 
+    /**
+     * {@link #compareWithJavaAndTruffle(Fixture, OptimizationLevel, OptimizationCostProfile)} with the candidate's
+     * options adjusted by {@code candidateTuning}, for example to switch rules off that the comparison is not about.
+     */
+    public static Comparison compareWithJavaAndTruffle(
+            Fixture fixture,
+            OptimizationLevel candidateLevel,
+            OptimizationCostProfile costProfile,
+            Consumer<CompilerOptions> candidateTuning) {
+        Objects.requireNonNull(candidateTuning, "candidateTuning");
+        return compare(fixture, OptimizationLevel.BASELINE, options -> { }, candidateLevel, candidateTuning, costProfile,
+                List.of(Backend.javaVm(), Backend.truffleVm()));
+    }
+
     public static Comparison compareLevelsWithJavaAndTruffle(
             Fixture fixture,
             OptimizationLevel baselineLevel,
@@ -343,7 +361,8 @@ public final class OptimizationBenchmarkRunner {
                 candidateArtifact.flatBytes(),
                 candidateArtifact.scriptHash(),
                 candidateArtifact.termMetrics(),
-                append(candidateArtifact.appliedRules(), candidateRule));
+                append(candidateArtifact.appliedRules(), candidateRule),
+                candidateArtifact.sharedRootValues());
         return new Comparison(
                 fixtureId,
                 measureArtifact(baseline, costProfile),
@@ -458,7 +477,8 @@ public final class OptimizationBenchmarkRunner {
                 compiled.scriptSizeBytes(),
                 JulcScriptAdapter.scriptHash(compiled.program()),
                 metrics(compiled.program().term()),
-                compiled.optimizationReport().appliedRules());
+                compiled.optimizationReport().appliedRules(),
+                sharedRootValues(compiled.program().term()));
     }
 
     private static ArtifactMeasurement measureArtifact(
@@ -474,7 +494,8 @@ public final class OptimizationBenchmarkRunner {
                 UplcFlatEncoder.encodeProgram(program).length,
                 JulcScriptAdapter.scriptHash(program),
                 metrics(program.term()),
-                appliedRules);
+                appliedRules,
+                sharedRootValues(program.term()));
     }
 
     private static List<EvaluationMeasurement> evaluateTerms(
@@ -541,6 +562,38 @@ public final class OptimizationBenchmarkRunner {
         var result = new ArrayList<>(values);
         result.add(value);
         return List.copyOf(result);
+    }
+
+    /** The Z combinator as the compiler writes it: {@code \f. (\x. f (\v. x x v)) (\x. f (\v. x x v))}. */
+    private static final Term Z = zCombinator();
+
+    private static Term zCombinator() {
+        var innerBody = Term.lam("v", Term.apply(Term.apply(Term.var(2), Term.var(2)), Term.var(1)));
+        var branch = Term.lam("x", Term.apply(Term.var(2), innerBody));
+        return Term.lam("f", Term.apply(branch, branch));
+    }
+
+    /**
+     * How many closed values ADR-076 D2 bound at the root of {@code term}: the leading {@code [(\#s. body) value]}
+     * applications whose value is a forced builtin or the Z combinator.
+     */
+    static int sharedRootValues(Term term) {
+        int count = 0;
+        while (term instanceof Term.Apply(Term.Lam(var name, var body), var value) && name.startsWith("#")
+                && (isForcedBuiltin(value) || value.equals(Z))) {
+            count++;
+            term = body;
+        }
+        return count;
+    }
+
+    private static boolean isForcedBuiltin(Term term) {
+        int forces = 0;
+        while (term instanceof Term.Force(var inner)) {
+            forces++;
+            term = inner;
+        }
+        return forces > 0 && term instanceof Term.Builtin;
     }
 
     static TermMetrics metrics(Term term) {
