@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import '../../main/resources/julc-runtime.js';
+// The runtime as shipped: stamped with the JuLC version at build time.
+import '../../../build/wasm-client/archive/julc-runtime.js';
 import '../../main/js/rest-adapter.js';
 const {encode, decode, dataText, legacy} = globalThis.JulcRuntime;
 
@@ -89,8 +90,8 @@ test('source-debug REST routes retain the session and convert exact generation v
 test('capabilities are the groups the image passes', () => {
   const invoke = () => JSON.stringify({status: 200, body: {}, integers: []});
   const fullGroups = ['vm', 'debug', 'compiler', 'uplc', 'sourceDebug', 'sourceDebugLocals'];
-  const full = JulcRuntime.install(invoke, {'uplc.decompile': {}}, 'full', 'test', fullGroups);
-  const vm = JulcRuntime.install(invoke, {'vm.evaluate': {}}, 'vm', 'test', ['vm', 'debug']);
+  const full = JulcRuntime.install(invoke, {'uplc.decompile': {}}, 'full', 'test', fullGroups, 'j1');
+  const vm = JulcRuntime.install(invoke, {'vm.evaluate': {}}, 'vm', 'test', ['vm', 'debug'], 'j1');
   assert.deepEqual(full.features().groups, fullGroups);
   assert.deepEqual(vm.features().groups, ['vm', 'debug']);
   assert.equal(typeof full.uplc.defaultTransaction, 'function');
@@ -103,23 +104,26 @@ test('capabilities are the groups the image passes', () => {
 test('an image built on julc-wasm for another language reports its own groups and variant', () => {
   const invoke = (method, body) => JSON.stringify({status: 200, body: {method, body: JSON.parse(body)}, integers: []});
   const api = JulcRuntime.install(invoke, {'vm.evaluate': {}, 'lang.compile': {sources: {$map: 'string'}}},
-    'lang', '1.2.3', ['vm', 'debug', 'lang']);
+    'lang', '1.2.3', ['vm', 'debug', 'lang'], '0.1.0-test');
   assert.deepEqual(api.features(), {api: 0, variant: 'lang', groups: ['vm', 'debug', 'lang'], defaultProtocol: 11,
-    bls: false});
+    bls: false, julcVersion: '0.1.0-test'});
   assert.equal(api.version(), '1.2.3');
   assert.deepEqual(api.lang.compile({sources: {'Main.elm': 'x'}}),
     {method: 'lang.compile', body: {sources: {'Main.elm': 'x'}}});
   assert.equal(api.uplc, undefined);
   assert.throws(() => JulcRuntime.install(invoke, {}, 'lang', '1', undefined), /groups are required/);
   assert.throws(() => JulcRuntime.install(invoke, {}, 'lang', '1', []), /groups are required/);
+  // Every engine reports the JuLC build it is made with (ADR-077 D1a).
+  assert.throws(() => JulcRuntime.install(invoke, {}, 'lang', '1', ['lang']), /Engine JuLC version is required/);
+  assert.throws(() => JulcRuntime.install(invoke, {}, 'lang', '1', ['lang'], ''), /Engine JuLC version is required/);
 });
 
 test('operations stay in advertised groups and never extend a member every engine or object has', () => {
   const invoke = () => JSON.stringify({status: 200, body: {}, integers: []});
-  assert.throws(() => JulcRuntime.install(invoke, {'lang.compile': {}}, 'lang', '1', ['vm']),
+  assert.throws(() => JulcRuntime.install(invoke, {'lang.compile': {}}, 'lang', '1', ['vm'], 'j1'),
     /lang\.compile is outside the engine groups/);
   for (const group of ['version', 'features', '__schemas', 'constructor', 'toString', 'hasOwnProperty']) {
-    assert.throws(() => JulcRuntime.install(invoke, {[group + '.run']: {}}, 'lang', '1', [group]),
+    assert.throws(() => JulcRuntime.install(invoke, {[group + '.run']: {}}, 'lang', '1', [group], 'j1'),
       /Reserved engine group/, group);
   }
   assert.equal(Object.prototype.run, undefined);
@@ -130,7 +134,7 @@ test('the costModel profile shorthand applies only where costModel is JuLC\'s co
   const invoke = (method, body) => JSON.stringify({status: 200, body: JSON.parse(body), integers: []});
   const costModel = {$costModel: true, profile: 'string', target: {language: 'string', protocol: 'int'}, parameters: ['long']};
   const api = JulcRuntime.install(invoke, {'vm.evaluate': {costModel}, 'lang.check': {costModel: 'string'},
-    'lang.tune': {costModel: {name: 'string'}}}, 'lang', '1', ['vm', 'lang']);
+    'lang.tune': {costModel: {name: 'string'}}}, 'lang', '1', ['vm', 'lang'], 'j1');
   assert.deepEqual(api.vm.evaluate({costModel: 'plutus-v3'}), {costModel: {profile: 'plutus-v3'}});
   assert.deepEqual(api.vm.evaluate({costModel: {profile: 'plutus-v3'}}), {costModel: {profile: 'plutus-v3'}});
   assert.deepEqual(api.lang.check({costModel: 'custom-model'}), {costModel: 'custom-model'});

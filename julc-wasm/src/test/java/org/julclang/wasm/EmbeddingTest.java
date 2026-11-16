@@ -5,6 +5,7 @@ import org.julclang.tools.service.ServiceResult;
 import org.julclang.wasm.fixture.DemoLangWasm;
 import org.junit.jupiter.api.Test;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -100,9 +101,20 @@ class EmbeddingTest {
             assertThrows(IllegalArgumentException.class, () -> new EngineInfo("elci", "elci", "1", List.of(group)),
                     group);
         }
-        for (String global : List.of("JulcRuntime", "JulcRestAdapter", "onJulcReady", "onJulcExit", "JULC_WASM_PATH",
-                "GraalVM", "__proto__")) {
+        for (String global : List.of("JulcRuntime", "JulcRestAdapter", "onJulcReady", "onJulcExit",
+                "onJulcStartupError", "JULC_WASM_PATH", "JULC_NODE", "JULC_RUNTIME_PRELOAD", "GraalVM", "__proto__")) {
             assertThrows(IllegalArgumentException.class, () -> new EngineInfo(global, "elci", "1", groups), global);
+        }
+    }
+
+    @Test
+    void theRuntimeResourceIsStampedWithTheJulcVersionEveryImageReports() throws Exception {
+        // JsApi uses a runtime the worker loaded only when its stamp is this version (ADR-077 D2).
+        try (var runtime = JsApi.class.getResourceAsStream("/julc-runtime.js")) {
+            assertNotNull(runtime);
+            String text = new String(runtime.readAllBytes(), StandardCharsets.UTF_8);
+            assertNotEquals("dev", JsApi.julcVersion());
+            assertTrue(text.contains("const julcVersion = \"" + JsApi.julcVersion() + "\";"), text.substring(0, 600));
         }
     }
 

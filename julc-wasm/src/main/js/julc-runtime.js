@@ -1,6 +1,10 @@
-/* Private wire codec and synchronous API. Also loaded by SDK tests without a VM. */
+/* Private wire codec and synchronous API. Also loaded by SDK tests without a VM. The worker loads this file before
+ * the launcher, and the engine uses it instead of evaluating its own copy when both come from one JuLC build
+ * (ADR-077 D2), so a Content Security Policy need not allow 'unsafe-eval'. */
 (() => {
   'use strict';
+  // The JuLC build this file belongs to. The build stamps it (build.gradle, wasmVersion); the source says dev.
+  const julcVersion = 'dev';
   const LONG_MIN = -(1n << 63n), LONG_MAX = (1n << 63n) - 1n;
   const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
   function invalid(message) {
@@ -89,11 +93,14 @@
   }
   // The image passes its groups (EngineInfo): JuLC's full and VM images, or an image another language builds on
   // julc-wasm (ADR-064).
-  function install(invoke, schemas, variant, version, groups) {
+  // engineJulcVersion is the JuLC version the image was built with (JsApi.julcVersion()), reported as
+  // features().julcVersion for the client's release check (ADR-077 D1a).
+  function install(invoke, schemas, variant, version, groups, engineJulcVersion) {
     if (!Array.isArray(groups) || groups.length === 0) throw new Error('Engine groups are required');
+    if (typeof engineJulcVersion !== 'string' || engineJulcVersion === '') throw new Error('Engine JuLC version is required');
     groups = [...groups];
     const api = { version: () => version, features: () => ({
-      api: 0, variant, groups: [...groups], defaultProtocol: 11, bls: false,
+      api: 0, variant, groups: [...groups], defaultProtocol: 11, bls: false, julcVersion: engineJulcVersion,
     }) };
     Object.defineProperty(api, '__schemas', { value: schemas });
     const created = new Set();
@@ -143,5 +150,5 @@
     }
     return tx;
   }
-  globalThis.JulcRuntime = { install, encode, decode, legacy, dataText, invalid, defaultTransaction };
+  globalThis.JulcRuntime = { julcVersion, install, encode, decode, legacy, dataText, invalid, defaultTransaction };
 })();

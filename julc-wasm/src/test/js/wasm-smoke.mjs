@@ -1,6 +1,6 @@
 import {readFileSync} from 'node:fs';
 import {pathToFileURL} from 'node:url';
-import {Worker} from 'node:worker_threads';
+import {workerFactory} from './support.mjs';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 
@@ -10,9 +10,6 @@ const {createJulc, isFullClient} = await import(new URL('julc-wasm.js', baseUrl)
 await import(new URL('julc-runtime.js', baseUrl));
 const manifest = JSON.parse(readFileSync(new URL('engine.json', baseUrl)));
 const catalogue = JSON.parse(readFileSync(catalogueFile));
-const workerFactory = url => {
-  const worker = new Worker(new URL('./node-worker.mjs', import.meta.url), {workerData: url.href});
-  const bridge = {postMessage: value => worker.postMessage(value), terminate: () => worker.terminate()};
   worker.on('message', data => bridge.onmessage?.({data}));
   worker.on('error', error => bridge.onerror?.(error));
   return bridge;

@@ -2,18 +2,15 @@
 // its own operations work, and JuLC's VM operations give exactly the JVM's results.
 import {readFileSync} from 'node:fs';
 import {pathToFileURL} from 'node:url';
-import {Worker} from 'node:worker_threads';
+import {workerFactory} from './support.mjs';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import '../../main/resources/julc-runtime.js';
 
 const [bundle, vmFile] = process.argv.slice(2);
 const baseUrl = pathToFileURL(path.resolve(bundle) + '/');
 const {createJulc, isFullClient} = await import(new URL('julc-wasm.js', baseUrl));
+await import(new URL('julc-runtime.js', baseUrl));
 const manifest = JSON.parse(readFileSync(new URL('engine.json', baseUrl)));
-const workerFactory = url => {
-  const worker = new Worker(new URL('./node-worker.mjs', import.meta.url), {workerData: url.href});
-  const bridge = {postMessage: value => worker.postMessage(value), terminate: () => worker.terminate()};
   worker.on('message', data => bridge.onmessage?.({data}));
   worker.on('error', error => bridge.onerror?.(error));
   return bridge;
@@ -25,8 +22,9 @@ const api = await createJulc({baseUrl, manifest, workerFactory});
 console.log(`embedder worker ready in ${Math.round(performance.now() - started)} ms`);
 try {
   assert.equal(api.version(), '1.0.0-demo');
+  // The embedder's engine reports the julc-wasm build it is built on (ADR-077 D1a).
   assert.deepEqual(api.features(), {api: 0, variant: 'demo', groups: ['vm', 'debug', 'demo'], defaultProtocol: 11,
-    bls: false});
+    bls: false, julcVersion: manifest.julcVersion});
   assert.equal(isFullClient(api), false);
   assert.equal(api.compiler, undefined);
   assert.equal(api.uplc, undefined);

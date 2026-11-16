@@ -26,7 +26,8 @@ public record EngineInfo(String global, String variant, String version, List<Str
             "__lookupSetter__");
     /** Globals the runtime, worker and Web Image launcher define. */
     private static final Set<String> RESERVED_GLOBALS = Set.of("JulcRuntime", "JulcRestAdapter", "onJulcReady",
-            "onJulcExit", "JULC_WASM_PATH", "GraalVM", "__proto__");
+            "onJulcExit", "onJulcStartupError", "JULC_WASM_PATH", "JULC_NODE", "JULC_RUNTIME_PRELOAD", "GraalVM",
+            "__proto__");
 
     public EngineInfo {
         if (global == null || !IDENTIFIER.matcher(global).matches() || RESERVED_GLOBALS.contains(global)) {

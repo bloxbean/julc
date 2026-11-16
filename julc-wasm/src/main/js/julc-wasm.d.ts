@@ -1,5 +1,55 @@
 import * as M from './julc-models.js';
+import type {rest as RestDefault} from './client-defaults.js';
+// The generated names (<Outer>_<Inner>) for code written against the archives; @julclang/wasm-client keeps them under
+// its types-only ./models sub-path (ADR-077 D5).
 export * from './julc-models.js';
+
+// Plain names for the generated records an operation takes or returns (ADR-077 D5). Generated records whose name is
+// already plain (PlutusData, MockTransaction, CompileRequest, CheckRequest, …) keep it.
+export type ScriptInput = M.UplcModels_ScriptInput;
+export type DecodeRequest = M.UplcModels_DecodeRequest;
+export type DecodeResponse = M.UplcModels_DecodeResponse;
+export type ScriptInfo = M.UplcModels_ScriptInfo;
+export type DecompileRequest = M.UplcModels_DecompileRequest;
+export type DecompileResponse = M.UplcModels_DecompileResponse;
+export type EvaluationResponse = M.UplcModels_EvaluateResponse;
+export type DebugResponse = M.UplcModels_DebugResponse;
+export type Breakpoints = M.UplcModels_Breakpoints;
+export type Snapshot = M.UplcModels_Snapshot;
+export type Timeline = M.UplcModels_Timeline;
+export type Span = M.UplcModels_Span;
+export type Frame = M.UplcModels_Frame;
+export type EnvEntry = M.UplcModels_EnvEntry;
+export type JavaLocation = M.UplcModels_JavaLocation;
+export type CostModel = M.VmModels_CostModel;
+export type Target = M.VmModels_Target;
+export type DataInput = M.MockTransaction_DataInput;
+export type ScriptPurpose = M.MockTransaction_Purpose;
+export type TxIn = M.MockTransaction_TxIn;
+export type TxOut = M.MockTransaction_TxOut;
+export type Address = M.MockTransaction_Address;
+export type Value = M.MockTransaction_Value;
+export type Asset = M.MockTransaction_Asset;
+export type Datum = M.MockTransaction_Datum;
+export type Certificate = M.MockTransaction_Certificate;
+export type Withdrawal = M.MockTransaction_Withdrawal;
+export type Interval = M.MockTransaction_Interval;
+export type Vote = M.MockTransaction_Vote;
+export type Proposal = M.MockTransaction_Proposal;
+/** The compiler's Run Test request and response (compiler.evaluate). */
+export type TestRunRequest = M.EvaluateRequest;
+export type TestRunResponse = M.EvaluateResponse;
+export type SourceDebugOpenRequest = M.SourceDebugModels_OpenRequest;
+export type SourceDebugOpenResponse = M.SourceDebugModels_OpenResponse;
+export type SourceDebugActionResponse = M.SourceDebugModels_ActionResponse;
+export type SourceDebugLocalsResponse = M.SourceDebugModels_LocalsResponse;
+export type SourceDebugChildrenResponse = M.SourceDebugModels_ChildrenResponse;
+export type SourceScope = M.SourceDebugModels_ScopeValue;
+export type SourceLocal = M.SourceDebugModels_LocalValue;
+export type SourceValue = M.SourceDebugModels_DebugValue;
+export type SourceChild = M.SourceDebugModels_ChildValue;
+export type SourceRange = M.SourceDebugModels_SourceRange;
+export type LocalsCapability = M.SourceDebugModels_LocalsCapability;
 
 /** Missing record fields use the Java service's documented defaults. */
 export type Input<T> = T extends ReadonlyArray<infer E> ? Input<E>[]
@@ -43,13 +93,24 @@ export type JulcFeatureGroup = 'vm' | 'debug' | 'compiler' | 'uplc' | 'sourceDeb
 export type FeatureGroup = JulcFeatureGroup | (string & {});
 /** `full` and `vm` are JuLC's images; another language's image names its own variant. */
 export type Variant = 'full' | 'vm' | (string & {});
-export interface Features {api: 0; variant: Variant; groups: FeatureGroup[]; defaultProtocol: 11; bls: false;}
+export interface Features {
+  api: 0;
+  variant: Variant;
+  groups: FeatureGroup[];
+  defaultProtocol: 11;
+  bls: false;
+  /** The JuLC version the engine was built with; the client runs only an engine of its own release (ADR-077 D1a). */
+  julcVersion: string;
+}
 export interface JulcError extends Error {code: string; status: number; body: unknown;}
-/** What every engine has. */
-export interface EngineClient {
+/** What every engine has, in a client without the REST adapter (the npm packages, ADR-077 D4). */
+export interface PackageClient {
   version(): string;
   features(): Features;
   dispose(): void;
+}
+/** What every engine has, with the REST adapter the archives load by default. */
+export interface EngineClient extends PackageClient {
   /** The playground's HTTP routes, answered by the engine. */
   rest(method: string, path: string, body?: unknown): Promise<{status: number; body: unknown}>;
 }
@@ -60,7 +121,8 @@ export interface EngineClient {
 export type Operations<T extends Record<string, (request: any) => unknown>> = {
   [K in keyof T]: (request: Parameters<T[K]>[0]) => Promise<Awaited<ReturnType<T[K]>>>;
 };
-export interface VmClient extends EngineClient {
+/** The operations of JuLC's VM image. */
+export interface VmGroups {
   vm: {
     decode(request: Input<M.UplcModels_DecodeRequest>): Promise<M.UplcModels_DecodeResponse>;
     hash(request: Input<M.UplcModels_DecodeRequest>): Promise<{scriptHash: string}>;
@@ -69,7 +131,8 @@ export interface VmClient extends EngineClient {
     debug(request: VmRequest): Promise<DebugSession>;
   };
 }
-export interface FullClient extends VmClient {
+/** The operations JuLC's full image adds. */
+export interface FullGroups extends VmGroups {
   compiler: {
     check(request: Input<M.CheckRequest>): Promise<M.CheckResponse>;
     compile(request: Input<M.CompileRequest>): Promise<M.CompileResponse>;
@@ -86,6 +149,10 @@ export interface FullClient extends VmClient {
     open(request: Input<M.SourceDebugModels_OpenRequest>): Promise<SourceDebugSession | M.SourceDebugModels_OpenResponse>;
   };
 }
+export interface VmClient extends EngineClient, VmGroups {}
+export interface FullClient extends VmClient, FullGroups {}
+export interface VmPackageClient extends PackageClient, VmGroups {}
+export interface FullPackageClient extends VmPackageClient, FullGroups {}
 export interface Manifest {
   api: 0;
   version: string;
@@ -95,18 +162,54 @@ export interface Manifest {
   /** The JuLC version the image was built with. */
   julcVersion: string;
 }
-export interface Options {
-  baseUrl?: URL | string;
-  manifest?: Manifest;
+/**
+ * The worker a client drives. In browsers a DOM Worker is one; in Node.js the package's node entry adapts a
+ * worker_threads Worker.
+ */
+export interface WorkerLike {
+  postMessage(message: unknown): void;
+  terminate(): unknown;
+  onmessage: ((event: any) => unknown) | null;
+  onerror: ((event: any) => unknown) | null;
+}
+interface CommonOptions {
   catalogue?: unknown;
-  workerFactory?: (url: URL) => Worker;
+  /** Required of the engine's version(), for an engine whose release is not JuLC's (ADR-077 D1a). */
+  expectedVersion?: string;
   timeoutMs?: number;
   loadTimeoutMs?: number;
 }
+/** Archive mode: the files of a release archive, or an engine built on julc-wasm, served from one directory. */
+export interface ArchiveOptions extends CommonOptions {
+  baseUrl?: URL | string;
+  manifest?: Manifest;
+  workerFactory?: (url: URL) => WorkerLike;
+  /** Loads rest-adapter.js from beside the manifest and adds rest(); the default depends on the distribution. */
+  rest?: boolean;
+  launcherUrl?: never;
+  moduleUrl?: never;
+}
+/** Package mode: an engine package's files, named by its engine.js (ADR-077 D2). */
+export interface PackageOptions extends CommonOptions {
+  launcherUrl: URL | string;
+  moduleUrl: URL | string;
+  manifest: Manifest;
+  /** Starts this package's julc-worker.js. */
+  workerFactory?: () => WorkerLike;
+  rest?: false;
+  baseUrl?: never;
+}
+export type Options = ArchiveOptions | PackageOptions;
+/** The client type when rest is not given: the archives load the REST adapter, @julclang/wasm-client does not. */
+export type DefaultClient = typeof RestDefault extends true ? VmClient | FullClient : VmPackageClient | FullPackageClient;
 /**
  * Narrow with isFullClient before accessing compiler and transaction helpers. An image another language builds on
  * julc-wasm names its client type, for example
  * `createJulc<VmClient & {elci: Operations<{check(r: CheckRequest): CheckResult}>}>()`.
  */
-export function createJulc<C extends EngineClient = VmClient | FullClient>(options?: Options): Promise<C>;
+export function createJulc<C extends PackageClient = VmPackageClient | FullPackageClient>(options: PackageOptions): Promise<C>;
+export function createJulc<C extends EngineClient = VmClient | FullClient>(options: ArchiveOptions & {rest: true}): Promise<C>;
+export function createJulc<C extends PackageClient = VmPackageClient | FullPackageClient>(options: ArchiveOptions & {rest: false}): Promise<C>;
+export function createJulc<C extends PackageClient = DefaultClient>(options?: ArchiveOptions): Promise<C>;
 export function isFullClient(client: EngineClient): client is FullClient;
+export function isFullClient(client: PackageClient): client is FullPackageClient;
