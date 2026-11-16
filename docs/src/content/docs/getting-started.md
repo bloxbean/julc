@@ -1189,10 +1189,14 @@ Section 2. The processor:
 1. Finds classes annotated with `@SpendingValidator`, `@MintingValidator`, `@MultiValidator`, etc.
 2. Reads the source file via the compiler's `Trees` API
 3. Compiles to UPLC, FLAT-encodes, and double-CBOR-wraps
-4. Writes to `META-INF/plutus/<ClassName>.plutus.json`
+4. Writes to `META-INF/plutus/<package path>/<ClassName>.plutus.json`, for example
+   `META-INF/plutus/com/example/VestingValidator.plutus.json`, and to
+   `META-INF/plutus/<ClassName>.plutus.json` for older loaders
 
 The compiled script ends up on the classpath alongside `.class` files and can be
-loaded at runtime with `JulcScriptLoader`.
+loaded at runtime with `JulcScriptLoader`, which reads the copy under the class's
+qualified name. Validators in different packages can share a simple name; one
+compilation cannot hold two of them, so give them separate modules or rename one.
 
 ### Gradle Plugin
 
