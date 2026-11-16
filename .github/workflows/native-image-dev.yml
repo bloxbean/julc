@@ -163,12 +163,18 @@ jobs:
       shell: bash
       run: |
         set -euo pipefail
+        # The official linux-x64 archives, pinned by their SHA-256 (nodejs.org's SHASUMS256.txt for each release).
+        cat > "$RUNNER_TEMP/node-sums.txt" <<'SUMS'
+        33429139d4c4416439bf023b2eb2dc257da188fd793b64f21c8c03a0f04a5840  node-v22.3.0-linux-x64.tar.xz
+        4f2b175a6d53a5c617a80dba2676238a0688cef28c6da4eba35c7d844e66fcfb  node-v24.22.3-linux-x64.tar.xz
+        SUMS
+        cd "$RUNNER_TEMP"
         nodes=()
         for version in v22.3.0 v24.22.3; do
           archive="node-${version}-linux-x64.tar.xz"
           curl -sSfLO "https://nodejs.org/dist/${version}/${archive}"
-          curl -sSfL "https://nodejs.org/dist/${version}/SHASUMS256.txt" | grep " ${archive}\$" | sha256sum -c -
-          tar -xJf "${archive}" -C "$RUNNER_TEMP"
+          grep " ${archive}\$" node-sums.txt | sed 's/^ *//' | sha256sum -c -
+          tar -xJf "${archive}"
           nodes+=("$RUNNER_TEMP/node-${version}-linux-x64/bin/node")
         done
         echo "WASM_SMOKE_NODES=$(IFS=,; echo "${nodes[*]}")" >> "$GITHUB_ENV"

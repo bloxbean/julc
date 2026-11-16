@@ -203,39 +203,12 @@ jobs:
           | tar xz -C "$RUNNER_TEMP"
         echo "$RUNNER_TEMP/binaryen-version_132/bin" >> "$GITHUB_PATH"
 
-    # ADR-077 M1: @julclang/wasm-client is also loaded, from its packed tarball, by Node.js 22.3.0 (the lowest version
-    # it supports) and Node.js 24, each checked against nodejs.org's SHASUMS256.txt.
-    - name: Install Node.js 22.3.0 and 24 for the package smoke
-      shell: bash
-      run: |
-        set -euo pipefail
-        nodes=()
-        for version in v22.3.0 v24.22.3; do
-          archive="node-${version}-linux-x64.tar.xz"
-          curl -sSfLO "https://nodejs.org/dist/${version}/${archive}"
-          curl -sSfL "https://nodejs.org/dist/${version}/SHASUMS256.txt" | grep " ${archive}\$" | sha256sum -c -
-          tar -xJf "${archive}" -C "$RUNNER_TEMP"
-          nodes+=("$RUNNER_TEMP/node-${version}-linux-x64/bin/node")
-        done
-        echo "WASM_SMOKE_NODES=$(IFS=,; echo "${nodes[*]}")" >> "$GITHUB_ENV"
-
-    # ADR-077 M1: Chromium for the CSP and cached-upgrade checks (wasmBrowserSmoke).
-    - name: Install Playwright with Chromium
-      shell: bash
-      run: |
-        set -euo pipefail
-        npm install --prefix "$RUNNER_TEMP/playwright" --ignore-scripts --no-audit --no-fund playwright@1.64.1
-        "$RUNNER_TEMP/playwright/node_modules/.bin/playwright" install --with-deps chromium
-        echo "PLAYWRIGHT_DIR=$RUNNER_TEMP/playwright/node_modules/playwright" >> "$GITHUB_ENV"
 
     # Builds the engine (build/wasm-bundle, also copied to frontend/public/wasm) and checks the parity fixtures
-    # against the JVM in Node.js. A mismatch fails the release. It also checks @julclang/wasm-client (ADR-077 M1):
-    # loading from its tarball in Node.js, in Chromium under a strict Content Security Policy, and its declarations.
+    # against the JVM in Node.js. A mismatch fails the release. wasm-package-checks checks @julclang/wasm-client
+    # further, from this job's files (ADR-077 M1).
     - name: Build and verify engine
-      run: >-
-        ./gradlew :julc-wasm:wasmSmoke :julc-wasm:wasmBrowserSmoke :julc-wasm:wasmClientTypes
-        "-PwasmSmokeNodes=$WASM_SMOKE_NODES" "-PplaywrightDir=$PLAYWRIGHT_DIR"
-        -PskipSigning=true --no-daemon --stacktrace
+      run: ./gradlew :julc-wasm:wasmSmoke -PskipSigning=true --no-daemon --stacktrace
       shell: bash
 
     - name: Build static playground
@@ -279,6 +252,88 @@ jobs:
           julc-wasm-${{ env.VERSION }}-SHA256SUMS.txt
         if-no-files-found: error
         retention-days: 7
+
+    # What wasm-package-checks loads: the packed @julclang/wasm-client, both bundles and the VM parity fixtures.
+    - name: Upload the files the package checks use
+      uses: actions/upload-artifact@v4
+      with:
+        name: wasm-package-checks
+        path: |
+          julc-wasm/build/npm/
+          julc-wasm/build/wasm-bundle-vm/
+          julc-wasm/build/wasm-bundle-full/
+          julc-wasm/build/wasm-parity/vm.json
+        if-no-files-found: error
+        retention-days: 7
+
+  # ADR-077 M1's checks of @julclang/wasm-client, kept out of the job that builds the release files: it builds
+  # nothing, installs Playwright, Node binaries and TypeScript from the network, and loads the wasm job's files from
+  # its artifact. Read-only token, no secrets.
+  wasm-package-checks:
+    needs: wasm
+    runs-on: ubuntu-22.04
+    name: Check @julclang/wasm-client (Node.js 22.3 and 24, Chromium, TypeScript)
+    permissions:
+      contents: read
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        persist-credentials: false
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+
+    - name: Download the wasm job's files
+      uses: actions/download-artifact@v4
+      with:
+        name: wasm-package-checks
+        path: wasm-checks
+
+    - name: Install Node.js 22.3.0 and 24 for the package smoke
+      shell: bash
+      run: |
+        set -euo pipefail
+        # The official linux-x64 archives, pinned by their SHA-256 (nodejs.org's SHASUMS256.txt for each release).
+        cat > "$RUNNER_TEMP/node-sums.txt" <<'SUMS'
+        33429139d4c4416439bf023b2eb2dc257da188fd793b64f21c8c03a0f04a5840  node-v22.3.0-linux-x64.tar.xz
+        4f2b175a6d53a5c617a80dba2676238a0688cef28c6da4eba35c7d844e66fcfb  node-v24.22.3-linux-x64.tar.xz
+        SUMS
+        cd "$RUNNER_TEMP"
+        nodes=()
+        for version in v22.3.0 v24.22.3; do
+          archive="node-${version}-linux-x64.tar.xz"
+          curl -sSfLO "https://nodejs.org/dist/${version}/${archive}"
+          grep " ${archive}\$" node-sums.txt | sed 's/^ *//' | sha256sum -c -
+          tar -xJf "${archive}"
+          nodes+=("$RUNNER_TEMP/node-${version}-linux-x64/bin/node")
+        done
+        echo "WASM_SMOKE_NODES=$(IFS=,; echo "${nodes[*]}")" >> "$GITHUB_ENV"
+
+    # ADR-077 M1: Chromium for the CSP and cached-upgrade checks (wasmBrowserSmoke).
+    - name: Install Playwright with Chromium
+      shell: bash
+      run: |
+        set -euo pipefail
+        npm install --prefix "$RUNNER_TEMP/playwright" --ignore-scripts --no-audit --no-fund playwright@1.64.1
+        "$RUNNER_TEMP/playwright/node_modules/.bin/playwright" install --with-deps chromium
+        echo "PLAYWRIGHT_DIR=$RUNNER_TEMP/playwright/node_modules/playwright" >> "$GITHUB_ENV"
+
+    # The same scripts as :julc-wasm:wasmSmokePackage, wasmBrowserSmoke and wasmClientTypes, on the wasm job's files.
+    - name: Load the packed client in Node.js, in Chromium, and type-check it
+      shell: bash
+      run: |
+        set -euo pipefail
+        tarball=$(ls wasm-checks/npm/julclang-wasm-client-*.tgz)
+        mkdir -p "$RUNNER_TEMP/wasm-client" && tar -xzf "$tarball" -C "$RUNNER_TEMP/wasm-client"
+        IFS=, read -ra nodes <<< "$WASM_SMOKE_NODES"
+        node julc-wasm/src/test/js/package-smoke.mjs "$tarball" wasm-checks/wasm-bundle-vm wasm-checks/wasm-bundle-full \
+          wasm-checks/wasm-parity/vm.json "${nodes[@]}"
+        node julc-wasm/src/test/js/browser-smoke.mjs "$RUNNER_TEMP/wasm-client/package" wasm-checks/wasm-bundle-vm \
+          wasm-checks/wasm-bundle-full "$PLAYWRIGHT_DIR"
+        node julc-wasm/src/test/js/package-types.mjs "$tarball" wasm-checks/wasm-bundle-vm
 
   native-image-playground:
     needs: [validate, wasm]
@@ -408,7 +463,7 @@ jobs:
         retention-days: 7
 
   github-release:
-    needs: [validate, native-image, wasm, native-image-playground, shadow-jars]
+    needs: [validate, native-image, wasm, wasm-package-checks, native-image-playground, shadow-jars]
     # Gated by github_release in gradle.properties. Runs only when every distribution was built, so a release
     # never ships with a platform missing; re-running a failed build job re-runs this one.
     if: needs.validate.outputs.github_release == 'true'

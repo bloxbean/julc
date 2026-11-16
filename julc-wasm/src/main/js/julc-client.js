@@ -1,6 +1,8 @@
 /* The Promise client shared by every entry: julc-wasm.js (browsers, and the archives' entry) and the npm package's
  * node.js. It starts one worker per client, in archive mode (baseUrl) or package mode (launcherUrl and moduleUrl), and
  * refuses any engine that is not of its own JuLC release (ADR-077 D1a, D2a). */
+// The archive build (build.gradle, singleFileClient) rewrites these three lines and the export keywords of
+// isFullClient and startClient: the archives' julc-wasm.js holds this file with the constants inlined.
 import {CLIENT_VERSION} from './client-version.js';
 import {rest as REST_DEFAULT} from './client-defaults.js';
 

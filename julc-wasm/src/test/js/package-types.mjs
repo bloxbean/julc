@@ -13,13 +13,13 @@ const [tarball, archive] = process.argv.slice(2);
 const checks = fileURLToPath(new URL('../types/', import.meta.url));
 const TYPESCRIPT = 'typescript@5.9.3', NODE_TYPES = '@types/node@22.20.5';
 const projects = {
-  nodenext: {files: ['package-check.ts', 'archive-check.ts'], packages: [TYPESCRIPT, NODE_TYPES],
+  nodenext: {files: ['package-check.ts', 'archive-check.ts', 'forwarding-check.ts'], packages: [TYPESCRIPT, NODE_TYPES],
     compilerOptions: {module: 'NodeNext', moduleResolution: 'NodeNext', target: 'ES2022', lib: ['ES2022'],
       types: ['node']}},
-  node10: {files: ['node10-check.ts'], packages: [TYPESCRIPT],
+  node10: {files: ['node10-check.ts', 'forwarding-check.ts'], packages: [TYPESCRIPT],
     compilerOptions: {module: 'ESNext', moduleResolution: 'node10', target: 'ES2022', lib: ['ES2022', 'DOM'],
       types: [], ignoreDeprecations: '5.0'}},
-  bundler: {files: ['package-check.ts', 'archive-check.ts', 'dom-check.ts'], packages: [TYPESCRIPT],
+  bundler: {files: ['package-check.ts', 'archive-check.ts', 'dom-check.ts', 'forwarding-check.ts'], packages: [TYPESCRIPT],
     compilerOptions: {module: 'ESNext', moduleResolution: 'bundler', target: 'ES2022', lib: ['ES2022', 'DOM'],
       types: []}},
 };

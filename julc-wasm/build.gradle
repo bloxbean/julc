@@ -606,6 +606,12 @@ tasks.register('wasmClientIdentity') {
         def generated = ['julc-wasm.js', 'client-defaults.d.ts']
         def differing = shared.findAll { !(it in generated) && new File(packageDir, it).bytes != sdk[it] }
         if (differing) throw new GradleException("The jar's client files differ from @julclang/wasm-client's: ${differing}")
+        // The archives' one-file client is exactly the package's client files with the archives' constants (D4).
+        def expectedArchiveClient = singleFileClient(new File(packageDir, 'julc-client.js').getText('UTF-8'),
+                new File(packageDir, 'julc-wasm.js').getText('UTF-8'), version.getProperty('version')).getBytes('UTF-8')
+        if (sdk['julc-wasm.js'] != expectedArchiveClient) {
+            throw new GradleException("The jar's julc-wasm.js is not the package's julc-client.js and julc-wasm.js in one file")
+        }
         def text = "julc-runtime.js ${runtime.length} bytes, JuLC ${version.getProperty('version')}; shared ${shared.sort()}\n"
         marker.get().asFile.text = text
         logger.lifecycle(text.trim())

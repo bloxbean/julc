@@ -23,13 +23,19 @@ function bridge(workerUrl) {
   // Its own constant, not new Worker(new URL(…)): bundlers copy the shim as a file (ADR-077 D3).
   const shimUrl = new URL('./node-worker.js', import.meta.url);
   const worker = new Worker(shimUrl, {workerData: {workerUrl: workerUrl.href}});
-  let terminated = false;
+  let terminated = false, reported = false;
   const client = {postMessage: value => worker.postMessage(value),
     terminate: () => { terminated = true; return worker.terminate(); }};
   worker.on('message', data => client.onmessage?.({data}));
-  worker.on('error', error => client.onerror?.(error));
-  // A worker that ends by itself, for example through process.exit in the engine, fails the client at once.
-  worker.on('exit', code => { if (!terminated) client.onerror?.({message: 'the worker exited with code ' + code}); });
+  // An error, or a worker that ends by itself (for example through process.exit in the engine), fails the client at
+  // once; an error is followed by an exit, which is not reported again.
+  const report = event => {
+    if (terminated || reported) return;
+    reported = true;
+    client.onerror?.(event);
+  };
+  worker.on('error', report);
+  worker.on('exit', code => report({message: 'the worker exited with code ' + code}));
   return client;
 }
 const node = {
