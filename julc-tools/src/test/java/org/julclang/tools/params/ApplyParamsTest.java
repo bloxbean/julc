@@ -328,9 +328,12 @@ class ApplyParamsTest {
         refused(Kind.INVALID_REQUEST, request("V3", "58050101002499", List.of(int42())), "non-minimal length");
         refused(Kind.INVALID_REQUEST, request("V3", "5f450101002499ff", List.of(int42())), "indefinite-length");
         refused(Kind.INVALID_REQUEST, request("V3", "5f450101002499ff", List.of()), "indefinite-length");
-        refused(Kind.INVALID_REQUEST, request("V3", "46450101002499" + "00", List.of(int42())), "trailing bytes");
-        refused(Kind.INVALID_REQUEST, request("V3", "450101002499" + "00", List.of(int42())), "trailing bytes");
-        refused(Kind.INVALID_REQUEST, request("V3", "4701010024990000", List.of()), "trailing bytes");
+        refused(Kind.INVALID_REQUEST, request("V3", "46450101002499" + "00", List.of(int42())),
+                "The outer CBOR wrapper is followed by 1 trailing bytes");
+        refused(Kind.INVALID_REQUEST, request("V3", "450101002499" + "00", List.of(int42())),
+                "The outer CBOR wrapper is followed by 1 trailing bytes");
+        refused(Kind.INVALID_REQUEST, request("V3", "4701010024990000", List.of()),
+                "The script has trailing bytes after the program");
         refused(Kind.INVALID_REQUEST, request("V3", "0101002499" + "00", List.of(int42())), "trailing bytes");
         refused(Kind.INVALID_REQUEST, request("V3", "4601010024", List.of()), "truncated");
         // The inner wrapper is non-minimal.
