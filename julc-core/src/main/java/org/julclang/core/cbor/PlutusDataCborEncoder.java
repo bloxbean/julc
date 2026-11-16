@@ -11,6 +11,7 @@ import org.julclang.core.PlutusData;
 
 import java.io.ByteArrayOutputStream;
 import java.math.BigInteger;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -72,17 +73,37 @@ public final class PlutusDataCborEncoder {
 
     // --- Byte encoding (plutus-core encodeData) ---
 
-    private static void writeData(ByteArrayOutputStream out, PlutusData data) {
-        switch (data) {
-            case PlutusData.ConstrData cd -> writeConstrData(out, cd);
-            case PlutusData.MapData md -> writeMapData(out, md);
-            case PlutusData.ListData ld -> writeDataArray(out, ld.items());
-            case PlutusData.IntData id -> writeDataInteger(out, id.value());
-            case PlutusData.BytesData bd -> writeBoundedBytes(out, bd.value());
+    /** Marks where an indefinite array ends: the break byte {@code 0xff}. */
+    private static final Object BREAK = new Object();
+
+    /**
+     * Writes the value with an explicit stack of pending items, so that a deeply nested value needs no more Java
+     * stack than a flat one (ADR-074's approach, ADR-077 M2). The bytes are those of the former recursive encoder.
+     */
+    private static void writeData(ByteArrayOutputStream out, PlutusData root) {
+        var pending = new ArrayDeque<Object>();
+        pending.push(root);
+        while (!pending.isEmpty()) {
+            Object next = pending.pop();
+            if (next == BREAK) {
+                out.write(0xff);
+                continue;
+            }
+            switch ((PlutusData) next) {
+                case PlutusData.ConstrData cd -> {
+                    writeConstrHead(out, cd);
+                    writeDataArray(out, cd.fields(), pending);
+                }
+                case PlutusData.MapData md -> writeMapData(out, md, pending);
+                case PlutusData.ListData ld -> writeDataArray(out, ld.items(), pending);
+                case PlutusData.IntData id -> writeDataInteger(out, id.value());
+                case PlutusData.BytesData bd -> writeBoundedBytes(out, bd.value());
+            }
         }
     }
 
-    private static void writeConstrData(ByteArrayOutputStream out, PlutusData.ConstrData cd) {
+    /** The constructor's tag, before its fields array. */
+    private static void writeConstrHead(ByteArrayOutputStream out, PlutusData.ConstrData cd) {
         BigInteger tag = cd.constructorTag();
         if (isCompactTag0To6(tag)) {
             writeTag(out, 121 + tag.longValueExact());
@@ -94,35 +115,35 @@ public final class PlutusDataCborEncoder {
             // plutus writes this tag with cborg's encodeInteger (Data.hs:152-160), not the Data one
             writeCborgInteger(out, tag);
         }
-        writeDataArray(out, cd.fields());
     }
 
     /**
      * Write a Plutus Data array (constructor fields or list items): serialise's {@code defaultEncodeList},
      * an indefinite array ({@code 0x9f ... 0xff}) when non-empty and a definite empty array ({@code 0x80}).
+     * The items and the closing break are left on {@code pending}, first item on top.
      */
-    private static void writeDataArray(ByteArrayOutputStream out, List<PlutusData> items) {
+    private static void writeDataArray(ByteArrayOutputStream out, List<PlutusData> items, ArrayDeque<Object> pending) {
         if (items.isEmpty()) {
             writeMajorArg(out, 4, 0);
-        } else {
-            out.write(0x9f);
-            for (var item : items) {
-                writeData(out, item);
-            }
-            out.write(0xff);
+            return;
+        }
+        out.write(0x9f);
+        pending.push(BREAK);
+        for (int i = items.size() - 1; i >= 0; i--) {
+            pending.push(items.get(i));
         }
     }
 
     /**
      * A definite map in entry order. Canonical Plutus Data keeps entry order and duplicate keys (the
      * on-chain serialiseData folds the entry list as-is); sorting and deduplication are a
-     * transaction-body concern, not this encoder's.
+     * transaction-body concern, not this encoder's. The entries are left on {@code pending}, first key on top.
      */
-    private static void writeMapData(ByteArrayOutputStream out, PlutusData.MapData md) {
+    private static void writeMapData(ByteArrayOutputStream out, PlutusData.MapData md, ArrayDeque<Object> pending) {
         writeMajorArg(out, 5, md.entries().size());
-        for (var entry : md.entries()) {
-            writeData(out, entry.key());
-            writeData(out, entry.value());
+        for (int i = md.entries().size() - 1; i >= 0; i--) {
+            pending.push(md.entries().get(i).value());
+            pending.push(md.entries().get(i).key());
         }
     }
 

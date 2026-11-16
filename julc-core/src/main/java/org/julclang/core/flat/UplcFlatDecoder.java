@@ -7,6 +7,7 @@ import org.julclang.core.recursion.Trampoline;
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Function;
 
 /**
  * Decodes UPLC {@link Program}s and {@link Term}s from FLAT binary format.
@@ -15,14 +16,25 @@ public final class UplcFlatDecoder {
 
     private final FlatReader reader;
     private final FlatDecodeLimits limits;
+    private final Function<byte[], PlutusData> dataDecoder;
 
     public UplcFlatDecoder(FlatReader reader) {
         this(reader, FlatDecodeLimits.UNBOUNDED);
     }
 
     public UplcFlatDecoder(FlatReader reader, FlatDecodeLimits limits) {
+        this(reader, limits, PlutusDataCborDecoder::decodeFirst);
+    }
+
+    /**
+     * Decodes with another reader for the CBOR bytes of {@code data} constants. A caller that accepts only some
+     * encodings, such as {@code vm.applyParams}, which needs canonical bytes and a reader that uses no Java stack
+     * for deep values, passes its own; every other caller keeps {@link PlutusDataCborDecoder#decodeFirst(byte[])}.
+     */
+    public UplcFlatDecoder(FlatReader reader, FlatDecodeLimits limits, Function<byte[], PlutusData> dataDecoder) {
         this.reader = reader;
         this.limits = java.util.Objects.requireNonNull(limits, "limits");
+        this.dataDecoder = java.util.Objects.requireNonNull(dataDecoder, "dataDecoder");
     }
 
     /**
@@ -253,6 +265,6 @@ public final class UplcFlatDecoder {
      */
     public PlutusData readData() {
         byte[] cborBytes = reader.byteString();
-        return PlutusDataCborDecoder.decodeFirst(cborBytes);
+        return dataDecoder.apply(cborBytes);
     }
 }
