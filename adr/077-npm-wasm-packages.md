@@ -87,6 +87,7 @@ now:
      does not compare versions.
    - JuLC's images report the JuLC version as `version()` (`JsApi.julcVersion()`), but nothing checks it against the
      client or the manifest's `julcVersion`.
+   - The client has no version of its own to compare with.
 6. **Parameter application has no name, and accepts guesses.**
    - Every VM operation accepts `script.params`, and `ScriptDecoder.decode` (`julc-tools`, lines 171–193) applies them
      with `Program.applyParams`. It hashes the result, and returns it from `vm.decode` as `info.compiledCode`, wrapped
@@ -176,18 +177,33 @@ Reasons for this split:
 - An engine an embedder builds (ADR-064), such as JOUST's, can depend on the client alone instead of copying it.
 
 The exact dependency stops npm from pairing an engine package with another release's client. D1a checks the pairing
-again at run time, for the cases dependency resolution cannot cover: an application that installs both, or `overrides`.
+again at run time, for the cases dependency resolution cannot cover: `overrides`, duplicated installs, an application
+that installs `wasm-client` itself, or an embedder's copy.
 
-### D1a. The client checks the engine's release (r2)
+### D1a. The client and the engine prove they are one release (r2, revised in r4)
 
-- `createJulc` gains an `expectedVersion` option. When it is set, the client compares it with the engine's reported
-  `version()` and disposes the worker on a mismatch, as it does today for `api`, `variant` and `groups`.
-- `createJulcVm()` and `createJulc()` in the engine packages pass their own package version. JuLC's images report the
-  JuLC version, which equals it (D8).
-- In archive mode the client compares the manifest's `julcVersion` with `version()` for JuLC's own variants (`full`,
-  `vm`).
-- An embedder's engine (ADR-064) reports its own version, so for any other variant the check runs only when the caller
-  passes `expectedVersion`.
+Two identities are checked, at run time, before the client returns.
+
+- **The JuLC build.**
+  - The client carries the version it was built as: a constant, `CLIENT_VERSION`, generated at build time, for example
+    `0.1.0-pre22`.
+  - Every engine built on `julc-wasm` reports the JuLC version it was built with, as `features().julcVersion`. JuLC's
+    images and embedders' images alike take it from `JsApi.julcVersion()`, which reads the version the `julc-wasm` jar
+    was built as.
+  - The client requires `features().julcVersion === CLIENT_VERSION`, in both modes and for every engine. On a mismatch
+    it disposes the worker and fails.
+  - This is what catches a different client, whether from `overrides`, a duplicated install or a stale copy. The
+    engine's runtime and the client must come from the same `julc-wasm` build (ADR-064 I3, extended to the npm client
+    in Compatibility).
+  - A build that recorded no version reports `dev`, which matches only a client also built as `dev`.
+- **The engine's own release.**
+  - For JuLC's variants (`full`, `vm`), `version()` is the JuLC version too, so the client also requires
+    `version() === features().julcVersion`.
+  - An embedder's engine (ADR-064) reports its own application version as `version()`, which may differ. For it, the
+    client compares `version()` only with an `expectedVersion` the caller passes.
+- **The wrappers.** `createJulcVm()` and `createJulc()` pass their package version as `expectedVersion`. With the two
+  rules above, a JuLC engine package therefore runs only with an engine and a client of its own release.
+- **Archive mode.** The manifest's `julcVersion` must also equal `features().julcVersion`.
 
 ### D2. ES-module entry points, CommonJS engine assets, static URLs
 
@@ -312,6 +328,7 @@ again at run time, for the cases dependency resolution cannot cover: an applicat
   - `MockTransaction` and its parts (`TxIn`, `TxOut`, `Value`, `Datum`, and so on);
   - `PlutusData`, `DataInput`, `CompileRequest`, `CompileResponse`, `Breakpoints`, `Snapshot`, `Timeline`;
   - `CostModel`, `Target`, and the `vm.applyParams` types (D6).
+- `Features` gains `julcVersion` (D1a).
 - Where two records share a simple name, the alias names the operation instead: the compiler's Run Test
   `EvaluateRequest` becomes `TestRunRequest`.
 - The generated `<Outer>_<Inner>` names stay available from the types-only sub-path `@julclang/wasm-client/models`, for
@@ -361,9 +378,12 @@ deployed.
 - **Language.** If the language cannot be told from the input, the request must state it (`script.language`). In
   `ScriptDecoder`'s terms, that is when `languageSource` would be `default`. Otherwise the operation fails with "state
   the language".
-- **Validator.** A blueprint whose validators hold more than one distinct `compiledCode` needs `script.validator`. A
-  blueprint whose validators all share one `compiledCode`, such as a multi-purpose validator's entries, gives the same
-  script whichever is chosen.
+- **Validator.** A blueprint with more than one validator entry needs `script.validator`, even when the entries share
+  one `compiledCode`.
+  - Entries with the same code can still declare different parameter counts, schemas and hashes, and those decide
+    whether the request is accepted.
+  - So implicit selection could depend on the entries' order.
+  - Only a blueprint with exactly one entry is used without a selection.
 - **Original hash.** If a blueprint gives a hash for the selected validator, it must equal the hash of the script
   before any parameter is applied. A mismatch is an error.
 - **No double application.** `script.params` must be empty; values go in `params` only.
@@ -441,14 +461,20 @@ The options combine like this:
   blueprints use `~1` in definition names.
 - Any other form, and a reference to a missing definition, is an invalid schema.
 
-**Cycles.**
-- Before checking values, the checker builds the graph of references reachable from each parameter schema.
-- A cycle is allowed only if every edge of it passes through a position that consumes part of the value: a `list`'s
-  `items`, a `map`'s `keys` or `values`, or a `constructor`'s `fields`. That is how a recursive type such as a list or
-  tree is described, and the check of a value then always descends into a strictly smaller part of it, so it ends.
-- A cycle through `$ref`s and applicators alone (`A → A`, `A → anyOf[A, …]`) is non-productive. A cycle that passes
-  through `not` at any point (`S = not S`) has no consistent answer. Both are invalid schemas, and the error names the
-  cycle's definitions.
+**Cycles.** The supported domain is a deliberate subset of CIP-57's schemas, chosen so that every check ends.
+- Before checking values, the checker builds the graph of references and applicators reachable from each parameter
+  schema.
+- An edge **consumes** when it moves into part of the value: a `list`'s `items`, a `map`'s `keys` or `values`, or a
+  `constructor`'s `fields`. Other edges (`$ref`, `allOf`, `anyOf`, `oneOf`, `not`) stay at the same value.
+- **Supported:** every cycle contains at least one consuming edge. Equivalently, the edges that don't consume form no
+  cycle. Every recursive step then descends into a strictly smaller part of a finite value, so checking ends.
+  - This covers the recursive types JuLC and Aiken emit, such as `Tree = anyOf[Leaf, Node(fields: [$ref Tree])]`, and
+    recursion through an alias (`A = $ref B`, `B = anyOf[Nil, Cons(fields: [integer, $ref A])]`).
+- **Not supported, and reported as an invalid schema that names the cycle:**
+  - A cycle with no consuming edge (`A → A`, `A → anyOf[A, …]`). Checking it would not end.
+  - Any cycle that passes through `not`. Some such schemas have no consistent meaning (`S = not S`). Some have more
+    than one (`S = not(not S)`). Some would end on smaller values. They are excluded as a deliberate simplification,
+    not because each is meaningless, and they can be added later with a precise rule.
 
 **Mismatch paths under applicators.**
 - For `anyOf` and `oneOf`, the error is reported at the applicator's path. It lists each branch's first failure, or,
@@ -581,8 +607,12 @@ provenance; only the first real publication does (M4).
 
   Constrains D2, D8a.
 - **I2 (one build).** An engine package depends on exactly its own version of `wasm-client`. At run time the client
-  refuses an engine whose `api`, `variant`, `groups` or version disagree with what it expects (D1a). Constrains D1, D1a,
-  D2.
+  refuses to run unless all of these agree:
+  - the engine's `api`, `variant` and `groups` with its manifest;
+  - the engine's `features().julcVersion` with the client's own `CLIENT_VERSION`;
+  - for JuLC's variants, the engine's `version()` with both.
+
+  Constrains D1, D1a, D2.
 - **I3 (VM image contents).** The VM engine contains no compiler, decompiler, JavaParser or cardano-client-lib code,
   including after `vm.applyParams` (the existing `-H:AbortOnTypeReachable` guards). Constrains D6.
 - **I4 (application is exact).** For any request `vm.applyParams` accepts (D6a):
@@ -658,6 +688,8 @@ provenance; only the first real publication does (M4).
     - the version check (D1a);
     - the worker's construction in the form bundlers recognise (D2);
   - `julc-worker.js`: the two loading modes and their checks (D2a), and the adapter only when `rest` is set (D4);
+  - `JsApi` and `julc-runtime.js`: `features().julcVersion` (D1a);
+  - the generated `CLIENT_VERSION` constant (D1a);
   - the shipped Node bridge, both halves (D3);
   - `VmApi`: `vm.applyParams` (D6);
   - `TypeScriptDeclarations` and the declaration files: the aliases, `WorkerLike`, `PackageClient` (D2, D4, D5);
@@ -749,7 +781,11 @@ provenance; only the first real publication does (M4).
   - The existing client and worker tests pass, including ADR-064 I4's.
   - New negative loading tests pass (I10): another origin, `data:`, `blob:`, `javascript:`, credentials in the URL, a
     wrong extension, `baseUrl` with `launcherUrl`, a manifest `launcher` with a path in package mode.
-  - The version-mismatch test passes (I2).
+  - The version-mismatch tests pass (I2):
+    - a wrong engine;
+    - a wrong manifest;
+    - an engine and wrapper of one release run with an installed client of another, through `overrides`;
+    - an embedder engine whose `julc-wasm` build differs from the client's.
   - The unchanged-archive-consumer fixture passes, including `rest` (I9).
   - The type checks under NodeNext without DOM, and under bundler with DOM, pass with `skipLibCheck: false`.
   - The alias coverage test passes.
@@ -827,7 +863,10 @@ Independent evidence, not values the code under test produced:
     - a `DataInput` without a format, or with `auto`;
     - trailing bytes after the script, and a script that does not round-trip through decoding and encoding;
     - a value given to a blueprint validator without `parameters`;
-    - a multi-validator blueprint with distinct codes and no selection.
+    - a blueprint with several entries and no selection, including entries with identical code but different parameter
+      types or counts. Reordering the entries must never change which contract is chosen.
+  - A positive case: a single-entry blueprint is used without a selection, and a selected entry of a multi-purpose
+    blueprint gives the same script as the other entries with the same code.
 - **Schema check (I5).**
   - Values against schemas.
     - For each keyword in D6b's table and each applicator, the tests generate values that conform and values that
@@ -840,11 +879,13 @@ Independent evidence, not values the code under test produced:
     - a malformed keyword value;
     - a keyword with the wrong data type;
     - a missing definition, or an external `$ref`;
-    - a self cycle (`A → A`), a mutual cycle (`A → B → A`), and a negative cycle (`S = not S`).
+    - a self cycle (`A → A`), a mutual cycle (`A → B → A`), and cycles through `not` (`S = not S`, `S = not(not S)`).
 
     The same faults placed under `not` and inside an `anyOf` branch must still be reported as invalid schemas.
   - **Accepted, as they should be:**
-    - productive recursive types, such as a list type and a tree type defined through constructor fields;
+    - productive recursive types, such as a list type and a tree type defined through constructor fields, a recursive
+      sum type whose branch edges don't consume (`Tree = anyOf[Leaf, Node(fields: [$ref Tree])]`), and recursion through
+      an alias (`A = $ref B`, `B = anyOf[Nil, Cons(fields: [integer, $ref A])]`);
     - a definition named `Data` that is a constructor, which must be checked as a constructor;
     - opaque, annotation-only data;
     - names with `~1` and `~0` escapes.
@@ -857,7 +898,8 @@ Independent evidence, not values the code under test produced:
   - Vite (development and production) and webpack (production) fixture builds.
   - The negative loading tests (I10), and the unchanged-archive-consumer fixture (I9).
   - A check that no `package.json` has install scripts.
-  - A test that a client refuses an engine of another version (I2).
+  - Tests that a client refuses an engine of another release, and that an engine package's matching engine and wrapper
+    are refused with an overridden client of another release (I2).
   - The publish job's retry cases against a local registry (I11).
   - The comparison of the published files from the registry, and `npm audit signatures`, after the first real
     publication (M4).
@@ -962,3 +1004,12 @@ the recommendation recorded with each.
     - **K20:** new alternatives (a peer dependency, one package, a CDN with SRI) and open question 9.
 - r3 (2026-11-16): records the maintainer's decisions on open questions 1 and 3 to 9, each as the recommendation it
   already carried. Open question 2 stays with M0's experiment. No design change.
+- r4 (2026-11-16), responding to reviewer1's round-2 review of `232df104`:
+  - **F7:** D1a gives the client its own `CLIENT_VERSION` and has every engine report `features().julcVersion`. The
+    client requires them to be equal, which catches an overridden client. The embedder rule is kept separate
+    (`expectedVersion`). I2 and M1's tests are updated.
+  - **F8:** D6a requires `script.validator` for any blueprint with more than one entry, whatever their code. The
+    verification covers identical-code entries with different parameters, and reordering.
+  - **F9:** D6b's cycle rule is now the per-cycle condition: every cycle contains a consuming edge. That supports
+    recursive sum types and alias recursion, which r2's rule would have rejected. Cycles through `not` are described as
+    a deliberately unsupported subset. Verification adds both recursion cases.
