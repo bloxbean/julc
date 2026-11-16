@@ -16,7 +16,8 @@ every change. JuLC is a research project: do not treat a result as proof that a 
   worker and, when they are missing, sets the flag with `v8.setFlagsFromString`. The flag is process-wide. Node 24
   needs nothing.
 - **Content Security Policy:** the page and the worker scripts need `script-src 'self' 'wasm-unsafe-eval'`. Send it on
-  the worker's response too: a worker script has its own policy. No `'unsafe-eval'` is needed.
+  the worker's response too: a worker script has its own policy. No `'unsafe-eval'` is needed. A Chrome extension
+  (Manifest V3) must add `'wasm-unsafe-eval'` to its `content_security_policy.extension_pages`.
 - BLS12-381 builtins are not available in WebAssembly.
 
 ## Use

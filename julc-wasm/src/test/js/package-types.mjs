@@ -2,14 +2,15 @@
 // moduleResolution NodeNext without the DOM library, under bundler with it, and under node10 (typesVersions); the
 // archives' copy (rest: true) too.
 // Installs pinned TypeScript and @types/node from the registry.
-//   node package-types.mjs <tarball> <archive client directory>
+// With the engine packages' tarballs (ADR-077 M3), their declarations are checked too, in each project.
+//   node package-types.mjs <tarball> <archive client directory> [<engine package tarball>...]
 import {execFileSync} from 'node:child_process';
 import {cpSync, mkdtempSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 
-const [tarball, archive] = process.argv.slice(2);
+const [tarball, archive, ...engines] = process.argv.slice(2);
 const checks = fileURLToPath(new URL('../types/', import.meta.url));
 const TYPESCRIPT = 'typescript@5.9.3', NODE_TYPES = '@types/node@22.20.5';
 const projects = {
@@ -26,12 +27,13 @@ const projects = {
 for (const [name, project] of Object.entries(projects)) {
   const dir = mkdtempSync(path.join(tmpdir(), 'julc-types-' + name + '-'));
   writeFileSync(path.join(dir, 'package.json'), JSON.stringify({name: 'types-' + name, private: true, type: 'module'}));
-  execFileSync('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund', path.resolve(tarball), ...project.packages],
-    {cwd: dir, stdio: 'inherit'});
+  execFileSync('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund', path.resolve(tarball),
+    ...engines.map(engine => path.resolve(engine)), ...project.packages], {cwd: dir, stdio: 'inherit'});
   cpSync(path.resolve(archive), path.join(dir, 'archive'), {recursive: true});
-  for (const file of project.files) cpSync(path.join(checks, file), path.join(dir, file));
-  writeFileSync(path.join(dir, 'tsconfig.json'), JSON.stringify({files: project.files, compilerOptions: {
+  const files = engines.length ? [...project.files, 'engine-check.ts'] : project.files;
+  for (const file of files) cpSync(path.join(checks, file), path.join(dir, file));
+  writeFileSync(path.join(dir, 'tsconfig.json'), JSON.stringify({files, compilerOptions: {
     ...project.compilerOptions, strict: true, skipLibCheck: false, noEmit: true, exactOptionalPropertyTypes: false}}));
   execFileSync(path.join(dir, 'node_modules', '.bin', 'tsc'), ['-p', dir], {cwd: dir, stdio: 'inherit'});
-  console.log(`ok types ${name}: ${project.files.join(', ')}`);
+  console.log(`ok types ${name}: ${files.join(', ')}`);
 }
