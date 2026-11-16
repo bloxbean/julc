@@ -1,7 +1,7 @@
 # ADR-077: npm packages for the WebAssembly engines, and `vm.applyParams`
 
 **Status:** Proposed (2026-11-16). Design only; no implementation in this change.
-**Date:** 2026-11-16 (r1 to r8)
+**Date:** 2026-11-16 (r1 to r9)
 **Risk class:** **medium**.
 - This is a public distribution with a lasting API. Package names and exported type names are hard to change once
   published.
@@ -679,8 +679,13 @@ that do not run the Gradle build get write access or credentials (`native-image-
 - This attestation, not a checksum file from the release, is what every later check trusts. A checksum file in the
   release proves only that the download arrived intact: anyone able to edit release assets could replace both the
   file and the tarballs. Job outputs belong to a single run attempt.
-- Every later job verifies a release asset with `gh attestation verify`. The attestation must name repository
-  `bloxbean/julc`, signer workflow `.github/workflows/native-image-release.yml` and the tag's ref.
+- Every later check verifies a release asset with `gh attestation verify --repo bloxbean/julc --signer-workflow
+  bloxbean/julc/.github/workflows/native-image-release.yml --source-ref refs/tags/v<version>`.
+  - That checks the identity in the Sigstore certificate, not strings in the attestation's predicate. So an attestation
+    from a modified workflow, another branch or another tag fails.
+  - Every job that verifies, including the build-once check in `wasm`, also holds `attestations: read`.
+- `github-release` runs only after `attest` succeeds (`needs: attest`), so a release never exists without its
+  attestation.
 
 **The `github-release` job** attaches the three tarballs and their checksum file to the GitHub release, beside the
 archives.
@@ -695,13 +700,30 @@ archives.
   - The `wasm` job starts by checking whether the tag's GitHub release already holds attested npm tarballs. If it does,
     the job stops before building, with a message pointing to recovery.
   - So a whole-workflow re-run, which would rebuild different bytes (ADR-057, open question 4), changes nothing.
-- **Recovery** never rebuilds:
-  - it is either "re-run failed jobs" in the original attempt;
-  - or the workflow's manual `workflow_dispatch` entry for the tag.
-  - That entry runs only `npm-publish` and `npm-verify`, on the release's existing assets. It verifies them against
-    their attestation, which does not depend on any run attempt's outputs.
+- **Recovery never rebuilds.** It has two paths, chosen by the state:
+  - **Within the original attempt,** before any full re-run, "re-run failed jobs" recovers. It keeps that attempt's
+    assets, artifacts and job outputs.
+  - **After a refused full re-run, or once the original attempt can no longer be re-run,** only the manual
+    `workflow_dispatch` entry recovers. After the early stop in `wasm`, "re-run failed jobs" would hit the same stop,
+    and the downstream jobs would lack their artifacts.
+- **The `workflow_dispatch` entry's contract:**
+  - It is dispatched on the tag itself: its execution ref must be exactly `refs/tags/v<version>`. A run on a branch,
+    or whose ref does not match the version, is refused before anything runs.
+  - It reads the version from the tag name, and the gates from `gradle.properties` at that tag, using `git show`,
+    with no Gradle: `npm_publish`, `github_release`, and the release-candidate rule (D8).
+    - With `npm_publish = false`, or on a release-candidate tag, it publishes nothing.
+  - On dispatch, every build, `attest`, `github-release` and Homebrew job is skipped (`if: github.event_name ==
+    'push'`).
+  - `npm-publish` admits dispatch explicitly:
+    `if: github.event_name == 'workflow_dispatch' || (needs.github-release.result == 'success' &&
+    needs.attest.result == 'success')`. There is no bare `always()`, so a normal run whose `github-release` or `attest`
+    failed never publishes.
+  - It runs only `npm-publish` and `npm-verify`, on the release's existing assets, after verifying them against their
+    attestation.
   - The entry lives in the same `native-image-release.yml`, because npm's trusted publisher validates the workflow
-    file, and it runs in the same `release-staging` environment.
+    file.
+- **Release assets are never deleted** to recover, and a release is never recreated. I11 relies on this, and M4 tests
+  that a deleted asset is detected.
 - Once a release exists, its exact npm files are kept there for good. Every publication and every retry takes them
   from there, never from a run artifact, which expires, and never from a rebuild.
 
@@ -709,13 +731,19 @@ archives.
 - **Gate.**
   - It runs only when both `npm_publish` and `github_release` are `true` in `gradle.properties`; the default for
     `npm_publish` is `false`.
-  - It runs only after `github-release` and `attest` have succeeded, or from the recovery entry.
+  - In a normal run, it runs only after `github-release` and `attest` have succeeded. Otherwise it runs only from the
+    recovery entry, under its contract above.
   - It verifies each downloaded release asset against its attestation (`gh attestation verify`). In a normal run it
     also compares the asset with the `wasm` job's digest outputs. Any difference stops it.
   - So npm never gets a version whose archives are not public, and users can always check I1.
-- **Credentials.** It runs in the `release-staging` environment, which accepts only `v*` tags. It gets `id-token: write`
-  for npm trusted publishing (OIDC) and `contents: read` to download the release assets, and nothing else. No npm
-  token exists.
+- **Credentials.**
+  - It runs in the `release-staging` environment. That environment accepts `v*` tags, but also `main` and `release/**`
+    (`native-image-release.yml`, lines 422–424), so it cannot by itself ensure a tag.
+  - The job therefore requires its own ref to be exactly `refs/tags/v<version>`, and refuses any other.
+  - It gets `id-token: write` for npm trusted publishing (OIDC), `contents: read` to download the release assets, and
+    `attestations: read`, and nothing else. No npm token exists.
+- **Concurrency.** It runs in a per-tag concurrency group, without cancelling a run in progress, so a recovery run never
+  overlaps the original run's publication.
 - **Tools.** Node ≥ 22.14, and npm installed at an exact pinned version ≥ 11.5.1. Trusted publishing needs these, and
   Node 22 bundles npm 10. JOUST installs `npm@latest` unpinned; JuLC does not.
 - **What it doesn't do.** It runs no Gradle, no `npm install` and no package scripts, and it does not check out or build
@@ -856,9 +884,14 @@ provenance; only the first real publication does (M4).
 - **I11 (no rebuild, no overwrite).**
   - A publication or a retry uses only the tarballs packed by the build job. They are taken from the GitHub release
     and verified against their attestation (and, in the same run, the digest outputs).
-  - A tag's release is built once.
-  - A completed release asset is never replaced. Only an incomplete upload's `starter` placeholder is ever removed. A version already on npm with different contents, or without this workflow's provenance,
-  stops the job. Constrains D8a.
+  - A tag's release is built once, as long as its release and assets are not deleted. Deleting and recreating a
+    release, or its assets, is forbidden by the release procedure (D8a).
+  - Once npm holds a version, npm is the durable record. `npm-verify` compares the registry's tarballs with the
+    release assets, so a recreated release that differs is detected.
+  - A completed release asset is never replaced. Only an incomplete upload's `starter` placeholder is ever removed.
+  - A version already on npm with different contents, or without this workflow's provenance, stops the job.
+
+  Constrains D8a.
 - **I12 (provenance).** Every real release version of the three packages carries a verified provenance attestation
   naming `bloxbean/julc`, `.github/workflows/native-image-release.yml` and the release tag. The sole exception is each
   package's hand-published bootstrap placeholder (D8a), which is deprecated. The `npm-verify` job checks it for
@@ -1075,10 +1108,18 @@ provenance; only the first real publication does (M4).
     - already published and identical;
     - already published and different;
     - a failure after the first package.
-  - The full three-attempt sequence, against a test repository:
-    1. Attempt 1 releases and attests bytes A, then fails in `npm-publish`.
-    2. A whole-workflow re-run stops in `wasm` before building, so no bytes B ever exist.
-    3. Recovery, through "re-run failed jobs" and also through the `workflow_dispatch` entry, publishes A.
+  - The recovery sequences, against a test repository:
+    1. Attempt 1 releases and attests bytes A, then fails in `npm-publish`. "Re-run failed jobs" in attempt 1
+       publishes A.
+    2. Attempt 1 fails the same way. A whole-workflow re-run stops in `wasm` before building, so no bytes B ever
+       exist. The `workflow_dispatch` entry on the tag then publishes A.
+  - Dispatch negatives:
+    - a dispatch from a branch is refused;
+    - a tag that does not match the version is refused;
+    - an attestation from a modified workflow fails verification;
+    - a dispatch on a release-candidate tag, or with `npm_publish = false`, publishes nothing.
+  - A normal run whose `attest` or `github-release` fails does not publish. An `attest` failure creates no release.
+  - Deleting a release asset after publication is detected by `npm-verify`.
   - Release assets edited between jobs fail attestation verification.
   - An interrupted upload that leaves a `starter` placeholder (a simulated HTTP 502) is cleaned up and retried with the
     original bytes. A differing completed asset still stops the job.
@@ -1410,3 +1451,22 @@ the recommendation recorded with each.
   - **R19:** the per-bundler server fixtures and the Chrome extension fixture are in I8, M3's exit and Verification.
   - **R20:** `npm-verify` also checks the release asset against its attestation and, in a normal run, the digest
     outputs.
+- r9 (2026-11-16), responding to Codex's round 5 on r8 (approved; C29 to C31) and Fable's re-review of r8 (approved;
+  R21, R22):
+  - **C29:** recovery is chosen by state. Within the original attempt, "re-run failed jobs" recovers. After a refused
+    full re-run, only the `workflow_dispatch` entry does. M4 tests both sequences.
+  - **C30, R21:** the dispatch entry's contract:
+    - its execution ref must be exactly the tag;
+    - the version and gates are read from the tag without Gradle;
+    - the build, attest, release and Homebrew jobs are skipped;
+    - `npm-publish` has an explicit `if`, with no bare `always()`;
+    - verification is certificate-backed (`--signer-workflow`, `--source-ref`), and `attestations: read` is granted;
+    - negative tests.
+
+    It also corrects "`release-staging` accepts only `v*` tags": the environment also accepts `main` and
+    `release/**`, so the job checks the ref itself.
+  - **C31, R22:** `github-release` needs `attest`. I11 is narrowed: built once as long as nothing is deleted, deleting
+    and recreating is forbidden, and npm is the durable record once a version is published. M4 covers an attestation
+    failure, partial uploads and deleted assets.
+  - **R22:** a per-tag concurrency group on `npm-publish`.
+  - **Editorial:** I11's run-together bullet is split.
