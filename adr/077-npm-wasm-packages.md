@@ -3,7 +3,7 @@
 **Status:** Accepted (2026-11-16) by the maintainer, after design approval from reviewer1 (r4) and the internal
 Fable and Codex reviews (r9; r10 applies their last shared finding). Design only; the implementation follows in
 milestones M0 to M5.
-**Date:** 2026-11-16 (r1 to r12)
+**Date:** 2026-11-16 (r1 to r13)
 **Risk class:** **medium**.
 - This is a public distribution with a lasting API. Package names and exported type names are hard to change once
   published.
@@ -17,8 +17,10 @@ milestones M0 to M5.
 **Changes:**
 - ADR-057's non-goal "Publishing to npm. Deferred until the API has had at least one release of use". This ADR also
   answers ADR-057's open question 1 (npm package names and cadence).
-- ADR-064's **I4** (the worker loads only a plain launcher file name next to the manifest). It is kept for archive
-  loading, and a second, separately checked loading mode is added for packages (D2a, I10).
+- ADR-064's **I4** (the worker loads only a plain launcher file name next to the manifest).
+  - It is kept for archive loading, which also loads a second fixed file name, `julc-runtime.js`, from beside the
+    manifest.
+  - A second, separately checked loading mode is added for packages (D2a, I10).
 - ADR-064's `EngineClient` type. It gains a package-mode variant without `rest` (D4).
 
 **Relates to:** [#244](https://github.com/bloxbean/julc/issues/244). Yaci Viewer's Script Lab is the engine's first known
@@ -258,13 +260,19 @@ Two identities are checked, at run time, before the client returns.
     - in archive mode, the fixed file name `julc-runtime.js` beside the manifest, under ADR-064 I4's confinement;
     - in Node, through the shim's load path (D3).
   - **`JsApi.install` checks the runtime's identity before using it,** and never calls a runtime it has not checked:
-    - **No `globalThis.JulcRuntime`:** it evaluates its own embedded copy. This is the legacy and direct-load path,
-      for example a main-thread embedder that preloads nothing. If a CSP refuses the evaluation, that refusal is an
-      explicit start-up error.
-    - **A `JulcRuntime` whose `julcVersion` equals the image's `JsApi.julcVersion()`:** it uses that runtime.
-    - **A `JulcRuntime` that is malformed, unstamped, or stamped with another version:** a terminal start-up error
-      naming both versions. There is no recovery by evaluation.
-    - **A preload the worker or shim attempted that failed:** also terminal.
+    - **When the worker or shim recorded a preload** (r13, the strict case):
+      - a well-formed `JulcRuntime` stamped with the image's `JsApi.julcVersion()` is used;
+      - a malformed, unstamped or differently stamped one is a terminal start-up error, naming both versions, with no
+        recovery by evaluation;
+      - a recorded preload that failed is terminal too.
+    - **When no preload was recorded,** the `JulcRuntime` found may be a leftover from another engine's own
+      evaluation. This happens on a shared main-thread global, as with ADR-064 embedders like JOUST, or with an engine
+      from before r12.
+      - So a missing, malformed, unstamped or differently stamped one is treated as absent: the image evaluates its
+        own embedded copy. Engines loaded earlier keep working, because their API closes over their own runtime.
+      - A matching one may be used.
+      - If a CSP refuses the evaluation, that refusal is an explicit start-up error.
+    - The global is not deleted after install, because `rest-adapter.js` reads `JulcRuntime.legacy`.
     - The worker and the shim record that they preloaded, and the engine reports which runtime it used. The client
       fails if a preload happened but the engine says it evaluated its own copy.
   - **Why the stamp is needed.**
@@ -1062,8 +1070,10 @@ provenance; only the first real publication does (M4).
     `@julclang/wasm-client` and the `julc-wasm` jar both contain is byte-equal, including the stamped
     `julc-runtime.js` (now also in the jar's `META-INF/julc-wasm/js/`), except the generated `client-defaults.js` and
     `client-defaults.d.ts` (D4).
-  - An embedder that wants the strict CSP ships the jar's `julc-runtime.js` beside its worker. A main-thread embedder
-    that preloads nothing keeps the evaluation path, and needs `'unsafe-eval'` (D2).
+  - **An embedder that uses the worker must ship the jar's `julc-runtime.js` beside its manifest.** The worker preloads
+    it, and a missing file is a start-up error that names it. It is not optional.
+  - A main-thread embedder that preloads nothing keeps the evaluation path. It needs `'unsafe-eval'`, and keeps working
+    beside other engines on the same global (D2).
     - The package adds the Node bridge.
     - The jar also has `rest-adapter.js`.
 
@@ -1150,8 +1160,23 @@ provenance; only the first real publication does (M4).
     - a matching preload is used;
     - a mismatched or unstamped preload is refused, with no evaluation;
     - no preload falls back to the embedded copy;
-    - two engines of different builds on one global make the second fail loudly;
-    - a stale runtime file beside an archive's manifest is refused.
+    - with no preload recorded:
+      - two engines of different builds on one global both work, the second evaluating its own copy;
+      - an engine loaded after a pre-r12 engine, which left an unstamped runtime, works;
+    - with a preload recorded:
+      - a malformed preload (the wrong shape, no `install`) is refused;
+      - a preload that failed to load is refused;
+      - a stale runtime file beside an archive's manifest is refused;
+      - a preload reported by the engine as "evaluated its own" makes the client fail.
+  - A build-failing check that the stamped runtime is byte-equal across:
+    - the image's embedded `/julc-runtime.js`;
+    - the jar's `META-INF/julc-wasm/js/julc-runtime.js`;
+    - `@julclang/wasm-client`;
+    - the archive bundles;
+    - the playground.
+
+    It also checks that the stamp equals `julc-wasm-version.properties`. Equal stamps alone cannot detect different
+    bytes.
   - The embedder smoke preloads the runtime from the jar's SDK directory.
   - An installed package loads at exactly Node 22.3.0, and on 22.12 and 24, on the main thread and in an application
     worker, including the exception-references path.
@@ -1341,6 +1366,7 @@ Independent evidence, not values the code under test produced:
   - A check that no `package.json` has install scripts.
   - Tests that a client refuses an engine of another release, and that an engine package's matching engine and wrapper
     are refused with an overridden client of another release (I2).
+  - The stamped runtime's byte equality across every copy, and its stamp against the build version (D2, M1).
   - The publish job's retry cases against a local registry (I11): identical with provenance (skipped), identical
     without provenance (fails), different contents (fails), "already exists" with a match (success), and a failure
     after the first package.
@@ -1607,3 +1633,13 @@ choosing the recommendation recorded with each.
   - **C36, R25:** `engines` is `>=22.3.0` throughout, tested at exactly 22.3.0.
   - **R26:** a preload recorded but not used makes the client fail.
   - **R27:** a Risks note that I1 covers the package as installed, not an application's minified bundle.
+- r13 (2026-11-16), from the confirmations of r12. Fable approved, with R28 and R29; Codex approved, with C33's tests
+  and C37.
+  - **R28:** the strict identity rule applies only when the worker or shim recorded a preload. Without one, a
+    non-matching leftover, from another engine's own evaluation or a pre-r12 engine, is treated as absent, and the
+    image evaluates its own copy. So main-thread multi-engine embedders keep working. M1's cases are updated.
+  - **R29:** the runtime file is mandatory, beside the manifest, for embedders that use the worker, and the
+    missing-file error names it. The Changes header notes archive mode's second fixed file name.
+  - **C33:** negative tests for a malformed preload, a failed preload, and a preload reported as evaluated.
+  - **C37:** a build-failing byte comparison of the stamped runtime across every copy, and its stamp against
+    `julc-wasm-version.properties`.
