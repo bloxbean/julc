@@ -919,8 +919,11 @@ provenance; only the first real publication does (M4).
   - `build.gradle`: the package directories, the CommonJS `engine/` directory, the generated `engine.js`, and `npm
     pack` (D2, D8a).
 - `julc-tools`: the CIP-57 data-schema checker and the `applyParams` service method (D6, D6a, D6b).
-- `.github/workflows/native-image-release.yml`: packing and the identity check in `wasm`, the attachments in
-  `github-release`, and the new `npm-publish` job (D8a).
+- `.github/workflows/native-image-release.yml` (D8a):
+  - `wasm`: packing, the identity check, the digest outputs, the build-once check, and the Binaryen pin;
+  - `github-release`: the create-once attachments;
+  - the new `attest`, `npm-publish` and `npm-verify` jobs;
+  - a `workflow_dispatch` recovery entry.
 - `gradle.properties`: `npm_publish = false`.
 - Docs: `docs/src/content/docs/guides/javascript-wasm.md` gains an npm section; the release notes.
 - Not affected: the compiler, VM, stdlib, ledger API, script bytes and budgets.
