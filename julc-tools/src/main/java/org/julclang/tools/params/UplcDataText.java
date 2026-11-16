@@ -5,7 +5,6 @@ import org.julclang.core.PlutusData;
 import java.math.BigInteger;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.HexFormat;
 import java.util.List;
 
 /**
@@ -77,7 +76,7 @@ final class UplcDataText {
                     BigInteger constructor = null;
                     if (word.equals("Constr")) {
                         constructor = integer(false);
-                        if (constructor.compareTo(WORD64_LIMIT) >= 0) {
+                        if (constructor.signum() < 0 || constructor.compareTo(WORD64_LIMIT) >= 0) {
                             throw error("constructor index " + constructor + " is outside 0 to 2^64 - 1; Plutus data"
                                     + " constructor tags are unsigned 64-bit words");
                         }
@@ -182,24 +181,49 @@ final class UplcDataText {
                 || word.equals("Map");
     }
 
+    /** An integer with an optional sign, in ASCII digits; a constructor index, like UplcParser's, may be signed too. */
     private BigInteger integer(boolean signed) {
         int start = pos;
-        if (signed && pos < text.length() && (text.charAt(pos) == '-' || text.charAt(pos) == '+')) pos++;
+        if (pos < text.length() && (text.charAt(pos) == '-' || text.charAt(pos) == '+')) pos++;
         int digits = pos;
-        while (pos < text.length() && text.charAt(pos) >= '0' && text.charAt(pos) <= '9') pos++;
+        while (pos < text.length() && isAsciiDigit(text.charAt(pos))) pos++;
         if (pos == digits) throw error(signed ? "expected an integer" : "expected a constructor index");
         if (pos - digits > MAX_INTEGER_DIGITS) throw error("integer literal too large");
-        if (pos < text.length() && isWordChar(text.charAt(pos))) throw error("unexpected character after a number");
+        endOfToken("a number");
         String number = text.substring(start, pos);
         return new BigInteger(number.startsWith("+") ? number.substring(1) : number);
     }
 
+    /** ASCII hex digits only: other Unicode digits are not hex in UPLC text. */
     private byte[] hex() {
         int start = pos;
-        while (pos < text.length() && Character.digit(text.charAt(pos), 16) >= 0) pos++;
+        while (pos < text.length() && isAsciiHexDigit(text.charAt(pos))) pos++;
         if ((pos - start) % 2 != 0) throw error("a byte string needs an even number of hex digits");
-        if (pos < text.length() && isWordChar(text.charAt(pos))) throw error("unexpected character in a byte string");
-        return HexFormat.of().parseHex(text, start, pos);
+        endOfToken("a byte string");
+        byte[] bytes = new byte[(pos - start) / 2];
+        for (int i = 0; i < bytes.length; i++) {
+            bytes[i] = (byte) ((Character.digit(text.charAt(start + 2 * i), 16) << 4)
+                    | Character.digit(text.charAt(start + 2 * i + 1), 16));
+        }
+        return bytes;
+    }
+
+    /** A number or byte string ends at a delimiter, whitespace or the start of a {@code --} comment. */
+    private void endOfToken(String what) {
+        if (pos >= text.length() || !isWordChar(text.charAt(pos)) || startsComment()) return;
+        throw error("unexpected character '" + text.charAt(pos) + "' after " + what);
+    }
+
+    private boolean startsComment() {
+        return text.startsWith("--", pos);
+    }
+
+    private static boolean isAsciiDigit(char c) {
+        return c >= '0' && c <= '9';
+    }
+
+    private static boolean isAsciiHexDigit(char c) {
+        return isAsciiDigit(c) || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
     }
 
     private String word() {

@@ -11,6 +11,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import java.math.BigInteger;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -130,7 +131,16 @@ class StrictDataReaderTest {
         refused(new DataInput("uplc", "Constr " + TOO_BIG + " []"), "constructor index 18446744073709551616 is outside"
                 + " 0 to 2^64 - 1");
         refused(new DataInput("uplc", "List [Constr " + TOO_BIG + " []]"), "outside 0 to 2^64 - 1");
-        refused(new DataInput("uplc", "Constr -1 []"), "expected a constructor index");
+        refused(new DataInput("uplc", "Constr -1 []"), "constructor index -1 is outside 0 to 2^64 - 1");
+        // Signed spellings of non-negative indices, as UplcParser reads them (M2-C7).
+        assertEquals(BigInteger.ZERO, ((PlutusData.ConstrData) StrictDataReader.read(new DataInput("uplc",
+                "Constr +0 []"))).constructorTag());
+        assertEquals(BigInteger.ZERO, ((PlutusData.ConstrData) StrictDataReader.read(new DataInput("uplc",
+                "Constr -0 []"))).constructorTag());
+        assertEquals(MAX_TAG, ((PlutusData.ConstrData) StrictDataReader.read(new DataInput("uplc",
+                "Constr +" + MAX_TAG + " []"))).constructorTag());
+        refused(new DataInput("uplc", "Constr +" + TOO_BIG + " []"), "outside 0 to 2^64 - 1");
+        refused(new DataInput("uplc", "Constr + 1 []"), "expected a constructor index");
         // d866 821bffffffffffffffff 80: the canonical CBOR of Constr (2^64-1) [].
         StrictDataReader.read(new DataInput("cbor", "d866821bffffffffffffffff80"));
     }
@@ -201,7 +211,15 @@ class StrictDataReaderTest {
         refused(new DataInput("uplc", "I 42) (I 1"), "unexpected text after the value");
         refused(new DataInput("uplc", "Constr 0 [I 42"), "expected ']', found the end of the text");
         refused(new DataInput("uplc", ""), "found the end of the text");
-        refused(new DataInput("uplc", "I 42x"), "unexpected character after a number");
+        refused(new DataInput("uplc", "I 42x"), "unexpected character 'x' after a number");
+        refused(new DataInput("uplc", "I 42-1"), "unexpected character '-' after a number");
+        refused(new DataInput("uplc", "B #abg0"), "unexpected character 'g' after a byte string");
+        // A comment right after a number or byte string ends it (M2-C7).
+        assertEquals(PlutusData.integer(42), StrictDataReader.read(new DataInput("uplc", "I 42-- comment\n")));
+        assertEquals(PlutusData.bytes(new byte[]{(byte) 0xab}), StrictDataReader.read(new DataInput("uplc",
+                "B #ab-- comment\n")));
+        assertEquals(new PlutusData.ConstrData(1, List.of(PlutusData.integer(2))), StrictDataReader.read(
+                new DataInput("uplc", "Constr 1-- index\n[I 2-- field\n]-- end")));
         refused(new DataInput("uplc", "B #abc"), "even number of hex digits");
         refused(new DataInput("uplc", "Bogus 1"), "found 'Bogus'");
         refused(new DataInput("uplc", "Map [(I 1 I 2)]"), "expected ','");
@@ -217,6 +235,18 @@ class StrictDataReaderTest {
                 StrictDataReader.read(new DataInput("uplc", " ( Map [((I 1), List [B #]), (I -2, (I +3))] ) ")));
         assertEquals(new PlutusData.ListData(List.of()), StrictDataReader.read(new DataInput("uplc", "List []")));
         assertEquals(new PlutusData.MapData(List.of()), StrictDataReader.read(new DataInput("uplc", "Map [ ]")));
+    }
+
+    /** M2-C8: only ASCII hex digits; other Unicode digits are a refusal, never an engine error. */
+    @Test
+    void nonAsciiHexDigitsAreRefused() {
+        for (String text : List.of("B #\uFF26\uFF26", "B #\u0663\u0663", "B #a\u0663", "I \u0663")) {
+            refused(new DataInput("uplc", text), "the uplc value is not Plutus data");
+            var result = ApplyParams.run(ApplyParamsTest.request("V3", ApplyParamsTest.FLAT,
+                    List.of(new DataInput("uplc", text))));
+            assertEquals(400, result.status(), text);
+            assertEquals("invalid-request", ((Map<?, ?>) result.body()).get("code"), text);
+        }
     }
 
     @Test

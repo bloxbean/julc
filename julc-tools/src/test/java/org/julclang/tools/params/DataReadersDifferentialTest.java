@@ -131,10 +131,12 @@ class DataReadersDifferentialTest {
     /** Data notation with random spacing, comments and optional parentheses. */
     static String text(PlutusData value, Random random) {
         String body = switch (value) {
-            case PlutusData.IntData i -> "I " + i.value();
-            case PlutusData.BytesData b -> "B #" + HexFormat.of().formatHex(b.value());
+            case PlutusData.IntData i -> "I " + (i.value().signum() >= 0 && random.nextBoolean() ? "+" : "") + i.value()
+                    + adjacentComment(random);
+            case PlutusData.BytesData b -> "B #" + HexFormat.of().formatHex(b.value()) + adjacentComment(random);
             case PlutusData.ListData l -> "List [" + join(l.items(), random) + "]";
-            case PlutusData.ConstrData c -> "Constr " + c.constructorTag() + " [" + join(c.fields(), random) + "]";
+            case PlutusData.ConstrData c -> "Constr " + (random.nextBoolean() ? "+" : "") + c.constructorTag()
+                    + adjacentComment(random) + " [" + join(c.fields(), random) + "]";
             case PlutusData.MapData m -> {
                 var pairs = new ArrayList<String>();
                 for (var pair : m.entries()) pairs.add("(" + text(pair.key(), random) + "," + space(random)
@@ -149,6 +151,11 @@ class DataReadersDifferentialTest {
         var parts = new ArrayList<String>();
         for (PlutusData item : items) parts.add(space(random) + text(item, random) + space(random));
         return String.join(",", parts);
+    }
+
+    /** Sometimes a comment right after a number or byte string, with no space before it (M2-C7). */
+    static String adjacentComment(Random random) {
+        return random.nextInt(3) == 0 ? "-- adjacent (comment\n" : "";
     }
 
     static String space(Random random) {

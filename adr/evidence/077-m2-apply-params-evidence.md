@@ -94,6 +94,9 @@ text, and comments at the end of their line; empty wrapper refused; `uplc` tags 
 bound; the `work-limit-exceeded` code; explaining spends no work; percent-encoded references refused; every declared
 schema compiled first; an unapplied builtin parameter skipped.
 
+Round 2 (review findings M2-C7 and M2-C8), 4 mutations, all killed: a `--` comment ends a number or byte string;
+a constructor index may carry a sign; a negative index is refused; only ASCII hex digits are read.
+
 ## Not run
 
 - The preprod transaction fixtures of `julc-cardano-client-lib` hold no witness scripts in their witness sets; their
