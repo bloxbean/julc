@@ -1,0 +1,31 @@
+chromium: 156.0.8078.4
+plain <script type=module> + import map | classic | PASS  | worker: http://127.0.0.1:5801/node_modules/@julclang/wasm-client/julc-worker.js
+plain <script type=module> + import map | module | PASS  | worker: http://127.0.0.1:5801/node_modules/@julclang/wasm-client/julc-worker-module.js
+vite/8.3.8 dev, config=plain | classic | PASS  | worker: http://localhost:5818/node_modules/@julclang/wasm-client/julc-worker.js?worker_file&type=classic
+vite/8.3.8 dev, config=plain | module | PASS  | worker: http://localhost:5818/node_modules/@julclang/wasm-client/julc-worker-module.js?worker_file&type=module
+vite/8.3.8 dev, config=exclude | classic | PASS  | worker: http://localhost:5818/node_modules/@julclang/wasm-client/julc-worker.js?worker_file&type=classic
+vite/8.3.8 dev, config=exclude | module | PASS  | worker: http://localhost:5818/node_modules/@julclang/wasm-client/julc-worker-module.js?worker_file&type=module
+vite/8.3.8 build (no config) | classic | PASS  | worker: http://127.0.0.1:5828/assets/julc-worker-lY0v8ps2.js
+vite/8.3.8 build (no config) | module | PASS  | worker: http://127.0.0.1:5828/assets/julc-worker-module-Bco2bQg6.js
+vite/7.3.8 dev, config=plain | classic | FAIL JuLC worker failed | worker: http://localhost:5817/node_modules/.vite/deps/julc-worker.js?worker_file&type=classic
+vite/7.3.8 dev, config=plain | module | FAIL JuLC worker failed | worker: http://localhost:5817/node_modules/.vite/deps/julc-worker-module.js?worker_file&type=module
+vite/7.3.8 dev, config=exclude | classic | PASS  | worker: http://localhost:5817/node_modules/@julclang/wasm-client/julc-worker.js?worker_file&type=classic
+vite/7.3.8 dev, config=exclude | module | PASS  | worker: http://localhost:5817/node_modules/@julclang/wasm-client/julc-worker-module.js?worker_file&type=module
+vite/7.3.8 build (no config) | classic | PASS  | worker: http://127.0.0.1:5827/assets/julc-worker-C56k6Nxf.js
+vite/7.3.8 build (no config) | module | PASS  | worker: http://127.0.0.1:5827/assets/julc-worker-module-wUrHWcA1.js
+vite/6.4.6 dev, config=plain | classic | FAIL JuLC worker failed | worker: http://localhost:5816/node_modules/.vite/deps/julc-worker.js?worker_file&type=classic
+vite/6.4.6 dev, config=plain | module | FAIL JuLC worker failed | worker: http://localhost:5816/node_modules/.vite/deps/julc-worker-module.js?worker_file&type=module
+vite/6.4.6 dev, config=exclude | classic | PASS  | worker: http://localhost:5816/node_modules/@julclang/wasm-client/julc-worker.js?worker_file&type=classic
+vite/6.4.6 dev, config=exclude | module | PASS  | worker: http://localhost:5816/node_modules/@julclang/wasm-client/julc-worker-module.js?worker_file&type=module
+vite/6.4.6 build (no config) | classic | PASS  | worker: http://127.0.0.1:5826/assets/julc-worker-CbqwEJPF.js
+vite/6.4.6 build (no config) | module | PASS  | worker: http://127.0.0.1:5826/assets/julc-worker-module-CuzofF-L.js
+vite/5.4.21 dev, config=plain | classic | FAIL JuLC worker failed | worker: http://localhost:5815/node_modules/.vite/deps/julc-worker.js?worker_file&type=classic
+vite/5.4.21 dev, config=plain | module | FAIL JuLC worker failed | worker: http://localhost:5815/node_modules/.vite/deps/julc-worker-module.js?worker_file&type=module
+vite/5.4.21 dev, config=exclude | classic | PASS  | worker: http://localhost:5815/node_modules/@julclang/wasm-client/julc-worker.js?worker_file&type=classic
+vite/5.4.21 dev, config=exclude | module | PASS  | worker: http://localhost:5815/node_modules/@julclang/wasm-client/julc-worker-module.js?worker_file&type=module
+vite/5.4.21 build (no config) | classic | PASS  | worker: http://127.0.0.1:5825/assets/julc-worker-CT-LQRKD.js
+vite/5.4.21 build (no config) | module | PASS  | worker: http://127.0.0.1:5825/assets/julc-worker-module-CVKVdqRF.js
+webpack 5.112.2 production, no config | classic | PASS  | worker: http://127.0.0.1:5831/682.js
+webpack 5.112.2 production, no config | module | PASS  | worker: http://127.0.0.1:5831/211.js
+webpack 5.112.2 production, launcher kept (rule+terser exclude) | classic | PASS  | worker: http://127.0.0.1:5832/682.js
+webpack 5.112.2 production, launcher kept (rule+terser exclude) | module | PASS  | worker: http://127.0.0.1:5832/211.js

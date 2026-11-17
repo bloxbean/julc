@@ -1,0 +1,6 @@
+next Next.js v16.4.6
+next build (Turbopack), route handler, no config | PASS | 
+next build --webpack, route handler, no config | FAIL | "error":"TypeError: The \"filename\" argument must be of type string or an instance of URL. Received an instance of URL 
+next build (Turbopack) + serverExternalPackages | PASS | 
+next build --webpack + serverExternalPackages | PASS | 
+next build (Turbopack) output:standalone, copied elsewhere | PASS | assets: julc-vm-b69c37c29c6b.34rqpkfr4vjl9.js julc-vm-b69c37c29c6b.js.2giu0l_ybet0m.wasm julc-worker.15qi9qomrmxz6.js node-worker.177nlbu43ue2d.js 
