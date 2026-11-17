@@ -206,6 +206,11 @@ Use those declarations from the <strong>same release</strong> as your engine.</p
 <td><code dir="auto">{scriptHash}</code> after applying any script parameters.</td>
 </tr>
 <tr>
+<td><code dir="auto">vm.applyParams</code></td>
+<td><code dir="auto">{language, script, params, partial?, checkSchema?}</code></td>
+<td><code dir="auto">{compiledCode, cborHex, scriptHash, language, paramsApplied, remainingParams, schemaChecked}</code>: a parameterised script’s bytes and hash, with nothing guessed (ADR-077). See below.</td>
+</tr>
+<tr>
 <td><code dir="auto">vm.prettyPrint</code></td>
 <td><code dir="auto">{script, width?}</code></td>
 <td><code dir="auto">{uplcText}</code>; width defaults to 100.</td>
@@ -228,6 +233,25 @@ Use those declarations from the <strong>same release</strong> as your engine.</p
 CIP-57 blueprint. <code dir="auto">validator</code> selects a blueprint entry; otherwise the decoder
 selects its default entry. A script’s <code dir="auto">params</code> are applied before <code dir="auto">args</code> supplied
 to evaluation.</p>
+<p><code dir="auto">vm.applyParams</code> is the way to compute the script a dApp deploys. Unlike <code dir="auto">vm.decode</code>
+with <code dir="auto">params</code>, it never guesses, and refuses (error code <code dir="auto">invalid-request</code>) when:</p>
+<ul>
+<li><code dir="auto">language</code> is not exactly <code dir="auto">V1</code>, <code dir="auto">V2</code> or <code dir="auto">V3</code>, or disagrees with an envelope’s <code dir="auto">type</code>,
+a blueprint’s <code dir="auto">preamble.plutusVersion</code> or the blueprint hash;</li>
+<li>a blueprint has several validators and <code dir="auto">script.validator</code> does not name one by its
+exact title, or <code dir="auto">script.language</code> or <code dir="auto">script.params</code> is set;</li>
+<li>the script’s bytes are not canonical, or are UPLC text;</li>
+<li>a value has no explicit <code dir="auto">format</code> (<code dir="auto">json</code>, <code dir="auto">cbor</code> or <code dir="auto">uplc</code>), is not strictly that
+format, or the number of values does not match the blueprint’s <code dir="auto">parameters</code> (unless
+<code dir="auto">partial: true</code>).</li>
+</ul>
+<p>With a blueprint, each value is checked against its parameter’s schema unless
+<code dir="auto">checkSchema: false</code>: a fault in the schema is <code dir="auto">invalid-schema</code>, a value that does not
+match is <code dir="auto">parameter-mismatch</code>. Each applied value is encoded in Plutus’s canonical
+Data encoding, so a tool that encodes it differently (for example with definite-length
+lists) gives a different script and hash. Only <code dir="auto">remainingParams: 0</code> means the script is
+complete; <code dir="auto">null</code> means the input declared no parameters to count against.</p>
+<div class="expressive-code"><figure class="frame not-content"><figcaption class="header"></figcaption><pre data-language="javascript"><code><div class="ec-line"><div class="code"><span style="--0:#C792EA;--1:#8844AE">const </span><span style="--0:#82AAFF;--1:#3B61B0">applied</span><span style="--0:#C792EA;--1:#8844AE"> = await </span><span style="--0:#7FDBCA;--1:#096E72">julc</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#FAF39F;--1:#111111">vm</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#82AAFF;--1:#3B61B0">applyParams</span><span style="--0:#D6DEEB;--1:#403F53">(</span><span style="--0:#C792EA;--1:#8844AE">{</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#C792EA;--1:#8844AE">  </span></span><span style="--0:#C792EA;--1:#8844AE">language: </span><span style="--0:#D9F5DD;--1:#111111">'</span><span style="--0:#ECC48D;--1:#984E4D">V3</span><span style="--0:#D9F5DD;--1:#111111">'</span><span style="--0:#C792EA;--1:#8844AE">,</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#C792EA;--1:#8844AE">  </span></span><span style="--0:#C792EA;--1:#8844AE">script: {script: </span><span style="--0:#D7DBE0;--1:#403F53">blueprintJson</span><span style="--0:#C792EA;--1:#8844AE">, validator: </span><span style="--0:#D9F5DD;--1:#111111">'</span><span style="--0:#ECC48D;--1:#984E4D">vesting.vesting.spend</span><span style="--0:#D9F5DD;--1:#111111">'</span><span style="--0:#C792EA;--1:#8844AE">},</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#C792EA;--1:#8844AE">  </span></span><span style="--0:#C792EA;--1:#8844AE">params:</span><span style="--1:#403F53"><span style="--0:#D6DEEB"> [{bytes: </span><span style="--0:#D7DBE0">ownerKeyHash</span><span style="--0:#D6DEEB">}, {int: </span></span><span style="--0:#F78C6C;--1:#AA0982">1700000000000</span><span style="--0:#C792EA;--1:#8844AE">n</span><span style="--0:#D6DEEB;--1:#403F53">}]</span><span style="--0:#C792EA;--1:#8844AE">,</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C792EA;--1:#8844AE">}</span><span style="--0:#D6DEEB;--1:#403F53">);</span></div></div><div class="ec-line"><div class="code"><span style="--0:#7FDBCA;--1:#096E72">console</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#82AAFF;--1:#3B61B0">log</span><span style="--0:#D6DEEB;--1:#403F53">(</span><span style="--0:#7FDBCA;--1:#096E72">applied</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#7FDBCA;--1:#096E72">scriptHash</span><span style="--0:#D6DEEB;--1:#403F53">, </span><span style="--0:#7FDBCA;--1:#096E72">applied</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#7FDBCA;--1:#096E72">cborHex</span><span style="--0:#D6DEEB;--1:#403F53">, </span><span style="--0:#7FDBCA;--1:#096E72">applied</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#7FDBCA;--1:#096E72">remainingParams</span><span style="--0:#D6DEEB;--1:#403F53">);</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="const applied = await julc.vm.applyParams({  language: &#x27;V3&#x27;,  script: {script: blueprintJson, validator: &#x27;vesting.vesting.spend&#x27;},  params: [{bytes: ownerKeyHash}, {int: 1700000000000n}],});console.log(applied.scriptHash, applied.cborHex, applied.remainingParams);"><div></div></button></div></figure></div>
 <div class="sl-heading-wrapper level-h3"><h3 id="compiler-operations--full-variant-only">Compiler operations — full variant only</h3><a class="sl-anchor-link" href="#compiler-operations--full-variant-only"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Compiler operations — full variant only”</span></a></div>
 <table>
 <thead>
