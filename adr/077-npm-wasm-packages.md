@@ -929,8 +929,9 @@ identity. It verifies the release assets exactly as `npm-publish` does.
     no reviewers, and npm's trusted publisher checks no ref.
   - So the job requires its own ref to be exactly `refs/tags/v<version>`, as its first step, and refuses any other;
     `npm-gates` refuses any ref that is not such a tag before it.
-  - A release tag exists only through the tag ruleset and `tag-release.yml`'s release-owner authorisation (the
-    `release` environment). `main` and `release/**` change only through pull requests with code-owner review, and
+  - A release tag is normally created only through the tag ruleset and `tag-release.yml`'s release-owner
+    authorisation (the `release` environment). By release-ops' intentional exception, an org admin can bypass the tag
+    ruleset and environment approvals; the npm jobs check the tag and the version, not how the tag was approved. `main` and `release/**` change only through pull requests with code-owner review, and
     CODEOWNERS covers the workflows and `julc-wasm/src/ci`. So the job's exposure for npm is that of the Maven
     Central credentials `release-staging` already holds.
   - r19 to r21 used a dedicated `npm-publish` environment, allowing `v*` tags only (M4-F2), checked by `npm-gates`

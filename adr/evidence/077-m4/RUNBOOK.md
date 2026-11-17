@@ -71,7 +71,9 @@ the ref, so what keeps publication to release tags is:
   before it, which refuses any ref that is not a `v*` tag matching `gradle.properties` there). This is the control
   against a dispatch from `main` or `release/**`, which the environment admits;
 - the tag ruleset (who may create `v*` tags) and `tag-release.yml`'s `authorize` job, which needs a release owner's
-  approval in the `release` environment before a release tag is created;
+  approval in the `release` environment before a release tag is created. That is the normal route. By release-ops'
+  intentional exception, an org admin can bypass the tag ruleset and environment approvals and create a `v*` tag
+  directly; the npm jobs check the tag and the version, not how the tag was approved;
 - `main` and `release/**` take changes only through pull requests with code-owner review, and CODEOWNERS covers the
   workflows and `julc-wasm/src/ci`, the scripts `npm-publish` runs.
 
@@ -212,7 +214,8 @@ assets or recreate a release to "start again"; npm is the record once a version 
   ```
   Anyone with write access to the repository can dispatch. The controls are the exact-ref checks in `npm-gates` and
   `npm-publish` (the ref must be exactly the release tag, matching `gradle.properties` at it), and that a `v*` tag
-  exists only through the tag ruleset and `tag-release.yml`'s release-owner authorisation ("Who can publish"). The dispatch skips every build job, `attest`, `github-release` and `update-homebrew`, verifies the
+  is normally created only through the tag ruleset and `tag-release.yml`'s release-owner authorisation, with
+  release-ops' org-admin exception ("Who can publish"). The dispatch skips every build job, `attest`, `github-release` and `update-homebrew`, verifies the
   release's files against their attestation, and runs `npm-publish` (or `npm-dry-run`) and `npm-verify` on them. A
   dispatch from a branch, or on a tag that does not match `gradle.properties`, is refused.
 - **Concurrency:** one `npm-publish` runs at a time across all versions (`npm-publish-julclang`), and a running one is
