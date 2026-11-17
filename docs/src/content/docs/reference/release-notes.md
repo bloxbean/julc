@@ -27,6 +27,16 @@ before any script runs, and the evaluation now fails too. Before, most of these 
 - A tag on a native script or anywhere inside it, or on a Plutus script.
 - A native script with Dijkstra's `RequireGuard` (constructor 6), which no era before Dijkstra decodes.
 
+### cardano-client-lib 0.8.0-pre8 (#335)
+
+`julc-cardano-client-lib` now depends on cardano-client-lib 0.8.0-pre8 (was 0.8.0-pre7), and `julc new` scaffolds
+projects with it. If your build pins cardano-client-lib itself, move it to 0.8.0-pre8 too.
+
+The new version adds two Dijkstra-era constants. `JulcTransactionEvaluator` refuses both:
+- A redeemer with the new `RedeemerTag.Guarding` (guard scripts) fails the evaluation, naming the redeemer, because a
+  Plutus V3 `ScriptContext` has no script purpose for it.
+- `Language.PLUTUS_V4` is not evaluated.
+
 ### Each validator loads its own script, whatever its simple name (#326)
 
 `JulcScriptLoader.load(Class)` and the annotation processor used to key a compiled script by the class's simple name
