@@ -3,6 +3,10 @@ name: Native Image (Dev)
 # Builds what native-image-release.yml attaches to a GitHub release - the CLI and playground native images, the
 # WebAssembly bundles and the shadow jars - as dist-* workflow artifacts. Manual, or called by
 # bloxbean-snapshot-dist.yml, which publishes exactly these files as a snapshot distribution.
+#
+# Nothing here is published to npm (ADR-077 D8): the npm packages it packs and checks are snapshot builds, and only
+# native-image-release.yml's npm-publish job, on a release tag, publishes. This workflow has no id-token permission
+# and uses no environment.
 on:
   workflow_dispatch:
   workflow_call:
@@ -150,12 +154,20 @@ jobs:
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4
 
+    # Pinned by SHA-256, the release's own .sha256 asset; the same version and hash as native-image-release.yml.
     - name: Install Binaryen
       shell: bash
+      env:
+        BINARYEN_VERSION: '132'
+        BINARYEN_SHA256: 195ddc94f9bc89f45abdabb0b9eea86023d727ba90eac8b35b80f2544fc30572
       run: |
-        curl -sSfL https://github.com/WebAssembly/binaryen/releases/download/version_132/binaryen-version_132-x86_64-linux.tar.gz \
-          | tar xz -C "$RUNNER_TEMP"
-        echo "$RUNNER_TEMP/binaryen-version_132/bin" >> "$GITHUB_PATH"
+        set -euo pipefail
+        f="binaryen-version_${BINARYEN_VERSION}-x86_64-linux.tar.gz"
+        curl -sSfL -o "$RUNNER_TEMP/$f" \
+          "https://github.com/WebAssembly/binaryen/releases/download/version_${BINARYEN_VERSION}/$f"
+        echo "${BINARYEN_SHA256}  $RUNNER_TEMP/$f" | sha256sum -c -
+        tar xzf "$RUNNER_TEMP/$f" -C "$RUNNER_TEMP"
+        echo "$RUNNER_TEMP/binaryen-version_${BINARYEN_VERSION}/bin" >> "$GITHUB_PATH"
 
     # ADR-077 M1: @julclang/wasm-client is also loaded, from its packed tarball, by Node.js 22.3.0 (the lowest version
     # it supports) and Node.js 24, each checked against nodejs.org's SHASUMS256.txt.

@@ -7,27 +7,43 @@ name: Native Image Release
 # consequence of tagging. Everything is still built when github_release is false, so a release is rehearsable
 # end to end.
 #
-# The build jobs run with a read-only token and no secrets. Only github-release gets a write token, and only
-# update-homebrew gets a secret (HOMEBREW_TAP_TOKEN, environment release-staging); neither runs the Gradle
-# build. No build cache is restored, so nothing from an earlier run can change the published binaries.
+# The build jobs run with a read-only token and no secrets. Only github-release gets a write token, only attest
+# signs (id-token, attestations: write), only npm-publish can publish to npm (id-token, environment release-staging,
+# npm trusted publishing, no npm token), and only update-homebrew gets a secret (HOMEBREW_TAP_TOKEN, environment
+# release-staging); none of them runs the Gradle build. No build cache is restored, so nothing from an earlier run can
+# change the published binaries.
+#
+# The npm packages (ADR-077 D8, D8a): the wasm job packs @julclang/wasm-client, @julclang/julc-vm-wasm and
+# @julclang/julc-wasm once; attest signs them and the engine archives with this workflow's identity; github-release
+# attaches them; npm-publish publishes those release assets, verified against the attestation, with npm_publish = true
+# in gradle.properties (a dry run otherwise, and always for a release candidate); npm-verify then checks what npm
+# serves. A release is built once: a re-run never rebuilds it (wasm stops first). Recovery is "Re-run failed jobs" in
+# the original run, or this workflow dispatched on the release tag, which runs only npm-gates, npm-publish and
+# npm-verify (adr/evidence/077-m4/RUNBOOK.md).
 
 on:
   push:
     tags:
       - 'v*'
+  # Recovery of a release's npm publication only, on its existing, attested release assets. Dispatch it on the tag
+  # itself: gh workflow run native-image-release.yml --ref v<version>. Any other ref is refused (npm-gates).
+  workflow_dispatch:
 
 permissions: {}
 
 jobs:
   # Release gate, as in release.yml: the node-diversity uplc-conformance vectors must all give the scenario's expected
   # results on the Java VM before anything is built for the release (ndc-uplc.yml). No secrets.
+  # Every build job, attest, github-release and update-homebrew run only for the tag push: a dispatch builds nothing.
   uplc-conformance:
+    if: github.event_name == 'push'
     permissions:
       contents: read
     uses: ./.github/workflows/ndc-uplc.yml
 
   validate:
     needs: uplc-conformance
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     name: Read release gates
     permissions:
@@ -82,6 +98,7 @@ jobs:
 
   native-image:
     needs: validate
+    if: github.event_name == 'push'
     strategy:
       fail-fast: false
       matrix:
@@ -162,14 +179,63 @@ jobs:
   # carries it, and docs-deploy.yml publishes the static playground from the release asset.
   wasm:
     needs: validate
+    if: github.event_name == 'push'
     runs-on: ubuntu-22.04
     name: Build JuLC WebAssembly distributions
     permissions:
       contents: read
+      # The build-once check verifies attestations of an existing release's npm tarballs.
+      attestations: read
     env:
       VERSION: ${{ needs.validate.outputs.version }}
+    # ADR-077 D8a: the SHA-256 of the three npm tarballs and the two engine archives, for the checks of this run
+    # (attest, npm-publish, npm-verify). The durable anchor is attest's attestation.
+    outputs:
+      sha256_wasm_client: ${{ steps.npm-files.outputs.sha256_wasm_client }}
+      sha256_julc_vm_wasm: ${{ steps.npm-files.outputs.sha256_julc_vm_wasm }}
+      sha256_julc_wasm: ${{ steps.npm-files.outputs.sha256_julc_wasm }}
+      sha256_vm_archive: ${{ steps.npm-files.outputs.sha256_vm_archive }}
+      sha256_full_archive: ${{ steps.npm-files.outputs.sha256_full_archive }}
 
     steps:
+    # ADR-077 D8a: a release is built once. Web Image output is not byte-identical across builds, so a whole-workflow
+    # re-run would make different npm tarballs from those already released (and perhaps published). Stop before
+    # building when the tag's GitHub release already holds them.
+    - name: Refuse to build a released version again
+      env:
+        GH_TOKEN: ${{ github.token }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        if ! assets=$(gh release view "v${VERSION}" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' \
+            2> "$RUNNER_TEMP/release-view.err"); then
+          if grep -q 'release not found' "$RUNNER_TEMP/release-view.err"; then
+            echo "No GitHub release for v${VERSION} yet: building."
+            exit 0
+          fi
+          cat "$RUNNER_TEMP/release-view.err" >&2
+          echo "::error::Could not read the GitHub release of v${VERSION}; refusing to build without knowing." >&2
+          exit 1
+        fi
+        held=$(grep -E "^(julclang-.*-${VERSION//./\\.}\.tgz|julc-npm-${VERSION//./\\.}-SHA256SUMS\.txt)\$" <<< "$assets" || true)
+        if [[ -z "$held" ]]; then
+          echo "The release of v${VERSION} exists but holds no npm tarballs: building."
+          exit 0
+        fi
+        status=verified
+        mkdir -p "$RUNNER_TEMP/released"
+        gh release download "v${VERSION}" --repo "$GITHUB_REPOSITORY" --dir "$RUNNER_TEMP/released" --pattern 'julclang-*.tgz'
+        for file in "$RUNNER_TEMP"/released/*.tgz; do
+          gh attestation verify "$file" --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/native-image-release.yml" \
+            --source-ref "refs/tags/v${VERSION}" --deny-self-hosted-runners > /dev/null || status='NOT verified'
+        done
+        echo "::error::The release of v${VERSION} already holds npm files (${held//$'\n'/, }; attestation: ${status})." \
+          "A release is built once (ADR-077 D8a): rebuilding would make different bytes. To finish its npm publication," \
+          "use 'Re-run failed jobs' in the original run, or dispatch this workflow on the tag:" \
+          "gh workflow run native-image-release.yml --ref v${VERSION} (adr/evidence/077-m4/RUNBOOK.md)." >&2
+        exit 1
+
     - uses: actions/checkout@v4
       with:
         persist-credentials: false
@@ -196,13 +262,21 @@ jobs:
       with:
         node-version: '22'
 
+    # Binaryen optimises the engines the archives and npm ship (ADR-077 D8a): pinned by SHA-256, the release's own
+    # .sha256 asset, as JOUST pins it. Keep the version and hash the same in native-image-dev.yml.
     - name: Install Binaryen
       shell: bash
+      env:
+        BINARYEN_VERSION: '132'
+        BINARYEN_SHA256: 195ddc94f9bc89f45abdabb0b9eea86023d727ba90eac8b35b80f2544fc30572
       run: |
-        curl -sSfL https://github.com/WebAssembly/binaryen/releases/download/version_132/binaryen-version_132-x86_64-linux.tar.gz \
-          | tar xz -C "$RUNNER_TEMP"
-        echo "$RUNNER_TEMP/binaryen-version_132/bin" >> "$GITHUB_PATH"
-
+        set -euo pipefail
+        f="binaryen-version_${BINARYEN_VERSION}-x86_64-linux.tar.gz"
+        curl -sSfL -o "$RUNNER_TEMP/$f" \
+          "https://github.com/WebAssembly/binaryen/releases/download/version_${BINARYEN_VERSION}/$f"
+        echo "${BINARYEN_SHA256}  $RUNNER_TEMP/$f" | sha256sum -c -
+        tar xzf "$RUNNER_TEMP/$f" -C "$RUNNER_TEMP"
+        echo "$RUNNER_TEMP/binaryen-version_${BINARYEN_VERSION}/bin" >> "$GITHUB_PATH"
 
     # Builds the engine (build/wasm-bundle, also copied to frontend/public/wasm) and checks the parity fixtures
     # against the JVM in Node.js. A mismatch fails the release. wasm-package-checks checks @julclang/wasm-client
@@ -244,6 +318,30 @@ jobs:
         test "$(jq -r .julcVersion julc-wasm/build/wasm-bundle-vm/engine.json)" = "$VERSION"
         node julc-wasm/src/test/js/engine-identity.mjs julc-wasm/build/npm . "$VERSION" | tee -a "$GITHUB_STEP_SUMMARY"
 
+    # ADR-077 D8a: the three tarballs checked above become release assets, with a checksum file over them and the two
+    # engine archives, and their digests become this job's outputs. Nothing repacks them after this step.
+    - name: Checksums and digests of the npm tarballs
+      id: npm-files
+      shell: bash
+      run: |
+        set -euo pipefail
+        files=()
+        for name in wasm-client julc-vm-wasm julc-wasm; do
+          cp "julc-wasm/build/npm/julclang-${name}-${VERSION}.tgz" .
+          files+=("julclang-${name}-${VERSION}.tgz")
+        done
+        files+=("julc-vm-wasm-${VERSION}.tar.gz" "julc-wasm-${VERSION}.tar.gz")
+        sha256sum "${files[@]}" > "julc-npm-${VERSION}-SHA256SUMS.txt"
+        cat "julc-npm-${VERSION}-SHA256SUMS.txt" | tee -a "$GITHUB_STEP_SUMMARY"
+        digest() { sha256sum "$1" | cut -d' ' -f1; }
+        {
+          echo "sha256_wasm_client=$(digest "julclang-wasm-client-${VERSION}.tgz")"
+          echo "sha256_julc_vm_wasm=$(digest "julclang-julc-vm-wasm-${VERSION}.tgz")"
+          echo "sha256_julc_wasm=$(digest "julclang-julc-wasm-${VERSION}.tgz")"
+          echo "sha256_vm_archive=$(digest "julc-vm-wasm-${VERSION}.tar.gz")"
+          echo "sha256_full_archive=$(digest "julc-wasm-${VERSION}.tar.gz")"
+        } >> "$GITHUB_OUTPUT"
+
     # Picked up by the native-image-playground jobs on every platform, so none of them needs Web Image.
     - name: Upload engine artifact
       uses: actions/upload-artifact@v4
@@ -261,6 +359,10 @@ jobs:
           julc-vm-wasm-${{ env.VERSION }}.tar.gz
           julc-playground-static-${{ env.VERSION }}.tar.gz
           julc-wasm-${{ env.VERSION }}-SHA256SUMS.txt
+          julclang-wasm-client-${{ env.VERSION }}.tgz
+          julclang-julc-vm-wasm-${{ env.VERSION }}.tgz
+          julclang-julc-wasm-${{ env.VERSION }}.tgz
+          julc-npm-${{ env.VERSION }}-SHA256SUMS.txt
         if-no-files-found: error
         retention-days: 7
 
@@ -282,6 +384,7 @@ jobs:
   # the network, and loads the wasm job's files from its artifact. Read-only token, no secrets.
   wasm-package-checks:
     needs: wasm
+    if: github.event_name == 'push'
     runs-on: ubuntu-22.04
     name: Check the npm packages (Node.js 22.3 and 24, Chromium, bundlers, TypeScript)
     permissions:
@@ -365,6 +468,7 @@ jobs:
 
   native-image-playground:
     needs: [validate, wasm]
+    if: github.event_name == 'push'
     strategy:
       fail-fast: false
       matrix:
@@ -454,6 +558,7 @@ jobs:
 
   shadow-jars:
     needs: validate
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     name: Build Shadow JARs
     permissions:
@@ -490,15 +595,69 @@ jobs:
         if-no-files-found: error
         retention-days: 7
 
+  # ADR-077 D8a: the durable anchor of the release's npm files. A GitHub artifact attestation, signed with Sigstore
+  # under this workflow's identity at this tag, of the three npm tarballs and the two engine archives, after checking
+  # them against the wasm job's digests. Every later check (npm-publish, npm-verify, a recovery run) verifies a release
+  # asset with gh attestation verify --signer-workflow ... --source-ref refs/tags/v<version>. No build, no checkout.
+  attest:
+    needs: [validate, wasm]
+    if: github.event_name == 'push' && needs.validate.outputs.github_release == 'true'
+    runs-on: ubuntu-latest
+    name: Attest the npm tarballs and engine archives
+    permissions:
+      id-token: write
+      attestations: write
+    env:
+      VERSION: ${{ needs.validate.outputs.version }}
+    steps:
+    - name: Download the wasm job's release files
+      uses: actions/download-artifact@v4
+      with:
+        name: release-wasm
+        path: dist
+
+    - name: Check them against the wasm job's digests
+      shell: bash
+      working-directory: dist
+      env:
+        SHA_CLIENT: ${{ needs.wasm.outputs.sha256_wasm_client }}
+        SHA_VM: ${{ needs.wasm.outputs.sha256_julc_vm_wasm }}
+        SHA_FULL: ${{ needs.wasm.outputs.sha256_julc_wasm }}
+        SHA_VM_ARCHIVE: ${{ needs.wasm.outputs.sha256_vm_archive }}
+        SHA_FULL_ARCHIVE: ${{ needs.wasm.outputs.sha256_full_archive }}
+      run: |
+        set -euo pipefail
+        sha256sum -c --strict - <<SUMS
+        ${SHA_CLIENT}  julclang-wasm-client-${VERSION}.tgz
+        ${SHA_VM}  julclang-julc-vm-wasm-${VERSION}.tgz
+        ${SHA_FULL}  julclang-julc-wasm-${VERSION}.tgz
+        ${SHA_VM_ARCHIVE}  julc-vm-wasm-${VERSION}.tar.gz
+        ${SHA_FULL_ARCHIVE}  julc-wasm-${VERSION}.tar.gz
+        SUMS
+        sha256sum -c --strict "julc-npm-${VERSION}-SHA256SUMS.txt"
+
+    - name: Attest
+      uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+      with:
+        subject-path: |
+          dist/julclang-wasm-client-${{ env.VERSION }}.tgz
+          dist/julclang-julc-vm-wasm-${{ env.VERSION }}.tgz
+          dist/julclang-julc-wasm-${{ env.VERSION }}.tgz
+          dist/julc-vm-wasm-${{ env.VERSION }}.tar.gz
+          dist/julc-wasm-${{ env.VERSION }}.tar.gz
+
   github-release:
-    needs: [validate, native-image, wasm, wasm-package-checks, native-image-playground, shadow-jars]
-    # Gated by github_release in gradle.properties. Runs only when every distribution was built, so a release
-    # never ships with a platform missing; re-running a failed build job re-runs this one.
-    if: needs.validate.outputs.github_release == 'true'
+    needs: [validate, native-image, wasm, wasm-package-checks, native-image-playground, shadow-jars, attest]
+    # Gated by github_release in gradle.properties. Runs only when every distribution was built and the npm files are
+    # attested, so a release never ships with a platform missing or without its attestation; re-running a failed build
+    # job re-runs this one.
+    if: github.event_name == 'push' && needs.validate.outputs.github_release == 'true'
     runs-on: ubuntu-latest
     name: Create GitHub release
     permissions:
       contents: write
+    env:
+      VERSION: ${{ needs.validate.outputs.version }}
     steps:
     - name: Download release assets
       uses: actions/download-artifact@v4
@@ -510,25 +669,306 @@ jobs:
     - name: List release assets
       run: ls -la dist/
 
-    # Creates the release for the tag, or adds the assets if it already exists. Do not pre-create a draft
-    # release for the tag: the action publishes an existing draft.
+    # ADR-077 D8a, create-once: a completed asset (state "uploaded") is never replaced. One with the same name and
+    # other bytes stops the job; one with the same bytes is kept (the upload below skips it). A failed upload's
+    # placeholder (state "starter", which an HTTP 502 can leave) is deleted, so the original bytes are uploaded again.
+    - name: Keep completed assets, clear failed uploads
+      env:
+        GH_TOKEN: ${{ github.token }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        if ! release=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/v${VERSION}" 2> "$RUNNER_TEMP/release.err"); then
+          if grep -q 'HTTP 404' "$RUNNER_TEMP/release.err"; then
+            echo "No release for v${VERSION} yet."
+            exit 0
+          fi
+          cat "$RUNNER_TEMP/release.err" >&2
+          exit 1
+        fi
+        id=$(jq -r .id <<< "$release")
+        gh api --paginate "repos/${GITHUB_REPOSITORY}/releases/${id}/assets?per_page=100" \
+          --jq '.[] | [.id, .name, .state, (.digest // "")] | @tsv' > "$RUNNER_TEMP/assets.tsv"
+        failed=0
+        for file in dist/*; do
+          name=$(basename "$file")
+          row=$(awk -F'\t' -v name="$name" '$2 == name' "$RUNNER_TEMP/assets.tsv")
+          [[ -n "$row" ]] || continue
+          IFS=$'\t' read -r asset _ state digest <<< "$row"
+          if [[ "$state" == starter ]]; then
+            echo "Deleting ${name}'s failed upload (state starter); it is uploaded again from this run's bytes."
+            gh api -X DELETE "repos/${GITHUB_REPOSITORY}/releases/assets/${asset}"
+            continue
+          fi
+          if [[ "$state" != uploaded ]]; then
+            echo "::error::Release asset ${name} is in state ${state}." >&2
+            failed=1
+            continue
+          fi
+          ours=$(sha256sum "$file" | cut -d' ' -f1)
+          if [[ -n "$digest" ]]; then
+            theirs=${digest#sha256:}
+          else
+            gh api -H 'Accept: application/octet-stream' "repos/${GITHUB_REPOSITORY}/releases/assets/${asset}" \
+              > "$RUNNER_TEMP/asset"
+            theirs=$(sha256sum "$RUNNER_TEMP/asset" | cut -d' ' -f1)
+          fi
+          if [[ "$theirs" == "$ours" ]]; then
+            echo "Keeping ${name}: already attached, the same bytes."
+          else
+            echo "::error::Release asset ${name} is already attached with other bytes (${theirs}, this run: ${ours})." \
+              "A completed asset is never replaced (ADR-077 I11)." >&2
+            failed=1
+          fi
+        done
+        exit "$failed"
+
+    # Creates the release for the tag, or adds the missing assets if it already exists, never replacing one. Do not
+    # pre-create a draft release for the tag: the action publishes an existing draft.
     - name: Create GitHub release
       uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
       with:
         name: ${{ needs.validate.outputs.version }}
         files: dist/*
         fail_on_unmatched_files: true
+        overwrite_files: false
         prerelease: ${{ needs.validate.outputs.is_final != 'true' }}
         # Latest is decided by semantic version and date, so a maintenance release (e.g. 0.1.3 after
         # 0.2.0) does not take the Latest badge.
         make_latest: legacy
+
+  # ADR-077 D8 and D8a: whether and how npm-publish runs, read without Gradle from gradle.properties at the tag, for a
+  # tag push and for a recovery dispatch alike. The ref must be exactly refs/tags/v<version>, with the version
+  # gradle.properties holds at that tag. mode: publish (github_release and npm_publish true, not a release candidate),
+  # dry-run (github_release true otherwise), none (no GitHub release to publish from).
+  npm-gates:
+    runs-on: ubuntu-latest
+    name: Read the npm gates
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.gates.outputs.version }}
+      mode: ${{ steps.gates.outputs.mode }}
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        persist-credentials: false
+        sparse-checkout: gradle.properties
+        sparse-checkout-cone-mode: false
+
+    - name: Check the ref and read the gates
+      id: gates
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [[ ! "$GITHUB_REF" =~ ^refs/tags/v([0-9].*)$ ]]; then
+          echo "::error::This workflow runs on a release tag, not ${GITHUB_REF}. To recover a release's npm" \
+            "publication, dispatch it on the tag: gh workflow run native-image-release.yml --ref v<version>." >&2
+          exit 1
+        fi
+        VERSION=${BASH_REMATCH[1]}
+        props=$(git show "${GITHUB_SHA}:gradle.properties")
+        # gradle.properties uses `key = value`.
+        prop() {
+          awk -v key="$1" '{ line = $0; sub(/[ \t]*[=:].*$/, "", line); sub(/^[ \t]+/, "", line) }
+            line == key { sub(/^[^=:]*[=:][ \t]*/, ""); sub(/[ \t\r]+$/, ""); print; exit }' <<< "$props"
+        }
+        GRADLE_VERSION=$(prop version)
+        if [[ "$GRADLE_VERSION" != "$VERSION" ]]; then
+          echo "::error::Tag v${VERSION} does not match version ${GRADLE_VERSION} in gradle.properties at that tag." >&2
+          exit 1
+        fi
+        if [[ "$VERSION" == *SNAPSHOT* ]]; then
+          echo "::error::A snapshot version is never published to npm: ${VERSION}." >&2
+          exit 1
+        fi
+        # Default to false: a missing or unparseable property must not publish.
+        GITHUB_RELEASE=$(prop github_release)
+        NPM_PUBLISH=$(prop npm_publish)
+        RC=false
+        if [[ "${VERSION#*-}" != "$VERSION" && "-${VERSION#*-}" =~ [-.][rR][cC][0-9]*($|[-.]) ]]; then RC=true; fi
+        if [[ "${GITHUB_RELEASE:-false}" != true ]]; then
+          MODE=none
+        elif [[ "${NPM_PUBLISH:-false}" == true && "$RC" == false ]]; then
+          MODE=publish
+        else
+          MODE=dry-run
+        fi
+        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+        echo "mode=$MODE" >> "$GITHUB_OUTPUT"
+        echo "v${VERSION} (${GITHUB_EVENT_NAME}): github_release=${GITHUB_RELEASE:-false}," \
+          "npm_publish=${NPM_PUBLISH:-false}, release candidate: ${RC}; npm: ${MODE}" | tee -a "$GITHUB_STEP_SUMMARY"
+
+  # ADR-077 D8a. Publishes the release's three npm tarballs, verified against attest's attestation (and, in the tag's
+  # own run, the wasm job's digests), with npm trusted publishing: npm exchanges this job's GitHub OIDC token for
+  # publish credentials, so there is no npm token. Each package's trusted publisher on npmjs.com names bloxbean/julc,
+  # this workflow file and the release-staging environment. That environment also accepts main and release/**, so the
+  # job checks its own ref. No Gradle, no build, no npm install and no package scripts: it checks out only
+  # julc-wasm/src/ci, the scripts it runs. Runs after a successful github-release and attest, or on a recovery
+  # dispatch (whose skipped needs would otherwise skip it: hence the status function, and no bare always()).
+  npm-publish:
+    needs: [npm-gates, wasm, attest, github-release]
+    if: >-
+      ${{ !cancelled() && needs.npm-gates.result == 'success' && needs.npm-gates.outputs.mode != 'none'
+      && (github.event_name == 'workflow_dispatch'
+      || (needs.github-release.result == 'success' && needs.attest.result == 'success')) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    name: Publish the npm packages
+    environment: release-staging
+    # One publication per tag at a time; a recovery run waits for the original run's, never cancels it.
+    concurrency:
+      group: npm-publish-${{ github.ref }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+      attestations: read
+    outputs:
+      published: ${{ steps.publish.outputs.published }}
+    env:
+      VERSION: ${{ needs.npm-gates.outputs.version }}
+      MODE: ${{ needs.npm-gates.outputs.mode }}
+    steps:
+    - name: Refuse any ref but the release tag
+      shell: bash
+      run: |
+        if [[ -z "$VERSION" || "$GITHUB_REF" != "refs/tags/v${VERSION}" ]]; then
+          echo "::error::npm-publish runs only on refs/tags/v${VERSION}, not ${GITHUB_REF}." >&2
+          exit 1
+        fi
+
+    - uses: actions/checkout@v4
+      with:
+        persist-credentials: false
+        sparse-checkout: julc-wasm/src/ci
+        sparse-checkout-cone-mode: false
+
+    # Trusted publishing needs Node >= 22.14 and npm >= 11.5.1: both exact here.
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '24.22.3'
+        registry-url: 'https://registry.npmjs.org'
+
+    - name: Install npm 11.21.1
+      shell: bash
+      run: |
+        set -euo pipefail
+        npm install -g --ignore-scripts npm@11.21.1
+        test "$(npm --version)" = 11.21.1
+
+    - name: Download the release's npm files and verify their attestation
+      env:
+        GH_TOKEN: ${{ github.token }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir assets
+        gh release download "v${VERSION}" --repo "$GITHUB_REPOSITORY" --dir assets \
+          --pattern "julclang-*-${VERSION}.tgz" --pattern "julc-npm-${VERSION}-SHA256SUMS.txt"
+        for name in wasm-client julc-vm-wasm julc-wasm; do
+          gh attestation verify "assets/julclang-${name}-${VERSION}.tgz" --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/native-image-release.yml" \
+            --source-ref "refs/tags/v${VERSION}" --deny-self-hosted-runners
+        done
+        ls -la assets
+
+    - name: Publish
+      id: publish
+      env:
+        SHA_CLIENT: ${{ needs.wasm.outputs.sha256_wasm_client }}
+        SHA_VM: ${{ needs.wasm.outputs.sha256_julc_vm_wasm }}
+        SHA_FULL: ${{ needs.wasm.outputs.sha256_julc_wasm }}
+        SHA_VM_ARCHIVE: ${{ needs.wasm.outputs.sha256_vm_archive }}
+        SHA_FULL_ARCHIVE: ${{ needs.wasm.outputs.sha256_full_archive }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        # In the tag's own run, the wasm job's digests too; a recovery dispatch has only the attestation.
+        digests=()
+        if [[ "$GITHUB_EVENT_NAME" == push ]]; then
+          for pair in "julclang-wasm-client-${VERSION}.tgz=${SHA_CLIENT}" "julclang-julc-vm-wasm-${VERSION}.tgz=${SHA_VM}" \
+              "julclang-julc-wasm-${VERSION}.tgz=${SHA_FULL}" "julc-vm-wasm-${VERSION}.tar.gz=${SHA_VM_ARCHIVE}" \
+              "julc-wasm-${VERSION}.tar.gz=${SHA_FULL_ARCHIVE}"; do
+            digests+=(--digest "$pair")
+          done
+        fi
+        node julc-wasm/src/ci/npm-publish.mjs --dir assets --version "$VERSION" --mode "$MODE" "${digests[@]}"
+
+  # ADR-077 D8a, I1, I12: what npm serves, after a real or verified publication (never after a dry run). No id-token,
+  # no environment, no secrets. Installs with --ignore-scripts.
+  npm-verify:
+    needs: [npm-gates, wasm, npm-publish]
+    if: ${{ !cancelled() && needs.npm-publish.result == 'success' && needs.npm-publish.outputs.published == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    name: Verify the npm packages on the registry
+    permissions:
+      contents: read
+      attestations: read
+    env:
+      VERSION: ${{ needs.npm-gates.outputs.version }}
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        persist-credentials: false
+        sparse-checkout: julc-wasm/src/ci
+        sparse-checkout-cone-mode: false
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '24.22.3'
+
+    - name: Install npm 11.21.1
+      shell: bash
+      run: |
+        set -euo pipefail
+        npm install -g --ignore-scripts npm@11.21.1
+        test "$(npm --version)" = 11.21.1
+
+    - name: Download the release's npm files and verify their attestation
+      env:
+        GH_TOKEN: ${{ github.token }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir assets
+        gh release download "v${VERSION}" --repo "$GITHUB_REPOSITORY" --dir assets \
+          --pattern "julclang-*-${VERSION}.tgz" --pattern "julc-npm-${VERSION}-SHA256SUMS.txt"
+        for name in wasm-client julc-vm-wasm julc-wasm; do
+          gh attestation verify "assets/julclang-${name}-${VERSION}.tgz" --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/native-image-release.yml" \
+            --source-ref "refs/tags/v${VERSION}" --deny-self-hosted-runners
+        done
+
+    - name: Compare the registry with the release, audit signatures, check provenance
+      env:
+        SHA_CLIENT: ${{ needs.wasm.outputs.sha256_wasm_client }}
+        SHA_VM: ${{ needs.wasm.outputs.sha256_julc_vm_wasm }}
+        SHA_FULL: ${{ needs.wasm.outputs.sha256_julc_wasm }}
+        SHA_VM_ARCHIVE: ${{ needs.wasm.outputs.sha256_vm_archive }}
+        SHA_FULL_ARCHIVE: ${{ needs.wasm.outputs.sha256_full_archive }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        digests=()
+        if [[ "$GITHUB_EVENT_NAME" == push ]]; then
+          for pair in "julclang-wasm-client-${VERSION}.tgz=${SHA_CLIENT}" "julclang-julc-vm-wasm-${VERSION}.tgz=${SHA_VM}" \
+              "julclang-julc-wasm-${VERSION}.tgz=${SHA_FULL}" "julc-vm-wasm-${VERSION}.tar.gz=${SHA_VM_ARCHIVE}" \
+              "julc-wasm-${VERSION}.tar.gz=${SHA_FULL_ARCHIVE}"; do
+            digests+=(--digest "$pair")
+          done
+        fi
+        node julc-wasm/src/ci/npm-verify.mjs --dir assets --version "$VERSION" --work "$RUNNER_TEMP/npm-verify" "${digests[@]}"
 
   update-homebrew:
     needs: [validate, github-release]
     # Pushes a commit to bloxbean/homebrew-tap and downloads the release assets,
     # so it cannot run without a release: the formula URLs would 404 and the tap
     # would point at assets that do not exist.
-    if: needs.validate.outputs.github_release == 'true'
+    if: github.event_name == 'push' && needs.validate.outputs.github_release == 'true'
     runs-on: ubuntu-latest
     name: Update Homebrew formulas
     # HOMEBREW_TAP_TOKEN is a secret of this environment, which only accepts v* tags (created by the release
