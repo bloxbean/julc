@@ -14,8 +14,8 @@ Both variants exclude BLS12-381 evaluation. Language is inferred by `ScriptDecod
 unless overridden; protocol defaults to 11. Each evaluation/debug session gets a
 private cost-model configuration. Long integers cross the SDK boundary as `bigint`.
 
-The repository-wide `build` and this module's `test` task require Node.js 22+ for
-JavaScript codec/adapter tests. No Cardano node is needed. Image verification
+The repository-wide `build` and this module's `test` task require Node.js 22.3+ with `npm` on `PATH`
+for the JavaScript tests (`jsTest` packs `@julclang/wasm-client` with `npm pack` and installs the tarball offline). No Cardano node is needed. Image verification
 additionally needs GraalVM 25.3 Web Image and Binaryen, and `wasmSmoke`'s ordinary native image needs a C toolchain:
 
 ```sh
@@ -44,6 +44,31 @@ of both Wasm smokes; they are never silently skipped. Build CI installs Node.js 
 including a fixed benchmark/conformance corpus, parameterized decoding and session
 lifecycle. Release CI requires both smokes; passing them is evidence, not proof of
 compiler correctness or production safety.
+
+## `@julclang/wasm-client` (ADR-077, M1)
+
+`./gradlew :julc-wasm:wasmClientPack` assembles the npm package `@julclang/wasm-client` in `build/wasm-client/package`
+and packs it into `build/npm` ([ADR-077](../adr/077-npm-wasm-packages.md)). It is not published yet. It holds the same
+client as the archives, plus the Node.js bridge. The archives' `julc-wasm.js` is one generated file (the client, its
+version and `rest: true`), so that every script an archive page loads is versioned by its `?engine=` URL; the package
+keeps the client's source files (`julc-wasm.js`, `julc-client.js`, `client-version.js`, `client-defaults.js` with
+`rest: false`). `julc-worker.js`, `julc-runtime.js`, `julc-wasm.d.ts` and `julc-models.d.ts` are byte-equal in both:
+
+- `createJulc({launcherUrl, moduleUrl, manifest, expectedVersion})` is package mode, which the engine packages use. The
+  worker loads only URLs on its own origin (in Node.js, only `file:` URLs), never a path from the manifest, and never
+  the REST adapter. `baseUrl` (archive mode) and package mode cannot be mixed.
+- In Node.js 22.3 or later, the package's `node` entry runs each client in a `worker_threads` worker through
+  `node-worker.js`. Where WebAssembly exception references need a flag (Node 22), it sets
+  `--experimental-wasm-exnref` with `v8.setFlagsFromString` before the first worker starts; the flag is process-wide.
+- Types: `WorkerLike` instead of the DOM's `Worker`, `PackageClient` (a client without `rest`), and plain names for
+  the records (`ScriptInput`, `TxOut`, …); the generated `<Outer>_<Inner>` names are under
+  `@julclang/wasm-client/models`.
+
+Tests: `jsTest` (part of `test`) runs the worker, client, runtime and package tests on the packed tarball. With the
+images built: `wasmSmokePackage` loads both engines from the tarball in Node.js with no flags, on the main thread and in
+an application worker (`-PwasmSmokeNodes=<node>,<node>` adds Node binaries); `wasmBrowserSmoke
+-PplaywrightDir=<…/node_modules/playwright>` loads them in Chromium under `script-src 'self' 'wasm-unsafe-eval'`.
+`wasmClientTypes` type-checks the declarations from the tarball (it installs TypeScript from the npm registry).
 
 ## Building an image for another language
 
@@ -144,8 +169,13 @@ missing result record lets the engine start, and that operation's calls then fai
    `{"version": "<hash>", "launcher": "<name>-<hash>.js", "variant": "<variant>", "api": 0, "groups": [...],
    "julcVersion": "<JuLC version>"}`. `groups` must equal `EngineInfo.groups()`; the client refuses an engine whose
    features differ.
-4. Copy `META-INF/julc-wasm/js/` from the `julc-wasm` jar next to them: `julc-wasm.js` (the Promise client,
-   `createJulc({baseUrl})`), `julc-worker.js`, `rest-adapter.js` and the `.d.ts` declarations.
+4. Copy all of `META-INF/julc-wasm/js/` from the `julc-wasm` jar next to them: `julc-wasm.js` (the Promise client,
+   `createJulc({baseUrl})`, one file), `julc-worker.js`, `julc-runtime.js`, `rest-adapter.js` and the
+   `.d.ts` declarations. The worker loads `julc-runtime.js` before the launcher, and the image uses it only when it is
+   stamped with the image's JuLC version, so it must come from the same `julc-wasm` jar; a missing or stale file stops
+   the engine with an error that names it (ADR-077 D2). The client also checks that `features().julcVersion`, the
+   manifest's `julcVersion` and the client are of one JuLC release (D1a); pass `expectedVersion` to check your own
+   `version()` too. `rest` defaults to `true` with these files; pass `rest: false` to skip the REST adapter.
 
 ### TypeScript
 

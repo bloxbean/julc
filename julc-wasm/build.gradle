@@ -101,19 +101,165 @@ def patchLauncher = { String launcher, String hook ->
 }
 
 def versionResources = layout.buildDirectory.dir('version-resources')
+def runtimeSource = file('src/main/js/julc-runtime.js')
+// The runtime is stamped with the JuLC version once, here: the image's resource, the jar's SDK directory, the npm
+// package, the archives and the playground all carry these bytes (ADR-077 D2; wasmClientIdentity checks them).
+def stampRuntime = { String source, String version ->
+    def anchor = "const julcVersion = 'dev';"
+    if (source.count(anchor) != 1) throw new GradleException("julc-runtime.js must contain ${anchor} exactly once")
+    source.replace(anchor, "const julcVersion = ${groovy.json.JsonOutput.toJson(version)};")
+}
 tasks.register('wasmVersion') {
     inputs.property('version', project.version.toString())
+    inputs.file(runtimeSource)
     outputs.dir(versionResources)
     doLast {
         def dir = versionResources.get().asFile
         dir.mkdirs()
         new File(dir, 'julc-wasm-version.properties').text = "version=${project.version}\n"
+        new File(dir, 'julc-runtime.js').setText(stampRuntime(runtimeSource.getText('UTF-8'), project.version.toString()),
+                'UTF-8')
     }
 }
 sourceSets.main.resources.srcDir(versionResources)
 tasks.named('processResources') { dependsOn 'wasmVersion' }
 // The published sources jar packs the resource directories too.
 tasks.matching { it.name == 'sourcesJar' }.configureEach { dependsOn 'wasmVersion' }
+
+// --- The JavaScript client (ADR-064, ADR-077) ---
+//
+// Two distributions of one client (ADR-077 D4):
+// - build/wasm-client/archive: the release archives, the playground and the jar's META-INF/julc-wasm/js. Its
+//   julc-wasm.js is one generated file holding the client, its version and the archives' defaults (rest: true), so
+//   every script a page or worker loads is versioned by its URL (?engine=) and a cached copy of another release is
+//   never paired with the engine. It has the REST adapter.
+// - build/wasm-client/package: @julclang/wasm-client, with the client in its source files, rest: false and the Node
+//   bridge, packed by wasmClientPack.
+// Both carry julc-worker.js, julc-runtime.js, julc-wasm.d.ts and julc-models.d.ts byte for byte (wasmClientIdentity).
+def clientCommon = layout.buildDirectory.dir('wasm-client/common')
+def clientArchive = layout.buildDirectory.dir('wasm-client/archive')
+def clientPackage = layout.buildDirectory.dir('wasm-client/package')
+def npmDir = layout.buildDirectory.dir('npm')
+def json = { value -> groovy.json.JsonOutput.toJson(value) }
+def replaceOnce = { String text, String from, String to ->
+    if (text.count(from) != 1) throw new GradleException("Expected exactly one ${from.trim()} in the client source")
+    text.replace(from, to)
+}
+// julc-client.js and julc-wasm.js as one module, with the version and the archives' defaults in place of the two
+// modules they import. The client's own asset URLs stay string literals (D2).
+def singleFileClient = { String client, String entry, String version ->
+    client = replaceOnce(client, "import {CLIENT_VERSION} from './client-version.js';\n", '')
+    client = replaceOnce(client, "import {rest as REST_DEFAULT} from './client-defaults.js';\n", '')
+    client = replaceOnce(client, "export {CLIENT_VERSION};\n", '')
+    client = replaceOnce(client, 'export function isFullClient(', 'function isFullClient(')
+    client = replaceOnce(client, 'export async function startClient(', 'async function startClient(')
+    entry = replaceOnce(entry, "import {startClient, isFullClient} from './julc-client.js';\n", '')
+    def text = "// Generated from julc-client.js and julc-wasm.js: the release archives' client in one file (ADR-077).\n" +
+            "const CLIENT_VERSION = ${json(version)};\nconst REST_DEFAULT = true;\n" + client + entry
+    if (text =~ /(?m)^\s*import\b/ || text.contains("from './")) {
+        throw new GradleException('The archives\' julc-wasm.js must not import another file')
+    }
+    text
+}
+tasks.register('wasmClientCommon') {
+    dependsOn 'wasmVersion', 'typeScriptDeclarations'
+    inputs.file('src/main/js/julc-worker.js')
+    inputs.file('src/main/js/julc-wasm.d.ts')
+    inputs.dir(versionResources)
+    inputs.dir(layout.buildDirectory.dir('declarations'))
+    outputs.dir(clientCommon)
+    doLast {
+        def dir = clientCommon.get().asFile
+        fileOps.delete { delete dir }
+        fileOps.copy {
+            from('src/main/js') { include 'julc-worker.js', 'julc-wasm.d.ts' }
+            from(versionResources) { include 'julc-runtime.js' }
+            from(layout.buildDirectory.dir('declarations'))
+            into dir
+        }
+    }
+}
+tasks.register('wasmClientArchive') {
+    dependsOn 'wasmClientCommon'
+    inputs.dir(clientCommon)
+    inputs.files('src/main/js/julc-client.js', 'src/main/js/julc-wasm.js', 'src/main/js/rest-adapter.js',
+            'src/main/js/client-defaults.d.ts')
+    inputs.property('version', project.version.toString())
+    outputs.dir(clientArchive)
+    doLast {
+        def dir = clientArchive.get().asFile
+        fileOps.delete { delete dir }
+        fileOps.copy {
+            from clientCommon
+            from('src/main/js') { include 'rest-adapter.js', 'client-defaults.d.ts' }
+            into dir
+        }
+        new File(dir, 'julc-wasm.js').setText(singleFileClient(file('src/main/js/julc-client.js').getText('UTF-8'),
+                file('src/main/js/julc-wasm.js').getText('UTF-8'), project.version.toString()), 'UTF-8')
+    }
+}
+tasks.register('wasmClientPackage') {
+    dependsOn 'wasmClientCommon'
+    def sources = file('src/main/npm/wasm-client')
+    inputs.dir(sources)
+    inputs.dir(clientCommon)
+    inputs.files('src/main/js/julc-client.js', 'src/main/js/julc-wasm.js', rootProject.file('LICENSE'))
+    inputs.property('version', project.version.toString())
+    outputs.dir(clientPackage)
+    doLast {
+        def dir = clientPackage.get().asFile
+        fileOps.delete { delete dir }
+        fileOps.copy {
+            from clientCommon
+            from sources
+            from('src/main/js') { include 'julc-client.js', 'julc-wasm.js' }
+            from rootProject.file('LICENSE')
+            into dir
+        }
+        new File(dir, 'client-version.js').text = '// Generated at build time: the JuLC release this client belongs to ' +
+                "(ADR-077 D1a).\nexport const CLIENT_VERSION = ${json(project.version.toString())};\n"
+        new File(dir, 'client-defaults.js').text =
+                '// @julclang/wasm-client\'s defaults: no REST adapter (ADR-077 D4).\nexport const rest = false;\n'
+        new File(dir, 'client-defaults.d.ts').text =
+                '// @julclang/wasm-client\'s defaults: no REST adapter (ADR-077 D4).\nexport declare const rest: false;\n'
+        def files = dir.list().findAll { it != 'package.json' }.sort()
+        def manifest = new LinkedHashMap([
+                name: '@julclang/wasm-client',
+                version: project.version.toString(),
+                description: 'Promise client, worker and Node.js bridge for the JuLC WebAssembly engines '
+                        + '(@julclang/julc-wasm, @julclang/julc-vm-wasm). Experimental: API version 0.',
+                license: 'MIT',
+                repository: 'github:bloxbean/julc',
+                homepage: 'https://github.com/bloxbean/julc/tree/main/julc-wasm',
+                type: 'module',
+                types: './index.d.ts',
+                // TypeScript's node10 resolution reads no exports map: the types-only sub-path through typesVersions.
+                typesVersions: ['*': [models: ['./models.d.ts']]],
+                exports: new LinkedHashMap([
+                        '.': new LinkedHashMap([types: './index.d.ts', node: './node.js', default: './index.js']),
+                        './models': [types: './models.d.ts'],
+                        './package.json': './package.json']),
+                // Loading these runs code with effects: the worker scripts, and the runtime, which defines a global.
+                sideEffects: ['./julc-worker.js', './node-worker.js', './julc-runtime.js'],
+                engines: [node: '>=22.3.0'],
+                files: files])
+        new File(dir, 'package.json').text = groovy.json.JsonOutput.prettyPrint(
+                groovy.json.JsonOutput.toJson(manifest)) + '\n'
+    }
+}
+tasks.register('wasmClientPack', Exec) {
+    group = 'build'
+    description = 'Packs @julclang/wasm-client with npm pack into build/npm (ADR-077 D8a).'
+    dependsOn 'wasmClientPackage'
+    inputs.dir(clientPackage)
+    outputs.dir(npmDir)
+    workingDir clientPackage
+    doFirst {
+        fileOps.delete { delete npmDir }
+        npmDir.get().asFile.mkdirs()
+    }
+    commandLine 'npm', 'pack', '--ignore-scripts', '--pack-destination', npmDir.get().asFile.absolutePath
+}
 
 // Strip full-toolchain reflection roots from the VM's copy of julc-tools. The
 // per-variant metadata in julc-wasm explicitly registers its reachable API records.
@@ -169,10 +315,10 @@ tasks.register('vmToolsJar', Jar) {
     }
     tasks.register("wasmBundle${suffix}") {
         group = 'build'
-        dependsOn "wasmImage${suffix}", 'typeScriptDeclarations'
+        dependsOn "wasmImage${suffix}", 'wasmClientArchive'
         inputs.dir(imageDir)
         inputs.file(launcherHook)
-        inputs.dir('src/main/js')
+        inputs.dir(clientArchive)
         outputs.dir(bundleDir)
         doLast {
             def image = imageDir.get().asFile
@@ -184,8 +330,7 @@ tasks.register('vmToolsJar', Jar) {
             def digest = MessageDigest.getInstance('SHA-256')
             digest.update(launcher.getBytes('UTF-8'))
             digest.update(moduleBytes)
-            fileTree('src/main/js').files.sort { it.name }.each { digest.update(it.bytes) }
-            digest.update(file('src/main/resources/julc-runtime.js').bytes)
+            fileTree(clientArchive).files.sort { it.name }.each { digest.update(it.bytes) }
             def groups = vmOnly ? ['vm', 'debug'] : ['vm', 'debug', 'compiler', 'uplc', 'sourceDebug', 'sourceDebugLocals']
             digest.update(variant.getBytes('UTF-8'))
             digest.update(groups.join(',').getBytes('UTF-8'))
@@ -195,18 +340,26 @@ tasks.register('vmToolsJar', Jar) {
             new File(bundle, 'engine.json').text = groovy.json.JsonOutput.toJson([
                     version: hash, launcher: "${name}-${hash}.js", variant: variant,
                     api: 0, groups: groups, julcVersion: project.version.toString()]) + '\n'
-            fileOps.copy { from 'src/main/js'; into bundle }
-            fileOps.copy { from layout.buildDirectory.dir('declarations'); into bundle }
-            fileOps.copy { from 'src/main/resources/julc-runtime.js'; into bundle }
+            fileOps.copy { from clientArchive; into bundle }
+            // The image evaluates its own runtime only when none was loaded; the worker always loads this one.
+            def runtime = new File(bundle, 'julc-runtime.js').bytes
+            if (new String(moduleBytes, 'ISO-8859-1').indexOf(new String(runtime, 'ISO-8859-1')) < 0) {
+                throw new GradleException('The image does not embed the julc-runtime.js its bundle ships')
+            }
             if (!vmOnly) {
                 fileOps.delete {
                     delete((frontendWasmDir.listFiles() ?: []).findAll {
                         it.name == 'engine.json' || it.name == 'julc-runtime.js' ||
                         it.name == 'julc-worker.js' || it.name == 'julc-wasm.js' ||
-                        it.name == 'rest-adapter.js' || it.name.matches('julc(-playground)?-[0-9a-f]{12}\\.js(\\.wasm)?')
+                        it.name == 'rest-adapter.js' || it.name.startsWith('client-defaults.') ||
+                        // Left by builds whose archive client was several files.
+                        it.name == 'julc-client.js' || it.name == 'client-version.js' || it.name.matches('julc(-playground)?-[0-9a-f]{12}\\.js(\\.wasm)?')
                     })
                 }
                 fileOps.copy { from bundle; into frontendWasmDir }
+                if (new File(frontendWasmDir, 'julc-runtime.js').bytes != new File(bundle, 'julc-runtime.js').bytes) {
+                    throw new GradleException('The playground\'s julc-runtime.js differs from the bundle\'s')
+                }
             }
             logger.lifecycle("${variant} image: ${moduleBytes.length} bytes; bundle ${bundle}")
         }
@@ -319,8 +472,54 @@ tasks.register('wasmSmokeEmbedder', Exec) {
                 layout.buildDirectory.file('wasm-parity/vm.json').get().asFile.absolutePath
     }
 }
+// ADR-077 M1: the packed @julclang/wasm-client loads both images in package mode, in Node.js with no flags (I8).
+// More Node.js binaries to run it with (for example 22.3.0 and 24): -PwasmSmokeNodes=/path/node,/other/node
+tasks.register('wasmSmokePackage', Exec) {
+    group = 'verification'
+    dependsOn 'wasmBundleFull', 'wasmBundleVm', 'wasmClientPack', 'vmParityExpected', 'jsTest'
+    outputs.upToDateWhen { false }
+    executable 'node'
+    doFirst {
+        def tarball = npmDir.get().asFile.listFiles().find { it.name.startsWith('julclang-wasm-client-') }
+        args file('src/test/js/package-smoke.mjs').absolutePath, tarball.absolutePath,
+                layout.buildDirectory.dir('wasm-bundle-vm').get().asFile.absolutePath,
+                layout.buildDirectory.dir('wasm-bundle-full').get().asFile.absolutePath,
+                layout.buildDirectory.file('wasm-parity/vm.json').get().asFile.absolutePath
+        def extra = providers.gradleProperty('wasmSmokeNodes').getOrElse('')
+        if (extra) args extra.split(',').toList()
+    }
+}
+// ADR-077 M1 in Chromium, under Content-Security-Policy: script-src 'self' 'wasm-unsafe-eval' on every response.
+// Needs Playwright with its Chromium: -PplaywrightDir=<…/node_modules/playwright>
+tasks.register('wasmBrowserSmoke', Exec) {
+    group = 'verification'
+    dependsOn 'wasmBundleFull', 'wasmBundleVm', 'wasmClientPackage'
+    outputs.upToDateWhen { false }
+    executable 'node'
+    doFirst {
+        def playwright = providers.gradleProperty('playwrightDir').orNull
+        if (!playwright) throw new GradleException('Pass -PplaywrightDir=<directory of the playwright npm package>')
+        args file('src/test/js/browser-smoke.mjs').absolutePath, clientPackage.get().asFile.absolutePath,
+                layout.buildDirectory.dir('wasm-bundle-vm').get().asFile.absolutePath,
+                layout.buildDirectory.dir('wasm-bundle-full').get().asFile.absolutePath, playwright
+    }
+}
+// ADR-077 D2: the declarations type-check from the packed package (NodeNext without DOM, bundler with DOM,
+// skipLibCheck: false). Installs pinned TypeScript and @types/node from the npm registry.
+tasks.register('wasmClientTypes', Exec) {
+    group = 'verification'
+    dependsOn 'wasmClientPack', 'wasmClientArchive'
+    inputs.dir('src/test/types')
+    outputs.upToDateWhen { false }
+    executable 'node'
+    doFirst {
+        def tarball = npmDir.get().asFile.listFiles().find { it.name.startsWith('julclang-wasm-client-') }
+        args file('src/test/js/package-types.mjs').absolutePath, tarball.absolutePath,
+                clientArchive.get().asFile.absolutePath
+    }
+}
 tasks.register('wasmBundle') { dependsOn 'wasmBundleFull', 'wasmBundleVm' }
-tasks.register('wasmSmoke') { dependsOn 'wasmSmokeFull', 'wasmSmokeVm', 'wasmSmokeEmbedder' }
+tasks.register('wasmSmoke') { dependsOn 'wasmSmokeFull', 'wasmSmokeVm', 'wasmSmokeEmbedder', 'wasmSmokePackage' }
 tasks.register('wasmParityExpected', JavaExec) {
     classpath = sourceSets.test.runtimeClasspath
     mainClass = 'org.julclang.wasm.ParityFixtures'
@@ -330,9 +529,16 @@ tasks.register('wasmParityExpected', JavaExec) {
 }
 tasks.register('jsTest', Exec) {
     group = 'verification'
-    description = 'Run JavaScript codec and REST adapter tests (requires Node 22+).'
-    commandLine 'node', '--test', 'src/test/js/codec.test.mjs', 'src/test/js/worker.test.mjs',
-            'src/test/js/client.test.mjs'
+    description = 'Run the JavaScript client, worker, runtime and package tests (requires Node 22.3+ and npm).'
+    // The tests run the staged client files and the packed @julclang/wasm-client, as they are shipped.
+    dependsOn 'wasmClientArchive', 'wasmClientPack'
+    inputs.dir('src/test/js')
+    inputs.file('src/main/java/org/julclang/wasm/JsApi.java')
+    inputs.dir(clientArchive)
+    inputs.dir(npmDir)
+    outputs.upToDateWhen { false }
+    commandLine 'node', '--test', '--test-concurrency=1', 'src/test/js/codec.test.mjs', 'src/test/js/worker.test.mjs',
+            'src/test/js/client.test.mjs', 'src/test/js/runtime-identity.test.mjs', 'src/test/js/package.test.mjs'
 }
 tasks.register('vmParityExpected', JavaExec) {
     dependsOn 'testClasses', 'wasmParityExpected'
@@ -355,12 +561,63 @@ tasks.register('typeScriptDeclarations', JavaExec) {
 tasks.named('test') { dependsOn 'typeScriptDeclarations' }
 
 // The JavaScript client in the jar (ADR-064): an image another language builds on this module serves these files
-// next to its launcher, so they always come from the same julc-wasm version as the image. julc-runtime.js, which
-// JsApi loads, is an ordinary resource.
+// next to its launcher, so they always come from the same julc-wasm version as the image. julc-runtime.js is also an
+// ordinary resource, which JsApi evaluates only when the worker loaded none.
 tasks.named('jar') {
-    from('src/main/js') { into 'META-INF/julc-wasm/js' }
-    from(tasks.named('typeScriptDeclarations')) { into 'META-INF/julc-wasm/js' }
+    from(tasks.named('wasmClientArchive')) { into 'META-INF/julc-wasm/js' }
 }
+
+// ADR-064 I3, extended by ADR-077: the stamped runtime is one file everywhere, its stamp is the version the image
+// reports, and every client file the jar and @julclang/wasm-client both hold is byte-equal, except client-defaults.
+tasks.register('wasmClientIdentity') {
+    group = 'verification'
+    dependsOn 'jar', 'wasmClientPackage'
+    def jarFile = tasks.named('jar').flatMap { it.archiveFile }
+    inputs.file(jarFile)
+    inputs.dir(clientPackage)
+    def marker = layout.buildDirectory.file('wasm-client/identity.txt')
+    outputs.file(marker)
+    doLast {
+        def entries = [:]
+        new java.util.zip.ZipFile(jarFile.get().asFile).withCloseable { zip ->
+            zip.entries().each { entry ->
+                if (entry.name == 'julc-runtime.js' || entry.name == 'julc-wasm-version.properties'
+                        || entry.name.startsWith('META-INF/julc-wasm/js/') && !entry.directory) {
+                    entries[entry.name] = zip.getInputStream(entry).bytes
+                }
+            }
+        }
+        def version = new Properties()
+        version.load(new ByteArrayInputStream(entries['julc-wasm-version.properties']))
+        def runtime = entries['julc-runtime.js']
+        def expected = stampRuntime(runtimeSource.getText('UTF-8'), version.getProperty('version')).getBytes('UTF-8')
+        if (runtime != expected) {
+            throw new GradleException("The jar's julc-runtime.js is not the source stamped with JuLC ${version.getProperty('version')}")
+        }
+        def packageDir = clientPackage.get().asFile
+        def sdk = entries.findAll { it.key.startsWith('META-INF/julc-wasm/js/') }
+                .collectEntries { [(it.key.substring('META-INF/julc-wasm/js/'.length())): it.value] }
+        if (sdk['julc-runtime.js'] != runtime) throw new GradleException("The jar's SDK julc-runtime.js differs from its resource")
+        def shared = sdk.keySet().findAll { new File(packageDir, it).isFile() }
+        if (!shared.containsAll(['julc-runtime.js', 'julc-worker.js', 'julc-wasm.d.ts', 'julc-models.d.ts'])) {
+            throw new GradleException("The jar and @julclang/wasm-client do not share the client files: ${shared}")
+        }
+        // The archives' julc-wasm.js is the one-file client, and each distribution has its own defaults (D4).
+        def generated = ['julc-wasm.js', 'client-defaults.d.ts']
+        def differing = shared.findAll { !(it in generated) && new File(packageDir, it).bytes != sdk[it] }
+        if (differing) throw new GradleException("The jar's client files differ from @julclang/wasm-client's: ${differing}")
+        // The archives' one-file client is exactly the package's client files with the archives' constants (D4).
+        def expectedArchiveClient = singleFileClient(new File(packageDir, 'julc-client.js').getText('UTF-8'),
+                new File(packageDir, 'julc-wasm.js').getText('UTF-8'), version.getProperty('version')).getBytes('UTF-8')
+        if (sdk['julc-wasm.js'] != expectedArchiveClient) {
+            throw new GradleException("The jar's julc-wasm.js is not the package's julc-client.js and julc-wasm.js in one file")
+        }
+        def text = "julc-runtime.js ${runtime.length} bytes, JuLC ${version.getProperty('version')}; shared ${shared.sort()}\n"
+        marker.get().asFile.text = text
+        logger.lifecycle(text.trim())
+    }
+}
+tasks.named('check') { dependsOn 'wasmClientIdentity' }
 
 // ADR-068 M1 host smoke: JavacProbe (test sources) as a Web Image, run under Node; its lines must equal the
 // JVM's (JavacProbeTest). Writes build/wasm-gate-probe/{probe.txt,jvm.txt}:

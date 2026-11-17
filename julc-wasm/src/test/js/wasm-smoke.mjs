@@ -1,6 +1,7 @@
-import {readFileSync} from 'node:fs';
+import {cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
 import {pathToFileURL} from 'node:url';
-import {Worker} from 'node:worker_threads';
+import {workerFactory} from './support.mjs';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 
@@ -10,13 +11,6 @@ const {createJulc, isFullClient} = await import(new URL('julc-wasm.js', baseUrl)
 await import(new URL('julc-runtime.js', baseUrl));
 const manifest = JSON.parse(readFileSync(new URL('engine.json', baseUrl)));
 const catalogue = JSON.parse(readFileSync(catalogueFile));
-const workerFactory = url => {
-  const worker = new Worker(new URL('./node-worker.mjs', import.meta.url), {workerData: url.href});
-  const bridge = {postMessage: value => worker.postMessage(value), terminate: () => worker.terminate()};
-  worker.on('message', data => bridge.onmessage?.({data}));
-  worker.on('error', error => bridge.onerror?.(error));
-  return bridge;
-};
 const started = performance.now();
 const api = await createJulc({baseUrl, manifest, catalogue, workerFactory});
 console.log(`${variant} worker ready in ${Math.round(performance.now() - started)} ms`);
@@ -167,3 +161,24 @@ class WasmSourceDebugSmoke {
   } finally { timed.dispose(); }
   console.log('ok exact integers, debug replay, close and worker disposal');
 } finally { api.dispose(); }
+// ADR-077 D2, M1: the real image refuses a runtime file of another build beside its manifest, and a missing one, at
+// once and with the cause.
+{
+  const runtime = readFileSync(new URL('julc-runtime.js', baseUrl), 'utf8');
+  const stamp = 'const julcVersion = ' + JSON.stringify(manifest.julcVersion) + ';';
+  assert.equal(runtime.split(stamp).length, 2, 'the bundle\'s runtime is stamped with its manifest\'s julcVersion');
+  for (const [name, change, pattern] of [
+    ['stale', dir => writeFileSync(path.join(dir, 'julc-runtime.js'), runtime.replace(stamp, 'const julcVersion = "0.0.1-stale";')),
+      new RegExp('cannot start: the runtime file julc-runtime\\.js loaded before it is JuLC 0\\.0\\.1-stale')],
+    ['missing', dir => rmSync(path.join(dir, 'julc-runtime.js')), /Cannot load the runtime .*julc-runtime\.js/]]) {
+    const dir = mkdtempSync(path.join(tmpdir(), 'julc-smoke-runtime-'));
+    cpSync(path.resolve(bundle), dir, {recursive: true});
+    change(dir);
+    const started = performance.now();
+    await assert.rejects(createJulc({baseUrl: pathToFileURL(dir + '/'), manifest, catalogue, workerFactory}), pattern);
+    const elapsed = Math.round(performance.now() - started);
+    assert.ok(elapsed < 10000, name + ' took ' + elapsed + ' ms');
+    rmSync(dir, {recursive: true});
+    console.log(`ok ${name} runtime file refused in ${elapsed} ms`);
+  }
+}

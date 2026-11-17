@@ -1,43 +1,87 @@
-/* Private wire codec and synchronous API. Also loaded by SDK tests without a VM. */
+/* Private wire codec and synchronous API. Also loaded by SDK tests without a VM. The worker loads this file before
+ * the launcher, and the engine uses it instead of evaluating its own copy when both come from one JuLC build
+ * (ADR-077 D2), so a Content Security Policy need not allow 'unsafe-eval'. */
 (() => {
   'use strict';
+  // The JuLC build this file belongs to. The build stamps it (build.gradle, wasmVersion); the source says dev.
+  const julcVersion = 'dev';
   const LONG_MIN = -(1n << 63n), LONG_MAX = (1n << 63n) - 1n;
   const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
   function invalid(message) {
     return Object.assign(new Error(message), { code: 'invalid-request', status: 400, body: { error: message } });
   }
-  function dataText(value) {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) throw invalid('Expected structured Plutus Data');
-    const kinds = ['int', 'bytes', 'list', 'map', 'constructor'].filter(k => own(value, k));
-    if (kinds.length !== 1) throw invalid('Data must have exactly one constructor');
-    const kind = kinds[0];
-    if (Object.keys(value).some(k => k !== kind && !(kind === 'constructor' && k === 'fields'))) {
-      throw invalid('Unexpected Data field');
-    }
-    const array = (items) => {
-      if (!Array.isArray(items)) throw invalid('Expected Data array');
-      return '[' + items.map(dataText).join(',') + ']';
+  // Structured Plutus Data as the JSON text the engine reads. Iterative, with an explicit stack, so a deeply nested
+  // value cannot exhaust the JavaScript stack; it checks each node, and fails, in the order a depth-first walk
+  // would, and holes in an array give empty elements, as Array.prototype.map and join do.
+  function dataText(root) {
+    const out = [];
+    // Pending work, last first: text to append, {value} to encode, or {entry} of a map.
+    const stack = [{ value: root }];
+    const children = (prefix, items, suffix) => {
+      const work = [prefix];
+      for (let i = 0; i < items.length; i++) {
+        if (i > 0) work.push(',');
+        if (i in items) work.push({ value: items[i] });
+      }
+      work.push(suffix);
+      for (let i = work.length - 1; i >= 0; i--) stack.push(work[i]);
     };
-    switch (kind) {
-      case 'int':
-        if (typeof value.int !== 'bigint') throw invalid('Data int must be BigInt');
-        return '{"int":' + value.int.toString() + '}';
-      case 'constructor':
-        if (typeof value.constructor !== 'bigint' || value.constructor < 0n || value.constructor >= 1n << 64n) {
-          throw invalid('Data constructor must be a BigInt in unsigned Word64 range');
+    while (stack.length > 0) {
+      const task = stack.pop();
+      if (typeof task === 'string') { out.push(task); continue; }
+      if (own(task, 'entry')) {
+        const e = task.entry;
+        if (!e || !own(e, 'k') || !own(e, 'v') || Object.keys(e).length !== 2) throw invalid('Expected map entry {k, v}');
+        stack.push('}', { value: e.v }, ',"v":', { value: e.k }, '{"k":');
+        continue;
+      }
+      const value = task.value;
+      if (!value || typeof value !== 'object' || Array.isArray(value)) throw invalid('Expected structured Plutus Data');
+      const kinds = ['int', 'bytes', 'list', 'map', 'constructor'].filter(k => own(value, k));
+      if (kinds.length !== 1) throw invalid('Data must have exactly one constructor');
+      const kind = kinds[0];
+      if (Object.keys(value).some(k => k !== kind && !(kind === 'constructor' && k === 'fields'))) {
+        throw invalid('Unexpected Data field');
+      }
+      switch (kind) {
+        case 'int':
+          if (typeof value.int !== 'bigint') throw invalid('Data int must be BigInt');
+          out.push('{"int":' + value.int.toString() + '}');
+          break;
+        case 'constructor': {
+          if (typeof value.constructor !== 'bigint' || value.constructor < 0n || value.constructor >= 1n << 64n) {
+            throw invalid('Data constructor must be a BigInt in unsigned Word64 range');
+          }
+          const tag = value.constructor.toString(), fields = value.fields;
+          if (!Array.isArray(fields)) throw invalid('Expected Data array');
+          children('{"constructor":' + tag + ',"fields":[', fields, ']}');
+          break;
         }
-        return '{"constructor":' + value.constructor.toString() + ',"fields":' + array(value.fields) + '}';
-      case 'bytes':
-        if (typeof value.bytes !== 'string' || !/^(?:[0-9a-fA-F]{2})*$/.test(value.bytes)) throw invalid('Data bytes must be hex');
-        return JSON.stringify({ bytes: value.bytes });
-      case 'list': return '{"list":' + array(value.list) + '}';
-      case 'map':
-        if (!Array.isArray(value.map)) throw invalid('Data map must be an entry array');
-        return '{"map":[' + value.map.map(e => {
-          if (!e || !own(e, 'k') || !own(e, 'v') || Object.keys(e).length !== 2) throw invalid('Expected map entry {k, v}');
-          return '{"k":' + dataText(e.k) + ',"v":' + dataText(e.v) + '}';
-        }).join(',') + ']}';
+        case 'bytes':
+          if (typeof value.bytes !== 'string' || !/^(?:[0-9a-fA-F]{2})*$/.test(value.bytes)) throw invalid('Data bytes must be hex');
+          out.push(JSON.stringify({ bytes: value.bytes }));
+          break;
+        case 'list': {
+          const items = value.list;
+          if (!Array.isArray(items)) throw invalid('Expected Data array');
+          children('{"list":[', items, ']}');
+          break;
+        }
+        case 'map': {
+          const entries = value.map;
+          if (!Array.isArray(entries)) throw invalid('Data map must be an entry array');
+          const work = ['{"map":['];
+          for (let i = 0; i < entries.length; i++) {
+            if (i > 0) work.push(',');
+            if (i in entries) work.push({ entry: entries[i] });
+          }
+          work.push(']}');
+          for (let i = work.length - 1; i >= 0; i--) stack.push(work[i]);
+          break;
+        }
+      }
     }
+    return out.join('');
   }
   function encode(value, schema, legacy = false) {
     if (value == null) return value;
@@ -89,11 +133,14 @@
   }
   // The image passes its groups (EngineInfo): JuLC's full and VM images, or an image another language builds on
   // julc-wasm (ADR-064).
-  function install(invoke, schemas, variant, version, groups) {
+  // engineJulcVersion is the JuLC version the image was built with (JsApi.julcVersion()), reported as
+  // features().julcVersion for the client's release check (ADR-077 D1a).
+  function install(invoke, schemas, variant, version, groups, engineJulcVersion) {
     if (!Array.isArray(groups) || groups.length === 0) throw new Error('Engine groups are required');
+    if (typeof engineJulcVersion !== 'string' || engineJulcVersion === '') throw new Error('Engine JuLC version is required');
     groups = [...groups];
     const api = { version: () => version, features: () => ({
-      api: 0, variant, groups: [...groups], defaultProtocol: 11, bls: false,
+      api: 0, variant, groups: [...groups], defaultProtocol: 11, bls: false, julcVersion: engineJulcVersion,
     }) };
     Object.defineProperty(api, '__schemas', { value: schemas });
     const created = new Set();
@@ -143,5 +190,5 @@
     }
     return tx;
   }
-  globalThis.JulcRuntime = { install, encode, decode, legacy, dataText, invalid, defaultTransaction };
+  globalThis.JulcRuntime = { julcVersion, install, encode, decode, legacy, dataText, invalid, defaultTransaction };
 })();
