@@ -3,7 +3,7 @@
 **Status:** Accepted (2026-11-16) by the maintainer, after design approval from reviewer1 (r4) and the internal
 Fable and Codex reviews (r9; r10 applies their last shared finding). Design only; the implementation follows in
 milestones M0 to M5.
-**Date:** 2026-11-16 to 2026-11-17 (r1 to r18)
+**Date:** 2026-11-16 to 2026-11-17 (r1 to r19)
 **Risk class:** **medium**.
 - This is a public distribution with a lasting API. Package names and exported type names are hard to change once
   published.
@@ -777,6 +777,11 @@ refers to itself without consuming data`.
    it sorts below every `preN`.
 3. **Before 1.0, any other prerelease (`-preN`)** goes to `latest`.
 4. **A version with no prerelease part** (for example `0.1.0`, or `1.0.0`) goes to `latest`.
+5. **An older version never moves a tag back** (r19, M4-F1). Before publishing, the job reads the registry's
+   dist-tags. If the tag the rules above choose already names a higher version in any of the three packages, all three
+   are published under `release-<major>.<minor>` (for example `release-0.1`), and the tag stays where it is. This
+   covers a recovery of release N after N+1 is out, and a maintenance release.
+6. **After 1.0, a prerelease other than `-beta` is refused** until this table is revisited (M4).
 
 At 1.0 this table is revisited.
 
@@ -816,9 +821,12 @@ that do not run the Gradle build get write access or credentials (`native-image-
   release proves only that the download arrived intact: anyone able to edit release assets could replace both the
   file and the tarballs. Job outputs belong to a single run attempt.
 - Every later check verifies a release asset with `gh attestation verify --repo bloxbean/julc --signer-workflow
-  bloxbean/julc/.github/workflows/native-image-release.yml --source-ref refs/tags/v<version>`.
+  bloxbean/julc/.github/workflows/native-image-release.yml --source-ref refs/tags/v<version> --source-digest
+  <tag commit> --signer-digest <workflow commit> --deny-self-hosted-runners` (digests added in r19, M4-C6).
   - That checks the identity in the Sigstore certificate, not strings in the attestation's predicate. So an attestation
-    from a modified workflow, another branch or another tag fails.
+    from another branch, another tag, another commit under the same tag, or another version of the workflow fails.
+  - Every check covers all five data files (three tarballs, two archives) and requires the checksum file (r19, M4-C5),
+    so a deleted or replaced archive stops publication and verification.
   - Every job that verifies, including the build-once check in `wasm`, also holds `attestations: read`.
 - `github-release` runs only after `attest` succeeds, so a release never exists without its attestation. `attest` is
   added to its existing prerequisites, which stay as they are: `needs: [validate, native-image, wasm,
@@ -827,16 +835,23 @@ that do not run the Gradle build get write access or credentials (`native-image-
 **The `github-release` job** attaches the three tarballs and their checksum file to the GitHub release, beside the
 archives.
 - **Create-once.**
-  - Before uploading, it checks the release's existing assets, using GitHub's asset `state`:
+  - It finds the release by listing the repository's releases and matching `tag_name`, so a draft is found too, and it
+    refuses if more than one matches (r19, M4-C4). `GET /releases/tags/<tag>` returns only published releases, and
+    the pinned release action creates a final release as a draft, uploads, then publishes it.
+  - Before uploading, it checks that release's existing assets by release id, using GitHub's asset `state`:
     - a completed asset (`uploaded`) with the same name and different bytes stops the job, and nothing is replaced;
     - a failed upload's placeholder (`starter`, which GitHub documents an HTTP 502 can leave behind, and which is safe
       to delete) is deleted, and only then are the original bytes uploaded again.
   - The upload runs with `overwrite_files: false`. Today's action defaults to `true` (`native-image-release.yml`, lines
     401–413).
+  - After the upload, it checks that exactly one release exists for the tag, that it is published, and that every
+    file is attached as `uploaded` with this run's SHA-256 (r19).
 - **A release is built once.**
   - The `wasm` job starts by checking whether the tag's GitHub release already holds attested npm tarballs. If it does,
     the job stops before building, with a message pointing to recovery.
   - So a whole-workflow re-run, which would rebuild different bytes (ADR-057, open question 4), changes nothing.
+  - `wasm`'s read-only token cannot see a draft release; `github-release`, whose token can, refuses a draft's differing
+    assets (r19).
 - **Recovery never rebuilds.** It has two paths, chosen by the state:
   - **Within the original attempt,** before any full re-run, "re-run failed jobs" recovers. It keeps that attempt's
     assets, artifacts and job outputs.
@@ -853,7 +868,8 @@ archives.
     'push'`).
   - `npm-publish` admits dispatch explicitly:
     `if: !cancelled() && (github.event_name == 'workflow_dispatch' || (needs.github-release.result == 'success' &&
-    needs.attest.result == 'success'))`. The ref and property gates still apply on top of it.
+    needs.attest.result == 'success'))`, and, from r19, only when the gates' mode is `publish`. The ref and property
+    gates are computed by a separate `npm-gates` job, with no build, before it.
     - A status function is needed. A job whose `needs` were skipped is otherwise skipped too, because GitHub applies an
       implicit `success()`. On dispatch, `attest` and `github-release` are skipped by design.
     - There is no bare `always()`, so a normal run whose `github-release` or `attest` failed never publishes.
@@ -868,31 +884,47 @@ archives.
 - Once a release exists, its exact npm files are kept there for good. Every publication and every retry takes them
   from there, never from a run artifact, which expires, and never from a rebuild.
 
+**A `npm-dry-run` job** (r19, M4-F4) runs the same publish script with `--dry-run` whenever `github_release` is
+`true` but the version is not published for real: `npm_publish = false`, or a release candidate. It has
+`contents: read` and `attestations: read`, no environment and no `id-token`, so a rehearsal never holds the publishing
+identity. It verifies the release assets exactly as `npm-publish` does.
+
 **A new `npm-publish` job:**
 - **Gate.**
-  - It runs only when both `npm_publish` and `github_release` are `true` in `gradle.properties`; the default for
-    `npm_publish` is `false`.
+  - It runs only when both `npm_publish` and `github_release` are `true` in `gradle.properties`, and the version is not
+    a release candidate (mode `publish`); the default for `npm_publish` is `false`.
   - In a normal run, it runs only after `github-release` and `attest` have succeeded. Otherwise it runs only from the
     recovery entry, under its contract above.
   - It verifies each downloaded release asset against its attestation (`gh attestation verify`). In a normal run it
     also compares the asset with the `wasm` job's digest outputs. Any difference stops it.
   - So npm never gets a version whose archives are not public, and users can always check I1.
 - **Credentials.**
-  - It runs in the `release-staging` environment. That environment accepts `v*` tags, but also `main` and `release/**`
-    (`native-image-release.yml`, lines 422–424), so it cannot by itself ensure a tag.
-  - The job therefore requires its own ref to be exactly `refs/tags/v<version>`, and refuses any other.
+  - It runs in its own `npm-publish` environment (r19, M4-F2), whose only deployment policy is `v*` tags, optionally
+    with a required reviewer. npm's trusted publisher checks the repository, the workflow file and the environment,
+    but not the ref, so the tag rule must be enforced by GitHub, not only by the workflow file. Until r19 it used
+    `release-staging`, which also accepts `main` and `release/**`.
+  - The job also requires its own ref to be exactly `refs/tags/v<version>`, and refuses any other.
   - It gets `id-token: write` for npm trusted publishing (OIDC), `contents: read` to download the release assets, and
     `attestations: read`, and nothing else. No npm token exists.
 - **Concurrency.** It runs in a per-tag concurrency group, without cancelling a run in progress, so a recovery run never
   overlaps the original run's publication.
 - **Tools.** Node ≥ 22.14, and npm installed at an exact pinned version ≥ 11.5.1. Trusted publishing needs these, and
   Node 22 bundles npm 10. JOUST installs `npm@latest` unpinned; JuLC does not.
-- **What it doesn't do.** It runs no Gradle, no `npm install` and no package scripts, and it does not check out or build
-  the code. It downloads the tarballs and the checksum file from the GitHub release's assets, and verifies them.
+  - As built (r19): Node 24.22.3, and npm 11.21.1 installed from its registry tarball, checked against a recorded
+    SHA-256, with `--offline --ignore-scripts`.
+  - Every action in the release workflow is pinned to a full commit SHA (r19, M4-C3).
+- **What it doesn't do.** It runs no Gradle, no `npm install` and no package scripts, and it builds nothing. It
+  downloads the tarballs, the archives and the checksum file from the GitHub release's assets, and verifies them.
+  - **It runs only release-owner-reviewed code** (r19, M4-C1). It sparse-checks-out `julc-wasm/src/ci/` at the tag's
+    own commit, with `persist-credentials: false`, to run the publish scripts. That directory is the scripts' whole
+    import closure (they import only each other and Node built-ins), and `.github/CODEOWNERS` assigns it to
+    `@bloxbean/release-owners`, like the workflows themselves.
 - **Publishing.** It publishes in dependency order: `@julclang/wasm-client`, then `@julclang/julc-vm-wasm`, then
   `@julclang/julc-wasm`. Each is published with `npm publish <tarball> --access public --tag <tag> --provenance
   --ignore-scripts`.
-- **Each package's `package.json`** names the `repository` `github:bloxbean/julc`, which provenance requires.
+- **Each package's `package.json`** names the `repository` in the object form JOUST publishes with provenance:
+  `{"type": "git", "url": "git+https://github.com/bloxbean/julc.git", "directory": "julc-wasm"}` (r19, M4-F3).
+  Provenance requires it to match the source repository.
 
 **Partial publication and retries.**
 - npm never lets a version be overwritten. Before publishing each package, the job asks the registry for that
@@ -916,7 +948,8 @@ archives.
 
 **A separate `npm-verify` job** checks what the registry serves, after `npm-publish`.
 - It runs only when `npm-publish` reports `published = true`. A dry run installs nothing and looks up no provenance.
-- It has only `contents: read`: no `id-token`, no environment and no secrets.
+- It has `contents: read` and `attestations: read`, as every verifying job does: no `id-token`, no environment and
+  no secrets.
 - It installs the three exact versions into a fixture with `--ignore-scripts`, and runs `npm audit signatures`.
 - It downloads each published tarball (`npm pack name@version`) and compares it with the release asset. That asset is
   itself verified against its attestation, and, in a normal run, against the `wasm` job's digest outputs, so the final
@@ -926,6 +959,11 @@ archives.
   (`refs/tags/v<version>`). It verifies the attestation's signature (`npm audit signatures` checks the attestations
   that are present) and reads its identity from the verified bundle. `npm audit signatures` alone would accept a
   version that has no attestation.
+  - Its output is trusted only when `npm audit signatures` exits 0 (r19, M4-C2).
+  - The identity is read only from a bundle with exactly one certificate-based verification material, and from
+    exactly the certificate signature verification uses: the chain's leaf, or the v0.3 certificate. A bundle with
+    alternatives, or with a public key, is refused. npm's Sigstore library chooses among alternatives in its own order,
+    so reading another field could check a certificate that was never verified.
 - Any difference fails the job and the release record.
 
 **Bootstrap, once per package name, done by the maintainer:**
@@ -936,7 +974,7 @@ archives.
 - The maintainer then configures the trusted publisher:
   - repository `bloxbean/julc`;
   - workflow file `native-image-release.yml` (npm validates that the publish command is in that file);
-  - environment `release-staging`;
+  - environment `npm-publish`, created by the maintainer with `v*` tags as its only deployment policy (r19);
   - **with direct `npm publish` allowed.** npm always allows staged publication, but direct publishing must be chosen.
 - **Timing.** A newly configured trusted publisher expires unless its first publication succeeds within 2 days (npm's
   trusted-publishers documentation). So the configuration is done immediately before the first real release, after
@@ -944,6 +982,13 @@ archives.
 - **Tokens are refused from the start.** The maintainer sets each package to require 2FA and to refuse tokens right
   after publishing its placeholder, if npm allows this before a trusted publisher exists. Otherwise it is set as soon
   as the trusted publisher is configured. Either way, no token-publishing window stays open until the first release.
+- **Operations notes** (r19, M4-F7, M4-C7):
+  - The gates are read at the tag. A release tagged with `npm_publish = false` can never be published to npm later;
+    a new version is needed.
+  - The concurrency group never cancels a running publication, but a newer waiting run replaces a pending one. Runs
+    never overlap.
+  - The graph-level exits (the recovery sequences, a failed `attest` not publishing, a branch dispatch refused) stay
+    open until the first release-candidate rehearsal, whose checklist is in `adr/evidence/077-m4/RUNBOOK.md`.
 - **Once the first real version is published,** the maintainer deprecates the placeholder version, so `latest` can
   never fall back to it.
 
@@ -1777,3 +1822,17 @@ choosing the recommendation recorded with each.
     files. A forwarding `workerFactory` that rewrote the start message could make `createJulcVm()` accept the full
     engine; the client now refuses it.
   - The threat-model limit is explicit: an adapter that forges the worker's replies is not stopped.
+- r19 (2026-11-17, responds to Fable's and Codex's reviews of M4 at a814dc02):
+  - M4-C1: the publish jobs sparse-check-out the release-owner-protected `julc-wasm/src/ci/` at the tag's commit.
+  - M4-C2: provenance identity is read only from the certificate signature verification uses, and only after
+    `npm audit signatures` exits 0.
+  - M4-C3: every action pinned by commit SHA; npm pinned by tarball SHA-256.
+  - M4-C4: create-once finds drafts by listing releases, and verifies the published release afterwards.
+  - M4-C5, M4-C6: every attestation check covers all five files and the checksum file, bound to the tag's commit and
+    the workflow's commit.
+  - M4-F1: D8 rule 5, an older version is published under `release-<major>.<minor>` and never moves a tag back.
+  - M4-F2: a dedicated `npm-publish` environment, `v*` tags only, named in each trusted publisher.
+  - M4-F3: the object-form `repository`.
+  - M4-F4: dry runs in a separate `npm-dry-run` job without the publishing identity.
+  - M4-F5, M4-F7, M4-C7: graph-level exits open until the first rehearsal; operations notes.
+  - Also: `npm-verify` holds `attestations: read`; a 1.x prerelease other than `-beta` is refused.
