@@ -129,13 +129,21 @@ function identityProblem(entry, rules) {
   }
   return null;
 }
-/** Records a run. extra.expect ({disk, served}) is the launcher identity the fixture must show. */
-function record(fixture, environment, outcome, extra = {}) {
+/**
+ * A run's result entry: its outcome, what was measured, and the verdict. extra.expect ({disk, served}) is the launcher
+ * identity the fixture must show; a run that works but ships other launcher bytes fails with launcherProblem set.
+ */
+function classify(fixture, environment, outcome, extra = {}) {
   const {served, ...rest} = outcome;
   const {expect, ...measured} = extra;
   const entry = {fixture, environment, ...rest, ...measured, ...(expect ? {expectedLauncher: expect} : {})};
   const problem = entry.ok && expect ? identityProblem(entry, expect) : null;
-  if (problem) Object.assign(entry, {ok: false, error: problem});
+  if (problem) Object.assign(entry, {ok: false, error: problem, launcherProblem: true});
+  return entry;
+}
+/** Records a run, classified as above. */
+function record(fixture, environment, outcome, extra = {}) {
+  const entry = classify(fixture, environment, outcome, extra);
   results.push(entry);
   console.log(`${entry.ok ? 'PASS' : 'FAIL'} ${fixture} | ${environment}`
     + (entry.ok ? ' | ' + summary(entry.report) : ' | ' + String(entry.error).slice(0, 2000))
@@ -143,15 +151,17 @@ function record(fixture, environment, outcome, extra = {}) {
     + (entry.servedLauncher ? ' | launcher served ' + JSON.stringify(entry.servedLauncher) : ''));
 }
 const summary = report => (report ?? []).map(r => `${r.variant} ready ${r.ready} ms, total ${r.total} ms`
-  + (r.parity ? `, parity ${r.parity}` : '') + (r.compiled ? ', compiled' : '')).join('; ');
+  + (r.parity ? `, parity ${r.parity}` : '') + (r.compiled ? ', compiled' : '')
+  + (r.forwardingRefused ? ', forwarding adapter refused' : '')).join('; ');
 /** The expected report: both engines, this version, the compile done. */
-function verify(outcome, parity) {
+function verify(outcome, parity, {forwarding = false} = {}) {
   if (!outcome.ok) return outcome;
   try {
     assert.deepEqual(outcome.report.map(r => r.variant), ['vm', 'full']);
     for (const r of outcome.report) assert.equal(r.version, version, r.variant + ' version');
     assert.match(outcome.report[1].compiled ?? '', /^[0-9a-f]{56}$/);
     for (const r of outcome.report) assert.equal(r.redirected, true, r.variant + ' created with redirected exports');
+    if (forwarding) for (const r of outcome.report) assert.equal(r.forwardingRefused, true, r.variant + ' forwarding');
     if (parity) for (const r of outcome.report) assert.equal(r.parity, parity, r.variant + ' parity fixtures run');
     return outcome;
   } catch (error) {
@@ -296,7 +306,8 @@ if (only.has('node')) {
     for (const script of ['main.mjs', 'in-worker.mjs']) {
       const label = `${run(binary, ['--version'], app).trim()} ${script === 'main.mjs' ? 'main thread' : 'application worker'}`;
       await guard('node', label, async () => record('node', label, verify(lastJson(run(binary,
-        [path.join('node', script), ...(parityFile ? [path.join(app, 'parity', 'vm.json')] : [])], app)), parityCount)));
+        [path.join('node', script), ...(parityFile ? [path.join(app, 'parity', 'vm.json')] : [])], app)), parityCount,
+        {forwarding: true})));
     }
   }
 }
@@ -366,14 +377,18 @@ for (const [fixture, config, output] of [['webpack', 'webpack.config.cjs', 'webp
     }
     const server = await serveStatic(tampered, "script-src 'self' 'wasm-unsafe-eval'");
     try {
+      // Classified exactly as the real fixture is, once per rule: each verdict must be a failure of the launcher
+      // identity, on a run that otherwise passed.
       const outcome = verify(await inPage(await chromium(), server.url + '/index.html'));
       const measured = {launcher: launcherIdentity(app, tampered), servedLauncher: servedIdentity(app, outcome)};
-      const disk = identityProblem(measured, {disk: 'identical'});
-      const served = identityProblem(measured, {served: 'identical'});
-      record(`webpack ${webpackVersion} production (${config}), launchers changed (negative control)`,
-        'the identity rule must fail', outcome.ok && disk && served ? {ok: true}
-          : {ok: false, error: `loaded: ${outcome.ok} ${outcome.error ?? ''}; on disk: ${disk}; served: ${served}`},
-        {failures: [disk, served]});
+      const name = `webpack ${webpackVersion} production (${config}), launchers changed`;
+      const verdicts = [{disk: 'identical'}, {served: 'identical'}, rules]
+        .map(expect => classify(name, 'tampered', outcome, {...measured, expect}));
+      const attributed = outcome.ok && verdicts.every(v => !v.ok && v.launcherProblem
+        && /^launcher (on disk|served) for /.test(v.error));
+      record(name + ' (negative control)', 'each identity rule must fail', attributed ? {ok: true}
+        : {ok: false, error: `loaded: ${outcome.ok} ${outcome.error ?? ''}; verdicts: `
+          + JSON.stringify(verdicts.map(v => [v.ok, v.error]))}, {verdicts: verdicts.map(v => v.error)});
     } finally {
       server.close();
     }
