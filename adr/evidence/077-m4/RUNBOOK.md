@@ -20,12 +20,12 @@ npm facts below were checked against <https://docs.npmjs.com/trusted-publishers>
 
 | Job | Runs on | Needs | Permissions | Environment | Condition |
 |---|---|---|---|---|---|
-| `uplc-conformance`, `validate`, `native-image`, `wasm`, `wasm-package-checks`, `native-image-playground`, `shadow-jars` | tag push | as before | `contents: read` (`wasm` also `attestations: read`) | none | `github.event_name == 'push'` |
+| `uplc-conformance`, `validate`, `native-image`, `wasm`, `wasm-package-checks`, `native-image-playground`, `shadow-jars` | tag push | as before | `contents: read` | none | `github.event_name == 'push'`; `wasm` first stops if the tag already has a GitHub release |
 | `attest` | tag push | `validate`, `wasm` | `id-token: write`, `attestations: write` | none | push and `github_release == true` |
-| `github-release` | tag push | `validate`, `native-image`, `wasm`, `wasm-package-checks`, `native-image-playground`, `shadow-jars`, `attest` | `contents: write` | none | push and `github_release == true` |
-| `npm-gates` | push and dispatch | none | `contents: read` | none | always; fails unless the ref is `refs/tags/v<version>` matching `gradle.properties` at the tag |
+| `github-release` | tag push | `validate`, `native-image`, `wasm`, `wasm-package-checks`, `native-image-playground`, `shadow-jars`, `attest` | `contents: write` | none | push and `github_release == true`; creates the release published (never a draft), attaches each file once |
+| `npm-gates` | push and dispatch | none | `contents: read`, `actions: read` | none | always; fails unless the ref is `refs/tags/v<version>` matching `gradle.properties` at the tag, and, to publish, unless the `npm-publish` environment has exactly the policy tag `v*` |
 | `npm-dry-run` | push and dispatch | `npm-gates`, `wasm`, `attest`, `github-release` | `contents: read`, `attestations: read` | none | `!cancelled() && npm-gates succeeded && mode == 'dry-run' && (dispatch \|\| (github-release and attest succeeded))` |
-| `npm-publish` | push and dispatch | `npm-gates`, `wasm`, `attest`, `github-release` | `contents: read`, `id-token: write`, `attestations: read` | **`npm-publish`** | the same with `mode == 'publish'`; per-tag concurrency, never cancelled |
+| `npm-publish` | push and dispatch | `npm-gates`, `wasm`, `attest`, `github-release` | `contents: read`, `id-token: write`, `attestations: read` | **`npm-publish`** | the same with `mode == 'publish'`; one concurrency group for every version (`npm-publish-julclang`), a running job never cancelled |
 | `npm-verify` | push and dispatch | `npm-gates`, `wasm`, `npm-publish` | `contents: read`, `attestations: read` | none | `!cancelled() && npm-publish succeeded && published == 'true'` |
 | `update-homebrew` | tag push | `validate`, `github-release` | none (a secret of `release-staging`) | `release-staging` | push and `github_release == true` |
 
@@ -43,10 +43,17 @@ be published to npm later: a dispatch reads the same `gradle.properties`, and a 
 needs a new version.
 
 Dist-tags (D8): `-preN` and final versions go to `latest`, `-beta` to `beta`. A release candidate, a snapshot, and a
-1.x prerelease other than `-beta` are refused (D8's table is to be revisited at 1.0). **`latest` never moves
-backwards**: if the D8 tag of any of the three packages already names a higher version (a recovery of version N after
-N+1 was published, or a maintenance release), all three are published with `release-<major>.<minor>` (for example
-`release-0.1`) instead, and the D8 tag stays where it is.
+1.x prerelease other than `-beta` are refused (D8's table is to be revisited at 1.0). **No dist-tag ever moves
+backwards.** Each package's tag is chosen when it is published, from the registry as it is then: the first of D8's
+tag, `release-<major>.<minor>` (for example `release-0.1`) and `release-<version>` (for example `release-0.1.8`) that
+does not already name a higher version of that package. So a recovery of version N after N+1, a maintenance release
+(0.1.8 after 0.2.0 and 0.1.9), or a package of N+1 published before the others, never moves a tag down; the three
+packages of one version can end on different tags. Every npm publication of every version runs in one concurrency
+group, so two releases never choose their tags at the same time.
+
+**Version ordering (open question 8):** semver compares `preN` as text, so `0.1.0-pre100` sorts below `0.1.0-pre99`.
+From `pre100` on, a new release would be "older" than `pre99`: it would go to `release-0.1`, and `latest` would stay
+on `pre99`. The version scheme must change before `pre99` (ADR-077 open question 8).
 
 Every job that reads the release's npm files runs `julc-wasm/src/ci/release-assets.sh`: it downloads the three
 tarballs, both engine archives and the checksum file from the **published** release (a draft is invisible to these
@@ -63,7 +70,15 @@ expiry.
 1. **Create the `npm-publish` environment** (Settings, Environments): deployment branches and tags "Selected", with the
    tag rule `v*` only (no branches). Optionally a required reviewer from release-owners. No secrets. Because npm's
    trusted publisher does not check the ref, this policy, the job's own ref check, and who may push `v*` tags and run
-   workflows (repository write access, the tag rulesets) together decide who can publish.
+   workflows (repository write access, the tag rulesets) together decide who can publish. **It does not exist yet**
+   (2026-11-17), and GitHub creates a missing environment, with no protection, for the first job that names it; so
+   `npm-gates` refuses to publish unless the environment exists with exactly the policy tag `v*` (it reads it with
+   the job token's `actions: read`). Read the policy back, and do not set `npm_publish = true` until this prints
+   exactly `tag v*` and `true false`:
+   ```
+   gh api repos/bloxbean/julc/environments/npm-publish/deployment-branch-policies --jq '.branch_policies[] | "\(.type) \(.name)"'
+   gh api repos/bloxbean/julc/environments/npm-publish --jq '.deployment_branch_policy | "\(.custom_branch_policies) \(.protected_branches)"'
+   ```
 2. **Rehearse** (see "Rehearsal" below): a release candidate with `github_release = true`.
 3. **Publish a placeholder of each name, by hand, with 2FA** (a package must exist before a trusted publisher can be
    configured on its settings page). As JOUST did, for each of the three names:
@@ -123,10 +138,13 @@ run):
 3. **A dispatch from a branch must fail the gate:** `gh workflow run native-image-release.yml --ref main`; `npm-gates`
    fails and nothing else runs.
 4. **A dispatch on the candidate's tag** runs only `npm-gates` and `npm-dry-run`, which verifies the existing assets.
-5. **A whole-workflow re-run** of the candidate's run stops in `wasm` ("already holds npm files"), building nothing.
-6. **A deliberately failed `attest`, in dry-run mode**: on a second candidate, make `attest` fail (for example, a
-   temporary commit on a rehearsal branch that adds `run: exit 1` before its attest step, tagged as a new candidate).
-   `github-release` and `npm-dry-run` must be skipped, and no release created.
+5. **A whole-workflow re-run** of the candidate's run stops in `wasm` ("already has a GitHub release"), building
+   nothing.
+6. **The `npm-publish` environment's policy** reads back as above (step 1 of the setup).
+7. **Checks that need a modified workflow** (a deliberately failed `attest`, a failed upload): never on the real
+   repository, where they would leave a permanent `v*` tag and release made by a modified workflow. Run them in a
+   fork or a scratch repository, with `npm_publish = false` (dry-run mode) and no trusted publisher: for example
+   `run: exit 1` before the attest step must leave `github-release` and `npm-dry-run` skipped and no release created.
 
 ## Each release
 
@@ -145,10 +163,20 @@ version whose release holds npm tarballs: `wasm` stops first, with a message poi
 assets or recreate a release to "start again"; npm is the record once a version is published.
 
 - **Within the original run** (any job failed, before any full re-run): use **"Re-run failed jobs"**. It keeps the run's
-  artifacts and the `wasm` job's digest outputs. `github-release` finds the release (a draft too), keeps assets
-  already attached with the same bytes, deletes a failed upload's `starter` placeholder and uploads it again, stops if
-  a completed asset differs, and finally checks the release is published with every file's bytes. `npm-publish` skips
-  each version already on npm with the same tarball and this workflow's provenance, and publishes the rest.
+  artifacts and the `wasm` job's digest outputs. `github-release` finds the release, keeps assets already attached
+  with the same bytes, deletes a failed upload's `starter` placeholder and uploads it again, stops if a completed
+  asset differs, and finally checks the release is published with every file's bytes. `npm-publish` skips each
+  version already on npm with the same tarball and this workflow's provenance, and publishes the rest.
+- **After a whole-workflow re-run** (refused in `wasm`, since the tag has a release): "Re-run failed jobs" can no longer
+  reach the original attempt. Finish the release by hand from the original run's artifacts (kept 7 days; the bytes
+  are the attested ones), never replacing a completed asset, then dispatch on the tag for npm:
+  ```
+  gh run download <original run id> --repo bloxbean/julc --pattern 'release-*' --dir dist
+  gh api repos/bloxbean/julc/releases/tags/v<version> --jq '.assets[] | "\(.id) \(.name) \(.state)"'
+  gh api -X DELETE repos/bloxbean/julc/releases/assets/<id of each asset in state starter>
+  gh release upload v<version> dist/<each missing file> --repo bloxbean/julc      # never --clobber
+  ```
+  The npm jobs verify each npm file against its attestation, so a wrong file is refused there.
 - **The first real publication fails at authentication** (npm answers 401, 403 or 404 on `PUT`, or "OIDC token
   exchange" fails in the log): nothing was published. Fix the trusted publisher (repository, workflow file name,
   environment `npm-publish`, direct publishing allowed, not expired) and use "Re-run failed jobs".
@@ -162,11 +190,13 @@ assets or recreate a release to "start again"; npm is the record once a version 
   the controls. The dispatch skips every build job, `attest`, `github-release` and `update-homebrew`, verifies the
   release's files against their attestation, and runs `npm-publish` (or `npm-dry-run`) and `npm-verify` on them. A
   dispatch from a branch, or on a tag that does not match `gradle.properties`, is refused.
-- **Concurrency:** one `npm-publish` per tag runs at a time and is never cancelled by another. GitHub keeps one waiting
-  job per group, so if a third run arrives while one runs and one waits, the newer waiting job replaces the older
-  waiting one; no two ever overlap.
-- **Recovering an older version after a newer one is out** publishes it as `release-<major>.<minor>` and leaves
-  `latest` on the newer version (above); `npm-verify` notes it.
+- **Concurrency:** one `npm-publish` runs at a time across all versions (`npm-publish-julclang`), and a running one is
+  never cancelled. GitHub keeps one waiting job per group: if a third release's job arrives while one runs and one
+  waits, the newer waiting job **cancels** the older waiting one. That run shows `npm-publish` as cancelled (and
+  `npm-verify` skipped); its release is complete and published, so finish it by dispatching the workflow on its tag
+  (it waits for the group like any other).
+- **Recovering an older version after a newer one is out** publishes it on the first tag that does not move backwards
+  (above) and leaves `latest` on the newer version; `npm-verify` notes it.
 - **`npm-publish` fails with "already on the registry and is not this release's tarball with this workflow's
   provenance"**: someone published that version another way (by hand, or another build). Do not retry. Investigate;
   the version number is spent. Deprecate it if it is wrong (below) and release the next version.
