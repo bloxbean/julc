@@ -3,7 +3,7 @@
 **Status:** Accepted (2026-11-16) by the maintainer, after design approval from reviewer1 (r4) and the internal
 Fable and Codex reviews (r9; r10 applies their last shared finding). Design only; the implementation follows in
 milestones M0 to M5.
-**Date:** 2026-11-16 to 2026-11-17 (r1 to r20)
+**Date:** 2026-11-16 to 2026-11-17 (r1 to r21)
 **Risk class:** **medium**.
 - This is a public distribution with a lasting API. Package names and exported type names are hard to change once
   published.
@@ -788,6 +788,11 @@ refers to itself without consuming data`.
    N after N+1 is out, a maintenance release, and a newer release that reached only some packages. Because the choice
    is per package, the three packages of one version may carry different tags, and `npm-verify` checks each
    package's own rule.
+
+   Monotonicity holds among the workflow's own publications (r21, M4-C13). Dist-tags are changed by hand only with
+   publications quiesced: nothing pending or running in the `npm-publish-julclang` concurrency group, and no new
+   release tag or dispatch. They are read back before publications resume. An intentional emergency rollback of
+   `latest` is the named exception.
 6. **After 1.0, a prerelease other than `-beta` is refused** until this table is revisited (M4).
 
 At 1.0 this table is revisited.
@@ -857,6 +862,8 @@ archives.
       to delete) is deleted, and only then are the original bytes uploaded again.
   - If the repository ever enables immutable releases, uploading to a published release is refused; the workflow
     says so.
+  - A release is public, possibly marked Latest, while its assets upload: the accepted cost of never using drafts. A
+    GitHub release or draft is never created for the tag by hand, since it would stop the build-once check (r21).
   - After the upload, it checks that exactly one release exists for the tag, that it is published, and that every
     file is attached as `uploaded` with this run's SHA-256 (r19).
 - **A release is built once.**
@@ -865,7 +872,11 @@ archives.
     every release it makes).
   - So a whole-workflow re-run, which would rebuild different bytes (ADR-057, open question 4), changes nothing.
   - After a refused whole-workflow re-run, a release whose upload failed is completed by hand from the original run's
-    artifacts (`adr/evidence/077-m4/RUNBOOK.md`), then published to npm by a dispatch.
+    artifacts (`adr/evidence/077-m4/RUNBOOK.md`), then published to npm by a dispatch (r21, M4-F13):
+    - each attached asset is checked against those artifacts by `state` and SHA-256 `digest`;
+    - the Homebrew formulas are updated by hand, since `update-homebrew` does not run on this path or on a dispatch;
+    - the artifacts are kept for 7 days; after that an incomplete release cannot be completed with its attested bytes,
+      and the version is spent.
 - **Recovery never rebuilds.** It has two paths, chosen by the state:
   - **Within the original attempt,** before any full re-run, "re-run failed jobs" recovers. It keeps that attempt's
     assets, artifacts and job outputs.
@@ -966,6 +977,9 @@ identity. It verifies the release assets exactly as `npm-publish` does.
 
 **A separate `npm-verify` job** checks what the registry serves, after `npm-publish`.
 - It runs only when `npm-publish` reports `published = true`. A dry run installs nothing and looks up no provenance.
+- `npm-publish` outputs the dist-tag it chose for each package it published in the run. `npm-verify` requires each of
+  those tags to name the version or a later one, so a deleted or regressed chosen tag fails. A package skipped as
+  already published is held only to D8's rule (r21, M4-C12).
 - It has `contents: read` and `attestations: read`, as every verifying job does: no `id-token`, no environment and
   no secrets.
 - It installs the three exact versions into a fixture with `--ignore-scripts`, and runs `npm audit signatures`.
@@ -994,7 +1008,9 @@ identity. It verifies the release assets exactly as `npm-publish` does.
   - workflow file `native-image-release.yml` (npm validates that the publish command is in that file);
   - environment `npm-publish`, created by the maintainer with `v*` tags as its only deployment policy (r19). GitHub
     would create a missing environment unprotected on first use, so `npm-gates` (with `actions: read`) refuses to
-    publish unless the environment exists with exactly the policy `tag:v*` (r20, M4-F8);
+    run any npm job, dry run or publication, unless the environment exists with exactly the policy `tag:v*` (r20,
+    M4-F8; dry runs from r21, M4-F12). A release candidate's rehearsal therefore proves the check works before a real
+    tag, whose workflow cannot change, depends on it;
   - **with direct `npm publish` allowed.** npm always allows staged publication, but direct publishing must be chosen.
 - **Timing.** A newly configured trusted publisher expires unless its first publication succeeds within 2 days (npm's
   trusted-publishers documentation). So the configuration is done immediately before the first real release, after
@@ -1402,6 +1418,8 @@ provenance; only the first real publication does (M4).
   - An interrupted upload that leaves a `starter` placeholder (a simulated HTTP 502) is cleaned up and retried with the
     original bytes. A differing completed asset still stops the job.
   - A release candidate's dry run runs no `npm-verify`: it installs nothing and looks up no provenance.
+  - The candidate's `npm-gates` passes the `npm-publish` environment check, and `npm-verify` fails when a chosen tag is
+    deleted or moved backwards (r21).
   - Then, immediately before the first real release, the maintainer configures each trusted publisher, with direct
     publishing allowed (D8a, Timing). The first real publication follows within 2 days, by the maintainer's decision.
   - That publication is the only proof of authentication and provenance. Its tags, provenance (I12) and registry
@@ -1864,3 +1882,9 @@ choosing the recommendation recorded with each.
   - M4-F8: `npm-gates` enforces the `npm-publish` environment's `tag:v*` policy before publishing.
   - M4-F10: the `pre100` consequence of rule 5, under D8.
   - M4-F11: `attest` runs only when `github_release` is true.
+- r21 (2026-11-17, responds to Fable's and Codex's reviews of M4 at 7bae12b1, both APPROVE):
+  - M4-F12: the environment policy check also runs for dry runs, so the rehearsal proves it.
+  - M4-C12: `npm-verify` checks the dist-tag `npm-publish` chose for each package.
+  - M4-C13: monotonicity is among CI publications; hand changes to dist-tags only with publications quiesced.
+  - M4-F13, M4-F14, M4-F15: manual completion checks, Homebrew and the 7-day limit; releases public while assets
+    upload; never pre-create a release for the tag.
