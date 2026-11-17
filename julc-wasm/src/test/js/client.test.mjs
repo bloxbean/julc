@@ -236,3 +236,54 @@ test('in package mode, an engine of another release points to the client of its 
   await assert.rejects(start(archiveBundle({launcher: launcherText({version: OTHER, julcVersion: OTHER,
     source: runtimeStamped(OTHER)})})), error => !error.message.includes('@julclang/wasm-client'));
 });
+
+test('readiness is checked against the client\'s own copy of the identity, not the init a workerFactory sees (M3-C4)', async () => {
+  const vm = packageEngine(launcherText());
+  const other = packageEngine(launcherText({variant: 'full'}));
+  other.manifest.variant = 'full';
+  const twin = packageEngine(launcherText());
+  // Must be refused; a client that starts anyway is disposed, so a failure cannot leave its worker running.
+  const refused = (started, pattern) => assert.rejects(started.then(client => {
+    client.dispose();
+    throw new Error('accepted');
+  }), pattern);
+  // A forwarding adapter that rewrites the init message it is given before passing it on.
+  const forwarding = rewrite => () => {
+    const worker = workerFactory(new URL('julc-worker.js', packageDir));
+    const postMessage = worker.postMessage;
+    worker.postMessage = message => postMessage(message.type === 'init' ? rewrite(message) : message);
+    return worker;
+  };
+  // The manifest in the init and both URLs moved to another engine: the engine is compared with the client's copy.
+  await refused(node.createJulc({...vm, workerFactory: forwarding(init => {
+    Object.assign(init.manifest, other.manifest);
+    init.launcherUrl = other.launcherUrl.href;
+    init.moduleUrl = other.moduleUrl.href;
+    return init;
+  })}), /^Error: JuLC engine variant or API version does not match its manifest$/);
+  // Only the URLs moved, to an engine with the same identity elsewhere: the worker reports what it loaded.
+  await refused(node.createJulc({...vm, workerFactory: forwarding(init => {
+    init.launcherUrl = twin.launcherUrl.href;
+    init.moduleUrl = twin.moduleUrl.href;
+    return init;
+  })}), new RegExp(`^Error: The JuLC worker loaded the launcher ${escape(JSON.stringify(twin.launcherUrl.href))}, `
+    + `not ${escape(JSON.stringify(vm.launcherUrl.href))}$`));
+  // Archive mode: another directory.
+  const bundle = archiveBundle(), elsewhere = archiveBundle();
+  await refused(createJulc({baseUrl: bundle.baseUrl, manifest: bundle.manifest,
+    workerFactory: url => {
+      const worker = workerFactory(url);
+      const postMessage = worker.postMessage;
+      worker.postMessage = message => postMessage(message.type === 'init' ? {...message, base: elsewhere.baseUrl.href} : message);
+      return worker;
+    }}), /^Error: The JuLC worker loaded the runtime .*, not /);
+  // The caller's own objects, changed after the call, do not matter either.
+  const manifest = {...vm.manifest}, launcherUrl = new URL(vm.launcherUrl);
+  const started = node.createJulc({...vm, manifest, launcherUrl});
+  Object.assign(manifest, other.manifest);
+  launcherUrl.href = other.launcherUrl.href;
+  const client = await started;
+  try {
+    assert.equal(client.features().variant, 'vm');
+  } finally { client.dispose(); }
+});

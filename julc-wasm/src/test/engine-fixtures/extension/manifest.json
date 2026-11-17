@@ -1,0 +1,8 @@
+{
+  "manifest_version": 3,
+  "name": "JuLC engine packages fixture",
+  "version": "1.0",
+  "description": "ADR-077 M3: both engine packages loaded from an extension page (chrome-extension: origin).",
+  "background": {"service_worker": "background.js"},
+  "content_security_policy": {"extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"}
+}

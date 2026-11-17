@@ -1,22 +1,25 @@
 # @julclang/wasm-client
 
-The Promise client, worker and Node.js bridge for JuLC's WebAssembly engines: `@julclang/julc-vm-wasm` (the VM:
-decode, hash, evaluate and debug Plutus V3 scripts) and `@julclang/julc-wasm` (the full toolchain: also the Java
-compiler, decompiler, mock transactions and source debugging). Install an engine package; it depends on this client
-at its own exact version.
+The Promise client, worker and Node.js bridge for JuLC's WebAssembly engines: `@julclang/julc-vm-wasm` (the VM: decode,
+hash, evaluate and debug Plutus V1, V2 and V3 scripts) and `@julclang/julc-wasm` (the full toolchain: also the Java
+compiler, decompiler, mock transactions and source debugging). Install an engine package; it depends on this client at
+its own exact version.
 
 **Experimental.** The JavaScript API is version 0 and may change in any release before 1.0; the release notes list
 every change. JuLC is a research project: do not treat a result as proof that a contract is safe to deploy.
 
 ## Requirements
 
-- Node.js 22.3.0 or later, or a browser with WebAssembly GC and exception references (tested in Chromium).
+- Node.js 22.3.0 or later, or a browser with WebAssembly GC and exception references (tested in Chromium
+  156.0.8078.4).
+- TypeScript 5.0 or later for the declarations.
 - **Node.js 22:** the engines use WebAssembly exception references, which Node 22 enables only with
   `--experimental-wasm-exnref`. The client checks for them with `WebAssembly.validate` before it starts its first
   worker and, when they are missing, sets the flag with `v8.setFlagsFromString`. The flag is process-wide. Node 24
   needs nothing.
 - **Content Security Policy:** the page and the worker scripts need `script-src 'self' 'wasm-unsafe-eval'`. Send it on
-  the worker's response too: a worker script has its own policy. No `'unsafe-eval'` is needed.
+  the worker's response too: a worker script has its own policy. No `'unsafe-eval'` is needed. A Chrome extension
+  (Manifest V3) must add `'wasm-unsafe-eval'` to its `content_security_policy.extension_pages`.
 - BLS12-381 builtins are not available in WebAssembly.
 
 ## Use

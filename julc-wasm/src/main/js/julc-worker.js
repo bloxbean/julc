@@ -103,8 +103,10 @@ function init(request) {
     if (rest) julcAdapter = new JulcRestAdapter(api, catalogue);
     starting = false;
     startupOutput = [];
+    // The files it loaded, which the client compares with the ones it asked for.
     self.postMessage({type: 'ready', version: api.version(), features: api.features(), schemas: api.__schemas,
-      runtime: {preloaded: self.JulcRuntime?.julcVersion ?? null, used: api[Symbol.for('julc.runtime')] ?? null}});
+      runtime: {preloaded: self.JulcRuntime?.julcVersion ?? null, used: api[Symbol.for('julc.runtime')] ?? null},
+      loaded: {runtime: runtimeUrl, launcher: launcherUrl, module: moduleUrl}});
   };
   // Recorded for JsApi: the engine must then use this file, which must be stamped with its own JuLC version.
   self.JULC_RUNTIME_PRELOAD = 'pending';

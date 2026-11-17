@@ -247,19 +247,31 @@ tasks.register('wasmClientPackage') {
                 groovy.json.JsonOutput.toJson(manifest)) + '\n'
     }
 }
-tasks.register('wasmClientPack', Exec) {
-    group = 'build'
-    description = 'Packs @julclang/wasm-client with npm pack into build/npm (ADR-077 D8a).'
-    dependsOn 'wasmClientPackage'
-    inputs.dir(clientPackage)
-    outputs.dir(npmDir)
-    workingDir clientPackage
-    doFirst {
-        fileOps.delete { delete npmDir }
-        npmDir.get().asFile.mkdirs()
-    }
-    commandLine 'npm', 'pack', '--ignore-scripts', '--pack-destination', npmDir.get().asFile.absolutePath
+// The file npm pack writes for a package. build/npm holds the three packages' tarballs (ADR-077 D8a).
+def tarballOf = { String packageName ->
+    npmDir.map { it.file("${packageName.substring(1).replace('/', '-')}-${project.version}.tgz") }
 }
+// Packs one package directory into build/npm, replacing only that package's tarballs of earlier builds.
+def registerPack = { String taskName, String packageName, String assembleTask, Provider<Directory> sourceDir ->
+    tasks.register(taskName, Exec) {
+        group = 'build'
+        description = "Packs ${packageName} with npm pack into build/npm (ADR-077 D8a)."
+        dependsOn assembleTask
+        inputs.dir(sourceDir)
+        outputs.file(tarballOf(packageName))
+        workingDir sourceDir
+        doFirst {
+            def prefix = packageName.substring(1).replace('/', '-') + '-'
+            def dir = npmDir.get().asFile
+            dir.mkdirs()
+            fileOps.delete {
+                delete((dir.listFiles() ?: []).findAll { it.name.startsWith(prefix) && it.name.endsWith('.tgz') })
+            }
+        }
+        commandLine 'npm', 'pack', '--ignore-scripts', '--pack-destination', npmDir.get().asFile.absolutePath
+    }
+}
+registerPack('wasmClientPack', '@julclang/wasm-client', 'wasmClientPackage', clientPackage)
 
 // Strip full-toolchain reflection roots from the VM's copy of julc-tools. The
 // per-variant metadata in julc-wasm explicitly registers its reachable API records.
@@ -377,6 +389,208 @@ tasks.register('vmToolsJar', Jar) {
                     new File(frontendWasmDir, 'catalogue.json').absolutePath,
                     layout.buildDirectory.file('wasm-parity/vm.json').get().asFile.absolutePath
         }
+    }
+}
+
+// --- The engine packages @julclang/julc-vm-wasm and @julclang/julc-wasm (ADR-077 D1, D2, M3) ---
+//
+// Each is assembled from the bundle its release archive is made of. engine/ holds the archive's launcher, module and
+// engine.json unchanged (I1), under a package.json that makes the directory CommonJS. The generated engine.js inlines
+// the manifest and names the launcher and module with string-literal URLs, so bundlers copy them and Node.js and
+// browsers resolve them beside it. index.js passes them to @julclang/wasm-client in package mode, with rest: false
+// (D4). wasmEngineIdentity checks the packed tarballs against archives made as the release workflow makes them.
+def engineArchivesDir = layout.buildDirectory.dir('wasm-archives')
+['Full', 'Vm'].each { suffix ->
+    def variant = suffix.toLowerCase()
+    def directoryName = variant == 'vm' ? 'julc-vm-wasm' : 'julc-wasm'
+    def packageName = '@julclang/' + directoryName
+    def sources = file("src/main/npm/${directoryName}")
+    def bundleDir = layout.buildDirectory.dir("wasm-bundle-${variant}")
+    def packageDir = layout.buildDirectory.dir("wasm-engine-package/${variant}")
+    tasks.register("wasmEnginePackage${suffix}") {
+        group = 'build'
+        description = "Assembles ${packageName} from wasm-bundle-${variant} (ADR-077 D2)."
+        dependsOn "wasmBundle${suffix}"
+        inputs.dir(bundleDir)
+        inputs.dir(sources)
+        inputs.file(rootProject.file('LICENSE'))
+        inputs.property('version', project.version.toString())
+        outputs.dir(packageDir)
+        doLast {
+            def version = project.version.toString()
+            def bundle = bundleDir.get().asFile
+            def dir = packageDir.get().asFile
+            fileOps.delete { delete dir }
+            def manifestText = new File(bundle, 'engine.json').getText('UTF-8')
+            def manifest = new JsonSlurper().parseText(manifestText)
+            String launcher = manifest.launcher
+            // engine.js names the files in string literals: only a plain content-addressed file name may go there.
+            if (!(launcher ==~ /[a-z]+(-[a-z]+)*-[0-9a-f]{12}\.js/)) {
+                throw new GradleException("Unexpected launcher name in ${bundle}/engine.json: ${launcher}")
+            }
+            if (manifest.variant != variant || manifest.julcVersion != version || manifest.api != 0) {
+                throw new GradleException("${bundle}/engine.json is not JuLC ${version}'s ${variant} engine: ${manifestText}")
+            }
+            if (manifestText != groovy.json.JsonOutput.toJson(manifest) + '\n') {
+                throw new GradleException("${bundle}/engine.json is not one line of JSON: engine.js inlines it as it is")
+            }
+            fileOps.copy {
+                from(bundle) { include launcher, launcher + '.wasm', 'engine.json' }
+                into new File(dir, 'engine')
+            }
+            new File(dir, 'engine/package.json').text = '{"type": "commonjs"}\n'
+            fileOps.copy {
+                from(sources) { exclude 'README.md' }
+                from rootProject.file('LICENSE')
+                into dir
+            }
+            def megabytes = { long bytes -> String.format(Locale.ROOT, '%.1f MB', bytes / 1_000_000d) }
+            new File(dir, 'README.md').setText(new File(sources, 'README.md').getText('UTF-8')
+                    .replace('@MODULE_SIZE@', megabytes(new File(bundle, launcher + '.wasm').length()))
+                    .replace('@VERSION@', version), 'UTF-8')
+            // engine.js names every file with string literals. Its exports are the public description of the engine;
+            // createJulcVm() and createJulc() take fresh copies from engineFiles() instead, so a caller who changes the
+            // exported URLs cannot redirect them (M3 review). The manifest is frozen.
+            def manifestLiteral = manifestText.trim()
+            new File(dir, 'engine.js').setText("""\
+// Generated at build time from engine/engine.json (ADR-077 D2): the engine files of ${packageName} ${version}.
+// Each is named by a string literal, so bundlers copy it and it resolves beside this module.
+const freeze = value => {
+  for (const member of Object.values(value)) if (typeof member === 'object' && member !== null) freeze(member);
+  return Object.freeze(value);
+};
+export const manifest = freeze(${manifestLiteral});
+export const launcherUrl = new URL('./engine/${launcher}', import.meta.url);
+export const moduleUrl = new URL('./engine/${launcher}.wasm', import.meta.url);
+export const version = ${json(version)};
+
+/** New objects describing the engine on every call, independent of the exports above. */
+export function engineFiles() {
+  return {
+    manifest: ${manifestLiteral},
+    launcherUrl: new URL('./engine/${launcher}', import.meta.url),
+    moduleUrl: new URL('./engine/${launcher}.wasm', import.meta.url),
+    version: ${json(version)},
+  };
+}
+""", 'UTF-8')
+            new File(dir, 'engine.d.ts').setText("""\
+// Generated at build time (ADR-077 D2): the engine files of ${packageName} ${version}.
+import type {FeatureGroup, Manifest} from '@julclang/wasm-client';
+
+/** engine/engine.json, inlined and frozen, groups included. */
+export declare const manifest: Readonly<Omit<Manifest, 'groups'>> & {readonly groups?: readonly FeatureGroup[]};
+/** The launcher, engine/${launcher}. */
+export declare const launcherUrl: URL;
+/** The WebAssembly module, engine/${launcher}.wasm. */
+export declare const moduleUrl: URL;
+/** The JuLC release of this package, its engine and the client it needs. */
+export declare const version: ${json(version)};
+/** New objects describing the engine on every call; createJulc's package mode takes them as they are. */
+export declare function engineFiles(): {manifest: Manifest; launcherUrl: URL; moduleUrl: URL; version: ${json(version)}};
+""", 'UTF-8')
+            def files = (dir.list() as List).findAll { it != 'package.json' }.sort().collect { it == 'engine' ? 'engine/' : it }
+            def packageJson = new LinkedHashMap([
+                    name: packageName,
+                    version: version,
+                    description: variant == 'vm'
+                            ? 'JuLC\'s Plutus VM as WebAssembly, for browsers and Node.js: decode, hash, apply '
+                                + 'parameters to, evaluate and debug Plutus V1, V2 and V3 scripts. Experimental: API '
+                                + 'version 0.'
+                            : 'The JuLC toolchain as WebAssembly, for browsers and Node.js: the Plutus VM (V1, V2 and '
+                                + 'V3), the Java compiler, the decompiler and source debugging. Experimental: API '
+                                + 'version 0.',
+                    license: 'MIT',
+                    repository: 'github:bloxbean/julc',
+                    homepage: 'https://github.com/bloxbean/julc/tree/main/julc-wasm',
+                    type: 'module',
+                    types: './index.d.ts',
+                    exports: new LinkedHashMap([
+                            '.': new LinkedHashMap([types: './index.d.ts', node: './node.js', default: './index.js']),
+                            './engine': new LinkedHashMap([types: './engine.d.ts', default: './engine.js']),
+                            './package.json': './package.json']),
+                    // Only the launcher runs code with effects (in the worker); the modules here have none.
+                    sideEffects: ['./engine/*.js'],
+                    engines: [node: '>=22.3.0'],
+                    dependencies: ['@julclang/wasm-client': version],
+                    files: files])
+            new File(dir, 'package.json').text = groovy.json.JsonOutput.prettyPrint(
+                    groovy.json.JsonOutput.toJson(packageJson)) + '\n'
+        }
+    }
+    registerPack("wasmEnginePack${suffix}", packageName, "wasmEnginePackage${suffix}", packageDir)
+    // The release archive, made as native-image-release.yml makes it, for wasmEngineIdentity.
+    tasks.register("wasmArchive${suffix}", Exec) {
+        dependsOn "wasmBundle${suffix}"
+        inputs.dir(bundleDir)
+        def archive = engineArchivesDir.map { it.file("${directoryName}-${project.version}.tar.gz") }
+        outputs.file(archive)
+        doFirst {
+            def dir = engineArchivesDir.get().asFile
+            fileOps.delete { delete dir.listFiles()?.findAll { it.name.startsWith(directoryName + '-') } ?: [] }
+            dir.mkdirs()
+        }
+        commandLine 'tar', 'czf', archive.get().asFile.absolutePath, '-C', bundleDir.get().asFile.absolutePath, '.'
+    }
+}
+tasks.register('wasmEnginePack') {
+    group = 'build'
+    description = 'Packs @julclang/julc-vm-wasm and @julclang/julc-wasm into build/npm (ADR-077 M3).'
+    dependsOn 'wasmEnginePackVm', 'wasmEnginePackFull'
+}
+// ADR-077 I1 on the packed tarballs: each engine tarball and its archive, extracted into separate directories, hold
+// the same launcher, module and engine.json; engine.js inlines engine/engine.json; and the tarballs hold exactly the
+// expected files, with no install scripts and the exact client dependency. The release workflow runs the same script
+// on the archives it publishes.
+tasks.register('wasmEngineIdentity', Exec) {
+    group = 'verification'
+    dependsOn 'wasmEnginePack', 'wasmClientPack', 'wasmArchiveVm', 'wasmArchiveFull'
+    outputs.upToDateWhen { false }
+    executable 'node'
+    doFirst {
+        args file('src/test/js/engine-identity.mjs').absolutePath, npmDir.get().asFile.absolutePath,
+                engineArchivesDir.get().asFile.absolutePath, project.version.toString()
+    }
+}
+// ADR-077 M3 (I6, I8): the engine packages, installed from the three tarballs, in Node.js (main thread and an
+// application worker, with the VM parity fixtures), in Chromium (plain <script type="module">, Vite development and
+// production, webpack production with and without the README's configuration, a Chrome extension), and in server
+// bundles (webpack target: 'node', esbuild with external packages, Next.js with Turbopack and with --webpack).
+// Installs pinned Vite, webpack, esbuild and Next.js from the npm registry into build/engine-fixtures.
+//   ./gradlew :julc-wasm:wasmEngineFixtures -PgraalvmHome=… -PplaywrightDir=<…/node_modules/playwright>
+//     [-PwasmSmokeNodes=/path/node,/other/node] [-PengineFixtures=node,plain,vite,…]
+// Without -PplaywrightDir only the Node.js and server-bundle fixtures run.
+tasks.register('wasmEngineFixtures', Exec) {
+    group = 'verification'
+    dependsOn 'wasmEnginePack', 'wasmClientPack', 'vmParityExpected'
+    outputs.upToDateWhen { false }
+    executable 'node'
+    doFirst {
+        def playwright = providers.gradleProperty('playwrightDir').orNull
+        def fixtures = providers.gradleProperty('engineFixtures')
+                .getOrElse(playwright ? '' : 'node,webpack-node,esbuild,next,next-dev,next-webpack')
+        args file('src/test/js/engine-fixtures.mjs').absolutePath, '--npm', npmDir.get().asFile.absolutePath,
+                '--version', project.version.toString(),
+                '--work', layout.buildDirectory.dir('engine-fixtures').get().asFile.absolutePath,
+                '--parity', layout.buildDirectory.file('wasm-parity/vm.json').get().asFile.absolutePath
+        if (playwright) args '--playwright', playwright
+        def nodes = providers.gradleProperty('wasmSmokeNodes').getOrElse('')
+        if (nodes) args '--nodes', nodes
+        if (fixtures) args '--only', fixtures
+    }
+}
+// The engine packages' declarations, with @julclang/wasm-client's, from the tarballs (ADR-077 D2).
+tasks.register('wasmEngineTypes', Exec) {
+    group = 'verification'
+    dependsOn 'wasmEnginePack', 'wasmClientPack', 'wasmClientArchive'
+    inputs.dir('src/test/types')
+    outputs.upToDateWhen { false }
+    executable 'node'
+    doFirst {
+        args file('src/test/js/package-types.mjs').absolutePath,
+                tarballOf('@julclang/wasm-client').get().asFile.absolutePath, clientArchive.get().asFile.absolutePath,
+                tarballOf('@julclang/julc-vm-wasm').get().asFile.absolutePath,
+                tarballOf('@julclang/julc-wasm').get().asFile.absolutePath
     }
 }
 // --- An image another language builds on julc-wasm (ADR-064) ---
@@ -519,7 +733,10 @@ tasks.register('wasmClientTypes', Exec) {
     }
 }
 tasks.register('wasmBundle') { dependsOn 'wasmBundleFull', 'wasmBundleVm' }
-tasks.register('wasmSmoke') { dependsOn 'wasmSmokeFull', 'wasmSmokeVm', 'wasmSmokeEmbedder', 'wasmSmokePackage' }
+// wasmEngineIdentity packs the engine packages, so the release workflow's wasm job has their tarballs (ADR-077 D8a).
+tasks.register('wasmSmoke') {
+    dependsOn 'wasmSmokeFull', 'wasmSmokeVm', 'wasmSmokeEmbedder', 'wasmSmokePackage', 'wasmEngineIdentity'
+}
 tasks.register('wasmParityExpected', JavaExec) {
     classpath = sourceSets.test.runtimeClasspath
     mainClass = 'org.julclang.wasm.ParityFixtures'
@@ -535,7 +752,7 @@ tasks.register('jsTest', Exec) {
     inputs.dir('src/test/js')
     inputs.file('src/main/java/org/julclang/wasm/JsApi.java')
     inputs.dir(clientArchive)
-    inputs.dir(npmDir)
+    inputs.file(tarballOf('@julclang/wasm-client'))
     outputs.upToDateWhen { false }
     commandLine 'node', '--test', '--test-concurrency=1', 'src/test/js/codec.test.mjs', 'src/test/js/worker.test.mjs',
             'src/test/js/client.test.mjs', 'src/test/js/runtime-identity.test.mjs', 'src/test/js/package.test.mjs'

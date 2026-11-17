@@ -233,6 +233,17 @@ jobs:
         cat "julc-wasm-${VERSION}-SHA256SUMS.txt"
         wc -c julc-wasm/build/wasm-bundle-{full,vm}/*.wasm >> "$GITHUB_STEP_SUMMARY"
 
+    # ADR-077 I1 on what this job packed (wasmSmoke packs the engine packages into julc-wasm/build/npm): each engine
+    # tarball and the release archive above, extracted into separate directories, hold the same launcher, module and
+    # engine.json byte for byte, and engine.js inlines engine/engine.json. Also checks the tarballs' contents and
+    # package.json files (no scripts, exact client dependency).
+    - name: Check the engine packages against the release archives
+      shell: bash
+      run: |
+        set -euo pipefail
+        test "$(jq -r .julcVersion julc-wasm/build/wasm-bundle-vm/engine.json)" = "$VERSION"
+        node julc-wasm/src/test/js/engine-identity.mjs julc-wasm/build/npm . "$VERSION" | tee -a "$GITHUB_STEP_SUMMARY"
+
     # Picked up by the native-image-playground jobs on every platform, so none of them needs Web Image.
     - name: Upload engine artifact
       uses: actions/upload-artifact@v4
@@ -253,7 +264,7 @@ jobs:
         if-no-files-found: error
         retention-days: 7
 
-    # What wasm-package-checks loads: the packed @julclang/wasm-client, both bundles and the VM parity fixtures.
+    # What wasm-package-checks loads: the three packed packages, both bundles and the VM parity fixtures.
     - name: Upload the files the package checks use
       uses: actions/upload-artifact@v4
       with:
@@ -266,13 +277,13 @@ jobs:
         if-no-files-found: error
         retention-days: 7
 
-  # ADR-077 M1's checks of @julclang/wasm-client, kept out of the job that builds the release files: it builds
-  # nothing, installs Playwright, Node binaries and TypeScript from the network, and loads the wasm job's files from
-  # its artifact. Read-only token, no secrets.
+  # ADR-077 M1's checks of @julclang/wasm-client and M3's of the engine packages, kept out of the job that builds the
+  # release files: it builds nothing, installs Playwright, Node binaries, TypeScript and the fixtures' bundlers from
+  # the network, and loads the wasm job's files from its artifact. Read-only token, no secrets.
   wasm-package-checks:
     needs: wasm
     runs-on: ubuntu-22.04
-    name: Check @julclang/wasm-client (Node.js 22.3 and 24, Chromium, TypeScript)
+    name: Check the npm packages (Node.js 22.3 and 24, Chromium, bundlers, TypeScript)
     permissions:
       contents: read
 
@@ -333,7 +344,24 @@ jobs:
           wasm-checks/wasm-parity/vm.json "${nodes[@]}"
         node julc-wasm/src/test/js/browser-smoke.mjs "$RUNNER_TEMP/wasm-client/package" wasm-checks/wasm-bundle-vm \
           wasm-checks/wasm-bundle-full "$PLAYWRIGHT_DIR"
-        node julc-wasm/src/test/js/package-types.mjs "$tarball" wasm-checks/wasm-bundle-vm
+        node julc-wasm/src/test/js/package-types.mjs "$tarball" wasm-checks/wasm-bundle-vm \
+          wasm-checks/npm/julclang-julc-vm-wasm-*.tgz wasm-checks/npm/julclang-julc-wasm-*.tgz
+
+    # ADR-077 M3 (I6, I8), the same script as :julc-wasm:wasmEngineFixtures: both engine packages, installed from the
+    # three tarballs, in Node.js 22.3.0, 22 and 24 (main thread and an application worker, with the VM parity
+    # fixtures), in Chromium (plain <script type="module">, Vite 8 development and production, webpack production with
+    # and without the README's configuration, a Chrome extension), and in server bundles (webpack target: 'node',
+    # esbuild with external packages, Next.js with Turbopack: build and standalone). Bundler versions are locked by the
+    # fixtures' lockfiles. Left out to keep this job short: next build --webpack and Vite 7's development server (run by
+    # native-image-dev.yml) and next dev (local runs only), each another compile of the same application.
+    - name: Load the engine packages in Node.js, Chromium and bundlers
+      shell: bash
+      run: |
+        set -euo pipefail
+        version=$(jq -r .julcVersion wasm-checks/wasm-bundle-vm/engine.json)
+        node julc-wasm/src/test/js/engine-fixtures.mjs --npm wasm-checks/npm --version "$version" \
+          --work "$RUNNER_TEMP/engine-fixtures" --parity wasm-checks/wasm-parity/vm.json --playwright "$PLAYWRIGHT_DIR" \
+          --nodes "$WASM_SMOKE_NODES" --only node,plain,vite,webpack,webpack-keep,extension,webpack-node,esbuild,next
 
   native-image-playground:
     needs: [validate, wasm]
