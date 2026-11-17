@@ -32,5 +32,12 @@ case $3 in
         --npm "$NPM" 2>&1 | show; echo "verify exit=${PIPESTATUS[0]}" ;;
   V7) publish $S/real/edited 2>&1 | show; echo "exit=${PIPESTATUS[0]}" ;;
   # After V6 (latest pre23, release-0.1 pre22): pre21 must take release-0.1.0-pre21 and move neither.
-  V8) publish $S/real/older 0.1.0-pre21 2>&1 | show; echo "exit=${PIPESTATUS[0]}"; versions ;;
+  V8) out=$(publish $S/real/older 0.1.0-pre21 2>&1); show <<< "$out"; tags=$(sed -n 's/^output tags=//p' <<< "$out")
+      versions
+      node "$CI/npm-verify.mjs" --dir $S/real/older --version 0.1.0-pre21 --registry $REG --no-provenance \
+        --work $S/real/verify-$RANDOM --npm "$NPM" --published-tags "$tags" 2>&1 | show; echo "verify exit=${PIPESTATUS[0]}"
+      # One chosen tag deleted by hand: the run's postcondition (M4-C12) fails.
+      "$NPM" dist-tag rm @julclang/julc-vm-wasm release-0.1.0-pre21 --registry $REG 2>&1 | tail -1
+      node "$CI/npm-verify.mjs" --dir $S/real/older --version 0.1.0-pre21 --registry $REG --no-provenance \
+        --work $S/real/verify-$RANDOM --npm "$NPM" --published-tags "$tags" 2>&1 | show; echo "verify exit=${PIPESTATUS[0]}" ;;
 esac

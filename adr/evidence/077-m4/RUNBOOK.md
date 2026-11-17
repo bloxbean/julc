@@ -72,9 +72,10 @@ expiry.
    trusted publisher does not check the ref, this policy, the job's own ref check, and who may push `v*` tags and run
    workflows (repository write access, the tag rulesets) together decide who can publish. **It does not exist yet**
    (2026-11-17), and GitHub creates a missing environment, with no protection, for the first job that names it; so
-   `npm-gates` refuses to publish unless the environment exists with exactly the policy tag `v*` (it reads it with
-   the job token's `actions: read`). Read the policy back, and do not set `npm_publish = true` until this prints
-   exactly `tag v*` and `true false`:
+   `npm-gates` refuses to dry-run or publish unless the environment exists with exactly the policy tag `v*` (it reads
+   it with the job token's `actions: read`). Create it **before the rehearsal**: the rehearsal's dry run runs the same
+   check and fails without it. Read the policy back, and do not set `npm_publish = true` until this prints exactly
+   `tag v*` and `true false`:
    ```
    gh api repos/bloxbean/julc/environments/npm-publish/deployment-branch-policies --jq '.branch_policies[] | "\(.type) \(.name)"'
    gh api repos/bloxbean/julc/environments/npm-publish --jq '.deployment_branch_policy | "\(.custom_branch_policies) \(.protected_branches)"'
@@ -140,7 +141,10 @@ run):
 4. **A dispatch on the candidate's tag** runs only `npm-gates` and `npm-dry-run`, which verifies the existing assets.
 5. **A whole-workflow re-run** of the candidate's run stops in `wasm` ("already has a GitHub release"), building
    nothing.
-6. **The `npm-publish` environment's policy** reads back as above (step 1 of the setup).
+6. **The `npm-publish` environment's policy** reads back as above (step 1 of the setup), and the candidate's
+   `npm-gates` log shows "npm-publish environment: tag:v* only": the job token could read the policy, so a real tag's
+   check will too. If that step failed for any reason other than the policy itself, do not set `npm_publish = true`:
+   a real tag whose check cannot read the policy can never reach npm (the workflow at a tag is fixed).
 7. **Checks that need a modified workflow** (a deliberately failed `attest`, a failed upload): never on the real
    repository, where they would leave a permanent `v*` tag and release made by a modified workflow. Run them in a
    fork or a scratch repository, with `npm_publish = false` (dry-run mode) and no trusted publisher: for example
@@ -151,10 +155,15 @@ run):
 1. Decide `github_release` and `npm_publish` in `gradle.properties` on the release commit. `npm_publish = true` needs
    `github_release = true`; npm publishes only from the GitHub release's attested assets. The gates are fixed at the
    tag (above).
+   **Never create a GitHub release, or a draft, for the tag by hand** before the run: `wasm` stops when the tag already
+   has a release ("built once"), and `github-release` refuses a draft.
 2. Tag as usual (`tag-release.yml`). The tag push runs the whole workflow. If the `npm-publish` environment has a
    required reviewer, approve the deployment.
 3. A published version can never be replaced, unpublished for reuse, or published again with other bytes. Check the
    release notes (D7: every API change is listed) before setting `npm_publish = true`.
+4. The release is public from the moment `github-release` creates it, while its assets upload (a few minutes),
+   possibly with the Latest badge (a final release): the accepted cost of never using drafts, which read-only checks
+   cannot see. Release notes and announcements should wait for the run to finish.
 
 ## Recovery
 
@@ -176,7 +185,22 @@ assets or recreate a release to "start again"; npm is the record once a version 
   gh api -X DELETE repos/bloxbean/julc/releases/assets/<id of each asset in state starter>
   gh release upload v<version> dist/<each missing file> --repo bloxbean/julc      # never --clobber
   ```
-  The npm jobs verify each npm file against its attestation, so a wrong file is refused there.
+  Then check every asset against the original run's bytes, as the workflow's final check does (each line must say
+  `ok`, and the release must not be a draft):
+  ```
+  gh api repos/bloxbean/julc/releases/tags/v<version> --jq '.draft'      # false
+  for f in dist/*; do
+    n=$(basename "$f")
+    d=$(gh api repos/bloxbean/julc/releases/tags/v<version> --jq ".assets[] | select(.name == \"$n\") | \"\(.state) \(.digest)\"")
+    [ "$d" = "uploaded sha256:$(sha256sum "$f" | cut -d' ' -f1)" ] && echo "ok $n" || echo "DIFFERENT $n: $d"
+  done
+  ```
+  The npm jobs also verify each npm file against its attestation, so a wrong npm file is refused there.
+  `update-homebrew` does not run on this path (nor on a dispatch). Update the formulas by hand: in
+  `bloxbean/homebrew-tap`, set `version` and each `sha256` in `Formula/julc.rb` and `Formula/julc-playground.rb` to
+  the release's zips (`sha256sum` of the macOS, Linux x86_64 and Linux arm64 assets), as the job's script does.
+  The artifacts expire 7 days after the original run: after that, a release missing assets cannot be completed with
+  its attested bytes, and the version is spent (release the next one).
 - **The first real publication fails at authentication** (npm answers 401, 403 or 404 on `PUT`, or "OIDC token
   exchange" fails in the log): nothing was published. Fix the trusted publisher (repository, workflow file name,
   environment `npm-publish`, direct publishing allowed, not expired) and use "Re-run failed jobs".
@@ -196,16 +220,30 @@ assets or recreate a release to "start again"; npm is the record once a version 
   `npm-verify` skipped); its release is complete and published, so finish it by dispatching the workflow on its tag
   (it waits for the group like any other).
 - **Recovering an older version after a newer one is out** publishes it on the first tag that does not move backwards
-  (above) and leaves `latest` on the newer version; `npm-verify` notes it.
+  (above) and leaves `latest` on the newer version; `npm-verify` notes it, and checks that each tag the run chose
+  still names that version or a later one.
 - **`npm-publish` fails with "already on the registry and is not this release's tarball with this workflow's
   provenance"**: someone published that version another way (by hand, or another build). Do not retry. Investigate;
   the version number is spent. Deprecate it if it is wrong (below) and release the next version.
 - **`npm-publish` fails with "did not show it within 300 s"**: the registry was slow. Re-run the failed job.
 - **`npm-verify` fails**: treat the release as bad until the cause is known.
 
+## Dist-tags by hand
+
+The rule that no dist-tag moves backwards holds among the workflow's own publications only. A dist-tag changed by hand
+(an incident rollback, `npm dist-tag add`/`rm`, or a deprecation that moves `latest`) can break it, and a publication
+running at the same time would choose its tag from a registry that is changing. So change dist-tags by hand only with
+publications quiesced:
+1. no job pending or running in the `npm-publish-julclang` concurrency group (the repository's Actions page, filtered
+   to `native-image-release.yml`), and no new `v*` tag pushed or dispatch started until step 3;
+2. make the change;
+3. read back every changed package's tags (`npm view @julclang/<name> dist-tags`) and check them before resuming.
+
+The named exception is an intentional emergency rollback (below): it moves `latest` backwards on purpose.
+
 ## A bad release
 
-By hand, with 2FA (the trusted publisher has no dist-tag permission):
+By hand, with 2FA (the trusted publisher has no dist-tag permission), with publications quiesced (above):
 ```
 npm deprecate @julclang/julc-wasm@<bad> "<reason>; use <good>"   # each affected package
 npm dist-tag add @julclang/julc-wasm@<previous good> latest      # until a fixed version is published
