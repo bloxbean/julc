@@ -478,10 +478,13 @@ def graph():
     check('one concurrency group for every npm publication, never cancelling a running one',
           jobs['npm-publish']['concurrency'] == {'group': 'npm-publish-julclang', 'cancel-in-progress': False},
           repr(jobs['npm-publish'].get('concurrency')))
-    check('npm-gates reads the environment with actions: read, only in publish mode',
+    check('npm-gates reads the environment with actions: read, for a dry run and a publication alike',
           jobs['npm-gates']['permissions'] == {'contents': 'read', 'actions': 'read'}
           and [s for s in jobs['npm-gates']['steps'] if s.get('name') == "Check the npm-publish environment's policy"][0]
-          ['if'] == "steps.gates.outputs.mode == 'publish'")
+          ['if'] == "steps.gates.outputs.mode != 'none'")
+    check('npm-verify gets the tags npm-publish chose',
+          jobs['npm-publish']['outputs'].get('tags') == '${{ steps.publish.outputs.tags }}'
+          and '--published-tags' in [s for s in jobs['npm-verify']['steps'] if s.get('name', '').startswith('Compare')][0]['run'])
     check('wasm holds contents: read only', jobs['wasm']['permissions'] == {'contents': 'read'})
     for job in ['npm-dry-run', 'npm-publish', 'npm-verify']:
         checkout = [s for s in jobs[job]['steps'] if str(s.get('uses', '')).startswith('actions/checkout@')][0]

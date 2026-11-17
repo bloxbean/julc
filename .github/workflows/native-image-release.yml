@@ -854,9 +854,10 @@ jobs:
 
     # npm's trusted publisher checks no ref, so the npm-publish environment's policy (v* tags only) is part of the
     # control. GitHub creates a missing environment, unprotected, for the first job that names it: so publication needs
-    # the environment to exist with exactly one deployment policy, the tag pattern v*. Fails closed.
+    # the environment to exist with exactly one deployment policy, the tag pattern v*. Fails closed. It runs for a dry
+    # run too, so a release candidate's rehearsal proves this check works before a real tag depends on it (M4-F12).
     - name: Check the npm-publish environment's policy
-      if: steps.gates.outputs.mode == 'publish'
+      if: steps.gates.outputs.mode != 'none'
       env:
         GH_TOKEN: ${{ github.token }}
       shell: bash
@@ -973,6 +974,8 @@ jobs:
       attestations: read
     outputs:
       published: ${{ steps.publish.outputs.published }}
+      # The dist-tag chosen for each package this run published (JSON), which npm-verify checks.
+      tags: ${{ steps.publish.outputs.tags }}
     env:
       VERSION: ${{ needs.npm-gates.outputs.version }}
     steps:
@@ -1090,6 +1093,7 @@ jobs:
         SHA_FULL: ${{ needs.wasm.outputs.sha256_julc_wasm }}
         SHA_VM_ARCHIVE: ${{ needs.wasm.outputs.sha256_vm_archive }}
         SHA_FULL_ARCHIVE: ${{ needs.wasm.outputs.sha256_full_archive }}
+        PUBLISHED_TAGS: ${{ needs.npm-publish.outputs.tags }}
       shell: bash
       run: |
         set -euo pipefail
@@ -1101,7 +1105,8 @@ jobs:
             digests+=(--digest "$pair")
           done
         fi
-        node julc-wasm/src/ci/npm-verify.mjs --dir assets --version "$VERSION" --work "$RUNNER_TEMP/npm-verify" "${digests[@]}"
+        node julc-wasm/src/ci/npm-verify.mjs --dir assets --version "$VERSION" --work "$RUNNER_TEMP/npm-verify" \
+          --published-tags "${PUBLISHED_TAGS:-"{}"}" "${digests[@]}"
 
   update-homebrew:
     needs: [validate, github-release]
