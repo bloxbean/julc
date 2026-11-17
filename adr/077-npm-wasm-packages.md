@@ -3,7 +3,7 @@
 **Status:** Accepted (2026-11-16) by the maintainer, after design approval from reviewer1 (r4) and the internal
 Fable and Codex reviews (r9; r10 applies their last shared finding). Design only; the implementation follows in
 milestones M0 to M5.
-**Date:** 2026-11-16 to 2026-11-17 (r1 to r21)
+**Date:** 2026-11-16 to 2026-11-17 (r1 to r22)
 **Risk class:** **medium**.
 - This is a public distribution with a lasting API. Package names and exported type names are hard to change once
   published.
@@ -924,11 +924,22 @@ identity. It verifies the release assets exactly as `npm-publish` does.
     also compares the asset with the `wasm` job's digest outputs. Any difference stops it.
   - So npm never gets a version whose archives are not public, and users can always check I1.
 - **Credentials.**
-  - It runs in its own `npm-publish` environment (r19, M4-F2), whose only deployment policy is `v*` tags, optionally
-    with a required reviewer. npm's trusted publisher checks the repository, the workflow file and the environment,
-    but not the ref, so the tag rule must be enforced by GitHub, not only by the workflow file. Until r19 it used
-    `release-staging`, which also accepts `main` and `release/**`.
-  - The job also requires its own ref to be exactly `refs/tags/v<version>`, and refuses any other.
+  - It runs in the `release-staging` environment (r22), release-ops' environment for release jobs, as JOUST's npm job
+    and this workflow's `update-homebrew` do. That environment admits `v*` tags but also `main` and `release/**`, with
+    no reviewers, and npm's trusted publisher checks no ref.
+  - So the job requires its own ref to be exactly `refs/tags/v<version>`, as its first step, and refuses any other;
+    `npm-gates` refuses any ref that is not such a tag before it.
+  - A release tag is normally created only through the tag ruleset and `tag-release.yml`'s release-owner
+    authorisation (the `release` environment). By release-ops' intentional exception, an org admin can bypass the tag
+    ruleset and environment approvals; the npm jobs check the tag and the version, not how the tag was approved. `main` and `release/**` change only through pull requests with code-owner review, and
+    CODEOWNERS covers the workflows and `julc-wasm/src/ci`. So the job's exposure for npm is that of the Maven
+    Central credentials `release-staging` already holds.
+  - r19 to r21 used a dedicated `npm-publish` environment, allowing `v*` tags only (M4-F2), checked by `npm-gates`
+    (M4-F8, M4-F12). r22 returned to `release-staging` at the maintainer's decision, to follow release-ops. The
+    environment check went with it: GitHub's creation of a missing, unprotected environment does not apply to an
+    existing one, and if the environment ever refuses a release tag, it is corrected in Settings and "re-run failed
+    jobs" completes the publication, because environment settings are read when the job starts and are not part of
+    the tag's workflow. The control against a dispatch from `main` or `release/**` is the jobs' exact-ref check.
   - It gets `id-token: write` for npm trusted publishing (OIDC), `contents: read` to download the release assets, and
     `attestations: read`, and nothing else. No npm token exists.
 - **Concurrency** (r20, M4-C8). Every npm publication of these packages, of any version, runs in one concurrency
@@ -1006,11 +1017,7 @@ identity. It verifies the release assets exactly as `npm-publish` does.
 - The maintainer then configures the trusted publisher:
   - repository `bloxbean/julc`;
   - workflow file `native-image-release.yml` (npm validates that the publish command is in that file);
-  - environment `npm-publish`, created by the maintainer with `v*` tags as its only deployment policy (r19). GitHub
-    would create a missing environment unprotected on first use, so `npm-gates` (with `actions: read`) refuses to
-    run any npm job, dry run or publication, unless the environment exists with exactly the policy `tag:v*` (r20,
-    M4-F8; dry runs from r21, M4-F12). A release candidate's rehearsal therefore proves the check works before a real
-    tag, whose workflow cannot change, depends on it;
+  - environment `release-staging` (r22; `npm-publish` in r19 to r21);
   - **with direct `npm publish` allowed.** npm always allows staged publication, but direct publishing must be chosen.
 - **Timing.** A newly configured trusted publisher expires unless its first publication succeeds within 2 days (npm's
   trusted-publishers documentation). So the configuration is done immediately before the first real release, after
@@ -1418,8 +1425,8 @@ provenance; only the first real publication does (M4).
   - An interrupted upload that leaves a `starter` placeholder (a simulated HTTP 502) is cleaned up and retried with the
     original bytes. A differing completed asset still stops the job.
   - A release candidate's dry run runs no `npm-verify`: it installs nothing and looks up no provenance.
-  - The candidate's `npm-gates` passes the `npm-publish` environment check, and `npm-verify` fails when a chosen tag is
-    deleted or moved backwards (r21).
+  - `npm-publish`'s exact-ref check refuses `main`, `release/**` and another tag (r22), and `npm-verify` fails when a
+    chosen tag is deleted or moved backwards (r21).
   - Then, immediately before the first real release, the maintainer configures each trusted publisher, with direct
     publishing allowed (D8a, Timing). The first real publication follows within 2 days, by the maintainer's decision.
   - That publication is the only proof of authentication and provenance. Its tags, provenance (I12) and registry
@@ -1888,3 +1895,8 @@ choosing the recommendation recorded with each.
   - M4-C13: monotonicity is among CI publications; hand changes to dist-tags only with publications quiesced.
   - M4-F13, M4-F14, M4-F15: manual completion checks, Homebrew and the 7-day limit; releases public while assets
     upload; never pre-create a release for the tag.
+- r22 (2026-11-18, maintainer decision after M4 merged): `npm-publish` uses release-ops' `release-staging`
+  environment, as JOUST does, instead of a dedicated `npm-publish` environment. The `npm-gates` environment check
+  and its `actions: read` are removed. The controls are the jobs' exact-ref checks, the tag ruleset with
+  `tag-release.yml`'s release-owner authorisation, and code-owner review on `main` and `release/**`. The trusted
+  publisher names `release-staging`.
