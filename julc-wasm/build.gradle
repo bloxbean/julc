@@ -746,16 +746,19 @@ tasks.register('wasmParityExpected', JavaExec) {
 }
 tasks.register('jsTest', Exec) {
     group = 'verification'
-    description = 'Run the JavaScript client, worker, runtime and package tests (requires Node 22.3+ and npm).'
+    description = 'Run the JavaScript client, worker, runtime and package tests, and the release workflow\'s npm ' +
+            'scripts against a local registry (requires Node 22.3+ and npm).'
     // The tests run the staged client files and the packed @julclang/wasm-client, as they are shipped.
     dependsOn 'wasmClientArchive', 'wasmClientPack'
     inputs.dir('src/test/js')
+    inputs.dir('src/ci')
     inputs.file('src/main/java/org/julclang/wasm/JsApi.java')
     inputs.dir(clientArchive)
     inputs.file(tarballOf('@julclang/wasm-client'))
     outputs.upToDateWhen { false }
     commandLine 'node', '--test', '--test-concurrency=1', 'src/test/js/codec.test.mjs', 'src/test/js/worker.test.mjs',
-            'src/test/js/client.test.mjs', 'src/test/js/runtime-identity.test.mjs', 'src/test/js/package.test.mjs'
+            'src/test/js/client.test.mjs', 'src/test/js/runtime-identity.test.mjs', 'src/test/js/package.test.mjs',
+            'src/test/js/npm-release.test.mjs', 'src/test/js/npm-publish.test.mjs'
 }
 tasks.register('vmParityExpected', JavaExec) {
     dependsOn 'testClasses', 'wasmParityExpected'
