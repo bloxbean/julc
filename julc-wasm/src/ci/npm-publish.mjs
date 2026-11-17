@@ -9,8 +9,8 @@
 //        [--registry <url>] [--npm <npm command>] [--visibility-timeout <seconds>]
 //        [--no-provenance]               only against a loopback registry, for the local tests
 //
-// Writes `published` (true only when every package was published or verified as already published) to
-// $GITHUB_OUTPUT when it is set. A dry run (a release candidate, or npm_publish = false) publishes nothing.
+// Writes `published` (true only when every package was published or verified as already published) and `tags` (a
+// JSON object: the dist-tag chosen for each package this run published itself) to $GITHUB_OUTPUT when it is set. A dry run (a release candidate, or npm_publish = false) publishes nothing.
 import {spawnSync} from 'node:child_process';
 import {appendFileSync} from 'node:fs';
 import path from 'node:path';
@@ -126,6 +126,8 @@ async function main() {
     }
   };
 
+  // The tag chosen for each package this run published itself, for npm-verify's postcondition (M4-C12).
+  const selected = {};
   for (const tarball of tarballs) {
     const label = `${tarball.name}@${version}`;
     const before = await registryState(registry, tarball, version, identity);
@@ -158,10 +160,12 @@ async function main() {
       throw new ReleaseError(`${label} on the registry is not this release's tarball with this workflow's provenance:\n  - `
         + after.problems.join('\n  - '));
     }
+    if (run.ok) selected[tarball.name] = chosen.tag;
     const how = run.ok ? 'published' : 'already published (a registry delay), identical';
     console.log(`${how} ${label} as ${chosen.tag}`);
     summary(`- ${label}: ${how} as \`${chosen.tag}\`${provenance ? ', with provenance' : ''}`);
   }
+  output('tags', JSON.stringify(selected));
   output('published', String(mode === 'publish'));
 }
 

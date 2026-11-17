@@ -104,7 +104,8 @@ test('a new version: the three packages are published in dependency order, with 
     const result = await publish(registry, rel, rel.digests());
     assert.equal(result.status, 0, show(result));
     assert.deepEqual(registry.publishes, [CLIENT, VM, FULL].map(name => `${name}@${VERSION}`));
-    assert.deepEqual(result.outputs, {published: 'true'});
+    assert.deepEqual(result.outputs, {published: 'true',
+      tags: JSON.stringify({[CLIENT]: 'latest', [VM]: 'latest', [FULL]: 'latest'})});
     assert.equal(result.text.match(/--tag latest /g)?.length, 3);
     for (const name of [CLIENT, VM, FULL]) assert.equal(registry.packages.get(name)['dist-tags'].latest, VERSION);
     const verified = await run('npm-verify.mjs', registry, ['--dir', rel.dir, '--version', VERSION, '--no-provenance',
@@ -124,6 +125,7 @@ test('already published and identical, with this workflow\'s provenance: every p
     assert.deepEqual(registry.publishes, [], 'nothing is published twice');
     assert.equal(result.text.match(/^skip /gm)?.length, 3, show(result));
     assert.equal(result.outputs.published, 'true');
+    assert.equal(result.outputs.tags, '{}', 'skipped packages have no tag chosen by this run');
   } finally { await registry.close(); }
 });
 
@@ -259,7 +261,7 @@ test('dry runs publish nothing: a release candidate uses its final release\'s ta
     assert.match(dry.text, /0\.1\.0-pre22-rc1 is a release candidate: never published \(D8\)\. Dry run with its final release's tag, latest/);
     assert.equal(dry.text.match(/--tag latest --ignore-scripts --dry-run/g)?.length, 3, show(dry));
     assert.match(dry.text, /julclang-julc-wasm-0\.1\.0-pre22-rc1\.tgz|julc-wasm@0\.1\.0-pre22-rc1/);
-    assert.deepEqual(dry.outputs, {published: 'false'});
+    assert.deepEqual(dry.outputs, {published: 'false', tags: '{}'}, 'a dry run publishes, so chooses, nothing');
     const real = await publish(registry, rc);
     assert.equal(real.status, 1, show(real));
     assert.match(real.text, /release candidate, which is never published/);
@@ -398,6 +400,47 @@ test('no fallback tag moves backwards either: release-<version> when release-<ma
       assert.equal(verified.status, 0, label + '\n' + show(verified));
     } finally { await registry.close(); }
   }
+});
+
+test('npm-verify checks the tag npm-publish chose for each package it published (M4-C12)', async () => {
+  const registry = await startRegistry({provenanceOnPublish: identity('0.1.8')});
+  try {
+    // The client's latest is 0.2.0 and release-0.1 is 0.1.9: 0.1.8 goes to release-0.1.8; the engines to latest.
+    registry.seed(CLIENT, '0.2.0', release('0.2.0').bytes(CLIENT), {provenance: identity('0.2.0')});
+    registry.seed(CLIENT, '0.1.9', release('0.1.9').bytes(CLIENT), {tag: 'release-0.1', provenance: identity('0.1.9')});
+    const rel = release('0.1.8');
+    const result = await publish(registry, rel);
+    assert.equal(result.status, 0, show(result));
+    const chosen = {[CLIENT]: 'release-0.1.8', [VM]: 'latest', [FULL]: 'latest'};
+    assert.deepEqual(JSON.parse(result.outputs.tags), chosen);
+    const check = async () => verify(registry, rel, ['--work', scratch('verify-work'), '--published-tags', result.outputs.tags]);
+    let verified = await check();
+    assert.equal(verified.status, 0, show(verified));
+
+    const clientTags = registry.packages.get(CLIENT)['dist-tags'];
+    delete clientTags['release-0.1.8'];
+    verified = await check();
+    assert.equal(verified.status, 1, 'the chosen tag deleted\n' + show(verified));
+    assert.match(verified.text, /wasm-client@0\.1\.8: dist-tag release-0\.1\.8, chosen when it was published, names nothing/);
+    // Without the run's choices (a package it skipped), a missing fallback is not inferred to be a failure.
+    const unchecked = await verify(registry, rel, ['--work', scratch('verify-work')]);
+    assert.equal(unchecked.status, 0, show(unchecked));
+
+    registry.seed(CLIENT, '0.1.7', release('0.1.7').bytes(CLIENT), {tag: 'release-0.1.8', provenance: identity('0.1.7')});
+    verified = await check();
+    assert.equal(verified.status, 1, 'the chosen tag moved back to 0.1.7\n' + show(verified));
+    assert.match(verified.text, /dist-tag release-0\.1\.8, chosen when it was published, names 0\.1\.7, expected 0\.1\.8 or later/);
+
+    // A chosen tag that later moves forward is legitimate.
+    clientTags['release-0.1.8'] = '0.1.8';
+    registry.packages.get(VM)['dist-tags'].latest = '0.2.0';
+    verified = await check();
+    assert.equal(verified.status, 0, 'latest advanced\n' + show(verified));
+
+    const malformed = await verify(registry, rel, ['--work', scratch('verify-work'), '--published-tags', '["latest"]']);
+    assert.equal(malformed.status, 1);
+    assert.match(malformed.text, /--published-tags must map package names to dist-tags/);
+  } finally { await registry.close(); }
 });
 
 test('an engine archive deleted from or replaced in the release stops publication and verification', async () => {

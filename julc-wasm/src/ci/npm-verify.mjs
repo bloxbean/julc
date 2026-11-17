@@ -1,7 +1,8 @@
 // ADR-077 D8a: the npm-verify job of native-image-release.yml. Holds no credentials. Checks what the registry serves for
 // a published version against the release's tarballs (which the workflow verified against their attestation first):
 // - the registry's integrity, and the tarball `npm pack name@version` downloads, equal the release's (I1, I11);
-// - the dist-tag D8 gives the version names it, or a later version (a recovery run for an older release);
+// - the dist-tag D8 gives the version names it, or a later version (a recovery run for an older release), and so does
+//   each tag npm-publish chose for a package it published in this run (--published-tags);
 // - the three exact versions install with --ignore-scripts (I7) and lock to the release's integrity;
 // - `npm audit signatures` verifies them, and each carries a provenance attestation, among the bundles it verified,
 //   whose statement names the tarball's SHA-512 and whose signing certificate names this repository, this workflow
@@ -9,6 +10,7 @@
 //
 //   node npm-verify.mjs --dir <release assets> --version <version> --work <empty directory>
 //        [--digest <file>=<sha256>]... [--registry <url>] [--npm <npm command>]
+//        [--published-tags <JSON>]   npm-publish's `tags` output: each newly published package's chosen dist-tag
 //        [--no-provenance]   only against a loopback registry, for the local tests: no audit, no provenance
 import {spawnSync} from 'node:child_process';
 import {appendFileSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
@@ -22,6 +24,7 @@ import {
 const {values: options} = parseArgs({options: {
   dir: {type: 'string'}, version: {type: 'string'}, work: {type: 'string'}, digest: {type: 'string', multiple: true},
   registry: {type: 'string'}, npm: {type: 'string'}, 'no-provenance': {type: 'boolean'},
+  'published-tags': {type: 'string'},
 }});
 const summary = line => { if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, line + '\n'); };
 
@@ -50,6 +53,16 @@ async function main() {
   }
   const tag = distTag(version);
   const identity = releaseIdentity(version);
+  let publishedTags = {};
+  try {
+    publishedTags = JSON.parse(options['published-tags'] ?? '{}');
+  } catch {
+    throw new ReleaseError(`--published-tags is not JSON: ${options['published-tags']}`);
+  }
+  if (typeof publishedTags !== 'object' || publishedTags === null || Array.isArray(publishedTags)
+      || Object.values(publishedTags).some(value => typeof value !== 'string' || !value)) {
+    throw new ReleaseError(`--published-tags must map package names to dist-tags: ${options['published-tags']}`);
+  }
   const tarballs = localTarballs(dir, version, parseDigests(options.digest ?? []));
   const problems = [];
   summary(`### npm registry check of ${version}\n`);
@@ -82,6 +95,17 @@ async function main() {
       const tags = document['dist-tags'];
       console.log(`note ${label}: dist-tag ${tag} names the later ${tagged}; ${minor} names ${tags[minor] ?? 'nothing'}`
         + (tags[own] ? `, ${own} names ${tags[own]}` : ''));
+    }
+    // The tag npm-publish chose for a package it published in this run (D8 or a fallback) names this version or a
+    // later one: it was set, and nothing moved it backwards since. A package skipped as already published has no
+    // entry: its tag was chosen by an earlier run, so only D8's rule above applies.
+    const chosen = publishedTags[tarball.name];
+    if (chosen !== undefined) {
+      const holder = document['dist-tags']?.[chosen];
+      if (holder === undefined || compareVersions(holder, version) < 0) {
+        problems.push(`${label}: dist-tag ${chosen}, chosen when it was published, names ${holder ?? 'nothing'}, expected `
+          + `${version} or later`);
+      }
     }
     const tags = JSON.stringify(document['dist-tags']);
     console.log(`ok ${label}: registry tarball equals the release's (${tarball.integrity}); dist-tags ${tags}`);
