@@ -23,6 +23,9 @@ dependencies {
 
     // Model records carry Jackson annotations; (de)serialization happens in the transports
     api 'com.fasterxml.jackson.core:jackson-annotations:2.18.2'
+
+    // ADR-077 I4: Scalus, an independent implementation, applies the same values in vm.applyParams' differential test
+    testImplementation 'org.scalus:scalus_3:1.1.0'
 }
 
 rootProject.pinWebImageCardanoClientLib(project)

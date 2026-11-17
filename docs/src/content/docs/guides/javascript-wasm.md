@@ -235,6 +235,7 @@ Use those declarations from the **same release** as your engine.
 | --- | --- | --- |
 | `vm.decode` | `{script}` | `{ok, error, info, uplcText}`; `info` contains language, hash, parameterized `compiledCode`, sizes, builtins and warnings. |
 | `vm.hash` | `{script}` | `{scriptHash}` after applying any script parameters. |
+| `vm.applyParams` | `{language, script, params, partial?, checkSchema?}` | `{compiledCode, cborHex, scriptHash, language, paramsApplied, remainingParams, schemaChecked}`: a parameterised script's bytes and hash, with nothing guessed (ADR-077). See below. |
 | `vm.prettyPrint` | `{script, width?}` | `{uplcText}`; width defaults to 100. |
 | `vm.evaluate` | `{script, args?, target?, costModel?, maxCpu?, maxMem?}` | Evaluation result: `ok`, `status`, `accepted`, budget, traces, result text, failure information, resolved target and cost model. |
 | `vm.debug` | Same request as `vm.evaluate` | A worker-bound debug-session proxy. |
@@ -257,6 +258,33 @@ Supported script text includes UPLC notation, CBOR/FLAT hex, a text envelope, or
 CIP-57 blueprint. `validator` selects a blueprint entry; otherwise the decoder
 selects its default entry. A script's `params` are applied before `args` supplied
 to evaluation.
+
+`vm.applyParams` is the way to compute the script a dApp deploys. Unlike `vm.decode`
+with `params`, it never guesses, and refuses (error code `invalid-request`) when:
+- `language` is not exactly `V1`, `V2` or `V3`, or disagrees with an envelope's `type`,
+  a blueprint's `preamble.plutusVersion` or the blueprint hash;
+- a blueprint has several validators and `script.validator` does not name one by its
+  exact title, or `script.language` or `script.params` is set;
+- the script's bytes are not canonical, or are UPLC text;
+- a value has no explicit `format` (`json`, `cbor` or `uplc`), is not strictly that
+  format, or the number of values does not match the blueprint's `parameters` (unless
+  `partial: true`).
+
+With a blueprint, each value is checked against its parameter's schema unless
+`checkSchema: false`: a fault in the schema is `invalid-schema`, a value that does not
+match is `parameter-mismatch`. Each applied value is encoded in Plutus's canonical
+Data encoding, so a tool that encodes it differently (for example with definite-length
+lists) gives a different script and hash. Only `remainingParams: 0` means the script is
+complete; `null` means the input declared no parameters to count against.
+
+```javascript
+const applied = await julc.vm.applyParams({
+  language: 'V3',
+  script: {script: blueprintJson, validator: 'vesting.vesting.spend'},
+  params: [{bytes: ownerKeyHash}, {int: 1700000000000n}],
+});
+console.log(applied.scriptHash, applied.cborHex, applied.remainingParams);
+```
 
 ### Compiler operations — full variant only
 

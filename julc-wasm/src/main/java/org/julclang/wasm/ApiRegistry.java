@@ -1,5 +1,6 @@
 package org.julclang.wasm;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.julclang.tools.service.ServiceResult;
 
 import java.util.LinkedHashMap;
@@ -18,6 +19,18 @@ public final class ApiRegistry {
      * in a Web Image it and every record its fields and result contain must be registered for reflection.
      */
     public <T> void add(String name, Class<T> type, Function<T, ServiceResult<?>> operation) {
+        add(name, type, operation, JsMarshalling.JSON);
+    }
+
+    /**
+     * Registers {@code name} as {@link #add} does, but reads its request body strictly: a repeated member name, a
+     * scalar of the wrong JSON type, or anything after the body is refused rather than resolved silently.
+     */
+    public <T> void addStrict(String name, Class<T> type, Function<T, ServiceResult<?>> operation) {
+        add(name, type, operation, JsMarshalling.STRICT_JSON);
+    }
+
+    private <T> void add(String name, Class<T> type, Function<T, ServiceResult<?>> operation, ObjectMapper reader) {
         int dot = name.indexOf('.');
         if (dot < 0 || !EngineInfo.IDENTIFIER.matcher(name.substring(0, dot)).matches()
                 || !EngineInfo.IDENTIFIER.matcher(name.substring(dot + 1)).matches()
@@ -32,7 +45,7 @@ public final class ApiRegistry {
         schemas.put(name, JsMarshalling.schema(type));
         methods.put(name, body -> {
             try {
-                return operation.apply(JsMarshalling.JSON.readValue(body, type));
+                return operation.apply(reader.readValue(body, type));
             } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
                 return ServiceResult.status(400, Map.of("error", "Invalid request body: " + e.getOriginalMessage()));
             }

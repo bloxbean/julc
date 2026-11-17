@@ -1,8 +1,10 @@
 package org.julclang.wasm;
 
 import org.julclang.core.text.UplcPrettyPrinter;
+import org.julclang.tools.model.ApplyParamsModels;
 import org.julclang.tools.model.UplcModels;
 import org.julclang.tools.model.VmModels;
+import org.julclang.tools.params.ApplyParams;
 import org.julclang.tools.service.ServiceResult;
 import org.julclang.tools.uplc.EvaluationPreparation;
 import org.julclang.tools.uplc.EvaluationPreparation.Prepared;
@@ -29,6 +31,8 @@ public final class VmApi {
         api.add("vm.decode", UplcModels.DecodeRequest.class, tools::decode);
         api.add("vm.hash", UplcModels.DecodeRequest.class, req -> ServiceResult.ok(
                 Map.of("scriptHash", HexFormat.of().formatHex(ScriptDecoder.decode(req.script()).scriptHash()))));
+        // ADR-077 D6: parameters applied without guessing; its request is read strictly, like its JSON inputs.
+        api.addStrict("vm.applyParams", ApplyParamsModels.Request.class, ApplyParams::run);
         api.add("vm.prettyPrint", PrintRequest.class, req -> ServiceResult.ok(Map.of("uplcText",
                 UplcPrettyPrinter.print(ScriptDecoder.decode(req.script()).program(),
                         new UplcPrettyPrinter.Options(req.width() == null ? 100 : req.width(), 2, 0)).text())));
