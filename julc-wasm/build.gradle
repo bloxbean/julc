@@ -138,6 +138,8 @@ tasks.matching { it.name == 'sourcesJar' }.configureEach { dependsOn 'wasmVersio
 // Both carry julc-worker.js, julc-runtime.js, julc-wasm.d.ts and julc-models.d.ts byte for byte (wasmClientIdentity).
 def clientCommon = layout.buildDirectory.dir('wasm-client/common')
 def clientArchive = layout.buildDirectory.dir('wasm-client/archive')
+// package.json's repository for the three npm packages (ADR-077 D8a: provenance requires it to name this repository).
+def npmRepository = new LinkedHashMap([type: 'git', url: 'git+https://github.com/bloxbean/julc.git', directory: 'julc-wasm'])
 def clientPackage = layout.buildDirectory.dir('wasm-client/package')
 def npmDir = layout.buildDirectory.dir('npm')
 def json = { value -> groovy.json.JsonOutput.toJson(value) }
@@ -229,7 +231,8 @@ tasks.register('wasmClientPackage') {
                 description: 'Promise client, worker and Node.js bridge for the JuLC WebAssembly engines '
                         + '(@julclang/julc-wasm, @julclang/julc-vm-wasm). Experimental: API version 0.',
                 license: 'MIT',
-                repository: 'github:bloxbean/julc',
+                // The object form npm itself publishes (and provenance compares), with the package's directory.
+                repository: npmRepository,
                 homepage: 'https://github.com/bloxbean/julc/tree/main/julc-wasm',
                 type: 'module',
                 types: './index.d.ts',
@@ -501,7 +504,7 @@ export declare function engineFiles(): {manifest: Manifest; launcherUrl: URL; mo
                                 + 'V3), the Java compiler, the decompiler and source debugging. Experimental: API '
                                 + 'version 0.',
                     license: 'MIT',
-                    repository: 'github:bloxbean/julc',
+                    repository: npmRepository,
                     homepage: 'https://github.com/bloxbean/julc/tree/main/julc-wasm',
                     type: 'module',
                     types: './index.d.ts',
@@ -746,16 +749,19 @@ tasks.register('wasmParityExpected', JavaExec) {
 }
 tasks.register('jsTest', Exec) {
     group = 'verification'
-    description = 'Run the JavaScript client, worker, runtime and package tests (requires Node 22.3+ and npm).'
+    description = 'Run the JavaScript client, worker, runtime and package tests, and the release workflow\'s npm ' +
+            'scripts against a local registry (requires Node 22.3+ and npm).'
     // The tests run the staged client files and the packed @julclang/wasm-client, as they are shipped.
     dependsOn 'wasmClientArchive', 'wasmClientPack'
     inputs.dir('src/test/js')
+    inputs.dir('src/ci')
     inputs.file('src/main/java/org/julclang/wasm/JsApi.java')
     inputs.dir(clientArchive)
     inputs.file(tarballOf('@julclang/wasm-client'))
     outputs.upToDateWhen { false }
     commandLine 'node', '--test', '--test-concurrency=1', 'src/test/js/codec.test.mjs', 'src/test/js/worker.test.mjs',
-            'src/test/js/client.test.mjs', 'src/test/js/runtime-identity.test.mjs', 'src/test/js/package.test.mjs'
+            'src/test/js/client.test.mjs', 'src/test/js/runtime-identity.test.mjs', 'src/test/js/package.test.mjs',
+            'src/test/js/npm-release.test.mjs', 'src/test/js/npm-publish.test.mjs'
 }
 tasks.register('vmParityExpected', JavaExec) {
     dependsOn 'testClasses', 'wasmParityExpected'

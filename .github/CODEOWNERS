@@ -17,6 +17,10 @@
 # Scripts the workflows run.
 /.github/scripts/        @bloxbean/release-owners
 
+# Scripts the npm-publish job runs with npm publishing credentials (OIDC), and the jobs that verify the release
+# (ADR-077 D8a): checked out alone, at the tag's commit. They import only each other and Node.js built-ins.
+/julc-wasm/src/ci/       @bloxbean/release-owners
+
 # Version bump -> automatic tag and release.
 /gradle.properties       @bloxbean/release-owners
 

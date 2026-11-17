@@ -14,6 +14,8 @@ import {pathToFileURL} from 'node:url';
 
 const [npmDir, archivesDir, version] = process.argv.slice(2);
 const CLIENT = '@julclang/wasm-client';
+// The object form npm publishes, which provenance compares with the publishing repository (ADR-077 D8a).
+const REPOSITORY = {type: 'git', url: 'git+https://github.com/bloxbean/julc.git', directory: 'julc-wasm'};
 const ENGINES = [
   {name: '@julclang/julc-vm-wasm', archive: 'julc-vm-wasm', variant: 'vm', entry: 'createJulcVm'},
   {name: '@julclang/julc-wasm', archive: 'julc-wasm', variant: 'full', entry: 'createJulc'},
@@ -42,7 +44,7 @@ function checkCommonFields(pkg, name) {
   assert.equal(pkg.type, 'module', name + ' type');
   assert.equal(pkg.scripts, undefined, name + ' has scripts');
   for (const script of INSTALL_SCRIPTS) assert.equal(pkg.scripts?.[script], undefined, name + ' ' + script);
-  assert.equal(pkg.repository, 'github:bloxbean/julc', name + ' repository');
+  assert.deepEqual(pkg.repository, REPOSITORY, name + ' repository');
   assert.equal(pkg.license, 'MIT', name + ' license');
   assert.deepEqual(pkg.engines, {node: '>=22.3.0'}, name + ' engines');
   assert.equal(pkg.types, './index.d.ts', name + ' types');

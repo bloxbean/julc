@@ -73,7 +73,8 @@ test('the tarball holds exactly the package directory, and package.json follows 
     "script-src 'self' 'wasm-unsafe-eval'"]) {
     assert.ok(readme.includes(needed), 'README mentions ' + needed);
   }
-  assert.equal(manifest.repository, 'github:bloxbean/julc');
+  assert.deepEqual(manifest.repository,
+    {type: 'git', url: 'git+https://github.com/bloxbean/julc.git', directory: 'julc-wasm'});
   assert.deepEqual(manifest.engines, {node: '>=22.3.0'});
   assert.deepEqual(manifest.exports, {
     '.': {types: './index.d.ts', node: './node.js', default: './index.js'},
