@@ -15,7 +15,7 @@ import {appendFileSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {parseArgs} from 'node:util';
 import {
-  ReleaseError, certificateProblems, compareVersions, distTag, fallbackTag, isLoopbackRegistry, localTarballs,
+  ReleaseError, candidateTags, certificateProblems, compareVersions, distTag, isLoopbackRegistry, localTarballs,
   normaliseRegistry, packument, parseDigests, releaseIdentity, statementOf, statementProblems, verifiedProvenance,
 } from './npm-release.mjs';
 
@@ -78,8 +78,10 @@ async function main() {
     if (tagged === undefined || compareVersions(tagged, version) < 0) {
       problems.push(`${label}: dist-tag ${tag} names ${tagged ?? 'nothing'}, expected ${version} (D8)`);
     } else if (tagged !== version) {
-      const fallback = document['dist-tags']?.[fallbackTag(version)];
-      console.log(`note ${label}: dist-tag ${tag} names the later ${tagged}; ${fallbackTag(version)} names ${fallback ?? 'nothing'}`);
+      const [, minor, own] = candidateTags(version, tag);
+      const tags = document['dist-tags'];
+      console.log(`note ${label}: dist-tag ${tag} names the later ${tagged}; ${minor} names ${tags[minor] ?? 'nothing'}`
+        + (tags[own] ? `, ${own} names ${tags[own]}` : ''));
     }
     const tags = JSON.stringify(document['dist-tags']);
     console.log(`ok ${label}: registry tarball equals the release's (${tarball.integrity}); dist-tags ${tags}`);

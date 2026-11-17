@@ -104,7 +104,8 @@ test('a new version: the three packages are published in dependency order, with 
     const result = await publish(registry, rel, rel.digests());
     assert.equal(result.status, 0, show(result));
     assert.deepEqual(registry.publishes, [CLIENT, VM, FULL].map(name => `${name}@${VERSION}`));
-    assert.deepEqual(result.outputs, {dist_tag: 'latest', published: 'true'});
+    assert.deepEqual(result.outputs, {published: 'true'});
+    assert.equal(result.text.match(/--tag latest /g)?.length, 3);
     for (const name of [CLIENT, VM, FULL]) assert.equal(registry.packages.get(name)['dist-tags'].latest, VERSION);
     const verified = await run('npm-verify.mjs', registry, ['--dir', rel.dir, '--version', VERSION, '--no-provenance',
       '--work', scratch('verify-work'), ...rel.digests()]);
@@ -258,7 +259,7 @@ test('dry runs publish nothing: a release candidate uses its final release\'s ta
     assert.match(dry.text, /0\.1\.0-pre22-rc1 is a release candidate: never published \(D8\)\. Dry run with its final release's tag, latest/);
     assert.equal(dry.text.match(/--tag latest --ignore-scripts --dry-run/g)?.length, 3, show(dry));
     assert.match(dry.text, /julclang-julc-wasm-0\.1\.0-pre22-rc1\.tgz|julc-wasm@0\.1\.0-pre22-rc1/);
-    assert.deepEqual(dry.outputs, {dist_tag: 'latest', published: 'false'});
+    assert.deepEqual(dry.outputs, {published: 'false'});
     const real = await publish(registry, rc);
     assert.equal(real.status, 1, show(real));
     assert.match(real.text, /release candidate, which is never published/);
@@ -316,24 +317,87 @@ test('npm-verify: a registry tarball that differs, a deleted release asset, or a
   } finally { await registry.close(); }
 });
 
-test('a version older than the one latest names is published as release-<major>.<minor>, and latest stays', async () => {
+/** The dist-tags of the three packages. */
+const tagsOf = registry => Object.fromEntries([CLIENT, VM, FULL].map(name => [name, registry.packages.get(name)?.['dist-tags']]));
+
+test('releases published one after the other in either order never move latest backwards (M4-C8)', async () => {
+  // The workflow serialises every npm publication (one concurrency group for all of them), and the tag is chosen
+  // inside, per package, from the registry as it is then: whichever order two releases run in, latest ends on the
+  // higher one, and the lower one, published second, goes to release-0.1.
+  for (const order of [['0.1.0-pre23', VERSION], [VERSION, '0.1.0-pre23']]) {
+    const registry = await startRegistry();
+    try {
+      for (const version of order) {
+        registry.provenanceOnPublish = identity(version);
+        const rel = release(version);
+        const result = await publish(registry, rel);
+        assert.equal(result.status, 0, order.join(' then ') + '\n' + show(result));
+      }
+      for (const name of [CLIENT, VM, FULL]) {
+        assert.equal(tagsOf(registry)[name].latest, '0.1.0-pre23', `${order.join(' then ')}: ${name}`);
+      }
+      assert.equal(tagsOf(registry)[CLIENT]['release-0.1'], order[0] === VERSION ? undefined : VERSION);
+    } finally { await registry.close(); }
+  }
+});
+
+test('a version older than latest goes to release-<major>.<minor>, per package; npm-verify passes', async () => {
   const registry = await startRegistry({provenanceOnPublish: identity(VERSION)});
   try {
     const rel = release(VERSION);
-    // 0.1.0-pre23 is already out for the VM engine (a recovery of pre22 after pre23, say).
-    const newer = release('0.1.0-pre23');
-    registry.seed(VM, '0.1.0-pre23', newer.bytes(VM), {provenance: identity('0.1.0-pre23')});
+    // 0.1.0-pre23 is already out for the VM engine only (a partial newer publication, say).
+    registry.seed(VM, '0.1.0-pre23', release('0.1.0-pre23').bytes(VM), {provenance: identity('0.1.0-pre23')});
     const result = await publish(registry, rel, rel.digests());
     assert.equal(result.status, 0, show(result));
-    assert.match(result.text, /@julclang\/julc-vm-wasm's latest is 0\.1\.0-pre23, higher than 0\.1\.0-pre22: publishing as release-0\.1/);
-    assert.equal(result.text.match(/--tag release-0\.1 /g)?.length, 3, 'all three alike');
-    assert.deepEqual(result.outputs, {dist_tag: 'release-0.1', published: 'true'});
-    assert.equal(registry.packages.get(VM)['dist-tags'].latest, '0.1.0-pre23', 'latest never moves backwards');
-    assert.equal(registry.packages.get(VM)['dist-tags']['release-0.1'], VERSION);
+    assert.match(result.text, /@julclang\/julc-vm-wasm: latest is 0\.1\.0-pre23, higher than 0\.1\.0-pre22: publishing as release-0\.1/);
+    assert.deepEqual(tagsOf(registry), {
+      [CLIENT]: {latest: VERSION}, [VM]: {latest: '0.1.0-pre23', 'release-0.1': VERSION}, [FULL]: {latest: VERSION}});
     const verified = await verify(registry, rel, ['--work', scratch('verify-work')]);
     assert.equal(verified.status, 0, show(verified));
     assert.match(verified.text, /note @julclang\/julc-vm-wasm@0\.1\.0-pre22: dist-tag latest names the later 0\.1\.0-pre23; release-0\.1 names 0\.1\.0-pre22/);
   } finally { await registry.close(); }
+});
+
+test('a partial newer publication (pre23 client only), then pre22 over older engines (M4-C11)', async () => {
+  const registry = await startRegistry({provenanceOnPublish: identity(VERSION)});
+  try {
+    const pre21 = release('0.1.0-pre21');
+    for (const name of [CLIENT, VM, FULL]) registry.seed(name, '0.1.0-pre21', pre21.bytes(name), {provenance: identity('0.1.0-pre21')});
+    registry.seed(CLIENT, '0.1.0-pre23', release('0.1.0-pre23').bytes(CLIENT), {provenance: identity('0.1.0-pre23')});
+    const rel = release(VERSION);
+    const result = await publish(registry, rel);
+    assert.equal(result.status, 0, show(result));
+    assert.deepEqual(tagsOf(registry), {
+      [CLIENT]: {latest: '0.1.0-pre23', 'release-0.1': VERSION}, [VM]: {latest: VERSION}, [FULL]: {latest: VERSION}});
+    const verified = await verify(registry, rel, ['--work', scratch('verify-work')]);
+    assert.equal(verified.status, 0, show(verified));
+  } finally { await registry.close(); }
+});
+
+test('no fallback tag moves backwards either: release-<version> when release-<major>.<minor> is higher (M4-C10)', async () => {
+  for (const [label, version, tags, expected] of [
+    ['maintenance', '0.1.8', {latest: '0.2.0', 'release-0.1': '0.1.9'}, 'release-0.1.8'],
+    ['prerelease', '0.1.0-pre21', {latest: '0.1.0-pre23', 'release-0.1': '0.1.0-pre22'}, 'release-0.1.0-pre21'],
+    ['fallback lower', '0.1.0-pre22', {latest: '0.1.0-pre23', 'release-0.1': '0.1.0-pre21'}, 'release-0.1'],
+    ['latest lower', '0.2.1', {latest: '0.2.0', 'release-0.1': '0.1.9'}, 'latest'],
+  ]) {
+    const registry = await startRegistry({provenanceOnPublish: identity(version)});
+    try {
+      for (const [tag, holder] of Object.entries(tags)) {
+        registry.seed(CLIENT, holder, release(holder).bytes(CLIENT), {tag, provenance: identity(holder)});
+      }
+      const rel = release(version);
+      const result = await publish(registry, rel);
+      assert.equal(result.status, 0, label + '\n' + show(result));
+      const after = tagsOf(registry)[CLIENT];
+      assert.equal(after[expected], version, label);
+      for (const [tag, holder] of Object.entries(tags)) {
+        if (tag !== expected) assert.equal(after[tag], holder, `${label}: ${tag} unchanged`);
+      }
+      const verified = await verify(registry, rel, ['--work', scratch('verify-work')]);
+      assert.equal(verified.status, 0, label + '\n' + show(verified));
+    } finally { await registry.close(); }
+  }
 });
 
 test('an engine archive deleted from or replaced in the release stops publication and verification', async () => {

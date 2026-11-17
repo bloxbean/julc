@@ -7,7 +7,7 @@ import path from 'node:path';
 import test from 'node:test';
 import {fileURLToPath} from 'node:url';
 import {
-  PACKAGES, certificateIdentity, certificateProblems, compareVersions, distTag, fallbackTag, finalVersionOf,
+  PACKAGES, candidateTags, certificateIdentity, certificateProblems, compareVersions, distTag, finalVersionOf,
   isLoopbackRegistry, isReleaseCandidate, parseDigests, parseSums, releaseIdentity, signingCertificate, statementOf,
   statementProblems, tarballName, verifiedProvenance,
 } from '../../ci/npm-release.mjs';
@@ -42,10 +42,10 @@ test('release candidates, snapshots, 1.x prereleases and malformed versions are 
   for (const version of ['0.1.0-source1', '0.1.0-arc2', '0.1.0-pre21']) assert.ok(!isReleaseCandidate(version), version);
 });
 
-test('an older version than a D8 tag names goes to release-<major>.<minor>', () => {
-  assert.equal(fallbackTag('0.1.0-pre21'), 'release-0.1');
-  assert.equal(fallbackTag('1.2.3'), 'release-1.2');
-  assert.equal(fallbackTag('1.0.0-beta2'), 'release-1.0');
+test('the tags an older version may take: D8\'s, then release-<major>.<minor>, then release-<version>', () => {
+  assert.deepEqual(candidateTags('0.1.0-pre21', 'latest'), ['latest', 'release-0.1', 'release-0.1.0-pre21']);
+  assert.deepEqual(candidateTags('1.2.3', 'latest'), ['latest', 'release-1.2', 'release-1.2.3']);
+  assert.deepEqual(candidateTags('1.0.0-beta2', 'beta'), ['beta', 'release-1.0', 'release-1.0.0-beta2']);
 });
 
 test('a release candidate dry-runs with its final release tag', () => {
@@ -62,7 +62,7 @@ test('version precedence matches semver, including the orders D8 relies on', () 
   assert.ok(compareVersions('0.1.0', '0.1.0-pre99') > 0);
   assert.ok(compareVersions('0.1.0-pre.10', '0.1.0-pre.9') > 0, 'numeric identifiers compare as numbers');
   assert.equal(compareVersions('0.1.0-pre22', '0.1.0-pre22'), 0);
-  // Against npm's own semver, when the npm in use can be found. Also: the fallback tag is not a semver range, which
+  // Against npm's own semver, when the npm in use can be found. Also: the fallback tags are not semver ranges, which
   // npm publish --tag refuses.
   // The npm on PATH is a script in npm's package (bin/npm-cli.js), beside its own node_modules/semver.
   let semver;
@@ -80,7 +80,9 @@ test('version precedence matches semver, including the orders D8 relies on', () 
     '0.1.0-pre21-rc1', '0.1.0-pre21-rc2', '0.1.0-pre21', '0.1.0-beta1', '0.1.0-beta.1', '0.1.0-rc.1', '0.1.0-pre.2',
     '0.1.0-pre.10', '0.1.0-alpha', '0.1.0-alpha.1', '0.1.0-alpha.beta', '1.0.0', '1.0.0-rc1', '0.2.0-pre1', '10.0.0'];
   for (const a of versions) for (const b of versions) assert.equal(compareVersions(a, b), semver.compare(a, b), `${a} vs ${b}`);
-  for (const version of versions) assert.equal(semver.validRange(fallbackTag(version)), null, fallbackTag(version));
+  for (const version of versions) {
+    for (const tag of candidateTags(version, 'latest').slice(1)) assert.equal(semver.validRange(tag), null, tag);
+  }
 });
 
 test('checksum lines and digest arguments are strict', () => {

@@ -86,26 +86,31 @@ export function distTag(version) {
 }
 
 /**
- * The dist-tag for a version older than the one a D8 tag already names (a recovery of version N after N+1 was
- * published, or a maintenance release): `release-<major>.<minor>`, so `latest` (or `beta`) never moves backwards.
+ * The dist-tags a version may be published with, in order of preference (D8): D8's tag, then `release-<major>.<minor>`,
+ * then `release-<version>`, which can only ever name this version. None of them is a semver range (npm refuses those).
  */
-export function fallbackTag(version) {
+export function candidateTags(version, tag) {
   const {major, minor} = parseVersion(version);
-  return `release-${major}.${minor}`;
+  return [tag, `release-${major}.${minor}`, `release-${version}`];
 }
 
 /**
- * The tag to publish `version` with: D8's tag, unless that tag already names a higher version of any of the packages,
- * which publishing would move backwards; then the fallback tag, for all three alike.
+ * The tag one package's version is published with: the first candidate that does not already name a higher version of
+ * that package, so no dist-tag ever moves backwards (a recovery of version N after N+1, a maintenance release, or a
+ * package of N+1 published before the others). Chosen per package, from the registry as it is at publication time;
+ * the workflow publishes one version at a time (one concurrency group for every npm publication).
  */
-export async function publicationTag(registry, version, tag, names = PACKAGES) {
-  for (const name of names) {
-    const holder = (await packument(registry, name))?.['dist-tags']?.[tag];
-    if (holder !== undefined && compareVersions(holder, version) > 0) {
-      return {tag: fallbackTag(version), reason: `${name}'s ${tag} is ${holder}, higher than ${version}`};
+export async function packageTag(registry, name, version, tag) {
+  const tags = (await packument(registry, name))?.['dist-tags'] ?? {};
+  const higher = [];
+  for (const candidate of candidateTags(version, tag)) {
+    const holder = tags[candidate];
+    if (holder === undefined || compareVersions(holder, version) <= 0) {
+      return {tag: candidate, reason: higher.length ? `${name}: ${higher.join(', ')}, higher than ${version}` : null};
     }
+    higher.push(`${candidate} is ${holder}`);
   }
-  return {tag, reason: null};
+  fail(`${name}: ${higher.join(', ')}: every tag D8 allows names a higher version`);
 }
 
 /** A release candidate's final version: 0.1.0-pre21-rc2 gives 0.1.0-pre21, 1.0.0-rc.1 gives 1.0.0. */

@@ -9,15 +9,15 @@
 //        [--registry <url>] [--npm <npm command>] [--visibility-timeout <seconds>]
 //        [--no-provenance]               only against a loopback registry, for the local tests
 //
-// Writes `published` (true only when every package was published or verified as already published) and `dist_tag`
-// to $GITHUB_OUTPUT when it is set. A dry run (a release candidate, or npm_publish = false) publishes nothing.
+// Writes `published` (true only when every package was published or verified as already published) to
+// $GITHUB_OUTPUT when it is set. A dry run (a release candidate, or npm_publish = false) publishes nothing.
 import {spawnSync} from 'node:child_process';
 import {appendFileSync} from 'node:fs';
 import path from 'node:path';
 import {parseArgs} from 'node:util';
 import {
   ReleaseError, distTag, finalVersionOf, isLoopbackRegistry, isReleaseCandidate, localTarballs, normaliseRegistry,
-  parseDigests, publicationTag, registryProvenance, registryVersion, releaseIdentity, statementOf, statementProblems,
+  packageTag, parseDigests, registryProvenance, registryVersion, releaseIdentity, statementOf, statementProblems,
 } from './npm-release.mjs';
 
 const {values: options} = parseArgs({options: {
@@ -103,10 +103,6 @@ async function main() {
   for (const tarball of tarballs) {
     console.log(`${tarball.name}@${version}: sha256 ${tarball.sha256}, ${tarball.integrity}, ${tarball.bytes.length} bytes`);
   }
-  // Never move a D8 tag backwards: an older version than the one it names goes to the fallback tag instead.
-  const chosen = await publicationTag(registry, version, tag);
-  if (chosen.reason) console.log(`${chosen.reason}: publishing as ${chosen.tag}, leaving ${tag} where it is`);
-  tag = chosen.tag;
   console.log(`dist-tag ${tag}; registry ${registry ?? '(npm default)'}; mode ${mode}${provenance ? '' : '; no provenance (local test)'}`);
   summary(`### npm ${mode === 'publish' ? 'publication' : 'dry run'} of ${version} (dist-tag \`${tag}\`)\n`);
 
@@ -142,10 +138,13 @@ async function main() {
       throw new ReleaseError(`${label} is already on the registry and is not this release's tarball with this workflow's `
         + `provenance; nothing more is published (I11):\n  - ${before.problems.join('\n  - ')}`);
     }
-    const run = npmPublish(npm, tarball, tag, {dryRun: mode === 'dry-run', provenance, registry});
+    // No dist-tag ever moves backwards: this package's tag, chosen from the registry as it is now (D8).
+    const chosen = await packageTag(registry, tarball.name, version, tag);
+    if (chosen.reason) console.log(`${chosen.reason}: publishing as ${chosen.tag}, leaving ${tag} where it is`);
+    const run = npmPublish(npm, tarball, chosen.tag, {dryRun: mode === 'dry-run', provenance, registry});
     if (mode === 'dry-run') {
       if (!run.ok) throw new ReleaseError(`npm publish --dry-run failed for ${label}`);
-      summary(`- ${label}: dry run passed (not published)`);
+      summary(`- ${label}: dry run passed with tag \`${chosen.tag}\` (not published)`);
       continue;
     }
     if (!run.ok && !ALREADY_EXISTS.test(run.text)) throw new ReleaseError(`npm publish failed for ${label}; nothing more is published`);
@@ -160,10 +159,9 @@ async function main() {
         + after.problems.join('\n  - '));
     }
     const how = run.ok ? 'published' : 'already published (a registry delay), identical';
-    console.log(`${how} ${label} as ${tag}`);
-    summary(`- ${label}: ${how}${provenance ? ', with provenance' : ''}`);
+    console.log(`${how} ${label} as ${chosen.tag}`);
+    summary(`- ${label}: ${how} as \`${chosen.tag}\`${provenance ? ', with provenance' : ''}`);
   }
-  output('dist_tag', tag);
   output('published', String(mode === 'publish'));
 }
 

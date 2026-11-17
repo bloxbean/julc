@@ -34,6 +34,8 @@ export function provenanceDocument(name, version, bytes, {repository, workflow, 
 }
 
 export async function startRegistry({provenanceOnPublish = null} = {}) {
+  // What npm attaches to a publication: settable between publications (each release's own workflow run).
+  const settings = {provenanceOnPublish};
   const packages = new Map();
   const attestations = new Map();
   const hidden = new Set();
@@ -110,7 +112,7 @@ export async function startRegistry({provenanceOnPublish = null} = {}) {
           return send(res, 400, {error: 'integrity mismatch'});
         }
         const [tag] = Object.keys(body['dist-tags']);
-        store(route, version, bytes, tag, {provenance: provenanceOnPublish});
+        store(route, version, bytes, tag, {provenance: settings.provenanceOnPublish});
         return send(res, 201, {ok: true});
       }
       send(res, 405, {error: 'method not allowed'});
@@ -122,6 +124,8 @@ export async function startRegistry({provenanceOnPublish = null} = {}) {
   url = `http://127.0.0.1:${server.address().port}/`;
   return {
     url, packages, publishes, failPublish,
+    get provenanceOnPublish() { return settings.provenanceOnPublish; },
+    set provenanceOnPublish(value) { settings.provenanceOnPublish = value; },
     /** A version already on the registry, for example from an earlier attempt or published by hand. */
     seed: (name, version, bytes, {tag = 'latest', provenance = null, hide = false} = {}) => {
       store(name, version, bytes, tag, {provenance});
