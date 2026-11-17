@@ -59,7 +59,8 @@ function release(version, {salt = {}} = {}) {
   for (const name of [CLIENT, VM, FULL]) {
     const source = path.join(dir, 'src', name.split('/')[1]);
     mkdirSync(source, {recursive: true});
-    const pkg = {name, version, type: 'module', license: 'MIT', repository: 'github:bloxbean/julc', files: ['index.js'],
+    const pkg = {name, version, type: 'module', license: 'MIT', repository: {type: 'git', url: 'git+https://github.com/bloxbean/julc.git', directory: 'julc-wasm'},
+      files: ['index.js'],
       ...(name === CLIENT ? {} : {dependencies: {[CLIENT]: version}})};
     writeFileSync(path.join(source, 'package.json'), JSON.stringify(pkg, null, 2) + '\n');
     writeFileSync(path.join(source, 'index.js'), `export const name = ${JSON.stringify(name)};\n// ${salt[name] ?? ''}\n`);
@@ -95,7 +96,6 @@ const publish = (registry, rel, extra = [], options) => run('npm-publish.mjs', r
 const verify = (registry, rel, extra = []) =>
   run('npm-verify.mjs', registry, ['--dir', rel.dir, '--version', rel.version, '--no-provenance', ...extra]);
 const show = result => `exit ${result.status}\n${result.text}`;
-const attempts = (registry, name) => registry.publishes.filter(key => key === `${name}@${VERSION}`).length;
 
 test('a new version: the three packages are published in dependency order, with provenance attached', async () => {
   const registry = await startRegistry({provenanceOnPublish: identity(VERSION)});
@@ -314,4 +314,48 @@ test('npm-verify: a registry tarball that differs, a deleted release asset, or a
     assert.equal(result.status, 1, show(result));
     assert.match(result.text, /missing julclang-wasm-client-0\.1\.0-pre22\.tgz/);
   } finally { await registry.close(); }
+});
+
+test('a version older than the one latest names is published as release-<major>.<minor>, and latest stays', async () => {
+  const registry = await startRegistry({provenanceOnPublish: identity(VERSION)});
+  try {
+    const rel = release(VERSION);
+    // 0.1.0-pre23 is already out for the VM engine (a recovery of pre22 after pre23, say).
+    const newer = release('0.1.0-pre23');
+    registry.seed(VM, '0.1.0-pre23', newer.bytes(VM), {provenance: identity('0.1.0-pre23')});
+    const result = await publish(registry, rel, rel.digests());
+    assert.equal(result.status, 0, show(result));
+    assert.match(result.text, /@julclang\/julc-vm-wasm's latest is 0\.1\.0-pre23, higher than 0\.1\.0-pre22: publishing as release-0\.1/);
+    assert.equal(result.text.match(/--tag release-0\.1 /g)?.length, 3, 'all three alike');
+    assert.deepEqual(result.outputs, {dist_tag: 'release-0.1', published: 'true'});
+    assert.equal(registry.packages.get(VM)['dist-tags'].latest, '0.1.0-pre23', 'latest never moves backwards');
+    assert.equal(registry.packages.get(VM)['dist-tags']['release-0.1'], VERSION);
+    const verified = await verify(registry, rel, ['--work', scratch('verify-work')]);
+    assert.equal(verified.status, 0, show(verified));
+    assert.match(verified.text, /note @julclang\/julc-vm-wasm@0\.1\.0-pre22: dist-tag latest names the later 0\.1\.0-pre23; release-0\.1 names 0\.1\.0-pre22/);
+  } finally { await registry.close(); }
+});
+
+test('an engine archive deleted from or replaced in the release stops publication and verification', async () => {
+  for (const archive of [`julc-vm-wasm-${VERSION}.tar.gz`, `julc-wasm-${VERSION}.tar.gz`]) {
+    for (const change of ['deleted', 'replaced']) {
+      for (const run of ['push', 'dispatch']) {
+        const registry = await startRegistry({provenanceOnPublish: identity(VERSION)});
+        try {
+          const rel = release(VERSION);
+          const digests = run === 'push' ? rel.digests() : [];
+          if (change === 'deleted') rmSync(path.join(rel.dir, archive));
+          else writeFileSync(path.join(rel.dir, archive), 'another archive\n');
+          const label = `${archive} ${change}, ${run}`;
+          const result = await publish(registry, rel, digests);
+          assert.equal(result.status, 1, label + '\n' + show(result));
+          assert.match(result.text, change === 'deleted' ? new RegExp(`missing ${archive.replace(/\./g, '\\.')}`)
+            : /SHA-256 [0-9a-f]{64}, but julc-npm-0\.1\.0-pre22-SHA256SUMS\.txt says/, label);
+          assert.deepEqual(registry.publishes, [], label);
+          const verified = await verify(registry, rel, ['--work', scratch('verify-work'), ...digests]);
+          assert.equal(verified.status, 1, label);
+        } finally { await registry.close(); }
+      }
+    }
+  }
 });

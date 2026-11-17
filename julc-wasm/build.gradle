@@ -138,6 +138,8 @@ tasks.matching { it.name == 'sourcesJar' }.configureEach { dependsOn 'wasmVersio
 // Both carry julc-worker.js, julc-runtime.js, julc-wasm.d.ts and julc-models.d.ts byte for byte (wasmClientIdentity).
 def clientCommon = layout.buildDirectory.dir('wasm-client/common')
 def clientArchive = layout.buildDirectory.dir('wasm-client/archive')
+// package.json's repository for the three npm packages (ADR-077 D8a: provenance requires it to name this repository).
+def npmRepository = new LinkedHashMap([type: 'git', url: 'git+https://github.com/bloxbean/julc.git', directory: 'julc-wasm'])
 def clientPackage = layout.buildDirectory.dir('wasm-client/package')
 def npmDir = layout.buildDirectory.dir('npm')
 def json = { value -> groovy.json.JsonOutput.toJson(value) }
@@ -229,7 +231,8 @@ tasks.register('wasmClientPackage') {
                 description: 'Promise client, worker and Node.js bridge for the JuLC WebAssembly engines '
                         + '(@julclang/julc-wasm, @julclang/julc-vm-wasm). Experimental: API version 0.',
                 license: 'MIT',
-                repository: 'github:bloxbean/julc',
+                // The object form npm itself publishes (and provenance compares), with the package's directory.
+                repository: npmRepository,
                 homepage: 'https://github.com/bloxbean/julc/tree/main/julc-wasm',
                 type: 'module',
                 types: './index.d.ts',
@@ -501,7 +504,7 @@ export declare function engineFiles(): {manifest: Manifest; launcherUrl: URL; mo
                                 + 'V3), the Java compiler, the decompiler and source debugging. Experimental: API '
                                 + 'version 0.',
                     license: 'MIT',
-                    repository: 'github:bloxbean/julc',
+                    repository: npmRepository,
                     homepage: 'https://github.com/bloxbean/julc/tree/main/julc-wasm',
                     type: 'module',
                     types: './index.d.ts',

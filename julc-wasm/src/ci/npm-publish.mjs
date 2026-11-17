@@ -16,9 +16,8 @@ import {appendFileSync} from 'node:fs';
 import path from 'node:path';
 import {parseArgs} from 'node:util';
 import {
-  ReleaseError, distTag, finalVersionOf, isLoopbackRegistry, isReleaseCandidate,
-  localTarballs, normaliseRegistry, parseDigests, registryProvenance, registryVersion, releaseIdentity,
-  statementOf, statementProblems,
+  ReleaseError, distTag, finalVersionOf, isLoopbackRegistry, isReleaseCandidate, localTarballs, normaliseRegistry,
+  parseDigests, publicationTag, registryProvenance, registryVersion, releaseIdentity, statementOf, statementProblems,
 } from './npm-release.mjs';
 
 const {values: options} = parseArgs({options: {
@@ -104,6 +103,10 @@ async function main() {
   for (const tarball of tarballs) {
     console.log(`${tarball.name}@${version}: sha256 ${tarball.sha256}, ${tarball.integrity}, ${tarball.bytes.length} bytes`);
   }
+  // Never move a D8 tag backwards: an older version than the one it names goes to the fallback tag instead.
+  const chosen = await publicationTag(registry, version, tag);
+  if (chosen.reason) console.log(`${chosen.reason}: publishing as ${chosen.tag}, leaving ${tag} where it is`);
+  tag = chosen.tag;
   console.log(`dist-tag ${tag}; registry ${registry ?? '(npm default)'}; mode ${mode}${provenance ? '' : '; no provenance (local test)'}`);
   summary(`### npm ${mode === 'publish' ? 'publication' : 'dry run'} of ${version} (dist-tag \`${tag}\`)\n`);
 

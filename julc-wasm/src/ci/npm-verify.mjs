@@ -15,7 +15,7 @@ import {appendFileSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {parseArgs} from 'node:util';
 import {
-  ReleaseError, certificateProblems, compareVersions, distTag, isLoopbackRegistry, localTarballs,
+  ReleaseError, certificateProblems, compareVersions, distTag, fallbackTag, isLoopbackRegistry, localTarballs,
   normaliseRegistry, packument, parseDigests, releaseIdentity, statementOf, statementProblems, verifiedProvenance,
 } from './npm-release.mjs';
 
@@ -72,11 +72,14 @@ async function main() {
     if (!readFileSync(path.join(packed, path.basename(filename))).equals(tarball.bytes)) {
       problems.push(`${label}: the tarball the registry serves differs from the release's ${path.basename(tarball.file)}`);
     }
+    // D8's tag names this version, or a later one (then this version went to the fallback tag, or was superseded
+    // after its publication); never an earlier one, which would mean the tag moved backwards or was never set.
     const tagged = document['dist-tags']?.[tag];
     if (tagged === undefined || compareVersions(tagged, version) < 0) {
       problems.push(`${label}: dist-tag ${tag} names ${tagged ?? 'nothing'}, expected ${version} (D8)`);
     } else if (tagged !== version) {
-      console.log(`note ${label}: dist-tag ${tag} names the later ${tagged}`);
+      const fallback = document['dist-tags']?.[fallbackTag(version)];
+      console.log(`note ${label}: dist-tag ${tag} names the later ${tagged}; ${fallbackTag(version)} names ${fallback ?? 'nothing'}`);
     }
     const tags = JSON.stringify(document['dist-tags']);
     console.log(`ok ${label}: registry tarball equals the release's (${tarball.integrity}); dist-tags ${tags}`);
@@ -103,7 +106,9 @@ async function main() {
       const run = await npm(['audit', 'signatures', '--json', '--include-attestations'], fixture);
       let audit;
       try { audit = JSON.parse(run.stdout); } catch { audit = null; }
-      if (!audit || audit.error) {
+      // Its output is trusted only when it says everything verified: exit 0.
+      if (run.status !== 0) problems.push(`npm audit signatures exited with ${run.status}`);
+      if (run.status !== 0 || !audit || audit.error) {
         problems.push(`npm audit signatures failed: ${audit?.error?.summary ?? run.stdout.slice(0, 500)}`);
       } else {
         for (const kind of ['invalid', 'missing']) {

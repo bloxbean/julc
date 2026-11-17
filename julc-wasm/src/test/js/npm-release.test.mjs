@@ -7,9 +7,9 @@ import path from 'node:path';
 import test from 'node:test';
 import {fileURLToPath} from 'node:url';
 import {
-  PACKAGES, certificateIdentity, certificateProblems, compareVersions, distTag, finalVersionOf, isLoopbackRegistry,
-  isReleaseCandidate, parseDigests, parseSums, releaseIdentity, statementOf, statementProblems, tarballName,
-  verifiedProvenance,
+  PACKAGES, certificateIdentity, certificateProblems, compareVersions, distTag, fallbackTag, finalVersionOf,
+  isLoopbackRegistry, isReleaseCandidate, parseDigests, parseSums, releaseIdentity, signingCertificate, statementOf,
+  statementProblems, tarballName, verifiedProvenance,
 } from '../../ci/npm-release.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -42,6 +42,12 @@ test('release candidates, snapshots, 1.x prereleases and malformed versions are 
   for (const version of ['0.1.0-source1', '0.1.0-arc2', '0.1.0-pre21']) assert.ok(!isReleaseCandidate(version), version);
 });
 
+test('an older version than a D8 tag names goes to release-<major>.<minor>', () => {
+  assert.equal(fallbackTag('0.1.0-pre21'), 'release-0.1');
+  assert.equal(fallbackTag('1.2.3'), 'release-1.2');
+  assert.equal(fallbackTag('1.0.0-beta2'), 'release-1.0');
+});
+
 test('a release candidate dry-runs with its final release tag', () => {
   assert.equal(finalVersionOf('0.1.0-pre21-rc2'), '0.1.0-pre21');
   assert.equal(finalVersionOf('1.0.0-rc.1'), '1.0.0');
@@ -56,7 +62,8 @@ test('version precedence matches semver, including the orders D8 relies on', () 
   assert.ok(compareVersions('0.1.0', '0.1.0-pre99') > 0);
   assert.ok(compareVersions('0.1.0-pre.10', '0.1.0-pre.9') > 0, 'numeric identifiers compare as numbers');
   assert.equal(compareVersions('0.1.0-pre22', '0.1.0-pre22'), 0);
-  // Against npm's own semver, when the npm in use can be found.
+  // Against npm's own semver, when the npm in use can be found. Also: the fallback tag is not a semver range, which
+  // npm publish --tag refuses.
   // The npm on PATH is a script in npm's package (bin/npm-cli.js), beside its own node_modules/semver.
   let semver;
   try {
@@ -73,6 +80,7 @@ test('version precedence matches semver, including the orders D8 relies on', () 
     '0.1.0-pre21-rc1', '0.1.0-pre21-rc2', '0.1.0-pre21', '0.1.0-beta1', '0.1.0-beta.1', '0.1.0-rc.1', '0.1.0-pre.2',
     '0.1.0-pre.10', '0.1.0-alpha', '0.1.0-alpha.1', '0.1.0-alpha.beta', '1.0.0', '1.0.0-rc1', '0.2.0-pre1', '10.0.0'];
   for (const a of versions) for (const b of versions) assert.equal(compareVersions(a, b), semver.compare(a, b), `${a} vs ${b}`);
+  for (const version of versions) assert.equal(semver.validRange(fallbackTag(version)), null, fallbackTag(version));
 });
 
 test('checksum lines and digest arguments are strict', () => {
@@ -161,10 +169,49 @@ test('a version npm audit signatures did not verify, or verified without provena
 
 test('a bundle without a certificate, or with a non-in-toto payload, is refused', () => {
   const bundle = verifiedProvenance(joustAudit, JOUST_NAME, JOUST_VERSION);
-  assert.throws(() => certificateIdentity({...bundle, verificationMaterial: {publicKey: {hint: 'x'}}}), /no signing certificate/);
+  assert.throws(() => certificateIdentity({...bundle, verificationMaterial: {publicKey: {hint: 'x'}}}), /signed by a key/);
   assert.throws(() => statementOf({...bundle, dsseEnvelope: {...bundle.dsseEnvelope, payloadType: 'text/plain'}}), /in-toto/);
   const truncated = structuredClone(bundle);
   truncated.verificationMaterial.certificate.rawBytes = Buffer.from(bundle.verificationMaterial.certificate.rawBytes,
     'base64').subarray(0, 200).toString('base64');
   assert.throws(() => certificateIdentity(truncated), /truncated DER|malformed/);
+});
+
+// The bundle shapes Sigstore has used: v0.1 and v0.2 carry an x509CertificateChain (leaf first), v0.3 a single
+// certificate. npm's deserializer takes the first alternative set, in the order publicKey, x509CertificateChain,
+// certificate, and verifies against that one; JuLC must read exactly that certificate, or refuse.
+test('the signing certificate is the one Sigstore verification uses, and ambiguous bundles are refused', () => {
+  const bundle = verifiedProvenance(joustAudit, JOUST_NAME, JOUST_VERSION);
+  const raw = bundle.verificationMaterial.certificate.rawBytes;
+  const other = Buffer.from(raw, 'base64');
+  other[other.length - 1] ^= 1; // another certificate (its signature byte changed): never verified by anyone
+  const otherRaw = other.toString('base64');
+  const shaped = material => ({...bundle, verificationMaterial: {tlogEntries: [], ...material}});
+  const v03 = shaped({certificate: {rawBytes: raw}});
+  const v01 = {...shaped({x509CertificateChain: {certificates: [{rawBytes: raw}, {rawBytes: otherRaw}]}}),
+    mediaType: 'application/vnd.dev.sigstore.bundle+json;version=0.1'};
+  const v02 = {...shaped({x509CertificateChain: {certificates: [{rawBytes: raw}]}}),
+    mediaType: 'application/vnd.dev.sigstore.bundle+json;version=0.2'};
+  for (const accepted of [v03, v01, v02]) {
+    assert.deepEqual(signingCertificate(accepted), Buffer.from(raw, 'base64'), accepted.mediaType);
+    assert.deepEqual(certificateProblems(accepted, joustIdentity), [], accepted.mediaType);
+  }
+  // A chain whose leaf (the one verified) is another certificate is read as that certificate, not as a later one.
+  const leafOther = shaped({x509CertificateChain: {certificates: [{rawBytes: otherRaw}, {rawBytes: raw}]}});
+  assert.deepEqual(signingCertificate(leafOther), other);
+  // More than one alternative: npm would verify the chain (or the key), JuLC would otherwise read the certificate.
+  for (const [label, material] of [
+    ['chain and certificate', {x509CertificateChain: {certificates: [{rawBytes: otherRaw}]}, certificate: {rawBytes: raw}}],
+    ['key and certificate', {publicKey: {hint: 'SHA256:x'}, certificate: {rawBytes: raw}}],
+    ['key and chain', {publicKey: {hint: 'SHA256:x'}, x509CertificateChain: {certificates: [{rawBytes: raw}]}}],
+  ]) {
+    assert.throws(() => signingCertificate(shaped(material)), /exactly one kind of verification material/, label);
+    assert.throws(() => certificateProblems(shaped(material), joustIdentity), /exactly one kind/, label);
+  }
+  assert.throws(() => signingCertificate(shaped({publicKey: {hint: 'SHA256:x'}})), /signed by a key/);
+  assert.throws(() => signingCertificate(shaped({})), /none/);
+  assert.throws(() => signingCertificate(shaped({x509CertificateChain: {certificates: []}})), /no signing certificate/);
+  // null counts as absent, as in the deserializer.
+  assert.deepEqual(signingCertificate(shaped({publicKey: null, x509CertificateChain: null, certificate: {rawBytes: raw}})),
+    Buffer.from(raw, 'base64'));
 });

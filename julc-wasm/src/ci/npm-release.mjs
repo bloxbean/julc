@@ -85,6 +85,29 @@ export function distTag(version) {
   fail(`${version}: ADR-077 D8 gives no dist-tag for a prerelease from 1.0 on; revisit its table first`);
 }
 
+/**
+ * The dist-tag for a version older than the one a D8 tag already names (a recovery of version N after N+1 was
+ * published, or a maintenance release): `release-<major>.<minor>`, so `latest` (or `beta`) never moves backwards.
+ */
+export function fallbackTag(version) {
+  const {major, minor} = parseVersion(version);
+  return `release-${major}.${minor}`;
+}
+
+/**
+ * The tag to publish `version` with: D8's tag, unless that tag already names a higher version of any of the packages,
+ * which publishing would move backwards; then the fallback tag, for all three alike.
+ */
+export async function publicationTag(registry, version, tag, names = PACKAGES) {
+  for (const name of names) {
+    const holder = (await packument(registry, name))?.['dist-tags']?.[tag];
+    if (holder !== undefined && compareVersions(holder, version) > 0) {
+      return {tag: fallbackTag(version), reason: `${name}'s ${tag} is ${holder}, higher than ${version}`};
+    }
+  }
+  return {tag, reason: null};
+}
+
 /** A release candidate's final version: 0.1.0-pre21-rc2 gives 0.1.0-pre21, 1.0.0-rc.1 gives 1.0.0. */
 export function finalVersionOf(version) {
   const {major, minor, patch, prerelease} = parseVersion(version);
@@ -130,8 +153,8 @@ export function tarballManifest(file) {
 
 /**
  * The three tarballs in `dir`, checked before anything is published or compared:
- * - the checksum file lists exactly the three tarballs and the two archives, and each tarball's SHA-256 equals its
- *   line;
+ * - the checksum file lists exactly the three tarballs and the two archives, and each of the five files is in `dir`
+ *   with the SHA-256 of its line;
  * - every digest the wasm job emitted (in a normal run) equals the checksum file's line, and the file's own digest;
  * - each tarball is the package and version expected, with no install scripts (I7), and an engine depends on exactly
  *   this version of the client (I2).
@@ -149,6 +172,13 @@ export function localTarballs(dir, version, digests = new Map()) {
     if (sums.get(file) !== digest) {
       fail(`${file}: ${sumsName(version)} says ${sums.get(file)}, the wasm job's digest output says ${digest}`);
     }
+  }
+  // The engine archives are part of the release npm depends on (I1): present, and the bytes the checksum file names.
+  for (const archive of archiveNames(version)) {
+    const file = path.join(dir, archive);
+    if (!existsSync(file)) fail(`missing ${archive} in ${dir}`);
+    const sha256 = sha256Hex(readFileSync(file));
+    if (sha256 !== sums.get(archive)) fail(`${archive}: SHA-256 ${sha256}, but ${sumsName(version)} says ${sums.get(archive)}`);
   }
   return PACKAGES.map(name => {
     const file = path.join(dir, tarballName(name, version));
@@ -294,12 +324,31 @@ const FULCIO = {issuer: '1.3.6.1.4.1.57264.1.8', buildSignerUri: '1.3.6.1.4.1.57
   runnerEnvironment: '1.3.6.1.4.1.57264.1.11', sourceRepositoryUri: '1.3.6.1.4.1.57264.1.12',
   sourceRepositoryRef: '1.3.6.1.4.1.57264.1.14'};
 
-/** The signer's identity from a Sigstore bundle's Fulcio certificate (bundle 0.2 or 0.3 form). */
-export function certificateIdentity(bundle) {
+// A Sigstore bundle's verification material is a protobuf oneof. npm 11.21.1's deserializer
+// (@sigstore/protobuf-specs, VerificationMaterial.fromJSON) takes the first that is set, in the order publicKey,
+// x509CertificateChain, certificate, and @sigstore/verify checks the signature against that one: for a chain, its first
+// (leaf) certificate. Reading another alternative could read a certificate nothing verified, so a bundle with more than
+// one, or with a public key instead of a Fulcio certificate, is refused.
+const isSet = value => value !== null && value !== undefined;
+const MATERIAL = ['publicKey', 'x509CertificateChain', 'certificate'];
+
+/** The DER bytes of the certificate Sigstore verification checks a bundle's signature against. */
+export function signingCertificate(bundle) {
   const material = bundle?.verificationMaterial;
-  const raw = material?.certificate?.rawBytes ?? material?.x509CertificateChain?.certificates?.[0]?.rawBytes;
-  if (!raw) fail('the provenance bundle has no signing certificate');
-  const extensions = certificateExtensions(Buffer.from(raw, 'base64'));
+  const present = MATERIAL.filter(kind => isSet(material?.[kind]));
+  if (present.length !== 1) {
+    fail(`the provenance bundle must carry exactly one kind of verification material; it has ${present.join(', ') || 'none'}`);
+  }
+  if (present[0] === 'publicKey') fail('the provenance bundle is signed by a key, not a Fulcio certificate');
+  const raw = present[0] === 'certificate' ? material.certificate.rawBytes
+    : material.x509CertificateChain.certificates?.[0]?.rawBytes;
+  if (typeof raw !== 'string' || !raw) fail('the provenance bundle has no signing certificate');
+  return Buffer.from(raw, 'base64');
+}
+
+/** The signer's identity from a Sigstore bundle's Fulcio certificate (the one its signature is verified against). */
+export function certificateIdentity(bundle) {
+  const extensions = certificateExtensions(signingCertificate(bundle));
   const identity = {};
   for (const [key, oid] of Object.entries(FULCIO)) {
     const value = extensions.get(oid);
