@@ -3,7 +3,7 @@
 **Status:** Accepted (2026-11-16) by the maintainer, after design approval from reviewer1 (r4) and the internal
 Fable and Codex reviews (r9; r10 applies their last shared finding). Design only; the implementation follows in
 milestones M0 to M5.
-**Date:** 2026-11-16 to 2026-11-17 (r1 to r17)
+**Date:** 2026-11-16 to 2026-11-17 (r1 to r18)
 **Risk class:** **medium**.
 - This is a public distribution with a lasting API. Package names and exported type names are hard to change once
   published.
@@ -385,6 +385,17 @@ Two identities are checked, at run time, before the client returns.
     identity checks the engine must pass after loading: `api`, `variant` and `groups` against the manifest, and the
     versions (D1a). A mismatch disposes the worker.
   - Other origins are refused (open question 7).
+- **The client's own identity snapshot** (r18, M3-C4).
+  - Before any worker or `workerFactory` adapter exists, the client takes a private deep copy of the manifest it
+    expects, and records the runtime, launcher and module URLs as strings. In archive mode they are resolved from
+    `baseUrl` exactly as the worker resolves them.
+  - The worker's start message carries a separate copy. Every readiness check uses only the snapshot.
+  - The worker's ready message reports the URLs it loaded (`loaded: {runtime, launcher, module}`), and the client
+    refuses any that differs from the one it named.
+  - So nothing an adapter or the caller does to the objects it is given changes what the client accepts.
+  - An adapter that forges the worker's replies is caller code, which already controls the worker; the snapshot does
+    not claim to stop it. The worker and client are always one release (package mode ships them together, archive
+    mode versions them with `?engine=`, embedders take both from the jar), so every worker sends `loaded`.
 - **No mixing.** A client is in exactly one mode. Giving `baseUrl` together with `launcherUrl` or `moduleUrl` is an error.
 - **The runtime file** (r12) is a third script the worker loads, under the same rules: D2a's URL checks in package
   mode, and a fixed file name beside the manifest in archive mode.
@@ -967,9 +978,11 @@ provenance; only the first real publication does (M4).
   - the engine's `api`, `variant` and `groups` with its manifest;
   - the engine's `features().julcVersion` with the client's own `CLIENT_VERSION`;
   - for an engine whose `variant` is `full` or `vm`, the engine's `version()` with both;
-  - a preloaded runtime's stamp with the image's version, checked by the image before the runtime is used (D2).
+  - a preloaded runtime's stamp with the image's version, checked by the image before the runtime is used (D2);
+  - the files the worker reports it loaded with the ones the client named (D2a, r18).
 
-  Constrains D1, D1a, D2.
+  The client compares against its own snapshot, taken before any worker or adapter sees the request (D2a). Constrains
+  D1, D1a, D2, D2a.
 - **I3 (VM image contents).** The VM engine contains no compiler, decompiler, JavaParser or cardano-client-lib code,
   including after `vm.applyParams` (the existing `-H:AbortOnTypeReachable` guards). Constrains D6.
 - **I4 (application is exact).** For any request `vm.applyParams` accepts (D6a):
@@ -1759,3 +1772,8 @@ choosing the recommendation recorded with each.
   - M3-F9: both first-load figures with their conditions; the both-engines total corrected to about 49 MB; the full
     engine's growth since pre20 and its probable cause; the asserted launcher identity and the redirect test added to
     Verification and M3's exit criteria.
+- r18 (2026-11-17, responds to Codex's review of M3 at 2c790e0c):
+  - M3-C4: D2a adds the client's private identity snapshot and the worker's `loaded` report, and I2 checks the loaded
+    files. A forwarding `workerFactory` that rewrote the start message could make `createJulcVm()` accept the full
+    engine; the client now refuses it.
+  - The threat-model limit is explicit: an adapter that forges the worker's replies is not stopped.
