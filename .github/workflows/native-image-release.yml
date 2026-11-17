@@ -184,8 +184,6 @@ jobs:
     name: Build JuLC WebAssembly distributions
     permissions:
       contents: read
-      # The build-once check verifies attestations of an existing release's npm tarballs.
-      attestations: read
     env:
       VERSION: ${{ needs.validate.outputs.version }}
     # ADR-077 D8a: the SHA-256 of the three npm tarballs and the two engine archives, for the checks of this run
@@ -199,40 +197,28 @@ jobs:
 
     steps:
     # ADR-077 D8a: a release is built once. Web Image output is not byte-identical across builds, so a whole-workflow
-    # re-run would make different npm tarballs from those already released (and perhaps published). Stop before
-    # building when the tag's GitHub release already holds them.
+    # re-run would make different bytes from those already attached (and perhaps on npm). Stop before building when
+    # the tag has a GitHub release at all. github-release creates releases published from the start, never drafts, so
+    # this read-only token sees every release it made.
     - name: Refuse to build a released version again
       env:
         GH_TOKEN: ${{ github.token }}
       shell: bash
       run: |
         set -euo pipefail
-        # Listing, not GET /releases/tags/<tag>, which never returns a draft. This read-only token cannot see drafts
-        # either; github-release, whose token can, refuses a draft's differing assets.
-        if ! assets=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
-            --jq ".[] | select(.tag_name == \"v${VERSION}\") | .assets[].name" 2> "$RUNNER_TEMP/release-view.err"); then
-          cat "$RUNNER_TEMP/release-view.err" >&2
+        if ! releases=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+            --jq ".[] | select(.tag_name == \"v${VERSION}\") | \"\(.id) \(.assets | length)\"" 2> "$RUNNER_TEMP/releases.err"); then
+          cat "$RUNNER_TEMP/releases.err" >&2
           echo "::error::Could not read the GitHub releases; refusing to build without knowing." >&2
           exit 1
         fi
-        held=$(grep -E "^(julclang-.*-${VERSION//./\\.}\.tgz|julc-npm-${VERSION//./\\.}-SHA256SUMS\.txt)\$" <<< "$assets" || true)
-        if [[ -z "$held" ]]; then
-          echo "No release of v${VERSION}, or one without npm files: building."
+        if [[ -z "$releases" ]]; then
+          echo "No GitHub release of v${VERSION} yet: building."
           exit 0
         fi
-        status=verified
-        mkdir -p "$RUNNER_TEMP/released"
-        gh release download "v${VERSION}" --repo "$GITHUB_REPOSITORY" --dir "$RUNNER_TEMP/released" --pattern 'julclang-*.tgz'
-        for file in "$RUNNER_TEMP"/released/*.tgz; do
-          gh attestation verify "$file" --repo "$GITHUB_REPOSITORY" \
-            --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/native-image-release.yml" \
-            --source-ref "refs/tags/v${VERSION}" --source-digest "$GITHUB_SHA" --signer-digest "$GITHUB_WORKFLOW_SHA" \
-            --deny-self-hosted-runners > /dev/null || status='NOT verified'
-        done
-        echo "::error::The release of v${VERSION} already holds npm files (${held//$'\n'/, }; attestation: ${status})." \
-          "A release is built once (ADR-077 D8a): rebuilding would make different bytes. To finish its npm publication," \
-          "use 'Re-run failed jobs' in the original run, or dispatch this workflow on the tag:" \
-          "gh workflow run native-image-release.yml --ref v${VERSION} (adr/evidence/077-m4/RUNBOOK.md)." >&2
+        echo "::error::v${VERSION} already has a GitHub release (id and asset count: ${releases//$'\n'/; })." \
+          "A release is built once (ADR-077 D8a): rebuilding would make different bytes. Use 'Re-run failed jobs' in" \
+          "the original run; after a whole-workflow re-run, see 'Recovery' in adr/evidence/077-m4/RUNBOOK.md." >&2
         exit 1
 
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -668,42 +654,64 @@ jobs:
     - name: List release assets
       run: ls -la dist/
 
-    # ADR-077 D8a, create-once: a completed asset (state "uploaded") is never replaced. One with the same name and
-    # other bytes stops the job; one with the same bytes is kept (the upload below skips it). A failed upload's
-    # placeholder (state "starter", which an HTTP 502 can leave) is deleted, so the original bytes are uploaded again.
-    # The release is found by listing releases, not by GET /releases/tags/<tag>, which never returns a draft: the
-    # upload action creates a final (non-prerelease) release as a draft, uploads, then publishes it, so a failed run
-    # can leave a draft holding assets. This job's write token sees drafts.
-    - name: Keep completed assets, clear failed uploads
+    # ADR-077 D8a, create-once. The release is created here, published from the start: never a draft (a draft is
+    # invisible to the read-only tokens of the build-once check and the npm jobs, and GET /releases/tags never returns
+    # one). Then each file is attached unless it already is: a completed asset (state "uploaded") with the same bytes is
+    # kept, one with other bytes stops the job before anything is uploaded, and a failed upload's placeholder (state
+    # "starter", which an HTTP 502 can leave) is deleted and uploaded again. The npm files go first. Uploading to a
+    # published release needs the repository's immutable releases off (they are, 2026-11-17).
+    - name: Create the release once and attach its assets
       env:
         GH_TOKEN: ${{ github.token }}
+        PRERELEASE: ${{ needs.validate.outputs.is_final != 'true' }}
       shell: bash
       run: |
         set -euo pipefail
         gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
           --jq ".[] | select(.tag_name == \"v${VERSION}\") | [.id, .draft] | @tsv" > "$RUNNER_TEMP/releases.tsv"
         count=$(wc -l < "$RUNNER_TEMP/releases.tsv" | tr -d ' ')
-        if [[ "$count" == 0 ]]; then
-          echo "No release (published or draft) for v${VERSION} yet."
-          exit 0
-        fi
-        if [[ "$count" != 1 ]]; then
+        if [[ "$count" -gt 1 ]]; then
           echo "::error::${count} releases (drafts included) have tag v${VERSION}; resolve that by hand first." >&2
           exit 1
         fi
-        IFS=$'\t' read -r id draft < "$RUNNER_TEMP/releases.tsv"
-        echo "Release ${id} for v${VERSION} (draft: ${draft})."
+        if [[ "$count" == 1 ]]; then
+          IFS=$'\t' read -r id draft < "$RUNNER_TEMP/releases.tsv"
+          if [[ "$draft" != false ]]; then
+            echo "::error::Release ${id} for v${VERSION} is a draft, which this workflow never makes; check its" \
+              "assets and publish or delete it by hand first." >&2
+            exit 1
+          fi
+          echo "Release ${id} for v${VERSION} exists."
+        else
+          # Latest is decided by semantic version and date (legacy), so a maintenance release (e.g. 0.1.3 after 0.2.0)
+          # does not take the Latest badge.
+          id=$(gh api -X POST "repos/${GITHUB_REPOSITORY}/releases" -f tag_name="v${VERSION}" -f name="${VERSION}" \
+            -F prerelease="${PRERELEASE}" -F draft=false -f make_latest=legacy --jq .id)
+          echo "Created release ${id} for v${VERSION} (prerelease: ${PRERELEASE})."
+        fi
         gh api --paginate "repos/${GITHUB_REPOSITORY}/releases/${id}/assets?per_page=100" \
           --jq '.[] | [.id, .name, .state, (.digest // "")] | @tsv' > "$RUNNER_TEMP/assets.tsv"
+        # The npm files first: once any of them is attached, a release has what its npm publication needs, or a
+        # starter placeholder to retry.
+        ordered=()
+        for file in dist/julclang-*.tgz "dist/julc-vm-wasm-${VERSION}.tar.gz" "dist/julc-wasm-${VERSION}.tar.gz" \
+            "dist/julc-npm-${VERSION}-SHA256SUMS.txt" dist/*; do
+          if [[ -f "$file" && " ${ordered[*]-} " != *" ${file} "* ]]; then ordered+=("$file"); fi
+        done
         failed=0
-        for file in dist/*; do
+        upload=()
+        for file in "${ordered[@]}"; do
           name=$(basename "$file")
           row=$(awk -F'\t' -v name="$name" '$2 == name' "$RUNNER_TEMP/assets.tsv")
-          [[ -n "$row" ]] || continue
+          if [[ -z "$row" ]]; then
+            upload+=("$file")
+            continue
+          fi
           IFS=$'\t' read -r asset _ state digest <<< "$row"
           if [[ "$state" == starter ]]; then
             echo "Deleting ${name}'s failed upload (state starter); it is uploaded again from this run's bytes."
             gh api -X DELETE "repos/${GITHUB_REPOSITORY}/releases/assets/${asset}"
+            upload+=("$file")
             continue
           fi
           if [[ "$state" != uploaded ]]; then
@@ -727,24 +735,14 @@ jobs:
             failed=1
           fi
         done
-        exit "$failed"
+        if [[ "$failed" != 0 ]]; then exit 1; fi
+        for file in "${upload[@]+"${upload[@]}"}"; do
+          echo "Attaching $(basename "$file")."
+          gh release upload "v${VERSION}" "$file" --repo "$GITHUB_REPOSITORY"
+        done
 
-    # Creates the release for the tag, or adds the missing assets if it already exists, never replacing one. Do not
-    # pre-create a draft release for the tag: the action publishes an existing draft.
-    - name: Create GitHub release
-      uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
-      with:
-        name: ${{ needs.validate.outputs.version }}
-        files: dist/*
-        fail_on_unmatched_files: true
-        overwrite_files: false
-        prerelease: ${{ needs.validate.outputs.is_final != 'true' }}
-        # Latest is decided by semantic version and date, so a maintenance release (e.g. 0.1.3 after
-        # 0.2.0) does not take the Latest badge.
-        make_latest: legacy
-
-    # ADR-077 D8a: what the release holds now, whatever the action did. Exactly one release for the tag, published
-    # (not a draft), and every file of this run attached, completed, with this run's bytes.
+    # ADR-077 D8a: what the release holds now. Exactly one release for the tag, published (not a draft), and every
+    # file of this run attached, completed, with this run's bytes.
     - name: Verify the release's assets
       env:
         GH_TOKEN: ${{ github.token }}
@@ -799,6 +797,8 @@ jobs:
     name: Read the npm gates
     permissions:
       contents: read
+      # Reading an environment and its deployment policies needs the Actions read permission.
+      actions: read
     outputs:
       version: ${{ steps.gates.outputs.version }}
       mode: ${{ steps.gates.outputs.mode }}
@@ -851,6 +851,30 @@ jobs:
         echo "mode=$MODE" >> "$GITHUB_OUTPUT"
         echo "v${VERSION} (${GITHUB_EVENT_NAME}): github_release=${GITHUB_RELEASE:-false}," \
           "npm_publish=${NPM_PUBLISH:-false}, release candidate: ${RC}; npm: ${MODE}" | tee -a "$GITHUB_STEP_SUMMARY"
+
+    # npm's trusted publisher checks no ref, so the npm-publish environment's policy (v* tags only) is part of the
+    # control. GitHub creates a missing environment, unprotected, for the first job that names it: so publication needs
+    # the environment to exist with exactly one deployment policy, the tag pattern v*. Fails closed.
+    - name: Check the npm-publish environment's policy
+      if: steps.gates.outputs.mode == 'publish'
+      env:
+        GH_TOKEN: ${{ github.token }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        refuse() {
+          echo "::error::The npm-publish environment must exist with exactly one deployment policy, the tag pattern" \
+            "v* ($1). Create it as adr/evidence/077-m4/RUNBOOK.md says, then dispatch this workflow on the tag." >&2
+          exit 1
+        }
+        environment=$(gh api "repos/${GITHUB_REPOSITORY}/environments/npm-publish") || refuse "it could not be read"
+        custom=$(jq -r '.deployment_branch_policy.custom_branch_policies // false' <<< "$environment")
+        protected=$(jq -r '.deployment_branch_policy.protected_branches // false' <<< "$environment")
+        [[ "$custom" == true && "$protected" == false ]] || refuse "custom policies: ${custom}, protected branches: ${protected}"
+        policies=$(gh api "repos/${GITHUB_REPOSITORY}/environments/npm-publish/deployment-branch-policies" \
+          --jq '[.branch_policies[] | "\(.type):\(.name)"] | join(",")') || refuse "its policies could not be read"
+        [[ "$policies" == 'tag:v*' ]] || refuse "its policies are ${policies:-none}"
+        echo "npm-publish environment: tag:v* only."
 
   # ADR-077 D8 and D8a: a dry run instead of a publication (npm_publish = false, or a release candidate). The same
   # script, on the same verified release assets, with npm publish --dry-run; read-only, no environment, no id-token.
@@ -936,10 +960,12 @@ jobs:
     timeout-minutes: 60
     name: Publish the npm packages
     environment: npm-publish
-    # One publication per tag at a time. A run waiting here is never cancelled by a run in progress; GitHub keeps one
-    # pending job per group, so a newer waiting run replaces an older waiting one (they never overlap).
+    # One npm publication at a time, of any version: the dist-tags are shared by every version, and each package's tag
+    # is chosen inside this job from the registry as it is then (M4-C8). A running publication is never cancelled.
+    # GitHub keeps one pending job per group: a newer pending job cancels an older pending one, which then shows as
+    # cancelled and is finished by dispatching this workflow on that release's tag (RUNBOOK.md).
     concurrency:
-      group: npm-publish-${{ github.ref }}
+      group: npm-publish-julclang
       cancel-in-progress: false
     permissions:
       contents: read
