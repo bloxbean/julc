@@ -8,8 +8,7 @@ npm facts below were checked against <https://docs.npmjs.com/trusted-publishers>
 - trusted publishing needs npm CLI 11.5.1 or later and Node 22.14.0 or later (the jobs pin Node 24.22.3 and the npm
   11.21.1 tarball by SHA-256);
 - a GitHub Actions trusted publisher names the owner, the repository, the workflow **file name** (with `.yml`) and,
-  optionally, an environment. It does **not** name a branch or tag: the environment's deployment policy is what keeps
-  publication to release tags;
+  optionally, an environment. It does **not** name a branch or tag (see "Who can publish" below);
 - `npm stage publish` is always allowed; direct `npm publish` must be chosen ("Allowed actions");
 - a newly created configuration expires unless its first publication succeeds within **2 days**;
 - managing dist-tags through trusted publishing is a separate permission ("Allow npm dist-tag"), off by default;
@@ -23,9 +22,9 @@ npm facts below were checked against <https://docs.npmjs.com/trusted-publishers>
 | `uplc-conformance`, `validate`, `native-image`, `wasm`, `wasm-package-checks`, `native-image-playground`, `shadow-jars` | tag push | as before | `contents: read` | none | `github.event_name == 'push'`; `wasm` first stops if the tag already has a GitHub release |
 | `attest` | tag push | `validate`, `wasm` | `id-token: write`, `attestations: write` | none | push and `github_release == true` |
 | `github-release` | tag push | `validate`, `native-image`, `wasm`, `wasm-package-checks`, `native-image-playground`, `shadow-jars`, `attest` | `contents: write` | none | push and `github_release == true`; creates the release published (never a draft), attaches each file once |
-| `npm-gates` | push and dispatch | none | `contents: read`, `actions: read` | none | always; fails unless the ref is `refs/tags/v<version>` matching `gradle.properties` at the tag, and, to publish, unless the `npm-publish` environment has exactly the policy tag `v*` |
+| `npm-gates` | push and dispatch | none | `contents: read` | none | always; fails unless the ref is `refs/tags/v<version>` matching `gradle.properties` at the tag |
 | `npm-dry-run` | push and dispatch | `npm-gates`, `wasm`, `attest`, `github-release` | `contents: read`, `attestations: read` | none | `!cancelled() && npm-gates succeeded && mode == 'dry-run' && (dispatch \|\| (github-release and attest succeeded))` |
-| `npm-publish` | push and dispatch | `npm-gates`, `wasm`, `attest`, `github-release` | `contents: read`, `id-token: write`, `attestations: read` | **`npm-publish`** | the same with `mode == 'publish'`; one concurrency group for every version (`npm-publish-julclang`), a running job never cancelled |
+| `npm-publish` | push and dispatch | `npm-gates`, `wasm`, `attest`, `github-release` | `contents: read`, `id-token: write`, `attestations: read` | `release-staging` | the same with `mode == 'publish'`; first step: the ref must be exactly `refs/tags/v<version>`; one concurrency group for every version (`npm-publish-julclang`), a running job never cancelled |
 | `npm-verify` | push and dispatch | `npm-gates`, `wasm`, `npm-publish` | `contents: read`, `attestations: read` | none | `!cancelled() && npm-publish succeeded && published == 'true'` |
 | `update-homebrew` | tag push | `validate`, `github-release` | none (a secret of `release-staging`) | `release-staging` | push and `github_release == true` |
 
@@ -62,26 +61,31 @@ read-only tokens), and verifies each of the five files with `gh attestation veri
 --source-digest <tag commit> --signer-digest <workflow commit> --deny-self-hosted-runners`. The scripts then check the
 checksum file against all five files and, in the tag's own run, against the `wasm` job's digests.
 
+## Who can publish
+
+`npm-publish` runs in `release-staging`, release-ops' environment for release jobs (the one JOUST's npm job and this
+workflow's `update-homebrew` use; it holds the Maven Central credentials of `release.yml` too). It admits `v*` tags,
+`main` and `release/**`, with no reviewers. npm's trusted publisher checks the workflow file and the environment, not
+the ref, so what keeps publication to release tags is:
+- `npm-publish`'s first step, which fails unless the run's ref is exactly `refs/tags/v<version>` (and `npm-gates`
+  before it, which refuses any ref that is not a `v*` tag matching `gradle.properties` there). This is the control
+  against a dispatch from `main` or `release/**`, which the environment admits;
+- the tag ruleset (who may create `v*` tags) and `tag-release.yml`'s `authorize` job, which needs a release owner's
+  approval in the `release` environment before a release tag is created;
+- `main` and `release/**` take changes only through pull requests with code-owner review, and CODEOWNERS covers the
+  workflows and `julc-wasm/src/ci`, the scripts `npm-publish` runs.
+
+So `release-staging`'s exposure for npm is the same as for the Maven Central credentials it already holds. If the
+environment ever refuses a release tag, fix it in Settings and use "Re-run failed jobs": the environment's settings are
+read when the job starts, not fixed in the tag's workflow.
+
 ## One-time setup, before the first real publication
 
-Steps 1 to 4 can be done any time; steps 5 and 6 only when the first real release is ready, because of the 2-day
+Steps 1 to 3 can be done any time; steps 4 and 5 only when the first real release is ready, because of the 2-day
 expiry.
 
-1. **Create the `npm-publish` environment** (Settings, Environments): deployment branches and tags "Selected", with the
-   tag rule `v*` only (no branches). Optionally a required reviewer from release-owners. No secrets. Because npm's
-   trusted publisher does not check the ref, this policy, the job's own ref check, and who may push `v*` tags and run
-   workflows (repository write access, the tag rulesets) together decide who can publish. **It does not exist yet**
-   (2026-11-17), and GitHub creates a missing environment, with no protection, for the first job that names it; so
-   `npm-gates` refuses to dry-run or publish unless the environment exists with exactly the policy tag `v*` (it reads
-   it with the job token's `actions: read`). Create it **before the rehearsal**: the rehearsal's dry run runs the same
-   check and fails without it. Read the policy back, and do not set `npm_publish = true` until this prints exactly
-   `tag v*` and `true false`:
-   ```
-   gh api repos/bloxbean/julc/environments/npm-publish/deployment-branch-policies --jq '.branch_policies[] | "\(.type) \(.name)"'
-   gh api repos/bloxbean/julc/environments/npm-publish --jq '.deployment_branch_policy | "\(.custom_branch_policies) \(.protected_branches)"'
-   ```
-2. **Rehearse** (see "Rehearsal" below): a release candidate with `github_release = true`.
-3. **Publish a placeholder of each name, by hand, with 2FA** (a package must exist before a trusted publisher can be
+1. **Rehearse** (see "Rehearsal" below): a release candidate with `github_release = true`.
+2. **Publish a placeholder of each name, by hand, with 2FA** (a package must exist before a trusted publisher can be
    configured on its settings page). As JOUST did, for each of the three names:
    ```
    mkdir placeholder && cd placeholder
@@ -93,20 +97,20 @@ expiry.
    ```
    npm makes a package's first version `latest` whatever `--tag` says, so the placeholder is briefly `latest` until
    the first real version replaces it.
-4. **Refuse tokens.** On each package's Settings page, choose "Require two-factor authentication and disallow
+3. **Refuse tokens.** On each package's Settings page, choose "Require two-factor authentication and disallow
    tokens", right after publishing its placeholder if npm allows it before a trusted publisher exists, otherwise in
-   step 5.
-5. **Configure the trusted publishers, immediately before the first real release** (it expires after 2 days unused).
+   step 4.
+4. **Configure the trusted publishers, immediately before the first real release** (it expires after 2 days unused).
    On each package's Settings page, "Trusted publishing", GitHub Actions:
    - Organization or user: `bloxbean`
    - Repository: `julc`
    - Workflow filename: `native-image-release.yml`
-   - Environment name: `npm-publish`
+   - Environment name: `release-staging`
    - Allowed actions: **allow direct `npm publish`** (staged publishing alone does not let the job publish)
    - Leave "Allow npm dist-tag" off.
-6. **Set `npm_publish = true`** (with `github_release = true`) in `gradle.properties` on the release commit, and tag
+5. **Set `npm_publish = true`** (with `github_release = true`) in `gradle.properties` on the release commit, and tag
    the release within the 2 days. If the configuration expires first, delete and create it again.
-7. **After the first real publication**, check that `npm-verify` passed (registry contents, `npm audit signatures`,
+6. **After the first real publication**, check that `npm-verify` passed (registry contents, `npm audit signatures`,
    and provenance naming `bloxbean/julc`, `.github/workflows/native-image-release.yml` and `refs/tags/v<version>`),
    check on npmjs.com that each package shows its provenance and that `latest` is the new version, and deprecate each
    placeholder:
@@ -141,10 +145,8 @@ run):
 4. **A dispatch on the candidate's tag** runs only `npm-gates` and `npm-dry-run`, which verifies the existing assets.
 5. **A whole-workflow re-run** of the candidate's run stops in `wasm` ("already has a GitHub release"), building
    nothing.
-6. **The `npm-publish` environment's policy** reads back as above (step 1 of the setup), and the candidate's
-   `npm-gates` log shows "npm-publish environment: tag:v* only": the job token could read the policy, so a real tag's
-   check will too. If that step failed for any reason other than the policy itself, do not set `npm_publish = true`:
-   a real tag whose check cannot read the policy can never reach npm (the workflow at a tag is fixed).
+6. **The ref check:** a dispatch from `main` (step 3) fails in `npm-gates`; `npm-publish`'s own exact-ref check is
+   covered by `workflow-steps-test.py` (main, `release/**`, another tag, a branch named like the tag).
 7. **Checks that need a modified workflow** (a deliberately failed `attest`, a failed upload): never on the real
    repository, where they would leave a permanent `v*` tag and release made by a modified workflow. Run them in a
    fork or a scratch repository, with `npm_publish = false` (dry-run mode) and no trusted publisher: for example
@@ -157,8 +159,7 @@ run):
    tag (above).
    **Never create a GitHub release, or a draft, for the tag by hand** before the run: `wasm` stops when the tag already
    has a release ("built once"), and `github-release` refuses a draft.
-2. Tag as usual (`tag-release.yml`). The tag push runs the whole workflow. If the `npm-publish` environment has a
-   required reviewer, approve the deployment.
+2. Tag as usual (`tag-release.yml`, with a release owner's approval). The tag push runs the whole workflow.
 3. A published version can never be replaced, unpublished for reuse, or published again with other bytes. Check the
    release notes (D7: every API change is listed) before setting `npm_publish = true`.
 4. The release is public from the moment `github-release` creates it, while its assets upload (a few minutes),
@@ -203,15 +204,15 @@ assets or recreate a release to "start again"; npm is the record once a version 
   its attested bytes, and the version is spent (release the next one).
 - **The first real publication fails at authentication** (npm answers 401, 403 or 404 on `PUT`, or "OIDC token
   exchange" fails in the log): nothing was published. Fix the trusted publisher (repository, workflow file name,
-  environment `npm-publish`, direct publishing allowed, not expired) and use "Re-run failed jobs".
+  environment `release-staging`, direct publishing allowed, not expired) and use "Re-run failed jobs".
 - **After a refused full re-run, or once the original run can no longer be re-run**: dispatch the workflow **on the
   tag**:
   ```
   gh workflow run native-image-release.yml --repo bloxbean/julc --ref v<version>
   ```
-  Anyone with write access to the repository can dispatch; the `npm-publish` environment (tags `v*` only, and its
-  reviewer if set) and `npm-gates` (the ref must be exactly the release tag, matching `gradle.properties` at it) are
-  the controls. The dispatch skips every build job, `attest`, `github-release` and `update-homebrew`, verifies the
+  Anyone with write access to the repository can dispatch. The controls are the exact-ref checks in `npm-gates` and
+  `npm-publish` (the ref must be exactly the release tag, matching `gradle.properties` at it), and that a `v*` tag
+  exists only through the tag ruleset and `tag-release.yml`'s release-owner authorisation ("Who can publish"). The dispatch skips every build job, `attest`, `github-release` and `update-homebrew`, verifies the
   release's files against their attestation, and runs `npm-publish` (or `npm-dry-run`) and `npm-verify` on them. A
   dispatch from a branch, or on a tag that does not match `gradle.properties`, is refused.
 - **Concurrency:** one `npm-publish` runs at a time across all versions (`npm-publish-julclang`), and a running one is
