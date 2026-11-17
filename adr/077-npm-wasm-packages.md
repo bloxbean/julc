@@ -3,7 +3,7 @@
 **Status:** Accepted (2026-11-16) by the maintainer, after design approval from reviewer1 (r4) and the internal
 Fable and Codex reviews (r9; r10 applies their last shared finding). Design only; the implementation follows in
 milestones M0 to M5.
-**Date:** 2026-11-16 to 2026-11-17 (r1 to r19)
+**Date:** 2026-11-16 to 2026-11-17 (r1 to r20)
 **Risk class:** **medium**.
 - This is a public distribution with a lasting API. Package names and exported type names are hard to change once
   published.
@@ -777,10 +777,17 @@ refers to itself without consuming data`.
    it sorts below every `preN`.
 3. **Before 1.0, any other prerelease (`-preN`)** goes to `latest`.
 4. **A version with no prerelease part** (for example `0.1.0`, or `1.0.0`) goes to `latest`.
-5. **An older version never moves a tag back** (r19, M4-F1). Before publishing, the job reads the registry's
-   dist-tags. If the tag the rules above choose already names a higher version in any of the three packages, all three
-   are published under `release-<major>.<minor>` (for example `release-0.1`), and the tag stays where it is. This
-   covers a recovery of release N after N+1 is out, and a maintenance release.
+5. **No dist-tag ever moves backwards** (r19, M4-F1; per package and with a third candidate from r20, M4-C10/C11).
+   For each package, immediately before publishing it, the job reads the registry's dist-tags and publishes to the
+   first of these that does not already name a higher version of that package:
+   - the tag the rules above choose;
+   - `release-<major>.<minor>` (for example `release-0.1`);
+   - `release-<version>` (for example `release-0.1.0-pre21`), which can only ever name that version.
+
+   None of the three forms is a valid semver range, checked with npm's own `semver`. This covers a recovery of release
+   N after N+1 is out, a maintenance release, and a newer release that reached only some packages. Because the choice
+   is per package, the three packages of one version may carry different tags, and `npm-verify` checks each
+   package's own rule.
 6. **After 1.0, a prerelease other than `-beta` is refused** until this table is revisited (M4).
 
 At 1.0 this table is revisited.
@@ -793,7 +800,8 @@ The reasons are npm's resolution rules:
   this on the registry for the first publication.
 - A published version number can never be used again, even after unpublishing.
 
-Semver compares `preN` as text, so `0.1.0-pre100` sorts below `0.1.0-pre20` (open question 8).
+Semver compares `preN` as text, so `0.1.0-pre100` sorts below `0.1.0-pre20` (open question 8). Under rule 5 that
+becomes behaviour: from `pre100`, a new release would go to a fallback tag while `latest` stays on `pre99`.
 
 The publishing jobs are specified in D8a.
 
@@ -827,7 +835,9 @@ that do not run the Gradle build get write access or credentials (`native-image-
     from another branch, another tag, another commit under the same tag, or another version of the workflow fails.
   - Every check covers all five data files (three tarballs, two archives) and requires the checksum file (r19, M4-C5),
     so a deleted or replaced archive stops publication and verification.
-  - Every job that verifies, including the build-once check in `wasm`, also holds `attestations: read`.
+  - Every job that verifies an attestation also holds `attestations: read`. From r20 the build-once check in `wasm`
+    only looks for a release, and `wasm` holds `contents: read` alone.
+  - `attest` runs only when `github_release` is `true`: with no release, there is nothing to anchor.
 - `github-release` runs only after `attest` succeeds, so a release never exists without its attestation. `attest` is
   added to its existing prerequisites, which stay as they are: `needs: [validate, native-image, wasm,
   native-image-playground, shadow-jars, attest]` (`native-image-release.yml`, line 382).
@@ -835,23 +845,27 @@ that do not run the Gradle build get write access or credentials (`native-image-
 **The `github-release` job** attaches the three tarballs and their checksum file to the GitHub release, beside the
 archives.
 - **Create-once.**
-  - It finds the release by listing the repository's releases and matching `tag_name`, so a draft is found too, and it
-    refuses if more than one matches (r19, M4-C4). `GET /releases/tags/<tag>` returns only published releases, and
-    the pinned release action creates a final release as a draft, uploads, then publishes it.
-  - Before uploading, it checks that release's existing assets by release id, using GitHub's asset `state`:
+  - **The workflow creates the release itself, published from the start, never as a draft** (r20, M4-C9). The pinned
+    release action created a final release as a draft and published it only after uploading, so a failed upload left
+    a draft that the read-only build-once check could not see and that recovery could not download. That action is
+    no longer used. The release keeps `prerelease` as before, and `make_latest=legacy`.
+  - It refuses an existing draft for the tag, or more than one release for it.
+  - It attaches each file at most once, npm files first. For each existing asset, by release id, using GitHub's asset
+    `state`:
     - a completed asset (`uploaded`) with the same name and different bytes stops the job, and nothing is replaced;
     - a failed upload's placeholder (`starter`, which GitHub documents an HTTP 502 can leave behind, and which is safe
       to delete) is deleted, and only then are the original bytes uploaded again.
-  - The upload runs with `overwrite_files: false`. Today's action defaults to `true` (`native-image-release.yml`, lines
-    401–413).
+  - If the repository ever enables immutable releases, uploading to a published release is refused; the workflow
+    says so.
   - After the upload, it checks that exactly one release exists for the tag, that it is published, and that every
     file is attached as `uploaded` with this run's SHA-256 (r19).
 - **A release is built once.**
-  - The `wasm` job starts by checking whether the tag's GitHub release already holds attested npm tarballs. If it does,
-    the job stops before building, with a message pointing to recovery.
+  - The `wasm` job starts by checking whether the tag has any GitHub release. If it does, the job stops before
+    building, with a message pointing to recovery (r20; this workflow never makes drafts, so the read-only token sees
+    every release it makes).
   - So a whole-workflow re-run, which would rebuild different bytes (ADR-057, open question 4), changes nothing.
-  - `wasm`'s read-only token cannot see a draft release; `github-release`, whose token can, refuses a draft's differing
-    assets (r19).
+  - After a refused whole-workflow re-run, a release whose upload failed is completed by hand from the original run's
+    artifacts (`adr/evidence/077-m4/RUNBOOK.md`), then published to npm by a dispatch.
 - **Recovery never rebuilds.** It has two paths, chosen by the state:
   - **Within the original attempt,** before any full re-run, "re-run failed jobs" recovers. It keeps that attempt's
     assets, artifacts and job outputs.
@@ -906,8 +920,12 @@ identity. It verifies the release assets exactly as `npm-publish` does.
   - The job also requires its own ref to be exactly `refs/tags/v<version>`, and refuses any other.
   - It gets `id-token: write` for npm trusted publishing (OIDC), `contents: read` to download the release assets, and
     `attestations: read`, and nothing else. No npm token exists.
-- **Concurrency.** It runs in a per-tag concurrency group, without cancelling a run in progress, so a recovery run never
-  overlaps the original run's publication.
+- **Concurrency** (r20, M4-C8). Every npm publication of these packages, of any version, runs in one concurrency
+  group (`npm-publish-julclang`), without cancelling a run in progress. With a per-tag group, two releases could both
+  read `latest` before either published, and the slower one would move it back. Tags are chosen inside the group, per
+  package, from the registry as it is at that moment.
+  - GitHub keeps one pending run per group, and a newer one replaces it. The replaced publication shows as cancelled;
+    its GitHub release is already complete, so a dispatch on its tag finishes it.
 - **Tools.** Node ≥ 22.14, and npm installed at an exact pinned version ≥ 11.5.1. Trusted publishing needs these, and
   Node 22 bundles npm 10. JOUST installs `npm@latest` unpinned; JuLC does not.
   - As built (r19): Node 24.22.3, and npm 11.21.1 installed from its registry tarball, checked against a recorded
@@ -974,7 +992,9 @@ identity. It verifies the release assets exactly as `npm-publish` does.
 - The maintainer then configures the trusted publisher:
   - repository `bloxbean/julc`;
   - workflow file `native-image-release.yml` (npm validates that the publish command is in that file);
-  - environment `npm-publish`, created by the maintainer with `v*` tags as its only deployment policy (r19);
+  - environment `npm-publish`, created by the maintainer with `v*` tags as its only deployment policy (r19). GitHub
+    would create a missing environment unprotected on first use, so `npm-gates` (with `actions: read`) refuses to
+    publish unless the environment exists with exactly the policy `tag:v*` (r20, M4-F8);
   - **with direct `npm publish` allowed.** npm always allows staged publication, but direct publishing must be chosen.
 - **Timing.** A newly configured trusted publisher expires unless its first publication succeeds within 2 days (npm's
   trusted-publishers documentation). So the configuration is done immediately before the first real release, after
@@ -1836,3 +1856,11 @@ choosing the recommendation recorded with each.
   - M4-F4: dry runs in a separate `npm-dry-run` job without the publishing identity.
   - M4-F5, M4-F7, M4-C7: graph-level exits open until the first rehearsal; operations notes.
   - Also: `npm-verify` holds `attestations: read`; a 1.x prerelease other than `-beta` is refused.
+- r20 (2026-11-17, responds to Codex's and Fable's reviews of M4 at 505300c7):
+  - M4-C8: one concurrency group for every npm publication, tags chosen inside it.
+  - M4-C9: the workflow creates the GitHub release itself, published, never a draft; the build-once check is "the tag
+    has a release"; manual completion after a refused full re-run.
+  - M4-C10, M4-C11: D8 rule 5 chooses each package's tag from three candidates, so no dist-tag moves backwards.
+  - M4-F8: `npm-gates` enforces the `npm-publish` environment's `tag:v*` policy before publishing.
+  - M4-F10: the `pre100` consequence of rule 5, under D8.
+  - M4-F11: `attest` runs only when `github_release` is true.
