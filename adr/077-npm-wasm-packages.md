@@ -3,7 +3,7 @@
 **Status:** Accepted (2026-11-16) by the maintainer, after design approval from reviewer1 (r4) and the internal
 Fable and Codex reviews (r9; r10 applies their last shared finding). Design only; the implementation follows in
 milestones M0 to M5.
-**Date:** 2026-11-16 to 2026-11-17 (r1 to r16)
+**Date:** 2026-11-16 to 2026-11-17 (r1 to r17)
 **Risk class:** **medium**.
 - This is a public distribution with a lasting API. Package names and exported type names are hard to change once
   published.
@@ -229,15 +229,32 @@ Two identities are checked, at run time, before the client returns.
 
   ```js
   // generated at build time (illustrative)
-  export const manifest = { /* contents of engine/engine.json */ };
+  export const manifest = deepFreeze({ /* contents of engine/engine.json */ });
   export const launcherUrl = new URL('./engine/julc-vm-b69c37c29c6b.js', import.meta.url);
   export const moduleUrl = new URL('./engine/julc-vm-b69c37c29c6b.js.wasm', import.meta.url);
   export const version = '0.1.0-pre22';
+  export function engineFiles() {
+    return {
+      manifest: { /* contents of engine/engine.json, a new object */ },
+      launcherUrl: new URL('./engine/julc-vm-b69c37c29c6b.js', import.meta.url),
+      moduleUrl: new URL('./engine/julc-vm-b69c37c29c6b.js.wasm', import.meta.url),
+      version: '0.1.0-pre22',
+    };
+  }
   ```
 
-- **Entry functions.** `createJulcVm(options)` and `createJulc(options)` pass these values to `wasm-client`'s
-  `createJulc` as `launcherUrl`, `moduleUrl`, `manifest` and `expectedVersion`, with `rest: false` (D4). The existing
-  `baseUrl` mode stays for the archives.
+- **The `./engine` subpath** is public API. It exports:
+  - `manifest`, deep-frozen;
+  - `launcherUrl`, `moduleUrl` and `version`;
+  - `engineFiles()`, which returns new, unfrozen copies of all four on every call. It is for passing the engine to
+    `wasm-client`'s `createJulc` directly (M3).
+
+  `engine.js` holds two copies of the manifest and four `new URL` calls, every one a string literal.
+- **Entry functions.** `createJulcVm(options)` and `createJulc(options)` take their files from `engineFiles()` and pass
+  them to `wasm-client`'s `createJulc` as `launcherUrl`, `moduleUrl`, `manifest` and `expectedVersion`, with
+  `rest: false` (D4). They never read the exported `URL` objects, which a caller can change through their setters, so
+  nothing done to the `./engine` exports redirects a wrapper (M3-C1). The existing `baseUrl` mode stays for the
+  archives.
 - **The worker in browsers.** `wasm-client` constructs it in the one form both Vite and webpack recognise, as a single
   expression: `new Worker(new URL('./julc-worker.js', import.meta.url), …)`. Each client owns one worker, as today.
   - It is a **classic worker** (M0, open question 2). A module worker also worked in Chromium, by loading the unchanged
@@ -775,7 +792,7 @@ that do not run the Gradle build get write access or credentials (`native-image-
 - It checks I1 on the packed result, never on the shared directory:
   - it extracts each engine tarball, and the matching archive, into separate directories;
   - it compares their engine files byte for byte;
-  - it checks that `engine.js`'s inline manifest equals `engine/engine.json`.
+  - it checks that both copies of the manifest in `engine.js` equal `engine/engine.json`.
 - It writes `julc-npm-<version>-SHA256SUMS.txt`, covering the three tarballs and the two archives.
 - It uploads all of them as the job's artifact.
 - It also emits the five SHA-256 digests as job outputs, for the checks within the same run.
@@ -940,7 +957,7 @@ provenance; only the first real publication does (M4).
 - **I1 (identity).**
   - For a version, the `engine/` launcher, module and `engine.json` extracted from each engine package's tarball equal
     the files extracted from that version's `julc-{vm-,}wasm-<version>.tar.gz`, byte for byte.
-  - `engine.js`'s inline manifest equals `engine/engine.json`.
+  - both copies of the manifest in `engine.js` equal `engine/engine.json`.
   - The three npm tarballs are packed once, in the build job. What npm serves for that version is exactly those
     tarballs, checked before publishing (SHA-256 and npm's integrity) and again from the registry after publishing.
 
@@ -1018,7 +1035,7 @@ provenance; only the first real publication does (M4).
 
 ## Alternatives rejected
 
-- **One package with both engines.** Every application would download 38.8 MB of engines to use one.
+- **One package with both engines.** Every application would download both engines, about 49 MB as built at M3, to use one.
 - **Two self-contained packages, each with its own copy of the client.** Embedders such as JOUST would still need a
   third copy. An application that installs both engines would carry two clients that could drift apart.
 - **Publishing the archives' contents as they are.** That would publish Node support that doesn't work, assets
@@ -1045,7 +1062,7 @@ provenance; only the first real publication does (M4).
   final release, so either way ranges would keep choosing the candidate (D8).
 - **`@julclang/wasm-client` as a peer dependency.** npm installs peers itself, but it only warns on a version mismatch.
   An exact dependency, plus the run-time check (D1a), is stricter.
-- **One package with sub-path exports for both engines.** Every install would carry both engines, 38.8 MB, as with one
+- **One package with sub-path exports for both engines.** Every install would carry both engines, about 49 MB, as with one
   package.
 - **Keeping a non-canonical input's original bytes, or splicing the application onto them.**
   - FLAT encodes an application before its function, so applying a value cannot simply append bits.
@@ -1129,8 +1146,13 @@ provenance; only the first real publication does (M4).
     - the client's run-time checks (D1a, D2a).
   - The scope's maintainers and 2FA are the developer's to keep, as for JOUST.
 - **Size.** Installs carry about 14.5 MB (VM) or 34.5 MB (full) of engine, as built at M3; pre20's were 14.3 MB and
-  24.5 MB. Each README states the size, generated at build time. The READMEs state it, and the first-load time (about 0.7 s
-  for the full engine, measured by Yaci Viewer in #244).
+  24.5 MB. Each README states the size, generated at build time, and the first-load time:
+  - M3's fixtures measured about 0.2 s (VM) and 0.35 to 0.45 s (full) to ready, with the module cached;
+  - Yaci Viewer measured about 0.7 s for the full pre20 engine (#244).
+
+  The full engine grew by about 10 MB after pre20, while the VM engine grew by about 0.2 MB. The probable cause is
+  ADR-068's move from JavaParser to javac, which is not in pre20: the full module now contains `com.sun.tools.javac`
+  classes. The growth was not measured per component. The release notes for the first published version state it.
 - **Browser support.** The engines need WebAssembly GC and exception handling (`exnref`). They are tested in Chrome
   (`julc-playground/BUILD_FROM_SOURCE.md`). The READMEs state the requirement, and M3 records which browser versions
   were tested.
@@ -1261,7 +1283,10 @@ provenance; only the first real publication does (M4).
   - I1 is checked against locally built archives.
   - I6 and I8 hold for both engine packages, installed from their tarballs, including the per-bundler server-bundle
     fixtures M0 recorded and the Chrome extension fixture (D2a).
-  - READMEs with size, browser and CSP notes.
+  - READMEs with size, first-load time, tested browser, TypeScript floor and CSP notes.
+  - The launcher's byte identity is asserted per fixture, with a negative control, and the redirect test passes
+    (Verification "Packages").
+  - The fixture tooling installs from committed lockfiles.
 
 **M4: publishing** (D8, D8a).
 - Entry gate:
@@ -1412,6 +1437,14 @@ Independent evidence, not values the code under test produced:
   - The VM parity fixtures run through each package entry, installed from its tarball, in Node 22, Node 24 and Chrome.
   - Node loading from the main thread and from an application worker, with no flags (I8).
   - Vite (development and production) and webpack (production) fixture builds.
+  - The launcher's expected byte identity, asserted for each fixture on disk and as served:
+    - identical for Vite's production build, webpack with the README configuration, the Chrome extension, the plain
+      page and Next.js with Turbopack;
+    - identical or with only a source-map comment added, for Vite's development server;
+    - recorded only, for webpack without that configuration.
+
+    A negative control changes the launcher and must fail the assertion (M3).
+  - A test that changing the `./engine` exports, the URLs or the manifest, does not redirect a wrapper (M3).
   - The server-bundle fixture for each bundler M0 recorded as passing, and a Chrome extension fixture.
   - The negative loading tests (I10), and the unchanged-archive-consumer fixture (I9).
   - A check that no `package.json` has install scripts.
@@ -1717,5 +1750,12 @@ choosing the recommendation recorded with each.
   - locked fixture tooling;
   - the TypeScript 5.0 floor.
 
-  The wrappers take their engine URLs from private descriptors, which the public `./engine` exports cannot change
-  (M3-C1). Launcher byte-identity is asserted per fixture, with a negative control (M3-C2).
+  The wrappers take their engine files from `engineFiles()`, which the `./engine` exports cannot change (M3-C1).
+  Launcher byte-identity is asserted per fixture, with a negative control (M3-C2).
+- r17 (2026-11-17, responds to Fable's review of M3 at 2c790e0c):
+  - M3-F8: D2 names the `./engine` subpath as public API, including `engineFiles()` and the frozen `manifest`, and says
+    the wrappers use `engineFiles()`. I1 and D8a check both copies of the manifest. r16's "private descriptors"
+    was wrong: `engineFiles()` is public.
+  - M3-F9: both first-load figures with their conditions; the both-engines total corrected to about 49 MB; the full
+    engine's growth since pre20 and its probable cause; the asserted launcher identity and the redirect test added to
+    Verification and M3's exit criteria.
