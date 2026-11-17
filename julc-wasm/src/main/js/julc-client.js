@@ -37,18 +37,28 @@ export async function startClient(options = {}, environment) {
   const rest = packageMode ? false : options.rest ?? REST_DEFAULT;
   if (typeof rest !== 'boolean') throw new Error('rest must be true or false');
   let base, init;
-  if (packageMode) {
-    // The worker checks where these point (ADR-077 D2a); the runtime file comes with this client.
-    init = {type: 'init', mode: 'package', manifest, catalogue, rest,
-      runtimeUrl: new URL('./julc-runtime.js', import.meta.url).href,
-      launcherUrl: String(launcherUrl instanceof URL ? launcherUrl.href : launcherUrl),
-      moduleUrl: String(moduleUrl instanceof URL ? moduleUrl.href : moduleUrl)};
-  } else {
+  if (!packageMode) {
     base = new URL(baseUrl ?? '.', clientLocation);
     manifest ??= await environment.readJson(new URL('engine.json', base));
-    init = {type: 'init', base: base.href, manifest, catalogue, rest};
   }
   if (!manifest || manifest.api !== 0) throw new Error('Unsupported JuLC API version: ' + manifest?.api);
+  // The identity the engine must prove, taken before anything reaches a worker or a caller's workerFactory: a copy of
+  // the manifest and the URLs as strings. Nothing the worker side does to the init message, or to the caller's own
+  // objects, changes what readiness is checked against (M3 review).
+  manifest = structuredClone(manifest);
+  const files = packageMode
+    ? {runtime: new URL('./julc-runtime.js', import.meta.url).href,
+      launcher: String(launcherUrl instanceof URL ? launcherUrl.href : launcherUrl),
+      module: String(moduleUrl instanceof URL ? moduleUrl.href : moduleUrl)}
+    : {runtime: new URL('julc-runtime.js?engine=' + encodeURIComponent(manifest.version), base).href,
+      launcher: new URL(manifest.launcher, base).href, module: new URL(manifest.launcher + '.wasm', base).href};
+  if (packageMode) {
+    // The worker checks where these point (ADR-077 D2a); the runtime file comes with this client.
+    init = {type: 'init', mode: 'package', manifest: structuredClone(manifest), catalogue, rest,
+      runtimeUrl: files.runtime, launcherUrl: files.launcher, moduleUrl: files.module};
+  } else {
+    init = {type: 'init', base: base.href, manifest: structuredClone(manifest), catalogue, rest};
+  }
   environment.prepare?.();
   let worker, workerName;
   if (packageMode) {
@@ -122,6 +132,13 @@ export async function startClient(options = {}, environment) {
   // ... an engine package's is the package's, ...
   if (expectedVersion !== undefined && info.version !== expectedVersion) {
     refuse('The JuLC engine is version ' + info.version + ', not the expected ' + expectedVersion);
+  }
+  // ... the worker loaded the files this client named, ...
+  for (const kind of ['runtime', 'launcher', 'module']) {
+    if (info.loaded?.[kind] !== files[kind]) {
+      refuse('The JuLC worker loaded the ' + kind + ' ' + JSON.stringify(info.loaded?.[kind] ?? null) + ', not '
+        + JSON.stringify(files[kind]));
+    }
   }
   // ... and the engine runs on the runtime file the worker loaded, the one of this client's release.
   if (info.runtime?.used !== 'preloaded') {

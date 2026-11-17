@@ -6,6 +6,7 @@
 // - the entry function refuses options that would name other engine files, another version or the REST adapter;
 // - given the packages' ./engine modules, the client is created while the public exports point at the other
 //   engine's files: the entry function must still load its own engine (M3 review), and the manifest is frozen;
+// - given forwardingTo (Node.js), a workerFactory that rewrites the init message to the other engine is refused;
 // - when given, the VM parity fixtures (build/wasm-parity/vm.json, the JVM's answers): evaluate and a debug replay.
 // No Node.js or DOM API is used, so the same file runs everywhere.
 
@@ -79,7 +80,16 @@ function redirect(own, other) {
  * @param create (options?) => Promise<client>, the package's createJulcVm or createJulc
  * @param options {variant: 'vm' | 'full', version?: string, fixtures?: Array, engines?: {own, other}}
  */
-export async function checkEngine(create, {variant, version, fixtures = [], engines}) {
+export async function checkEngine(create, {variant, version, fixtures = [], engines, forwardingTo}) {
+  if (forwardingTo) {
+    const error = await create({workerFactory: forwardingTo(engines.other)}).then(client => {
+      client.dispose();
+      return null;
+    }, caught => caught);
+    if (!/^JuLC engine variant or API version does not match its manifest$/.test(error?.message ?? '')) {
+      throw new Error('a workerFactory that loads the other engine: ' + (error?.message ?? 'accepted'));
+    }
+  }
   // The package names its own engine: options that would choose other files, or the REST adapter, are refused.
   for (const option of [{launcherUrl: 'x.js'}, {moduleUrl: 'x.wasm'}, {manifest: {}}, {expectedVersion: '0'},
     {baseUrl: '/'}, {rest: true}]) {
@@ -130,7 +140,7 @@ export async function checkEngine(create, {variant, version, fixtures = [], engi
       await session.close();
     }
     return {variant, version: client.version(), ready, total: Math.round(performance.now() - started),
-      parity: fixtures.length, compiled, redirected: Boolean(engines)};
+      parity: fixtures.length, compiled, redirected: Boolean(engines), forwardingRefused: Boolean(forwardingTo)};
   } finally {
     client.dispose();
   }
