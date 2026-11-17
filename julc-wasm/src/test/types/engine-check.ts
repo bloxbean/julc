@@ -33,13 +33,20 @@ export async function engines(): Promise<void> {
   await createJulc({expectedVersion: '1'});
   // @ts-expect-error: no REST adapter in package mode
   await createJulcVm({rest: true});
-  const files: [Manifest, URL, URL, string] = [manifest, launcherUrl, moduleUrl, version];
-  const fullFiles: [Manifest, URL, URL, string] = [fullEngine.manifest, fullEngine.launcherUrl, fullEngine.moduleUrl,
-    fullEngine.version];
+  const files: [string, URL, URL, string] = [manifest.julcVersion, launcherUrl, moduleUrl, version];
+  const fullFiles: [string, URL, URL, string] = [fullEngine.manifest.julcVersion, fullEngine.launcherUrl,
+    fullEngine.moduleUrl, fullEngine.version];
   // @ts-expect-error: the exported manifest is frozen
   manifest.variant = 'full';
+  // @ts-expect-error: and so are its groups
+  manifest.groups?.push('compiler');
+  const launcher: string = manifest.launcher;
+  void launcher;
   const copy = engineFiles();
   copy.manifest.variant = 'full';
+  copy.manifest.groups?.push('compiler');
+  const forClient: Manifest = copy.manifest;
+  void forClient;
   expectType<Equal<typeof copy.version, typeof version>>();
   void files;
   void fullFiles;

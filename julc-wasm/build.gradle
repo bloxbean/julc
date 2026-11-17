@@ -476,10 +476,10 @@ export function engineFiles() {
 """, 'UTF-8')
             new File(dir, 'engine.d.ts').setText("""\
 // Generated at build time (ADR-077 D2): the engine files of ${packageName} ${version}.
-import type {Manifest} from '@julclang/wasm-client';
+import type {FeatureGroup, Manifest} from '@julclang/wasm-client';
 
-/** engine/engine.json, inlined and frozen. */
-export declare const manifest: Readonly<Manifest>;
+/** engine/engine.json, inlined and frozen, groups included. */
+export declare const manifest: Readonly<Omit<Manifest, 'groups'>> & {readonly groups?: readonly FeatureGroup[]};
 /** The launcher, engine/${launcher}. */
 export declare const launcherUrl: URL;
 /** The WebAssembly module, engine/${launcher}.wasm. */
