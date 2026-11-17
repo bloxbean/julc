@@ -8,7 +8,7 @@ name: Native Image Release
 # end to end.
 #
 # The build jobs run with a read-only token and no secrets. Only github-release gets a write token, only attest
-# signs (id-token, attestations: write), only npm-publish can publish to npm (id-token, environment npm-publish,
+# signs (id-token, attestations: write), only npm-publish can publish to npm (id-token, environment release-staging,
 # npm trusted publishing, no npm token), and only update-homebrew gets a secret (HOMEBREW_TAP_TOKEN, environment
 # release-staging); none of them runs the Gradle build. No build cache is restored, so nothing from an earlier run
 # can change the published binaries. Every action is pinned to a full commit SHA.
@@ -797,8 +797,6 @@ jobs:
     name: Read the npm gates
     permissions:
       contents: read
-      # Reading an environment and its deployment policies needs the Actions read permission.
-      actions: read
     outputs:
       version: ${{ steps.gates.outputs.version }}
       mode: ${{ steps.gates.outputs.mode }}
@@ -851,31 +849,6 @@ jobs:
         echo "mode=$MODE" >> "$GITHUB_OUTPUT"
         echo "v${VERSION} (${GITHUB_EVENT_NAME}): github_release=${GITHUB_RELEASE:-false}," \
           "npm_publish=${NPM_PUBLISH:-false}, release candidate: ${RC}; npm: ${MODE}" | tee -a "$GITHUB_STEP_SUMMARY"
-
-    # npm's trusted publisher checks no ref, so the npm-publish environment's policy (v* tags only) is part of the
-    # control. GitHub creates a missing environment, unprotected, for the first job that names it: so publication needs
-    # the environment to exist with exactly one deployment policy, the tag pattern v*. Fails closed. It runs for a dry
-    # run too, so a release candidate's rehearsal proves this check works before a real tag depends on it (M4-F12).
-    - name: Check the npm-publish environment's policy
-      if: steps.gates.outputs.mode != 'none'
-      env:
-        GH_TOKEN: ${{ github.token }}
-      shell: bash
-      run: |
-        set -euo pipefail
-        refuse() {
-          echo "::error::The npm-publish environment must exist with exactly one deployment policy, the tag pattern" \
-            "v* ($1). Create it as adr/evidence/077-m4/RUNBOOK.md says, then dispatch this workflow on the tag." >&2
-          exit 1
-        }
-        environment=$(gh api "repos/${GITHUB_REPOSITORY}/environments/npm-publish") || refuse "it could not be read"
-        custom=$(jq -r '.deployment_branch_policy.custom_branch_policies // false' <<< "$environment")
-        protected=$(jq -r '.deployment_branch_policy.protected_branches // false' <<< "$environment")
-        [[ "$custom" == true && "$protected" == false ]] || refuse "custom policies: ${custom}, protected branches: ${protected}"
-        policies=$(gh api "repos/${GITHUB_REPOSITORY}/environments/npm-publish/deployment-branch-policies" \
-          --jq '[.branch_policies[] | "\(.type):\(.name)"] | join(",")') || refuse "its policies could not be read"
-        [[ "$policies" == 'tag:v*' ]] || refuse "its policies are ${policies:-none}"
-        echo "npm-publish environment: tag:v* only."
 
   # ADR-077 D8 and D8a: a dry run instead of a publication (npm_publish = false, or a release candidate). The same
   # script, on the same verified release assets, with npm publish --dry-run; read-only, no environment, no id-token.
@@ -946,8 +919,10 @@ jobs:
   # ADR-077 D8a. Publishes the release's three npm tarballs, verified against attest's attestation (and, in the tag's
   # own run, the wasm job's digests), with npm trusted publishing: npm exchanges this job's GitHub OIDC token for
   # publish credentials, so there is no npm token. Each package's trusted publisher on npmjs.com names bloxbean/julc,
-  # this workflow file and the npm-publish environment, which admits only v* tags (npm does not check the ref); the
-  # job checks its own ref too. No Gradle, no build, no npm install and no package scripts: it checks out only
+  # this workflow file and the release-staging environment (release-ops' environment for release jobs). npm checks no
+  # ref, and release-staging admits main and release/** as well as v* tags, so the job's own exact-ref check below is
+  # the control against a dispatch from a branch; a v* tag itself needs the tag ruleset and tag-release.yml's
+  # release-owner authorisation. No Gradle, no build, no npm install and no package scripts: it checks out only
   # julc-wasm/src/ci (release-owner reviewed, CODEOWNERS), the scripts it runs, at the tag's own commit. Runs after a
   # successful github-release and attest, or on a recovery dispatch (whose skipped needs would otherwise skip it:
   # hence the status function, and no bare always()).
@@ -960,7 +935,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     name: Publish the npm packages
-    environment: npm-publish
+    environment: release-staging
     # One npm publication at a time, of any version: the dist-tags are shared by every version, and each package's tag
     # is chosen inside this job from the registry as it is then (M4-C8). A running publication is never cancelled.
     # GitHub keeps one pending job per group: a newer pending job cancels an older pending one, which then shows as
@@ -979,6 +954,7 @@ jobs:
     env:
       VERSION: ${{ needs.npm-gates.outputs.version }}
     steps:
+    # The control against main and release/**, which release-staging also admits: fatal before anything else runs.
     - name: Refuse any ref but the release tag
       shell: bash
       run: |

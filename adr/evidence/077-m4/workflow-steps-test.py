@@ -83,15 +83,6 @@ elif args[0] == 'api':
         releases.append({'id': new_id, 'tag': fields['tag_name'], 'draft': fields['draft'] == 'true', 'assets': [],
                          'fields': fields})
         save(); print(new_id); sys.exit(0)
-    if '/environments/' in url:
-        envs_file = os.path.join(state, 'environments.json')
-        envs = json.load(open(envs_file)) if os.path.exists(envs_file) else {}
-        name = url.split('/environments/')[1].split('/')[0]
-        if name not in envs:
-            sys.stderr.write('gh: Not Found (HTTP 404)\n'); sys.exit(1)
-        if url.endswith('/deployment-branch-policies'):
-            print(','.join(f"{p['type']}:{p['name']}" for p in envs[name]['policies'])); sys.exit(0)
-        print(json.dumps({'name': name, 'deployment_branch_policy': envs[name]['deployment_branch_policy']})); sys.exit(0)
     if url.endswith('/releases?per_page=100'):
         tag = re.search(r'tag_name == "([^"]+)"', jq).group(1)
         for r in visible:
@@ -349,34 +340,23 @@ def failed_upload_recovery(tmp):
               dispatch.stdout + dispatch.stderr)
 
 
-def environment_check(tmp):
-    def case(label, environments, expect_ok, expect_text):
-        state = github(tmp, [])
-        json.dump(environments, open(os.path.join(state, 'environments.json'), 'w'))
+def ref_check(tmp):
+    """npm-publish's environment, release-staging, also admits main and release/**: the job's own exact-ref check is the
+    control against a dispatch from a branch, and runs before anything else."""
+    steps = WORKFLOW['jobs']['npm-publish']['steps']
+    check('npm-publish: the ref check is its first step, unconditional',
+          steps[0].get('name') == 'Refuse any ref but the release tag' and 'if' not in steps[0], repr(steps[0]))
+    def case(label, ref, version, expect_ok):
         work = tempfile.mkdtemp(dir=tmp)
-        result = run(step('npm-gates', "Check the npm-publish environment's policy"),
-                     {'FAKE_GH': state, 'FAKE_TOKEN': 'read', 'GITHUB_REPOSITORY': 'bloxbean/julc'}, work)
-        check(f'npm-gates environment check: {label}',
-              (result.returncode == 0) == expect_ok and expect_text in result.stdout + result.stderr,
-              result.stdout + result.stderr)
-    custom = {'custom_branch_policies': True, 'protected_branches': False}
-    tag = {'type': 'tag', 'name': 'v*'}
-    case('exactly the tag pattern v*', {'npm-publish': {'deployment_branch_policy': custom, 'policies': [tag]}}, True,
-         'tag:v* only')
-    case('the environment is missing (GitHub would create it unprotected)', {}, False, 'could not be read')
-    case('no deployment policy (all branches and tags)',
-         {'npm-publish': {'deployment_branch_policy': None, 'policies': []}}, False, 'custom policies: false')
-    case('protected branches instead of custom policies',
-         {'npm-publish': {'deployment_branch_policy': {'custom_branch_policies': False, 'protected_branches': True},
-                          'policies': []}}, False, 'protected branches: true')
-    case('v* and a branch', {'npm-publish': {'deployment_branch_policy': custom,
-                                             'policies': [tag, {'type': 'branch', 'name': 'main'}]}}, False,
-         'tag:v*,branch:main')
-    case('v* as a branch pattern', {'npm-publish': {'deployment_branch_policy': custom,
-                                                    'policies': [{'type': 'branch', 'name': 'v*'}]}}, False,
-         'branch:v*')
-    case('a broader tag pattern', {'npm-publish': {'deployment_branch_policy': custom,
-                                                   'policies': [{'type': 'tag', 'name': '*'}]}}, False, 'tag:*')
+        result = run(step('npm-publish', 'Refuse any ref but the release tag'), {'GITHUB_REF': ref, 'VERSION': version}, work)
+        check(f'npm-publish ref check: {label}', (result.returncode == 0) == expect_ok
+              and (expect_ok or 'runs only on refs/tags/v' in result.stderr), result.stdout + result.stderr)
+    case('the release tag', f'refs/tags/v{V}', V, True)
+    case('a dispatch from main', 'refs/heads/main', V, False)
+    case('a dispatch from release/**', 'refs/heads/release/0.1', V, False)
+    case('another release tag', 'refs/tags/v0.1.0-pre23', V, False)
+    case('a branch named like the tag', f'refs/heads/v{V}', V, False)
+    case('no version from npm-gates', f'refs/tags/v{V}', '', False)
 
 
 def release_verified(tmp):
@@ -455,7 +435,8 @@ def graph():
     with_id_token = sorted(j for j, s in jobs.items() if (s.get('permissions') or {}).get('id-token') == 'write')
     check('only attest and npm-publish hold id-token: write', with_id_token == ['attest', 'npm-publish'],
           repr(with_id_token))
-    check('npm-publish runs in the npm-publish environment', jobs['npm-publish'].get('environment') == 'npm-publish')
+    check('npm-publish runs in release-ops\' release-staging environment',
+          jobs['npm-publish'].get('environment') == 'release-staging')
     check('npm-publish runs only in publish mode', "outputs.mode == 'publish'" in jobs['npm-publish']['if'])
     dry = jobs['npm-dry-run']
     check('npm-dry-run: no environment, no id-token, read-only, only in dry-run mode',
@@ -478,10 +459,12 @@ def graph():
     check('one concurrency group for every npm publication, never cancelling a running one',
           jobs['npm-publish']['concurrency'] == {'group': 'npm-publish-julclang', 'cancel-in-progress': False},
           repr(jobs['npm-publish'].get('concurrency')))
-    check('npm-gates reads the environment with actions: read, for a dry run and a publication alike',
-          jobs['npm-gates']['permissions'] == {'contents': 'read', 'actions': 'read'}
-          and [s for s in jobs['npm-gates']['steps'] if s.get('name') == "Check the npm-publish environment's policy"][0]
-          ['if'] == "steps.gates.outputs.mode != 'none'")
+    check('npm-gates holds contents: read only, and reads no environment',
+          jobs['npm-gates']['permissions'] == {'contents': 'read'}
+          and not any('environments' in str(s.get('run', '')) for s in jobs['npm-gates']['steps']))
+    check('only npm-publish and update-homebrew use an environment, both release-staging',
+          {j: s['environment'] for j, s in jobs.items() if 'environment' in s}
+          == {'npm-publish': 'release-staging', 'update-homebrew': 'release-staging'})
     check('npm-verify gets the tags npm-publish chose',
           jobs['npm-publish']['outputs'].get('tags') == '${{ steps.publish.outputs.tags }}'
           and '--published-tags' in [s for s in jobs['npm-verify']['steps'] if s.get('name', '').startswith('Compare')][0]['run'])
@@ -503,7 +486,7 @@ def main():
     build_once(tmp)
     create_once(tmp)
     failed_upload_recovery(tmp)
-    environment_check(tmp)
+    ref_check(tmp)
     release_verified(tmp)
     release_assets(tmp)
     graph()
