@@ -2,7 +2,9 @@
 // changing one without the others fails the build:
 // - each upload step's `path` entries are exactly the files its artifact is expected to hold (the ten release-*
 //   artifacts the build jobs upload, with their matrix labels expanded, and npm-packages);
-// - the files of the release-* artifacts are exactly the 14-file inventory github-release requires.
+// - the files of the release-* artifacts are exactly the 14-file inventory github-release requires;
+// - the job names npm-run.sh looks for are the names of the attest and github-release jobs (R23-F10, R23-C41), so a
+//   rename fails the build instead of blocking every recovery dispatch.
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import path from 'node:path';
@@ -11,6 +13,7 @@ import {fileURLToPath} from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
 const workflow = readFileSync(path.join(root, '.github', 'workflows', 'native-image-release.yml'), 'utf8');
+const npmRun = readFileSync(path.join(root, 'julc-wasm', 'src', 'ci', 'npm-run.sh'), 'utf8');
 
 /** The workflow's jobs, as text, by name. */
 const jobs = Object.fromEntries([...workflow.matchAll(/^ {2}([a-z][a-z-]*):\n([\s\S]*?)(?=^ {2}[a-z][a-z-]*:\n|(?![\s\S]))/gm)]
@@ -87,4 +90,12 @@ test('the files of the ten release-* artifacts are exactly github-release\'s 14-
     ...[...printf[1].matchAll(/"?([^\s"\\]+)"?/g)].map(match => match[1])];
   const plain = file => file.replaceAll('${VERSION}', 'V').replaceAll(VERSION, 'V');
   assert.deepEqual(sorted(delivered.map(plain)), sorted(inventory.map(plain)));
+});
+
+test('the job names npm-run.sh looks for are the attest and github-release jobs\' names', () => {
+  const nameOf = job => /^ {4}name: ([^\n]+)$/m.exec(jobs[job])?.[1];
+  const expected = sorted([nameOf('attest'), nameOf('github-release')]);
+  assert.ok(expected.every(Boolean), JSON.stringify(expected));
+  const used = sorted(new Set([...npmRun.matchAll(/\.name == "([^"]+)"/g)].map(match => match[1])));
+  assert.deepEqual(used, expected);
 });
