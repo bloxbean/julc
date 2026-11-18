@@ -4,6 +4,7 @@ import org.julclang.compiler.codegen.FirstUseRanks.Roots;
 import org.julclang.compiler.codegen.FirstUseRanks.Rule;
 import org.julclang.compiler.codegen.FirstUseRanks.Selection;
 import org.julclang.compiler.codegen.FirstUseRanks.TieChoice;
+import org.julclang.compiler.pir.PirHelpers;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.resolve.LibraryMethodRegistry.LibraryMethod;
@@ -12,6 +13,7 @@ import org.julclang.core.DefaultFun;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigInteger;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -227,6 +229,37 @@ class FirstUseRanksTest {
     }
 
     /**
+     * Codex M1a round 2, C10: a closed inner binding spelled like another library method is not a call. Here b calls a,
+     * and a's body binds its own q.M.b; a spelling search added a call of b from a, a cycle that stalled the order
+     * (the backend then rejected q.M.a as unbound). With lexical references, a is bound outside b.
+     */
+    @Test
+    void aClosedInnerBindingSpelledLikeAMethodIsNotACall() {
+        var inner = new PirTerm.Let("q.M.b", new PirTerm.Lam("y", INT, new PirTerm.Var("y", INT)), new PirTerm.Var("q.M.b", FUN));
+        var a = new LibraryMethod("q.M", "a", FUN, new PirTerm.Lam("x", INT, new PirTerm.App(inner, new PirTerm.Var("x", INT))));
+        var b = new LibraryMethod("q.M", "b", FUN, new PirTerm.Lam("x", INT, new PirTerm.App(new PirTerm.Var("q.M.a", FUN), new PirTerm.Var("x", INT))));
+        var selections = selections(List.of(a, b), Roots.NONE);
+        assertTrue(selections.stream().noneMatch(s -> s.rule() == Rule.CYCLE), selections.toString());
+        assertEquals(List.of("q.M.b", "q.M.a"), names(LibraryBindingOrder.innermostFirst(List.of(a, b))));
+    }
+
+    /**
+     * Codex M1a round 2, Lemma 3: with no roots, a = λq.M.c.q.M.c (its parameter spelled like c), b = λx.x and
+     * c = λx.0. a and b are α-equal with no calls, c differs; nothing reads any of them. They are bound in order of
+     * key and then D1b's name order, and the α-equal pair is adjacent, since a's parameter is no call of c.
+     */
+    @Test
+    void anUnreadAlphaEqualPairIsAdjacentWhenALocalSpellsAnotherMethod() {
+        var methods = List.of(identity("q.M.a", "q.M.c"), identity("q.M.b", "x"),
+                new LibraryMethod("q.M", "c", FUN, new PirTerm.Lam("x", INT, new PirTerm.Const(Constant.integer(BigInteger.ZERO)))));
+        var order = names(LibraryBindingOrder.innermostFirst(methods));
+        assertEquals(1, Math.abs(order.indexOf("q.M.a") - order.indexOf("q.M.b")), order.toString());
+        var keys = LibraryBindingOrder.contentKeys(methods);
+        assertEquals(keys.get("q.M.a"), keys.get("q.M.b"));
+        assertNotEquals(keys.get("q.M.a"), keys.get("q.M.c"));
+    }
+
+    /**
      * Codex M1a C6: at every choice of Kahn's algorithm between ready methods with equal keys, the lowest rank wins;
      * α-equal twins nothing calls, with the same callees, lie in one run of equal-key methods (Lemma 3's block; a
      * member of the run that is not identical to them can sit between them); and a dependent of one twin can be bound
@@ -266,27 +299,31 @@ class FirstUseRanksTest {
                 int lowest = choice.contenders().values().stream().mapToInt(Integer::intValue).min().orElseThrow();
                 assertEquals(lowest, choice.contenders().get(choice.winner()), "trial " + trial + ": " + choice);
             }
-            // Lemma 3 and 4, over pairs of twins with the same callees.
+            // Lemma 3 and 4, with the actual content keys and dependency paths.
+            var keys = LibraryBindingOrder.contentKeys(methods);
             var callers = new HashSet<String>();
             for (int i = 0; i < count; i++) for (int callee : calls.get(i)) callers.add("q.L.m" + (char) ('a' + callee));
             for (int i = 0; i < count; i++) {
                 for (int j = i + 1; j < count; j++) {
-                    if (!constants.get(i).equals(constants.get(j)) || !calls.get(i).equals(calls.get(j))) continue;
                     String a = "q.L.m" + (char) ('a' + i), b = "q.L.m" + (char) ('a' + j);
-                    int distance = Math.abs(order.indexOf(a) - order.indexOf(b));
+                    if (!keys.get(a).equals(keys.get(b))) continue;
+                    int from = Math.min(order.indexOf(a), order.indexOf(b)), to = Math.max(order.indexOf(a), order.indexOf(b));
                     boolean unread = !callers.contains(a) && !callers.contains(b) && !rootCalls.contains(a) && !rootCalls.contains(b);
-                    if (unread) {
-                        // They lie in one run of equal-key methods: whatever is bound between them has their key.
-                        int from = Math.min(order.indexOf(a), order.indexOf(b)), to = Math.max(order.indexOf(a), order.indexOf(b));
+                    if (unread && calls.get(i).equals(calls.get(j))) {
+                        // Lemma 3: nothing but methods of the same key lies between identical unread twins.
                         for (int k = from + 1; k < to; k++) {
-                            int between = order.get(k).charAt(order.get(k).length() - 1) - 'a';
-                            assertEquals(constants.get(i), constants.get(between), "trial " + trial + ": " + order.get(k)
+                            assertEquals(keys.get(a), keys.get(order.get(k)), "trial " + trial + ": " + order.get(k)
                                     + " between unread twins " + a + ", " + b + " in " + order);
-                            assertEquals(calls.get(i).size(), calls.get(between).size(), "trial " + trial + ": " + order);
                         }
                         adjacentPairs++;
-                    } else if (distance > 1) {
-                        interleaved++;
+                    } else {
+                        // Lemma 4: a method between two twins of another key depends on the one bound first
+                        // (order is innermost first, so the one bound first is the later in the list).
+                        String first = order.get(to);
+                        for (int k = from + 1; k < to; k++) {
+                            String between = order.get(k);
+                            if (!keys.get(between).equals(keys.get(a)) && reaches(methods, between, first)) interleaved++;
+                        }
                     }
                 }
             }
@@ -317,6 +354,26 @@ class FirstUseRanksTest {
         }
         // Binding all names for each part would grow with the square of the width: sixteen times from 1,024 to 4,096.
         assertTrue(times[2] < 8 * times[0] + 20_000_000L, "1,024: " + times[0] + " ns, 4,096: " + times[2] + " ns");
+    }
+
+    /** Whether {@code from} reaches {@code to} through the methods' calls. */
+    private static boolean reaches(List<LibraryMethod> methods, String from, String to) {
+        var byName = new HashMap<String, LibraryMethod>();
+        for (var method : methods) byName.put(method.qualifiedName(), method);
+        var seen = new HashSet<String>();
+        var pending = new ArrayDeque<String>();
+        pending.push(from);
+        while (!pending.isEmpty()) {
+            String name = pending.pop();
+            if (!seen.add(name)) continue;
+            for (String other : byName.keySet()) {
+                if (!other.equals(name) && PirHelpers.containsVarRef(byName.get(name).body(), other)) {
+                    if (other.equals(to)) return true;
+                    pending.push(other);
+                }
+            }
+        }
+        return false;
     }
 
     private interface Namer {

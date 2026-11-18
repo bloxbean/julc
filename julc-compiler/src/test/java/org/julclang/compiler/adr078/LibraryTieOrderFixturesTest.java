@@ -1,6 +1,7 @@
 package org.julclang.compiler.adr078;
 
 import org.julclang.compiler.adr078.Adr078Fixtures.Evaluation;
+import org.julclang.compiler.codegen.ValidatorAssembly;
 import org.julclang.compiler.adr078.Adr078Fixtures.Fixture;
 import org.julclang.compiler.adr078.Adr078Fixtures.Mode;
 import org.julclang.compiler.adr078.Adr078Fixtures.Outcome;
@@ -13,11 +14,13 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -167,6 +170,96 @@ class LibraryTieOrderFixturesTest {
                 }
             }
         }
+    }
+
+    /**
+     * C11: a static initialiser's first use comes before the entry point's, through both assembly entry points
+     * (compileMethod and a compiled validator): the twin the initialiser reads is bound outermost.
+     */
+    @Test
+    void aStaticInitialiserFirstUseIsBoundOutermost() {
+        var expected = Map.of(
+                "static-initialiser-first-use | zeta in K", List.of("q.L.zeta", "q.L.alpha"),
+                "static-initialiser-first-use | renamed: aaa in K, zzz in f", List.of("q.L.aaa", "q.L.zzz"),
+                "validator-static-initialiser | zeta in K", List.of("q.L.zeta", "q.L.alpha"),
+                "validator-static-initialiser | aaaa in K", List.of("q.L.aaaa", "q.L.alpha"));
+        expected.forEach((variant, order) -> {
+            for (var mode : Adr078Fixtures.modes()) {
+                String pir = NOW.get(variant + " | " + mode).pir();
+                int outer = pir.indexOf("(let " + order.get(0) + " =");
+                int inner = pir.indexOf("(let " + order.get(1) + " =");
+                assertTrue(outer >= 0 && inner >= 0, variant + " | " + mode + ": both twins are bound");
+                assertTrue(outer < inner, variant + " | " + mode + ": " + order.get(0) + " is bound outside " + order.get(1));
+            }
+        });
+    }
+
+    /**
+     * I3 (Codex M1a C17): every method binding is reported to the frontend's {@code methodBound} callback, once per
+     * binding and handler copy, unread ones and C22's helper and library copies included: the bindings the callback is
+     * told equal the method binders in the emitted PIR.
+     */
+    @Test
+    void everyBindingReachesTheMethodBoundCallback() {
+        int compared = 0;
+        for (var fixture : Adr078Fixtures.fixtures()) {
+            for (var variant : fixture.variants()) {
+                for (var mode : Adr078Fixtures.modes()) {
+                    var bound = new ArrayList<String>();
+                    var handlers = new TreeSet<Integer>();
+                    var outcome = ValidatorAssembly.observing((handler, binder) -> {
+                        bound.add(binder);
+                        handlers.add(handler);
+                    }, () -> Adr078Fixtures.compile(variant, mode));
+                    if (!outcome.compiled()) continue;
+                    Collections.sort(bound);
+                    assertEquals(outcome.binders(), bound.toString(), key(fixture, variant, mode));
+                    if (fixture.name().contains("multi-purpose") || fixture.name().contains("handlers-against-tag-order")) {
+                        assertEquals(List.of(0, 1), List.copyOf(handlers), key(fixture, variant, mode) + ": both handlers bind");
+                    }
+                    compared++;
+                }
+            }
+        }
+        assertTrue(compared > 100, "compared " + compared);
+    }
+
+    /**
+     * C18: the equal-key choices of a compiled artifact's assembly: every one takes the lowest first-use rank, and the
+     * twins fixture makes one.
+     */
+    @Test
+    void aCompiledArtifactsEqualKeyChoicesTakeTheLowestRank() {
+        int choices = 0;
+        for (var fixture : Adr078Fixtures.fixtures()) {
+            for (var variant : fixture.variants()) {
+                var made = new ArrayList<String>();
+                ValidatorAssembly.observing(new ValidatorAssembly.AssemblyObserver() {
+                    @Override
+                    public void bound(int handler, String binder) {
+                    }
+
+                    @Override
+                    public void chose(String key, Map<String, Integer> contenders, String winner) {
+                        int lowest = contenders.values().stream().mapToInt(Integer::intValue).min().orElseThrow();
+                        assertEquals(lowest, contenders.get(winner), variant.label() + ": " + contenders);
+                        made.add(winner);
+                    }
+                }, () -> Adr078Fixtures.compile(variant, new Mode("none", false)));
+                choices += made.size();
+                if (fixture.name().equals("twins-reached")) assertTrue(!made.isEmpty(), variant.label() + ": no equal-key choice");
+            }
+        }
+        assertTrue(choices > 10, "choices " + choices);
+    }
+
+    /** C14: the trace encoding tells two traces from one trace that contains a quote and a comma. */
+    @Test
+    void theTraceEncodingIsUnambiguous() {
+        assertTrue(!Adr078Fixtures.traces(List.of("a", "b")).equals(Adr078Fixtures.traces(List.of("a\", \"b"))),
+                Adr078Fixtures.traces(List.of("a", "b")) + " / " + Adr078Fixtures.traces(List.of("a\", \"b")));
+        assertEquals("[\"a\",\"b\"]", Adr078Fixtures.traces(List.of("a", "b")));
+        assertEquals("[\"a\\\", \\\"b\"]", Adr078Fixtures.traces(List.of("a\", \"b")));
     }
 
     /** I3: the multiset of method binders, one per binding and assembly copy, is pre21's (C22's helper copies too). */
@@ -348,6 +441,8 @@ class LibraryTieOrderFixturesTest {
                     for (var entry : now.entrySet()) {
                         String suffix = entry.getKey();
                         if (suffix.endsWith(" high") || suffix.endsWith("c12-limit")) continue;
+                        // A replay at the higher limit is recorded for every evaluation; it is compared only where the
+                        // transaction limit exhausted on one side.
                         String pre21 = PRE21.get(prefix + suffix);
                         assertTrue(pre21 != null, "no pre21 record for " + prefix + suffix);
                         var evaluation = entry.getValue();
@@ -383,7 +478,8 @@ class LibraryTieOrderFixturesTest {
             }
         }
         System.out.println("I6a: " + compared + " evaluations compared (" + applied + " returned functions applied, " + traced
-                + " with traces), " + inconclusive + " inconclusive");
+                + " with traces); demonstrated mismatches: " + mismatches.size() + "; inconclusive (exhausted at the higher limit"
+                + " on both sides): " + inconclusive);
         System.out.print(budgets.isEmpty() ? "I6b: every budget as on pre21\n" : "I6b: budgets that changed\n" + budgets);
         assertEquals(List.of(), mismatches);
         assertTrue(compared > 0 && applied > 0 && traced > 0, "compared " + compared + ", applied " + applied + ", traced " + traced);

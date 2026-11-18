@@ -5,6 +5,7 @@ import org.julclang.compiler.adr078.Adr078Fixtures.Variant;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -89,11 +90,14 @@ public final class Adr078Programs {
         return new Naming(methods, classes, packages, order, order, "base");
     }
 
-    /** How a rewrite assigns method names. */
+    /** How a rewrite assigns names. */
     enum Kind {
-        /** Fresh names whose order is exactly the reverse of the base's (m0 < m1 < … becomes the largest first). */
+        /**
+         * The exact reverse of the base's order: every library method's qualified name ({@code package.Class.method}, the
+         * order pre21 broke ties by) sorts against the base's, for every pair. All classes go to one package.
+         */
         REVERSED,
-        /** Fresh names in a random order. */
+        /** Fresh names in a random order, classes in random packages. */
         RANDOM
     }
 
@@ -104,25 +108,72 @@ public final class Adr078Programs {
     static Naming rewrite(Model model, Random random, int index, Kind kind) {
         var used = new HashSet<String>();
         var methods = new LinkedHashMap<Integer, String>();
-        var fresh = new ArrayList<String>();
-        for (int i = 0; i < model.methods().size(); i++) fresh.add(freshName(random, used, "m"));
-        Collections.sort(fresh);
-        var ids = new ArrayList<Integer>();
-        for (var method : model.methods()) ids.add(method.id());
-        if (kind == Kind.REVERSED) Collections.reverse(fresh);
-        else Collections.shuffle(ids, random);
-        for (int i = 0; i < ids.size(); i++) methods.put(ids.get(i), fresh.get(i));
         var classes = new LinkedHashMap<Integer, String>();
         var packages = new LinkedHashMap<Integer, String>();
-        for (int c = 0; c < model.classes(); c++) {
-            classes.put(c, freshName(random, used, "K"));
-            packages.put(c, PACKAGES.get(random.nextInt(PACKAGES.size())));
+        var base = baseNaming(model);
+        if (kind == Kind.REVERSED) {
+            String pkg = PACKAGES.get(random.nextInt(PACKAGES.size()));
+            var classNames = new ArrayList<String>();
+            for (int c = 0; c < model.classes(); c++) classNames.add(freshName(random, used, "K"));
+            classNames.sort(Comparator.reverseOrder());
+            // Base classes in their name order get class names in descending order.
+            var baseClasses = new ArrayList<>(base.classes().keySet());
+            baseClasses.sort(Comparator.comparing(c -> base.classes().get(c)));
+            for (int i = 0; i < baseClasses.size(); i++) {
+                classes.put(baseClasses.get(i), classNames.get(i));
+                packages.put(baseClasses.get(i), pkg);
+            }
+            // Within each class, methods in the base's name order get method names in descending order.
+            for (int c = 0; c < model.classes(); c++) {
+                int owner = c;
+                var ids = new ArrayList<Integer>();
+                for (var method : model.methods()) if (method.owner() == owner) ids.add(method.id());
+                ids.sort(Comparator.comparing(id -> base.methods().get(id)));
+                var fresh = new ArrayList<String>();
+                for (int i = 0; i < ids.size(); i++) fresh.add(freshName(random, used, "m"));
+                fresh.sort(Comparator.reverseOrder());
+                for (int i = 0; i < ids.size(); i++) methods.put(ids.get(i), fresh.get(i));
+            }
+        } else {
+            var fresh = new ArrayList<String>();
+            for (int i = 0; i < model.methods().size(); i++) fresh.add(freshName(random, used, "m"));
+            var ids = new ArrayList<Integer>();
+            for (var method : model.methods()) ids.add(method.id());
+            Collections.shuffle(ids, random);
+            for (int i = 0; i < ids.size(); i++) methods.put(ids.get(i), fresh.get(i));
+            for (int c = 0; c < model.classes(); c++) {
+                classes.put(c, freshName(random, used, "K"));
+                packages.put(c, PACKAGES.get(random.nextInt(PACKAGES.size())));
+            }
         }
         var sourceOrder = new ArrayList<Integer>(classes.keySet());
         Collections.shuffle(sourceOrder, random);
         var importOrder = new ArrayList<Integer>(classes.keySet());
         Collections.shuffle(importOrder, random);
-        return new Naming(methods, classes, packages, sourceOrder, importOrder, "rewrite " + index + " " + kind);
+        var naming = new Naming(methods, classes, packages, sourceOrder, importOrder, "rewrite " + index + " " + kind);
+        if (kind == Kind.REVERSED && !reverses(model, base, naming)) {
+            throw new IllegalStateException("rewrite " + index + " does not reverse the base's qualified-name order");
+        }
+        return naming;
+    }
+
+    /** The qualified name a method's binder gets under {@code naming}: {@code package.Class.method}. */
+    static String qualified(Model model, Naming naming, int id) {
+        var method = model.methods().get(id);
+        return naming.packages().get(method.owner()) + "." + naming.classes().get(method.owner()) + "." + naming.methods().get(id);
+    }
+
+    /** Whether {@code naming} orders every pair of methods' qualified names against {@code base}. */
+    static boolean reverses(Model model, Naming base, Naming naming) {
+        for (var a : model.methods()) {
+            for (var b : model.methods()) {
+                if (a.id() == b.id()) continue;
+                int before = Integer.signum(qualified(model, base, a.id()).compareTo(qualified(model, base, b.id())));
+                int after = Integer.signum(qualified(model, naming, a.id()).compareTo(qualified(model, naming, b.id())));
+                if (before != -after) return false;
+            }
+        }
+        return true;
     }
 
     private static String freshName(Random random, Set<String> used, String prefix) {

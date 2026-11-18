@@ -265,10 +265,33 @@ public final class Adr078Fixtures {
         return describe(vm().evaluate(Program.plutusV3(term), limit));
     }
 
-    private static String traces(List<String> traces) {
+    /**
+     * Traces as a JSON array of strings: every quote, backslash and control character escaped, so that two traces are
+     * never written as one, or one as two (Codex M1a C14).
+     */
+    public static String traces(List<String> traces) {
         var text = new StringBuilder("[");
-        for (int i = 0; i < traces.size(); i++) text.append(i == 0 ? "" : ", ").append('"').append(escape(traces.get(i))).append('"');
+        for (int i = 0; i < traces.size(); i++) text.append(i == 0 ? "" : ",").append(jsonString(traces.get(i)));
         return text.append(']').toString();
+    }
+
+    /** {@code value} as a JSON string literal. */
+    static String jsonString(String value) {
+        var text = new StringBuilder("\"");
+        for (char c : value.toCharArray()) {
+            switch (c) {
+                case '"' -> text.append("\\\"");
+                case '\\' -> text.append("\\\\");
+                case '\n' -> text.append("\\n");
+                case '\r' -> text.append("\\r");
+                case '\t' -> text.append("\\t");
+                default -> {
+                    if (c < 0x20) text.append(String.format("\\u%04x", (int) c));
+                    else text.append(c);
+                }
+            }
+        }
+        return text.append('"').toString();
     }
 
     private static Evaluation describe(EvalResult result) {
@@ -293,7 +316,9 @@ public final class Adr078Fixtures {
             result.put("eval " + i, evaluation);
             result.put("eval " + i + " high", evaluate(outcome.program(), arguments.get(i), HIGH_LIMIT));
             if (i == 0 && evaluation.result() instanceof Term.Lam && arguments.size() > 1) {
-                result.put("applied", apply(evaluation.result(), arguments.get(1), REPLAY_LIMIT));
+                var applied = apply(evaluation.result(), arguments.get(1), REPLAY_LIMIT);
+                result.put("applied", applied);
+                result.put("applied high", apply(evaluation.result(), arguments.get(1), HIGH_LIMIT));
             }
         }
         if (fixture.name().startsWith("C12")) result.put("eval 1 c12-limit", evaluate(outcome.program(), arguments.get(1), C12_LIMIT));
