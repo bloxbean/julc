@@ -718,8 +718,8 @@ jobs:
         if [[ "$count" == 1 ]]; then
           IFS=$'\t' read -r id draft < "$RUNNER_TEMP/releases.tsv"
           if [[ "$draft" != false ]]; then
-            echo "::error::Release ${id} for v${VERSION} is a draft, which this workflow never makes; check its" \
-              "assets and publish or delete it by hand first." >&2
+            echo "::error::Release ${id} for v${VERSION} is a draft, which this workflow never makes: it was made" \
+              "by hand. Delete it, never publish it, then re-run this job (ADR-077 D8a)." >&2
             exit 1
           fi
           echo "Release ${id} for v${VERSION} exists."

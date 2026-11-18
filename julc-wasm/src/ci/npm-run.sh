@@ -4,7 +4,7 @@
 # attest job succeeded, in any attempt. Exactly one such run must exist (a release is built once, so a second run stops
 # before attest), and it must have exactly one npm-packages artifact that has not expired (artifacts are kept 14
 # days). Every API answer is checked: a history that cannot be read completely stops recovery, rather than choosing
-# among what could be read.
+# among what could be read, or calling it expired.
 #
 #   npm-run.sh <version>        writes run_id=<id> and artifact_id=<id> to $GITHUB_OUTPUT (or stdout)
 #
@@ -23,27 +23,34 @@ unreadable() {
     "chosen. Retry the dispatch later." >&2
   exit 1
 }
-query="${api}/workflows/native-image-release.yml/runs?event=push&head_sha=${SOURCE_DIGEST}&per_page=100"
-# GitHub returns at most 1,000 runs for a filtered query: refuse if the history could be longer, or was not all read.
-if ! total=$(gh api "$query" --jq '.total_count | if type == "number" then . else "INVALID" end'); then
-  unreadable "listing the workflow's runs"
-fi
-# Each run classified only from well-typed fields: a positive integer id and a non-blank string branch; any other row
-# is INVALID, and stops recovery.
-if ! listed=$(gh api --paginate "$query" --jq '.workflow_runs[] | if (.id | type) == "number" and .id > 0
-    and (.id | floor) == .id and (.head_branch | type) == "string" and (.head_branch | test("^[^\\s]+$"))
-    then "\(.id) \(.head_branch)" else "INVALID" end'); then
-  unreadable "listing the workflow's runs"
-fi
-# Each row a numeric run id and a branch; the distinct ids must be exactly as many as GitHub says there are (pages can
-# overlap when runs are added while reading).
-if [[ -n "$listed" ]] && grep -qvE '^[1-9][0-9]* [^ ]+$' <<< "$listed"; then unreadable "a malformed run list"; fi
-rows=$(grep -c . <<< "$listed" || true)
-count=$({ cut -d' ' -f1 <<< "$listed" | grep . || true; } | sort -u | wc -l | tr -d ' ')
-if [[ ! "$total" =~ ^[0-9]+$ || "$total" -gt 1000 || "$count" -ne "$total" || "$rows" -ne "$count" ]]; then
-  unreadable "the run list is incomplete or inconsistent: ${count} distinct of ${rows} rows read, ${total} reported"
-fi
-runs=$(awk -v branch="v${version}" '$2 == branch { print $1 }' <<< "$listed")
+# A paginated collection, read completely or not at all (R23-C8, C15, C22, C30): every page must be an object with a
+# numeric total_count, the same on every page, and an array <key>; every element is classified by <row> from
+# well-typed fields into "<KIND> <id>[ <field>]", anything else INVALID; and the distinct ids must be exactly
+# total_count, each read once (pages can overlap or shift while runs are added). GitHub returns at most 1,000 results
+# for a filtered query, so a larger total cannot be read completely. Prints the rows.
+#   collection <what> <url> <key> <row>
+collection() {
+  local out totals rows reads ids reported
+  out=$(gh api --paginate "$2" --jq 'def valid_id: (.id | type) == "number" and .id > 0 and (.id | floor) == .id;
+      (.total_count | if type == "number" then "TOTAL \(.)" else "INVALID" end),
+      (.'"$3"' | if type == "array" then .[] | '"$4"' else "INVALID" end)') || unreadable "$1"
+  totals=$(grep '^TOTAL ' <<< "$out" | sort -u || true)
+  rows=$(grep -v '^TOTAL ' <<< "$out" || true)
+  if [[ -n "$rows" ]] && grep -qvE '^[A-Z]+ [1-9][0-9]*( [^ ]+)?$' <<< "$rows"; then unreadable "$1: a malformed answer"; fi
+  reads=$(grep -c . <<< "$rows" || true)
+  ids=$({ cut -d' ' -f2 <<< "$rows" | grep . || true; } | sort -u | wc -l | tr -d ' ')
+  if [[ ! "$totals" =~ ^TOTAL\ [0-9]+$ || "${totals#TOTAL }" -gt 1000 || "$ids" -ne "${totals#TOTAL }" \
+      || "$reads" -ne "$ids" ]]; then
+    reported=${totals//TOTAL /}
+    unreadable "$1: incomplete or inconsistent, ${ids} distinct of ${reads} rows read, ${reported//$'\n'/ and } reported"
+  fi
+  if [[ -n "$rows" ]]; then printf '%s\n' "$rows"; fi
+}
+listed=$(collection "the workflow's runs" \
+  "${api}/workflows/native-image-release.yml/runs?event=push&head_sha=${SOURCE_DIGEST}&per_page=100" workflow_runs \
+  'if valid_id and (.head_branch | type) == "string" and (.head_branch | test("^[^\\s]+$"))
+    then "RUN \(.id) \(.head_branch)" else "INVALID" end')
+runs=$(awk -v branch="v${version}" '$3 == branch { print $2 }' <<< "$listed")
 if [[ -z "$runs" ]]; then
   echo "::error::No run of native-image-release.yml for the push of v${version} (${SOURCE_DIGEST}) was found: the tag's" \
     "release run is needed to publish its npm files." >&2
@@ -51,18 +58,12 @@ if [[ -z "$runs" ]]; then
 fi
 attested=()
 for run in $runs; do
-  # Every job classified from well-typed fields (a positive integer id, a string name, a string conclusion, or null
-  # for a job still pending) before any is counted; anything else is INVALID and stops recovery.
-  if ! jobs=$(gh api --paginate "${api}/runs/${run}/jobs?filter=all&per_page=100" \
-      --jq '.jobs[] | if (.id | type) == "number" and .id > 0 and (.id | floor) == .id and (.name | type) == "string"
-        and ((.conclusion | type) == "string" or .conclusion == null)
-        then (if .name == "Attest the npm tarballs and engine archives" and .conclusion == "success"
-          then "ATTESTED \(.id)" else "OTHER \(.id)" end) else "INVALID" end'); then
-    unreadable "the jobs of run ${run}"
-  fi
-  if [[ -n "$jobs" ]] && grep -qvE '^(ATTESTED|OTHER) [1-9][0-9]*$' <<< "$jobs"; then
-    unreadable "a malformed job list of run ${run}"
-  fi
+  # A job's conclusion must be present: a string once it completed, null only while it has not.
+  jobs=$(collection "the jobs of run ${run}" "${api}/runs/${run}/jobs?filter=all&per_page=100" jobs \
+    'if valid_id and (.name | type) == "string" and (.status | type) == "string" and has("conclusion")
+      and (if .status == "completed" then (.conclusion | type) == "string" else .conclusion == null end)
+      then (if .name == "Attest the npm tarballs and engine archives" and .conclusion == "success"
+        then "ATTESTED \(.id)" else "OTHER \(.id)" end) else "INVALID" end')
   if grep -q '^ATTESTED ' <<< "$jobs"; then attested+=("$run"); fi
 done
 if [[ ${#attested[@]} -eq 0 ]]; then
@@ -76,18 +77,12 @@ if [[ ${#attested[@]} -gt 1 ]]; then
   exit 1
 fi
 run=${attested[0]}
-# Every artifact classified from well-typed fields (a positive integer id, a string name, a boolean expired): an
-# expired that is null or missing is not expiry, it is an unreadable answer.
-if ! rows=$(gh api --paginate "${api}/runs/${run}/artifacts?name=npm-packages&per_page=100" \
-    --jq '.artifacts[] | if (.id | type) == "number" and .id > 0 and (.id | floor) == .id and (.name | type) == "string"
-      and (.expired | type) == "boolean"
-      then (if .name != "npm-packages" then "OTHER \(.id)" elif .expired then "EXPIRED \(.id)" else "LIVE \(.id)" end)
-      else "INVALID" end'); then
-  unreadable "the artifacts of run ${run}"
-fi
-if [[ -n "$rows" ]] && grep -qvE '^(LIVE|EXPIRED|OTHER) [1-9][0-9]*$' <<< "$rows"; then
-  unreadable "a malformed artifact list of run ${run}"
-fi
+# An expired that is null or missing is not expiry: it is an unreadable answer. Expiry is decided only on a completely
+# read list.
+rows=$(collection "the artifacts of run ${run}" "${api}/runs/${run}/artifacts?name=npm-packages&per_page=100" artifacts \
+  'if valid_id and (.name | type) == "string" and (.expired | type) == "boolean"
+    then (if .name != "npm-packages" then "OTHER \(.id)" elif .expired then "EXPIRED \(.id)" else "LIVE \(.id)" end)
+    else "INVALID" end')
 live=$(awk '$1 == "LIVE" { print $2 }' <<< "$rows")
 artifacts=$(grep -c . <<< "$live" || true)
 if [[ "$artifacts" -eq 0 ]]; then
