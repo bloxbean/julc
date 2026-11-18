@@ -92,14 +92,19 @@ elif args[0] == 'api':
         for a in matches[0]['assets']:
             print(f"{a['name']} {a['state']} {a.get('digest', '')}")
         sys.exit(0)
+    faults_file = os.path.join(state, 'faults.json')
+    faults = json.load(open(faults_file)) if os.path.exists(faults_file) else {}
     if '/actions/workflows/native-image-release.yml/runs?' in url:
+        if faults.get('runs'):
+            sys.stderr.write('gh: Server Error (HTTP 502)\n'); sys.exit(1)
         runs_file = os.path.join(state, 'runs.json')
         runs = json.load(open(runs_file)) if os.path.exists(runs_file) else []
         query = dict(part.split('=', 1) for part in url.split('?', 1)[1].split('&'))
-        branch = re.search(r'head_branch == "([^"]+)"', jq).group(1)
-        for r in runs:
-            if r['event'] == query['event'] and r['head_sha'] == query['head_sha'] and r['head_branch'] == branch:
-                print(r['id'])
+        matching = [r for r in runs if r['event'] == query['event'] and r['head_sha'] == query['head_sha']]
+        if jq == '.total_count':
+            print(faults.get('total_count', len(matching))); sys.exit(0)
+        for r in matching[:faults.get('listed', len(matching))]:
+            print(f"{r['id']} {r['head_branch']}")
         sys.exit(0)
     if '/actions/runs/' in url:
         runs_file = os.path.join(state, 'runs.json')
@@ -107,11 +112,15 @@ elif args[0] == 'api':
         run_id = int(url.split('/actions/runs/')[1].split('/')[0])
         if '/jobs?' in url:
             assert 'filter=all' in url
+            if run_id in faults.get('jobs', []):
+                sys.stderr.write('gh: Forbidden (HTTP 403)\n'); sys.exit(1)
             for job in runs[run_id]['jobs']:
                 if job['name'] == 'Attest the npm tarballs and engine archives' and job['conclusion'] == 'success':
                     print(job['id'])
             sys.exit(0)
         if '/artifacts?name=npm-packages' in url:
+            if faults.get('artifacts'):
+                sys.stderr.write('gh: Server Error (HTTP 500)\n'); sys.exit(1)
             for artifact in runs[run_id].get('artifacts', []):
                 if artifact['name'] == 'npm-packages' and not artifact['expired']:
                     print(artifact['id'])
@@ -200,6 +209,7 @@ def gates(tmp):
         repo = tempfile.mkdtemp(dir=tmp)
         subprocess.run(['git', 'init', '-q', repo], check=True)
         open(os.path.join(repo, 'gradle.properties'), 'w').write(properties)
+        shutil.copytree(os.path.join(ROOT, 'julc-wasm', 'src', 'ci'), os.path.join(repo, 'julc-wasm', 'src', 'ci'))
         subprocess.run(['git', '-C', repo, 'add', '.'], check=True)
         subprocess.run(['git', '-C', repo, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'x'], check=True)
         head = subprocess.run(['git', '-C', repo, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
@@ -237,6 +247,19 @@ def gates(tmp):
         case(f'{form}: no npm rule', f'refs/tags/v{form}', props(form), expect_error='npm has no rule for')
     case('an unsupported form without a GitHub release needs no rule', 'refs/tags/v0.1.0-rc.1',
          props('0.1.0-rc.1', gh='false'), 'none')
+    # R23-C3: the gate and the publisher classify with one function, so they agree on every input, including those a
+    # bash pattern would have let through.
+    for form in ['0.1.0+x', '01.1.0', '0.1.0-', '0.1.9007199254740993', f"0.1.0-pre{'1' * 250}", '0.1.0-pre1+build']:
+        case(f'{form[:40]}: refused like the publisher refuses it', f'refs/tags/v{form}', props(form),
+             expect_error='npm has no rule for')
+    for form, mode in [('0.1.0', 'publish'), ('0.1.0-pre22', 'publish'), ('0.1.0-beta1', 'publish'),
+                       ('0.1.0-rc1', 'publish'), ('0.1.0-pre22-rc1', 'dry-run')]:
+        decided = subprocess.run(['node', '--input-type=module', '-e',
+                                  f"import {{versionKind}} from '{os.path.join(ROOT, 'julc-wasm/src/ci/npm-release.mjs')}';"
+                                  f"console.log(versionKind('{form}'))"], text=True, capture_output=True).stdout.strip()
+        check(f'npm-gates and the publisher agree on {form}: {decided} -> {mode}',
+              (decided == 'pre-rc') == (mode == 'dry-run'))
+        case(f'{form} (the publisher says {decided})', f'refs/tags/v{form}', props(form), mode)
     case('github_release = false', f'refs/tags/v{V}', props(V, gh='false'), 'none')
     case('a dispatch from a branch', 'refs/heads/main', props(V), expect_error='runs on a release tag, not refs/heads/main',
          event='workflow_dispatch')
@@ -401,15 +424,16 @@ def npm_files(state, directory):
 
 
 def npm_run_lookup(tmp):
-    """npm-run.sh: the run a recovery dispatch takes the npm files from."""
+    """npm-run.sh: the one artifact a recovery dispatch takes the npm files from (R23-C1, R23-C2)."""
     attest = lambda conclusion, attempt=1, i=1: {'id': i, 'name': 'Attest the npm tarballs and engine archives',
                                                  'conclusion': conclusion, 'run_attempt': attempt}
     live = [{'id': 900, 'name': 'npm-packages', 'expired': False}]
     def run_(i, jobs, artifacts=live, sha_=TAG_SHA, branch=f'v{V}', event='push'):
         return {'id': i, 'event': event, 'head_sha': sha_, 'head_branch': branch, 'jobs': jobs, 'artifacts': artifacts}
-    def case(label, runs, expect_run=None, expect_text=''):
+    def case(label, runs, expect=None, expect_text='', faults=None):
         state = github(tmp, [])
         json.dump(runs, open(os.path.join(state, 'runs.json'), 'w'))
+        json.dump(faults or {}, open(os.path.join(state, 'faults.json'), 'w'))
         out = os.path.join(tempfile.mkdtemp(dir=tmp), 'out')
         open(out, 'w').close()
         result = subprocess.run(['bash', NPM_RUN, V], text=True, capture_output=True,
@@ -417,17 +441,25 @@ def npm_run_lookup(tmp):
                                      'GITHUB_REPOSITORY': 'bloxbean/julc', 'SOURCE_DIGEST': TAG_SHA,
                                      'GITHUB_OUTPUT': out})
         found = open(out).read().strip()
-        ok = (result.returncode == 0 and found == f'run_id={expect_run}') if expect_run else (
+        ok = (result.returncode == 0 and found == f'run_id={expect[0]}\nartifact_id={expect[1]}') if expect else (
             result.returncode != 0 and expect_text in result.stderr and not found)
         check(f'npm-run.sh: {label}', ok, result.stdout + result.stderr + found)
     gone = 'are no longer available (artifacts are kept 14 days)'
-    case('the tag\'s push run, attested, artifact live', [run_(11, [attest('success')])], expect_run=11)
-    case('attested in attempt 1, a later full re-run stopped in wasm (attest skipped)',
-         [run_(12, [attest('success', 1, 1), attest('skipped', 2, 2)])], expect_run=12)
+    unreadable = 'Cannot read the run history'
+    case('the tag\'s push run, attested, artifact live', [run_(11, [attest('success')])], expect=(11, 900))
+    case('attested in attempt 1, a later attempt\'s attest skipped (one artifact)',
+         [run_(12, [attest('success', 1, 1), attest('skipped', 2, 2)])], expect=(12, 900))
+    case('a failed attest in attempt 1, then a second upload attested in attempt 2: two artifacts, refused',
+         [run_(23, [attest('failure', 1, 1), attest('success', 2, 2)],
+               artifacts=[{'id': 901, 'name': 'npm-packages', 'expired': False},
+                          {'id': 902, 'name': 'npm-packages', 'expired': False}])], expect_text='2 npm-packages artifacts')
+    case('the same, the first attempt\'s artifact expired: the live one', [run_(24, [attest('failure', 1, 1),
+         attest('success', 2, 2)], artifacts=[{'id': 901, 'name': 'npm-packages', 'expired': True},
+                                              {'id': 902, 'name': 'npm-packages', 'expired': False}])], expect=(24, 902))
     case('a second run for the tag that stopped in wasm is not chosen',
-         [run_(13, [attest('success')]), run_(14, [attest('skipped')], artifacts=[])], expect_run=13)
+         [run_(13, [attest('success')]), run_(14, [attest('skipped')], artifacts=[])], expect=(13, 900))
     case('a run of another tag on the same commit is not chosen',
-         [run_(15, [attest('success')]), run_(16, [attest('success')], branch=f'v{V}-rc1')], expect_run=15)
+         [run_(15, [attest('success')]), run_(16, [attest('success')], branch=f'v{V}-rc1')], expect=(15, 900))
     case('no run for the tag', [], expect_text=gone)
     case('a run whose attest failed', [run_(17, [attest('failure')])], expect_text=gone)
     case('a dispatch run is not the tag\'s push run', [run_(18, [attest('success')], event='workflow_dispatch')],
@@ -438,6 +470,16 @@ def npm_run_lookup(tmp):
          expect_text=gone)
     case('two attested runs: a maintainer decides', [run_(21, [attest('success')]), run_(22, [attest('success')])],
          expect_text='Several runs')
+    case('two attested runs, one\'s jobs unreadable (HTTP 403): nothing is chosen',
+         [run_(25, [attest('success')]), run_(26, [attest('success')])], expect_text=unreadable, faults={'jobs': [26]})
+    case('the run list unreadable (HTTP 502)', [run_(27, [attest('success')])], expect_text=unreadable,
+         faults={'runs': True})
+    case('more than 1,000 runs: completeness cannot be established', [run_(28, [attest('success')])],
+         expect_text='incomplete', faults={'total_count': 1001})
+    case('fewer runs read than the total', [run_(29, [attest('success')]), run_(30, [attest('skipped')])],
+         expect_text='1 of 2 runs read', faults={'listed': 1})
+    case('the artifact list unreadable (HTTP 500)', [run_(31, [attest('success')])], expect_text=unreadable,
+         faults={'artifacts': True})
 
 
 def ref_check(tmp):
@@ -567,6 +609,10 @@ def graph():
               steps_by_name["Download this run's npm files"]['if'] == "github.event_name == 'push'"
               and steps_by_name["Download the npm files of the tag's run"]['with'].get('run-id')
               == '${{ steps.run.outputs.run_id }}'
+              and steps_by_name["Download the npm files of the tag's run"]['with'].get('artifact-ids')
+              == '${{ steps.run.outputs.artifact_id }}'
+              and steps_by_name["Download the npm files of the tag's run"]['with'].get('merge-multiple') is True
+              and 'name' not in steps_by_name["Download the npm files of the tag's run"]['with']
               and steps_by_name['Find the run that built the npm files']['if'] == "github.event_name == 'workflow_dispatch'"
               and names.index('Verify the npm files against their attestation and the release\'s archives')
               > names.index("Download the npm files of the tag's run"), repr(names))

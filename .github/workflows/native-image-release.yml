@@ -816,8 +816,15 @@ jobs:
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       with:
         persist-credentials: false
-        sparse-checkout: gradle.properties
+        sparse-checkout: |
+          gradle.properties
+          julc-wasm/src/ci
         sparse-checkout-cone-mode: false
+
+    - name: Set up Node.js
+      uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      with:
+        node-version: '24.22.3'
 
     - name: Check the ref and read the gates
       id: gates
@@ -848,21 +855,13 @@ jobs:
         # Default to false: a missing or unparseable property must not publish.
         GITHUB_RELEASE=$(prop github_release)
         NPM_PUBLISH=$(prop npm_publish)
-        # D8's forms (julc-wasm/src/ci/npm-release.mjs versionKind): X.Y.Z, -preN, -betaN and -rcN are published;
-        # -preN-rcN, a release candidate of a prerelease, only dry-runs (semver orders it above -preN); any other form
-        # has no npm rule.
-        PRE=""
-        if [[ "$VERSION" == *-* ]]; then PRE=${VERSION#*-}; fi
-        if [[ -z "$PRE" || "$PRE" =~ ^(pre|beta|rc)[1-9][0-9]*$ ]]; then
-          KIND=publishable
-        elif [[ "$PRE" =~ ^pre[1-9][0-9]*-rc[1-9][0-9]*$ ]]; then
-          KIND=prerelease-candidate
-        else
-          KIND=unsupported
-        fi
+        # D8's forms, with the publisher's own classifier (julc-wasm/src/ci/npm-gate.mjs, npm-release.mjs versionKind):
+        # X.Y.Z, -preN, -betaN and -rcN are published; -preN-rcN, a release candidate of a prerelease, only dry-runs
+        # (semver orders it above -preN); any other form, or a version outside npm's semver limits, has no npm rule.
         if [[ "${GITHUB_RELEASE:-false}" != true ]]; then
+          KIND=n/a
           MODE=none
-        elif [[ "$KIND" == unsupported ]]; then
+        elif ! KIND=$(node julc-wasm/src/ci/npm-gate.mjs "$VERSION"); then
           echo "::error::npm has no rule for v${VERSION}: ADR-077 D8 publishes only X.Y.Z, X.Y.Z-preN, X.Y.Z-betaN and" \
             "X.Y.Z-rcN, and dry-runs X.Y.Z-preN-rcN." >&2
           exit 1
@@ -934,11 +933,14 @@ jobs:
         name: npm-packages
         path: assets
 
+    # By the artifact id npm-run.sh inspected (its run's only live npm-packages), not by name. merge-multiple puts the
+    # files directly in assets/, as a download by name does.
     - name: Download the npm files of the tag's run
       if: github.event_name == 'workflow_dispatch'
       uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
       with:
-        name: npm-packages
+        artifact-ids: ${{ steps.run.outputs.artifact_id }}
+        merge-multiple: true
         path: assets
         run-id: ${{ steps.run.outputs.run_id }}
         github-token: ${{ github.token }}
@@ -1064,11 +1066,14 @@ jobs:
         name: npm-packages
         path: assets
 
+    # By the artifact id npm-run.sh inspected (its run's only live npm-packages), not by name. merge-multiple puts the
+    # files directly in assets/, as a download by name does.
     - name: Download the npm files of the tag's run
       if: github.event_name == 'workflow_dispatch'
       uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
       with:
-        name: npm-packages
+        artifact-ids: ${{ steps.run.outputs.artifact_id }}
+        merge-multiple: true
         path: assets
         run-id: ${{ steps.run.outputs.run_id }}
         github-token: ${{ github.token }}
@@ -1158,11 +1163,14 @@ jobs:
         name: npm-packages
         path: assets
 
+    # By the artifact id npm-run.sh inspected (its run's only live npm-packages), not by name. merge-multiple puts the
+    # files directly in assets/, as a download by name does.
     - name: Download the npm files of the tag's run
       if: github.event_name == 'workflow_dispatch'
       uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
       with:
-        name: npm-packages
+        artifact-ids: ${{ steps.run.outputs.artifact_id }}
+        merge-multiple: true
         path: assets
         run-id: ${{ steps.run.outputs.run_id }}
         github-token: ${{ github.token }}
