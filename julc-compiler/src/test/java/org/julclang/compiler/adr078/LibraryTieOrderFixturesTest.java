@@ -302,7 +302,7 @@ class LibraryTieOrderFixturesTest {
     @Test
     void everyBindingReachesTheMethodBoundCallbackOfItsHandler() {
         int compared = 0;
-        int[] branchesMatchedByIdentity = {0};
+        int compilationsMatchedByIdentity = 0;
         for (var fixture : Adr078Fixtures.fixtures()) {
             for (var variant : fixture.variants()) {
                 for (var mode : Adr078Fixtures.modes()) {
@@ -326,6 +326,8 @@ class LibraryTieOrderFixturesTest {
                     var emitted = handlerSpines(result.pirTerm());
                     String at = key(fixture, variant, mode);
                     assertEquals(multi ? List.of(0, 1) : List.of(-1), List.copyOf(emitted.keySet()), at + ": the emitted handlers");
+                    boolean assembledTermsKept = emitted.values().stream().flatMap(List::stream)
+                            .anyMatch(start -> terms.values().stream().anyMatch(c -> c.getLast() == start));
                     // C32: each tag's callbacks match the spine in the branch the dispatcher runs for that purpose tag.
                     byHandler.forEach((handler, names) -> {
                         var spine = emitted.get(handler);
@@ -342,21 +344,22 @@ class LibraryTieOrderFixturesTest {
                             assertTrue(encloses(chain.get(i), chain.get(i - 1)), at + ": handler " + handler
                                     + "'s binding " + names.get(i) + " does not enclose " + names.get(i - 1));
                         }
-                        boolean assembledTermsKept = emitted.values().stream().flatMap(List::stream)
-                                .anyMatch(start -> terms.values().stream().anyMatch(c -> c.getLast() == start));
                         if (assembledTermsKept) {
                             assertTrue(chain.getLast() == spine.getFirst(), at + ": handler " + handler
                                     + "'s bindings are not the spine of its branch");
-                            if (multi) branchesMatchedByIdentity[0]++;
                         }
                     });
+                    // C41: the floor counts compilations whose every handler branch was matched by identity.
+                    if (multi && assembledTermsKept) compilationsMatchedByIdentity++;
                     assertEquals(multi ? List.of(0, 1) : List.of(-1), List.copyOf(byHandler.keySet()), at + ": the handlers called back");
                     compared++;
                 }
             }
         }
         assertTrue(compared > 100, "compared " + compared);
-        assertTrue(branchesMatchedByIdentity[0] >= 4, "multi-handler branches matched by identity: " + branchesMatchedByIdentity[0]);
+        System.out.println("I3: " + compared + " compilations compared; multi-handler compilations matched by identity: "
+                + compilationsMatchedByIdentity);
+        assertTrue(compilationsMatchedByIdentity >= 32, "multi-handler compilations matched by identity: " + compilationsMatchedByIdentity);
     }
 
     /**
@@ -623,7 +626,8 @@ class LibraryTieOrderFixturesTest {
     /**
      * I6a: what pre21 computed, failed with or traced is unchanged, compared structurally; a returned function is
      * applied to the same arguments and compared; an evaluation that exhausts the transaction limit on either side is
-     * decided at the higher limit ({@link #atTheHigherLimit}). Budgets are reported (I6b).
+     * decided at the higher limit ({@link #afterAnExhaustion}). Budgets are reported (I6b), those of the completed
+     * evaluations after an exhaustion included (C38).
      */
     @Test
     void evaluationsMatchPre21() {
@@ -656,10 +660,18 @@ class LibraryTieOrderFixturesTest {
                         var evaluation = entry.getValue();
                         if (pre21.startsWith("EXHAUSTED") || evaluation.exhausted()) {
                             var high = now.get(suffix + " high");
-                            String verdict = atTheHigherLimit(PRE21.get(prefix + suffix + " high"), high == null ? null : high.outcome());
+                            String verdict = afterAnExhaustion(pre21, PRE21.get(prefix + suffix + " high"), evaluation.outcome(),
+                                    high == null ? null : high.outcome());
                             if (verdict.equals(INCONCLUSIVE)) inconclusive++;
-                            else if (verdict.equals(COMPARED)) compared++;
-                            else mismatches.add(prefix + suffix + " high: " + verdict);
+                            else if (!verdict.equals(COMPARED)) mismatches.add(prefix + suffix + ": " + verdict);
+                            else {
+                                compared++;
+                                // C38: the completed evaluations' budgets are reported here too (I6b).
+                                var completed = evaluation.exhausted() ? high : evaluation;
+                                String budget = completed.budget().cpuSteps() + " cpu, " + completed.budget().memoryUnits() + " mem";
+                                String pre21Budget = PRE21.get(prefix + "budget " + suffix + (pre21.startsWith("EXHAUSTED") ? " high" : ""));
+                                if (!budget.equals(pre21Budget)) budgets.append(prefix).append(suffix).append(": ").append(pre21Budget).append(" -> ").append(budget).append('\n');
+                            }
                             continue;
                         }
                         compared++;
@@ -685,27 +697,65 @@ class LibraryTieOrderFixturesTest {
 
     /**
      * ADR-078's I6a oracle for an evaluation that exhausted the transaction limit on either side, or both (Codex M1a
-     * C30): the higher-limit replays decide. Where both terminate, their outcomes must be equal. Where an exhaustion
-     * persists on either side, the case is inconclusive. Returns {@link #COMPARED}, {@link #INCONCLUSIVE}, or the
-     * mismatch.
+     * C30, C36). Each side's evidence is its transaction-limit outcome, or its higher-limit replay where the transaction
+     * limit exhausted; a transaction-limit exhaustion's partial traces are superseded by the replay. Where both
+     * terminate, their results and complete traces must be equal. Where an exhaustion persists, the case is
+     * inconclusive only if the traces it observed are a prefix of the other side's complete traces (or, both
+     * exhausted, one is a prefix of the other); otherwise the traces already disagree, a mismatch. Returns
+     * {@link #COMPARED}, {@link #INCONCLUSIVE}, or the mismatch.
      */
-    static String atTheHigherLimit(String pre21High, String nowHigh) {
-        if (pre21High == null || nowHigh == null) return "an exhaustion with no higher-limit replay";
-        if (pre21High.startsWith("EXHAUSTED") || nowHigh.startsWith("EXHAUSTED")) return INCONCLUSIVE;
-        return pre21High.equals(nowHigh) ? COMPARED : "pre21 " + pre21High + ", now " + nowHigh;
+    static String afterAnExhaustion(String pre21, String pre21High, String now, String nowHigh) {
+        String a = pre21.startsWith("EXHAUSTED") ? pre21High : pre21;
+        String b = now.startsWith("EXHAUSTED") ? nowHigh : now;
+        if (a == null || b == null) return "an exhaustion with no higher-limit replay";
+        boolean ea = a.startsWith("EXHAUSTED"), eb = b.startsWith("EXHAUSTED");
+        if (!ea && !eb) return a.equals(b) ? COMPARED : "pre21 " + a + ", now " + b;
+        String ta = tracesOf(a), tb = tracesOf(b);
+        boolean consistent = ea && eb ? isPrefix(ta, tb) || isPrefix(tb, ta) : ea ? isPrefix(ta, tb) : isPrefix(tb, ta);
+        return consistent ? INCONCLUSIVE : "the traces disagree before the exhaustion: pre21 " + a + ", now " + b;
     }
 
-    /** C30's control: an exhaustion on both sides is no longer inconclusive by itself; the higher limit decides. */
+    /** The JSON trace array that ends an evaluation's outcome line (Adr078Fixtures.describe). */
+    private static String tracesOf(String outcome) {
+        return outcome.substring(outcome.indexOf(" traces=[") + " traces=".length());
+    }
+
+    /**
+     * Whether the trace list {@code a} is a prefix of {@code b}, both as JSON arrays of strings: each element is a
+     * complete JSON string, so {@code a} without its {@code ]} must start {@code b}, at an element boundary.
+     */
+    static boolean isPrefix(String a, String b) {
+        if (a.equals("[]")) return true;
+        String open = a.substring(0, a.length() - 1);
+        return b.startsWith(open) && b.length() > open.length() && (b.charAt(open.length()) == ',' || b.charAt(open.length()) == ']');
+    }
+
+    /** C30's and C36's controls: the higher limit decides an exhaustion, and traces that disagree are a mismatch. */
     @Test
     void theHigherLimitDecidesAnExhaustion() {
         String success = "SUCCESS term=010100480781 traces=[]", failure = "FAILURE reason=\"error\" traces=[]";
         String exhausted = "EXHAUSTED traces=[]";
-        assertEquals("pre21 " + success + ", now " + failure, atTheHigherLimit(success, failure));
-        assertEquals(COMPARED, atTheHigherLimit(success, success));
-        assertEquals(INCONCLUSIVE, atTheHigherLimit(exhausted, exhausted));
-        assertEquals(INCONCLUSIVE, atTheHigherLimit(success, exhausted));
-        assertEquals(INCONCLUSIVE, atTheHigherLimit(exhausted, failure));
-        assertEquals("an exhaustion with no higher-limit replay", atTheHigherLimit(success, null));
+        // C30: both exhaust the transaction limit; the replays decide.
+        assertEquals("pre21 " + success + ", now " + failure, afterAnExhaustion(exhausted, success, exhausted, failure));
+        assertEquals(COMPARED, afterAnExhaustion(exhausted, success, exhausted, success));
+        assertEquals(INCONCLUSIVE, afterAnExhaustion(exhausted, exhausted, exhausted, exhausted));
+        assertEquals(INCONCLUSIVE, afterAnExhaustion(exhausted, success, exhausted, exhausted));
+        assertEquals(INCONCLUSIVE, afterAnExhaustion(success, null, exhausted, exhausted));
+        assertEquals("an exhaustion with no higher-limit replay", afterAnExhaustion(exhausted, success, exhausted, null));
+        // C36: pre21's replay succeeds tracing ["A"], this build's still exhausts having traced ["B"]: a mismatch.
+        String tracedA = "SUCCESS term=010100480781 traces=[\"A\"]", exhaustedB = "EXHAUSTED traces=[\"B\"]";
+        assertTrue(afterAnExhaustion(exhausted, tracedA, exhausted, exhaustedB).startsWith("the traces disagree"));
+        assertTrue(afterAnExhaustion(exhausted, exhaustedB, exhausted, tracedA).startsWith("the traces disagree"));
+        // An exhaustion whose traces are a prefix of the other side's complete traces stays inconclusive.
+        assertEquals(INCONCLUSIVE, afterAnExhaustion(exhausted, "EXHAUSTED traces=[\"A\"]", exhausted,
+                "SUCCESS term=010100480781 traces=[\"A\",\"B\"]"));
+        assertEquals(INCONCLUSIVE, afterAnExhaustion(exhausted, "EXHAUSTED traces=[\"A\",\"B\"]", exhausted,
+                "EXHAUSTED traces=[\"A\"]"));
+        assertTrue(afterAnExhaustion(exhausted, "EXHAUSTED traces=[\"AB\"]", exhausted, "EXHAUSTED traces=[\"A\"]")
+                .startsWith("the traces disagree"));
+        // C36, the reverse: transaction-limit prefixes [] and ["start"] differ, the replays agree: compared, no mismatch.
+        String done = "SUCCESS term=010100480781 traces=[\"start\",\"done\"]";
+        assertEquals(COMPARED, afterAnExhaustion(exhausted, done, "EXHAUSTED traces=[\"start\"]", done));
     }
 
     /** A report of the fixtures whose bytes M1a changed from pre21: only programs with equal-key methods may change. */

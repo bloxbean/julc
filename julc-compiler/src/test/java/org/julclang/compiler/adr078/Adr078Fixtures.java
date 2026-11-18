@@ -313,12 +313,15 @@ public final class Adr078Fixtures {
         var arguments = arguments(fixture);
         for (int i = 0; i < arguments.size(); i++) {
             var evaluation = evaluate(outcome.program(), arguments.get(i), REPLAY_LIMIT);
+            var high = evaluate(outcome.program(), arguments.get(i), HIGH_LIMIT);
             result.put("eval " + i, evaluation);
-            result.put("eval " + i + " high", evaluate(outcome.program(), arguments.get(i), HIGH_LIMIT));
-            if (i == 0 && evaluation.result() instanceof Term.Lam && arguments.size() > 1) {
-                var applied = apply(evaluation.result(), arguments.get(1), REPLAY_LIMIT);
-                result.put("applied", applied);
-                result.put("applied high", apply(evaluation.result(), arguments.get(1), HIGH_LIMIT));
+            result.put("eval " + i + " high", high);
+            // C37: a function whose evaluation exhausted the transaction limit is recovered from the higher-limit
+            // replay, so both sides apply it, and make the same evaluation ids, whichever side exhausted.
+            var function = evaluation.exhausted() ? high.result() : evaluation.result();
+            if (i == 0 && function instanceof Term.Lam && arguments.size() > 1) {
+                result.put("applied", apply(function, arguments.get(1), REPLAY_LIMIT));
+                result.put("applied high", apply(function, arguments.get(1), HIGH_LIMIT));
             }
         }
         if (fixture.name().startsWith("C12")) result.put("eval 1 c12-limit", evaluate(outcome.program(), arguments.get(1), C12_LIMIT));
