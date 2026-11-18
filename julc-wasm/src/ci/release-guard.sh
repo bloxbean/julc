@@ -47,9 +47,20 @@ for page in $(seq 1 100); do
   fi
   releases+=${rows:+$rows$'\n'}
   if [[ "${head#PAGE }" -lt 100 ]]; then break; fi
-  if [[ "$page" -eq 100 ]]; then malformed "more than 10,000 releases"; fi
+  if [[ "$page" -eq 100 ]]; then
+    echo "::error::100 full pages of GitHub releases read; end of list unconfirmed. Stopping, changing nothing." >&2
+    exit 1
+  fi
 done
 releases=${releases%$'\n'}
+# A release id listed twice means the pages shifted while they were read (R23-C48): retry, rather than take it for
+# two releases of the tag.
+repeated=$(if [[ -n "$releases" ]]; then cut -d' ' -f2 <<< "$releases" | sort | uniq -d; fi)
+if [[ -n "$repeated" ]]; then
+  echo "::error::Unstable GitHub release listing (release ${repeated//$'\n'/, } listed twice while the pages were" \
+    "read); nothing was decided. Retry." >&2
+  exit 1
+fi
 if [[ -n "$list" ]]; then
   if [[ -n "$releases" ]]; then sed 's/^RELEASE \([^ ]*\) \(.*\)$/\1\t\2/' <<< "$releases"; fi
   exit 0

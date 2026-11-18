@@ -2153,3 +2153,6 @@ choosing the recommendation recorded with each.
       release, and a draft flag that is not a boolean is malformed, not "still a draft".
     - R23-C46: a build test requires the job names `npm-run.sh` gives the ATTESTED and RELEASED roles to be the
       names of `attest` and `github-release`, each in its role.
+  - **Review round 8 of r23** (Codex approved 92b5c253; R23-C47 to C49): `github-release` counts the listing with
+    `mapfile` (an unreadable file stops, never counts as none); a release id listed twice is an unstable listing to
+    retry, and only distinct ids of the tag need resolving by hand; the page cap says the end of the list is unconfirmed.

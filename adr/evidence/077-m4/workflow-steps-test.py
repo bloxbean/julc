@@ -191,10 +191,17 @@ def step(job, name):
     raise KeyError(f'{job}: {name}')
 
 
+# The steps' bash is GitHub's (5.x): mapfile needs bash 4 or later, which macOS's /bin/bash (3.2) is not.
+STEP_BASH = next((b for b in ['/opt/homebrew/bin/bash', '/usr/local/bin/bash', shutil.which('bash')]
+                  if b and os.path.exists(b) and subprocess.run([b, '-c', '((BASH_VERSINFO[0] >= 4))']).returncode == 0),
+                 None)
+
+
 def run(script, env, cwd):
+    assert STEP_BASH, 'the workflow steps need bash 4 or later'
     if not os.path.exists(os.path.join(cwd, 'julc-wasm')):  # the job's sparse checkout of julc-wasm/src/ci
         os.symlink(os.path.join(ROOT, 'julc-wasm'), os.path.join(cwd, 'julc-wasm'))
-    return subprocess.run(['bash', '-e', '-o', 'pipefail', '-c', script], env={**os.environ, **env}, cwd=cwd, text=True,
+    return subprocess.run([STEP_BASH, '-e', '-o', 'pipefail', '-c', script], env={**os.environ, **env}, cwd=cwd, text=True,
                           capture_output=True)
 
 
@@ -356,6 +363,10 @@ def build_once(tmp):
     case('this tag\'s release with a null draft flag', [], False, malformed,
          pages=[[{'id': 7, 'tag_name': f'v{V}', 'draft': None}]])
     case('this tag\'s release with id 0', [], False, malformed, pages=[[{'id': 0, 'tag_name': f'v{V}', 'draft': False}]])
+    case('the same release on two pages (R23-C48)', [], False, 'Unstable GitHub release listing',
+         pages=[others[:99] + [{'id': 7, 'tag_name': f'v{V}', 'draft': False}], [{'id': 7, 'tag_name': f'v{V}', 'draft': False}]])
+    case('100 full pages (R23-C49)', [], False, '100 full pages of GitHub releases read; end of list unconfirmed',
+         pages=[others] * 100)
     case('a release without a tag_name ([{}])', [], False, malformed, pages=[[{}]])
     case('a release whose tag_name is not a string', [], False, malformed, pages=[[{'id': 1, 'tag_name': 7}]])
     case('a release whose tag_name is empty', [], False, malformed, pages=[[{'id': 1, 'tag_name': ''}]])
@@ -365,9 +376,10 @@ def build_once(tmp):
     case('a page that is null', [], False, malformed, pages=[None])
 
 
-def create_step(tmp, state, local, fail_upload=''):
+def create_step(tmp, state, local, fail_upload='', prepare=None):
     work = tempfile.mkdtemp(dir=tmp)
     os.makedirs(os.path.join(work, 'dist'))
+    if prepare: prepare(work)
     for name, data in local.items():
         open(os.path.join(work, 'dist', name), 'w').write(data)
     return run(step('github-release', 'Create the release once and attach its assets'),
@@ -380,11 +392,12 @@ def releases_of(state):
 
 
 def create_once(tmp):
-    def case(label, local, releases, expect_ok, expect_text, expect_deleted=(), expect_uploads=None, pages=None):
+    def case(label, local, releases, expect_ok, expect_text, expect_deleted=(), expect_uploads=None, pages=None,
+             prepare=None):
         state = github(tmp, releases)
         if pages is not None:
             json.dump({'pages': {'releases': pages}}, open(os.path.join(state, 'faults.json'), 'w'))
-        result, _ = create_step(tmp, state, local)
+        result, _ = create_step(tmp, state, local, prepare=prepare)
         deleted_file = os.path.join(state, 'deleted')
         deleted = open(deleted_file).read().split() if os.path.exists(deleted_file) else []
         uploads_file = os.path.join(state, 'uploads')
@@ -425,13 +438,28 @@ def create_once(tmp):
                           {'id': 7, 'draft': 'true'}), ('no id', {'draft': True}), ('id 0', {'id': 0, 'draft': False})]:
         case(f'a malformed release record ({label}): stop, change nothing', full, [], False, stop, expect_uploads=[],
              pages=[[{'tag_name': f'v{V}', 'assets': [], **record}]])
+    # R23-C47: a release list that cannot be read back stops; it never counts as none.
+    def write_only(work):
+        open(os.path.join(work, 'releases.tsv'), 'w').close()
+        os.chmod(os.path.join(work, 'releases.tsv'), 0o200)
+    state = case('the listing file is unreadable: stop, nothing created', full, [], False, 'Permission denied',
+                 expect_uploads=[], prepare=write_only)
+    check('github-release create-once: the listing file is unreadable: no release created', releases_of(state) == [],
+          repr(releases_of(state)))
+    # R23-C48: one release listed twice (pages shifted while read) is an unstable listing, not two releases.
+    shifted = [{'id': 1000 + i, 'tag_name': f'v9.{i}.0', 'draft': False} for i in range(99)]
+    shifted.append({'id': 7, 'tag_name': f'v{V}', 'draft': False, 'assets': []})
+    case('a release listed on two pages: unstable listing, retry', full, [], False, 'Unstable GitHub release listing',
+         expect_uploads=[], pages=[shifted, [{'id': 7, 'tag_name': f'v{V}', 'draft': False, 'assets': []}]])
+    case('two distinct releases of the tag: resolve by hand', full, [], False, '2 distinct releases', expect_uploads=[],
+         pages=[[{'id': 7, 'tag_name': f'v{V}', 'draft': False}, {'id': 8, 'tag_name': f'v{V}', 'draft': True}]])
     # R23-C45: the release list itself is validated before "no release" can mean "create one".
     for label, pages in [('a sole HTTP 204', ['204']), ('an object, not an array', [{}]),
                          ('a release without a tag_name', [[{}]])]:
         state = case(f'{label}: stop, nothing created', full, [], False, stop, expect_uploads=[], pages=pages)
         check(f'github-release create-once: {label}: no release created', releases_of(state) == [],
               repr(releases_of(state)))
-    case('two releases (a draft too) with the tag', full, [rel([], i=7), rel([], draft=True, i=8)], False, '2 releases')
+    case('two releases (a draft too) with the tag', full, [rel([], i=7), rel([], draft=True, i=8)], False, '2 distinct releases')
     case('another tag\'s release is not this one', full,
          [{'id': 3, 'tag': f'v{V}0', 'draft': False, 'assets': [asset(5, name, 'A')]}], True, 'Created release')
     # R23-C16: the inventory, before anything is created or changed.
