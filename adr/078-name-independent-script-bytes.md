@@ -1,7 +1,8 @@
 # ADR-078: First use breaks ties among equal-content-key library methods
 
-**Status:** Accepted (2026-11-19), revision r6. Approved by Claude (Fable) and Codex in review round 5 (`dcf36096`) and
-by the maintainer's external reviewer (reviewer1) at r6 (`d68b2c50`). Implementation: M1a, then M3, in the same PR.
+**Status:** Accepted (2026-11-19), revision r6, with r7's implementation notes. Approved by Claude (Fable) and Codex in
+review round 5 (`dcf36096`) and by the maintainer's external reviewer (reviewer1) at r6 (`d68b2c50`). Implementation:
+M1a, then M3, in the same PR.
 **Date:** 2026-11-18
 **Risk class:** correctness-sensitive, **low**.
 - The change touches only the comparator that orders library `let`s whose content keys are equal.
@@ -80,11 +81,14 @@ hash moves from `28e115b5…` to `f338eb56…` (`crowdfund-diff.txt`).
 - **Visiting.** A method is marked before its body is walked. Calls from one helper to another are followed.
 
 **D1a. The root walk.** It visits:
-1. the `@Param` decoders in declaration order;
-2. the static initialisers in textual order;
-3. the handlers in purpose tag order, into the one table; for `compileMethod`, the call of the target.
+1. the static initialisers in textual order;
+2. the handlers in purpose tag order, into the one table; for `compileMethod`, the call of the target.
 
-The walk is pre-order, left to right over `PirHelpers.mapChildren`, and iterative. The first `Var` that resolves to an
+The `@Param` decoders are not walked (r7). Each is `PirHelpers.wrapDecode` over the raw argument's variable, so it
+holds no reference to a method.
+
+The walk is pre-order, left to right, in `LibraryBindingOrder.children`'s order. That is the one child order the
+content key also walks (r7). The walk is iterative. The first `Var` that resolves to an
 unranked method gives it the next rank, and its body is walked there.
 
 **D1a′. Unread helpers** (C11: an unread helper can read a library method). The helpers the root walk did not reach
@@ -230,7 +234,13 @@ A single failure blocks pre22. Attributing a failure to a known limit diagnoses 
   - every difference found is attributed to a known limit or fixed.
 
 **Fixed fixtures.** Which variants compile on pre21 is pinned (C29):
-- **JOUST:** Crowdfund and Tips, base and renamed, give equal bytes.
+- **JOUST (r7).** JOUST's generated Crowdfund and Tips Java do not compile without JOUST's on-chain runtime
+  (`org.julclang.state.api.*`), so they are not JuLC fixtures. **The JOUST fixture is M3's gate.** JuLC's D5 carries
+  JuLC-only stand-ins:
+  - the twin-body fixtures;
+  - a Crowdfund-like pair of identical `?? 0` helpers used from two branches, in the debug oracle;
+  - compiled validators (a single entry, a static initialiser, and a multi-purpose validator whose handlers first use
+    opposite twins), so that the validator path of the assembly is covered too.
 - **C11:** an unread helper reads one twin; the bytes are equal after the rename.
 - **C12** (`C12.java.txt`; an order change crosses FLAT's 128 index boundary): both M1a spellings give `c8489246…`,
   1,010 B, and succeed under `ExBudget(31_150_000, 110_000)`. pre21's two outcomes are pinned.
@@ -337,6 +347,8 @@ JOUST's D12 is an M3 deliverable.
     - the gate passes;
     - D5 is green;
     - the oracles run against `08b021ce`;
+    - ADR-075's corpus replay, run against `08b021ce`: the ADR-074 corpus, 20,407 cases. **It is required (r7).** It is
+      the broadest I6a evidence: unbounded outcomes and traces are compared, and budgets are reported;
     - every in-repo byte change is explained;
     - the compile time is measured;
     - `./gradlew build` is green.
@@ -376,3 +388,8 @@ JOUST's D12 is an M3 deliverable.
   - "Registered library binding supplied to assembly", and helper order versus binding order (C42).
   - A finding-ID legend; I6a's "at most once" explained; "(methods whose compiled bodies are the same apart from
     names)" in the release note (F22).
+- **r7 (2026-11-19).** Implementation notes from the M1a review (Fable M1A-F1–F6). No decision changes.
+  - **D1a:** the `@Param` decoders are not walked, since they hold no method reference. The child order is
+    `LibraryBindingOrder.children`, which the content key now shares.
+  - **D5:** the JOUST fixture is M3's gate. JuLC carries JuLC-only stand-ins, including compiled validators.
+  - **M1a exit:** ADR-075's corpus replay is required.

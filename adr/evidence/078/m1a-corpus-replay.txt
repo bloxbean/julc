@@ -1,0 +1,18 @@
+# ADR-078 M1a: ADR-075's corpus replay, pre21 (08b021ce, Maven 0.1.0-pre21) vs M1a (this branch), 2026-11-19.
+# Corpus: the ADR-074 corpus, julc-327-base/build/corpus327 (20,407 cases). Runner: Adr078Replay.java.txt; comparison: compare_replay.py.txt.
+# Outputs (317,286 lines each) are byte-identical: sha256 669953bffced8a48b293378d32b5ef8b82745d5064406e1962b5e50a9abcd272 on both sides.
+
+ids only on one side: 0
+compile status differences: 0 []
+FLAT: same 44475 different 0 in 0 cases
+evaluations: same outcome 266441 different outcome 0
+evaluations exhausted on one side only: 0
+evaluations whose budget changed (same outcome): 0
+
+pre21 evaluation outcomes (M1a identical):
+    112   exhausted
+ 167907   fail
+  98422   ok
+cases replayed: 18452 (compileMethod and validator cases with the default lookup)
+case x level compilations that threw (identically on both sides): 6344
+wall time (4 threads): pre21 55.50 s, M1a 56.64 s

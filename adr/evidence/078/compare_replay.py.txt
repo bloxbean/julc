@@ -1,0 +1,43 @@
+import re, sys
+def load(p):
+    d = {}
+    for line in open(p):
+        line = line.rstrip('\n')
+        parts = line.split(' ', 3)
+        if len(parts) >= 3 and (parts[2] == 'flat' or re.fullmatch(r'v\d', parts[2])):
+            d[(parts[0], parts[1], parts[2])] = parts[3] if len(parts) > 3 else ''
+        else:
+            k = tuple(line.split(' ')[:2]); d[k + ('status',)] = ' '.join(line.split(' ')[2:])
+    return d
+a, b = load(sys.argv[1]), load(sys.argv[2])
+keys = set(a) | set(b)
+only = [k for k in keys if (k in a) != (k in b)]
+flat_same = flat_diff = 0; ev_same = ev_diff = 0; budget_diff = 0; one_sided = []; status_diff = []
+changed_flat_cases = set(); outcome_diffs = []; budget_examples = []
+strip = lambda s: re.sub(r' cpu=\d+ mem=\d+', '', s)
+for k in keys:
+    if k not in a or k not in b: continue
+    x, y = a[k], b[k]
+    if k[2] == 'flat':
+        if x == y: flat_same += 1
+        else: flat_diff += 1; changed_flat_cases.add(k[0])
+    elif k[2] == 'status':
+        if x != y: status_diff.append((k, x, y))
+    else:
+        ex, ey = x.startswith('exhausted'), y.startswith('exhausted')
+        if ex != ey: one_sided.append(k); continue
+        if strip(x) == strip(y): ev_same += 1
+        else: ev_diff += 1; outcome_diffs.append((k, x, y))
+        if x != y and strip(x) == strip(y):
+            budget_diff += 1
+            if len(budget_examples) < 10: budget_examples.append((k, x[:80], y[:80]))
+print("ids only on one side:", len(only))
+print("compile status differences:", len(status_diff), status_diff[:5])
+print("FLAT: same", flat_same, "different", flat_diff, "in", len(changed_flat_cases), "cases")
+print("evaluations: same outcome", ev_same, "different outcome", ev_diff)
+print("evaluations exhausted on one side only:", len(one_sided))
+print("evaluations whose budget changed (same outcome):", budget_diff)
+for e in budget_examples: print("  budget", e)
+for e in outcome_diffs[:10]: print("  OUTCOME", e)
+open(sys.argv[3], 'w').write('\n'.join(sorted(changed_flat_cases)) + '\n')
+open(sys.argv[4], 'w').write('\n'.join(sorted({k[0] for k in one_sided})) + '\n')

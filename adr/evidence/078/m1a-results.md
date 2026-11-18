@@ -85,11 +85,83 @@ runs each:
 
 The difference is within run-to-run noise (< 1%).
 
+## Debug oracle (I4, D5; added after the first M1a review)
+
+`julc-tools` `LibraryTieDebugOracleTest` drives JuLC's source debugger (`SourceDebugService`), the service the
+playground and the Wasm engine use. The recorded pre21 side is `julc-tools/src/test/resources/adr078/pre21-debug.txt`.
+
+**Fixtures** (`Adr078DebugFixtures`): 6, each with a base and a renamed variant, all compiled validators.
+
+| Fixture | Rename |
+|---|---|
+| Twin bodies | `alpha` → `zeta` |
+| Crowdfund-like pair of identical `?? 0` helpers used from two branches | `contribute` → `zqaai` |
+| C11 (an unread helper reads a twin) | `alpha` → `zeta` |
+| C12 (121 chained lets and 12 head reads) | `alpha` → `zeta` |
+| Static-initialiser-only use | `zeta` → `aaaa` |
+| Multi-purpose validator whose handlers first use opposite twins | `alpha` → `zeta` |
+
+C22 (`compileMethod(root, …, List.of(root))`) cannot be opened in the source debugger, which takes a validator, and a
+validator cannot be a library. It is covered at the compiler level.
+
+**What is recorded per program:**
+- the executable Java lines;
+- with a Java breakpoint on every executable line and `continue` to the end, the line and column of every stop;
+- the visible Java locals (names and values) at every stop;
+- every change of Java location while stepping through the whole run (`goto` each step);
+- the final status.
+
+On pre21 that is 12 programs, 408 breakpoint stops, 408 locals snapshots (314 local values in all) and 82 source-step location changes.
+
+**The three tests:**
+1. **Same source.** Every program shows exactly what pre21 showed for it. This includes the renamed variants, whose
+   bytes M1a changes, because the twins are now bound in first-use order.
+2. **Through the rename.** Every renamed variant shows the base's pre21 trace, with each location carried token by
+   token through the rename mapping. At least one fixture has locations that the rename moves.
+3. **Negative controls.**
+   - A line-shifted mapping never matches.
+   - The identity mapping fails wherever the rename moves columns. The Crowdfund-like fixture's stops after the
+     renamed identifier do.
+   - The traces of different fixtures differ.
+
+**Result:** all three pass.
+
+## ADR-075's corpus replay (I6a; required for M1a's exit, ADR-078 r7)
+
+| | |
+|---|---|
+| Corpus | The ADR-074 corpus that ADR-075 used: `/Users/satya/work/bloxbean/julc-327-base/build/corpus327`, 20,407 recorded cases |
+| Harness | ADR-075's `EvalDiffReplayTest`, as a standalone runner (`Adr078Replay.java.txt`) so that the same code runs on the pre21 artifacts and on this build. It also compiles validator cases (`compile`, `compileWithDetails`) and records the FLAT digest of every compiled program. |
+| pre21 command | `java -cp "rep21:<pre21 class path>" replay.Adr078Replay <corpus> replay-pre21.txt` |
+| M1a command | `java -cp "repm1a:<julc-compiler test class path>" replay.Adr078Replay <corpus> replay-m1a.txt` |
+| Comparison | `compare_replay.py.txt` |
+
+**Result** (`m1a-corpus-replay.txt`): the two outputs are byte-identical, 317,286 lines each with the same SHA-256.
+- All 44,475 compiled programs, across 18,452 cases and their recorded levels, have identical FLAT.
+- All 266,441 evaluations have identical outcomes, traces and budgets: 98,422 ok, 167,907 fail, 112 exhausted. These
+  are ADR-075's own counts.
+- No evaluation exhausts on one side only.
+
+So the recorded corpus holds no program whose equal-key tie order changes under M1a. This replay ran after the
+refactor that made `describe` share `children` (M1A-F5). The identical FLAT shows that the refactor left every content
+key, and so every binding order, unchanged.
+
+## Changes after the first M1a review (Fable M1A-F1–F6)
+
+- **F1.** The `@Param` decoders are not walked: they hold no method reference. Recorded in ADR D1a (r7) and at
+  `FirstUseRanks.Roots`.
+- **F2.** The compiled-validator fixtures added to `LibraryTieOrderFixturesTest` (single entry, static initialiser,
+  multi-purpose with opposite first uses) give identical bytes for both spellings in all 8 modes; on pre21 most of them
+  differed. The debug oracle's fixtures are all compiled validators. JOUST's Crowdfund and Tips Java need JOUST's
+  on-chain runtime, so the JOUST fixture is M3's gate (ADR r7).
+- **F3.** The corpus replay above; ADR r7 makes it a required M1a exit item.
+- **F4.** The property suite now has 10 programs (seed 78, 40 rewrites each, 8 modes, 3,280 compilations): 41/41 give
+  the base's bytes in every mode. pre21 recording: `pre21-programs.txt`.
+- **F5.** `LibraryBindingOrder.describe` now takes its child order from `children`, so there is one child order, which
+  `FirstUseRanks` walks too. The ADR now names `LibraryBindingOrder.children`.
+- **F6.** `Rule.UNREAD_BY_NAME` is documented: the last member of a tied group is labelled `UNREAD_BY_KEY`. The pre21
+  Maven coordinates are in `m1a-pre21-recording.md`.
+
 ## Not done in M1a
 
-- **The breakpoint, step and visible-locals comparison against pre21** (ADR-078 D5's debug oracle) was not built.
-  - The source-map half is covered: the same DFS indices map to the same lines across variants, and julc-examples'
-    complete maps equal pre21's.
-  - Library terms carry no positions.
-- **ADR-075's corpus replay** (`EvalDiffReplayTest`) was not re-run. The I6a oracle was run on the D5 fixtures only.
 - **The JOUST half of the gate** is M3.

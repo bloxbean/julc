@@ -6,25 +6,37 @@ pair of committed recordings, both produced by the test sources themselves:
 | Recording | Producer | What it holds |
 |---|---|---|
 | `julc-compiler/src/test/resources/adr078/pre21-fixtures.txt` | `Adr078Fixtures.main` | For every fixed fixture, variant and mode (4 levels, with and without source maps): the SHA-256 of the FLAT program and its size, or `REJECTED` and the first line of the rejection. For every compiled one, the evaluation of each argument vector under `REPLAY_LIMIT`: the result term, failure reason or exhaustion, the traces, and the budget on a separate line. |
-| `julc-compiler/src/test/resources/adr078/pre21-programs.txt` | `Adr078Programs.main` | For each generated program (seed 78, 3 programs, 40 rewrites each) and mode: how many rewrites compile, and how many give the base's bytes. |
+| `julc-compiler/src/test/resources/adr078/pre21-programs.txt` | `Adr078Programs.main` | For each generated program (seed 78, 10 programs, 40 rewrites each) and mode: how many rewrites compile, and how many give the base's bytes. |
+| `julc-tools/src/test/resources/adr078/pre21-debug.txt` | `Adr078DebugFixtures.main` | For each debug fixture program, as JuLC's source debugger (`SourceDebugService`) shows it: the executable lines; the line and column of every Java-breakpoint stop, with a breakpoint on every executable line; the visible locals at each stop; every change of Java location over all steps; the final status. |
 
 ## The pre21 class path
 
-`Adr078Fixtures` and `Adr078Programs` use only JuLC's public compiler API, so they compile against the pre21 artifacts.
-They were compiled and run on the test class path of JOUST's `julc-state-toolchain` at `joust-julc-pre21@5522cafc`.
-That class path resolves `org.julclang:*:0.1.0-pre21` from Maven Central; `cp.txt` is printed as the M0 README
-describes.
+- **Coordinates.** The recorders use the public `0.1.0-pre21` artifacts from Maven Central: `org.julclang:julc-tools`
+  and `org.julclang:julc-vm-java` at `0.1.0-pre21`. Their transitive dependencies bring in `julc-compiler`,
+  `julc-stdlib`, `julc-vm`, `julc-core`, `julc-ledger-api` and the rest at the same version.
+- **Building it without JOUST.** `pre21-classpath.build.gradle.txt` is a two-dependency Gradle build. Copy it to
+  `build.gradle` in an empty directory, add `settings.gradle`, and run it with any Gradle 9 wrapper:
+
+  ```
+  CP_OUT=cp.txt ./gradlew -p <that dir> --offline printCp
+  ```
+
+  The compiler fixtures were first recorded on JOUST's `julc-state-toolchain` test class path, which resolves the same
+  artifacts. Recording them again on this class path gave identical lines.
+
+The recorders, and the commands that run them on that class path:
 
 ```
 javac -d pre21rec -cp "$(cat cp.txt)" \
     julc-compiler/src/test/java/org/julclang/compiler/adr078/Adr078Fixtures.java \
-    julc-compiler/src/test/java/org/julclang/compiler/adr078/Adr078Programs.java
+    julc-compiler/src/test/java/org/julclang/compiler/adr078/Adr078Programs.java \
+    julc-tools/src/test/java/org/julclang/tools/adr078/Adr078DebugFixtures.java
 java -cp "pre21rec:$(cat cp.txt)" org.julclang.compiler.adr078.Adr078Fixtures > pre21-fixtures.txt
 java -cp "pre21rec:$(cat cp.txt)" org.julclang.compiler.adr078.Adr078Programs > pre21-programs.txt
+java -cp "pre21rec:$(cat cp.txt)" org.julclang.tools.adr078.Adr078DebugFixtures > pre21-debug.txt
 ```
 
-The header lines were then prepended. To re-record after changing a fixture, run the same commands on the pre21 class
-path.
+The header lines were then prepended. `pre21-debug.txt` is in `julc-tools/src/test/resources/adr078/`.
 
 ## Notes
 

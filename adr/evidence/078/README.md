@@ -101,3 +101,5 @@ changes for 5/67; (b) the full simulated order changes for 17/67. Both are simul
 | `m1a-pre21-recording.md` | How the committed pre21 expectations of the D5 tests (`julc-compiler/src/test/resources/adr078/`) were produced. |
 | `Adr078ExamplesGate.java.txt` | The julc-examples gate runner: release FLAT and source-map-on FLAT plus the complete `DFS index → SourceLocation` map per validator; `-Dadr078.timingRounds=N` adds the compile-time rounds. |
 | `m1a-gate-julc-examples-pre21.txt`, `m1a-gate-julc-examples-m1a.txt` | The gate's output on pre21 and on M1a (`../julc-examples@49614db8`). They are identical for all 43 programs. |
+| `m1a-corpus-replay.txt`, `Adr078Replay.java.txt`, `compare_replay.py.txt` | ADR-075's corpus replay, run on pre21 and on M1a: the two outputs are identical (44,475 FLAT digests and 266,441 evaluations). |
+| `pre21-classpath.build.gradle.txt` | A two-dependency Gradle build that resolves the pre21 class path (`julc-tools` and `julc-vm-java` at `0.1.0-pre21`), so it can be rebuilt without JOUST. |
