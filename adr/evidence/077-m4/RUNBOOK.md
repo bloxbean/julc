@@ -47,7 +47,7 @@ Dist-tags (D8), per package, from the registry when it is published. The tag nam
 
 | Version | Dist-tag | Install |
 |---|---|---|
-| `X.Y.Z` (final) | `latest` | `npm install @julclang/julc-wasm` |
+| `X.Y.Z` (final) | `latest` (unless `latest` names a higher version: see below) | `npm install @julclang/julc-wasm` |
 | `X.Y.Z-preN`, while the package has no final version on the registry | `latest` | `npm install @julclang/julc-wasm` |
 | `X.Y.Z-preN`, once it has one (any major) | `preview` | `npm install @julclang/julc-wasm@preview` |
 | `X.Y.Z-betaN` | `beta` | `npm install @julclang/julc-wasm@beta` |
@@ -61,8 +61,10 @@ version older than `latest` (`npm-verify` notes it). **Within one `X.Y.Z` semver
 series belongs to a new `X.Y.Z` (`0.1.0-beta1` after `0.1.0-pre21` goes to `release-0.1`, never `beta`), and a first
 final backfilled below a `-preN` on `latest` (`0.1.0` after `0.2.0-pre1`) goes to `release-0.1`. Users should pin
 prereleases exactly: `^0.1.0-pre21` also matches a later `0.1.0-rcN`.
-So until JuLC's first final release, `npm install @julclang/julc-wasm` gets the newest `-preN`; after it, the newest
-final release. **No dist-tag ever moves backwards.** Each package's tag is the first of D8's tag,
+So until JuLC's first final release, `npm install @julclang/julc-wasm` gets the newest `-preN`; after a final release
+higher than every `-preN` on `latest`, the newest final release. A first final backfilled below the `-preN` on `latest`
+(`0.1.0` after `0.2.0-pre1`) leaves `latest` on that prerelease until a final higher than it is published.
+**No dist-tag ever moves backwards.** Each package's tag is the first of D8's tag,
 `release-<major>.<minor>` (for example `release-0.1`) and `release-<version>` (for example `release-0.1.8`) that does
 not already name a higher version of that package (and, for a channel, that is ahead of `latest`). So a recovery of
 version N after N+1, a maintenance release (0.1.8 after 0.2.0 and 0.1.9), or a package of N+1 published before the
@@ -174,7 +176,10 @@ a final version is published, to `next`):
 3. **A dispatch from a branch must fail the gate:** `gh workflow run native-image-release.yml --ref main`; `npm-gates`
    fails and nothing else runs.
 4. **A dispatch on the candidate's tag** runs only `npm-gates` and `npm-dry-run`, which finds the tag's push run,
-   downloads its `npm-packages` artifact and verifies it.
+   downloads its `npm-packages` artifact by id and verifies it. Expected: `npm-run.sh` prints the run and artifact
+   ids; the download puts the six files directly in `assets/` (not in a subdirectory); `npm-files.sh` prints
+   "the five files are one set, run <id>" and "public: …" for both archives. Only a real dispatch exercises the
+   by-id download.
 5. **A whole-workflow re-run** of the candidate's run stops in `wasm` ("already has a GitHub release"), building
    nothing.
 6. **The ref check:** a dispatch from `main` (step 3) fails in `npm-gates`; `npm-publish`'s own exact-ref check is
@@ -212,6 +217,9 @@ gh api repos/bloxbean/julc/actions/runs/<run id>/artifacts?name=npm-packages --j
 ```
 `false <date>` means available until that date. Nothing, or `true`, means they are gone: that version can no longer be
 published to npm (a dispatch fails with "the npm files of v<version> are no longer available"); release the next one.
+A dispatch that says "no run … has a successful attestation yet" is not expiry: the push run's `attest` failed or has
+not run; use "Re-run failed jobs" in that run, then dispatch again. "Cannot read the run history" is a GitHub API
+failure: dispatch again later.
 After expiry, "Re-run failed jobs" fails in its download step with the download action's own generic error, not this
 message: run the check above. If some packages of the version were published before the window closed (the client,
 say) and the rest can no longer be, deprecate the published ones by hand (`npm deprecate @julclang/<name>@<version>
@@ -231,37 +239,52 @@ refs/tags/v<version>`, plus `npm audit signatures` in a project that installs it
   reach the original attempt. Finish the release by hand from the original run's artifacts (kept 14 days; the bytes
   are the ones its digests and checksum files name), never replacing a completed asset, then dispatch on the tag for
   npm (which reads the run's `npm-packages` artifact, not the release):
-  `gh run download` puts each artifact in its own directory (`dist/release-wasm/…`, `dist/release-cli-…/…`), so
-  attach the files found under them:
+  `gh run download` puts each artifact in its own directory (`dist/release-wasm/…`, `dist/release-cli-…/…`). Download
+  into a new, empty directory, and attach the files found under it:
   ```
-  gh run download <original run id> --repo bloxbean/julc --pattern 'release-*' --dir dist
+  rm -rf dist && gh run download <original run id> --repo bloxbean/julc --pattern 'release-*' --dir dist
   gh api repos/bloxbean/julc/releases/tags/v<version> --jq '.assets[] | "\(.id) \(.name) \(.state)"'
   gh api -X DELETE repos/bloxbean/julc/releases/assets/<id of each asset in state starter>
   find dist -type f                                          # the files; attach those the release lacks:
   gh release upload v<version> <each missing file, as listed by find> --repo bloxbean/julc      # never --clobber
   ```
-  Then check the release against the original run's files, as the workflow's final check does. This prints `ok` for
-  each file and fails (non-zero) on a draft, a duplicate file name, a missing or differing asset, or a release asset
-  the artifacts do not have:
+  Then check the release against the release's inventory (the 14 files `github-release` attaches: 4 CLI zips, 4
+  playground zips, 2 shadow jars, the 2 engine archives, the static playground and `julc-wasm-<version>-SHA256SUMS.txt`)
+  and the original run's files, as the workflow's final check does. It prints `ok` for each file and fails
+  (non-zero) on a missing tool, a draft, a duplicate file name, a file missing from the artifacts or the release, a
+  differing asset, or anything outside the inventory:
   ```
   (
     set -euo pipefail
     version=<version>
+    if command -v sha256sum > /dev/null; then sha() { sha256sum "$1" | cut -d' ' -f1; }
+    elif command -v shasum > /dev/null; then sha() { shasum -a 256 "$1" | cut -d' ' -f1; }
+    else echo "needs sha256sum or shasum"; exit 1; fi
+    command -v jq > /dev/null || { echo "needs jq"; exit 1; }
     work=$(mktemp -d)
+    for label in macos-aarch64 linux-x86_64 linux-arm64 windows-x86_64; do
+      echo "julc-${version}-${label}.zip"; echo "julc-playground-${version}-${label}.zip"
+    done > "$work/expected.txt"
+    printf '%s\n' "julc-compiler-all-${version}-all.jar" "julc-vm-java-all-${version}-all.jar" \
+      "julc-wasm-${version}.tar.gz" "julc-vm-wasm-${version}.tar.gz" "julc-playground-static-${version}.tar.gz" \
+      "julc-wasm-${version}-SHA256SUMS.txt" >> "$work/expected.txt"
+    sort -o "$work/expected.txt" "$work/expected.txt"
     gh api "repos/bloxbean/julc/releases/tags/v${version}" > "$work/release.json"
     [ "$(jq -r .draft "$work/release.json")" = false ] || { echo "v${version}'s release is a draft"; exit 1; }
     jq -r '.assets[] | "\(.name) \(.state) \(.digest)"' "$work/release.json" | sort > "$work/release.txt"
-    find dist -type f | while read -r f; do echo "$(basename "$f") $(sha256sum "$f" | cut -d' ' -f1)"; done \
-      | sort > "$work/files.txt"
+    find dist -type f | while read -r f; do echo "$(basename "$f") $(sha "$f")"; done | sort > "$work/files.txt"
     dupes=$(cut -d' ' -f1 "$work/files.txt" | uniq -d)
     [ -z "$dupes" ] || { echo "file names found twice under dist: $dupes"; exit 1; }
     failed=0
+    for side in files release; do
+      if ! diff <(cut -d' ' -f1 "$work/$side.txt") "$work/expected.txt" > "$work/$side.diff"; then
+        echo "the $side differ from the inventory (< not in it, > missing):"; cat "$work/$side.diff"; failed=1
+      fi
+    done
     while read -r name sha; do
       line=$(awk -v n="$name" '$1 == n' "$work/release.txt")
       if [ "$line" = "$name uploaded sha256:$sha" ]; then echo "ok $name"; else echo "DIFFERENT $name: ${line:-missing}"; failed=1; fi
     done < "$work/files.txt"
-    extra=$(comm -23 <(cut -d' ' -f1 "$work/release.txt") <(cut -d' ' -f1 "$work/files.txt"))
-    [ -z "$extra" ] || { echo "release assets the artifacts do not have: $extra"; failed=1; }
     exit "$failed"
   )
   ```

@@ -821,7 +821,8 @@ prerelease part, as written (case-sensitive, `N` from 1):
      `npm-verify` notes it. The maintainer may move it by hand (`npm dist-tag add <name>@<final> <channel>`, with 2FA
      and publications quiesced, rule 5).
    - Rule 5 can put a version on a fallback tag: a first final backfilled below a `-preN` on `latest` (`0.1.0` after
-     `0.2.0-pre1` goes to `release-0.1`), or a beta of the same `X.Y.Z` after a `-preN` (within one `X.Y.Z` semver
+     `0.2.0-pre1` goes to `release-0.1`, and `latest` stays on the prerelease until a final higher than it is
+     published), or a beta of the same `X.Y.Z` after a `-preN` (within one `X.Y.Z` semver
      orders `beta < pre < rc`, so `0.1.0-beta1` after `0.1.0-pre21` goes to `release-0.1`, never `beta`). A beta
      series therefore belongs to a new `X.Y.Z`.
    - Prereleases should be pinned exactly: a caret range such as `^0.1.0-pre21` also matches a later `0.1.0-rcN`
@@ -868,18 +869,22 @@ that do not run the Gradle build get write access or credentials (`native-image-
 - It has no build. It downloads the `npm-packages` artifact, and holds only `id-token: write` and
   `attestations: write`.
 - It creates a GitHub artifact attestation, signed with Sigstore under this workflow's identity, for the three
-  tarballs and the two archives.
+  tarballs and the two archives: one statement with the five files as its subjects (confirmed on v0.1.0-pre21's
+  attestation, whose predicate names run 44242452143, attempt 1).
 - This attestation, not a checksum file, is what every later check trusts. A checksum file proves only that the
   download arrived intact: anyone able to replace the files could replace both. Job outputs belong to a single run
   attempt.
-- Every later check verifies each file of the `npm-packages` artifact (r23; a release asset in r8 to r22) with
-  `gh attestation verify --repo bloxbean/julc --signer-workflow
+- Every later check verifies the `npm-packages` artifact (r23; release assets in r8 to r22) with `gh attestation
+  verify --format json --repo bloxbean/julc --signer-workflow
   bloxbean/julc/.github/workflows/native-image-release.yml --source-ref refs/tags/v<version> --source-digest
   <tag commit> --signer-digest <workflow commit> --deny-self-hosted-runners` (digests added in r19, M4-C6).
   - That checks the identity in the Sigstore certificate, not strings in the attestation's predicate. So an attestation
     from another branch, another tag, another commit under the same tag, or another version of the workflow fails.
   - Every check covers all five data files (three tarballs, two archives) and requires the checksum file (r19, M4-C5),
-    so a missing or replaced file stops publication and verification. It also requires the published GitHub release
+    so a missing or replaced file stops publication and verification. From r23 (R23-C7) the five must be exactly the
+    subjects of ONE verified statement, by name and SHA-256, whose signing certificate's run invocation is the run
+    the artifact came from (this run on a tag push, the looked-up run on a dispatch; any attempt, so "Re-run failed
+    jobs" still works). Files of two attempts or builds, each attested on its own, can never be mixed. It also requires the published GitHub release
     to attach the same two engine archives (r23), so npm never gets a version whose archives are not public (I1).
   - Every job that verifies an attestation also holds `attestations: read`. From r20 the build-once check in `wasm`
     only looks for a release, and `wasm` holds `contents: read` alone.
@@ -925,7 +930,8 @@ nor their checksum file (r19 to r22 did).
     and the downstream jobs would lack their artifacts.
 - **The `workflow_dispatch` entry's contract:**
   - It is dispatched on the tag itself: its execution ref must be exactly `refs/tags/v<version>`. A run on a branch,
-    or whose ref does not match the version, is refused before anything runs.
+    or whose ref does not match the version, is refused: by `npm-gates`, after its pinned checkout and Node set-up,
+    before its classifier runs, and again by `npm-publish`'s first step, before its checkout.
   - It reads the version from the tag name, and the gates from `gradle.properties` at that tag, using `git show`,
     with no Gradle: `npm_publish`, `github_release`, and D8's form rules (r23: `X.Y.Z-preN-rcN` only dry-runs; a form
     D8 has no rule for fails the gate).
@@ -944,10 +950,18 @@ nor their checksum file (r19 to r22 did).
   - It runs only `npm-publish` (or `npm-dry-run`) and `npm-verify`, on the `npm-packages` artifact of the tag's push
     run (r23), after verifying it against its attestation and the release's archives. That run is the run of this
     workflow with event `push`, head branch `v<version>` and head commit the tag's commit, whose `attest` job succeeded
-    in any attempt. Exactly one must exist (a release is built once, so a second run stops before `attest`); none,
-    several, or an expired artifact fails the dispatch, saying that the npm files of `v<version>` are no longer
-    available (artifacts are kept 14 days) and the version can no longer be published to npm. The npm jobs hold
-    `actions: read` to find the run and download its artifact.
+    in any attempt. Exactly one must exist (a release is built once, so a second run stops before `attest`), with
+    exactly one live `npm-packages` artifact, which is downloaded by its id. The outcomes are told apart (R23-C10):
+    - no push run for the tag: an error naming that;
+    - runs, but none with a successful `attest` (failed, queued or not run): "no successful attestation yet", to
+      be fixed by "Re-run failed jobs" in the push run, then dispatching again;
+    - several attested runs, or several live artifacts: a maintainer decides;
+    - the artifact expired or was deleted after a successful `attest`: the npm files of `v<version>` are no longer
+      available (artifacts are kept 14 days), and the version can no longer be published to npm;
+    - any API answer unreadable, or a run list incomplete or inconsistent (more than 1,000 runs, fewer distinct
+      runs than the reported total, duplicate or malformed rows): "Cannot read the run history", nothing chosen.
+
+    The npm jobs hold `actions: read` to find the run and download its artifact.
   - The entry lives in the same `native-image-release.yml`, because npm's trusted publisher validates the workflow
     file.
 - **Release assets are never deleted** to recover, and a release is never recreated. I11 relies on this, and M4 tests
@@ -2008,3 +2022,15 @@ choosing the recommendation recorded with each.
       `X.Y.Z`).
     - R23-C5, R23-F3, R23-F4, R23-F1, R23-C6: the runbook's manual check walks `gh run download`'s nested layout and
       fails on any difference; D8 rule 7; the READMEs; recovery after expiry; `npm-verify` notes a stale channel.
+  - **Review round 2 of r23** (Codex R23-C7 to C12, Fable R23-F5, F6):
+    - R23-C7: the five npm files must be exactly the subjects of one verified attest statement of the artifact's
+      run; two attempts' files are never mixed.
+    - R23-C8: the run list's distinct ids must equal GitHub's total; duplicate or malformed rows are refused.
+    - R23-C9, R23-F5: the runbook's release check requires the 14-file inventory on both sides, finds `shasum` when
+      there is no `sha256sum`, and checks its tools first.
+    - R23-C10: "no successful attestation yet" is told apart from expiry.
+    - R23-C11: `ndc-uplc.yml`, called by the release workflow, pins its actions too; the graph test follows local
+      reusable workflows.
+    - R23-C12: a backfilled first final leaves `latest` on the prerelease until a higher final is published.
+    - R23-F6: the rehearsal states what a dispatch's by-id download should show.
+    - The dispatch contract's ref check is described as it runs: after `npm-gates`' pinned checkout and Node set-up.
