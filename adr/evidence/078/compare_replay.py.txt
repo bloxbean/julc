@@ -1,15 +1,53 @@
 """ADR-078 M1a: compares two Adr078Replay outputs (JSON lines). Exits 1 on any unaccepted difference.
 
-Accepted: budget-only differences (I6b), reported; and an evaluation that exhausts the transaction limit on one side
-only, if its replay at the higher limit gives the other side's outcome (or exhausts there too: inconclusive). Rejected:
-a malformed or duplicate record, a record on one side only, and any other difference (compile status, FLAT digest,
-outcome, result, failure reason, traces).
+Every record is validated against its kind and outcome: required fields present, no unknown kinds, statuses or
+outcomes, no unknown fields. A harness error on either side fails the comparison, even where both sides match. Each
+side must hold exactly one higher-limit retry for every evaluation that exhausted the transaction limit, and none
+for any other (an orphan retry fails). The cases a run skipped must be exactly the pinned 55 (SKIPPED_SHA256).
+
+Accepted, and reported apart: budget-only differences (I6b), of transaction-limit and of matched higher-limit
+evaluations; bounded comparisons (both sides exhausted the transaction limit; their higher-limit retries are
+compared, semantics and budget); and, per ADR-078's I6a rule, inconclusive cases (one side exhausted the transaction
+limit, and an exhaustion persists at the higher limit). Everything else that differs is unaccepted.
 Usage: compare_replay.py a.jsonl b.jsonl
 """
-import json, sys
+import hashlib, json, sys
 from collections import Counter
 
+SKIPPED_SHA256 = "b95d72fa4d276c2e5ac8875804dc500a869734430241f9347c39fd280dc82798"
 SEMANTIC = ("outcome", "result", "reason", "traces")
+COMMON = {"manifest": {"case", "kind", "status"}, "compile": {"case", "level", "kind", "status"},
+          "eval": {"case", "level", "kind", "vector", "limit", "outcome"}}
+REQUIRED = {
+    ("manifest", "eligible"): {"entry", "lookup"}, ("manifest", "skipped"): {"entry", "lookup"},
+    ("manifest", "harness-error"): {"error"},
+    ("compile", "ok"): {"flat"}, ("compile", "errors"): {"diagnostics"}, ("compile", "threw"): {"error"},
+    ("compile", "harness-error"): {"error"},
+    ("eval", "ok"): {"result", "traces", "cpu", "mem"}, ("eval", "fail"): {"reason", "traces", "cpu", "mem"},
+    ("eval", "exhausted"): {"traces", "cpu", "mem"}, ("eval", "harness-error"): {"error"},
+}
+
+def fail(message):
+    sys.exit(message)
+
+def validate(path, number, r):
+    if not isinstance(r, dict): fail(f"{path}:{number}: not a JSON object")
+    kind = r.get("kind")
+    if kind not in COMMON: fail(f"{path}:{number}: unknown kind {kind!r}")
+    if not COMMON[kind] <= r.keys(): fail(f"{path}:{number}: {kind} record lacks {sorted(COMMON[kind] - r.keys())}")
+    state = r["status"] if kind != "eval" else r["outcome"]
+    required = REQUIRED.get((kind, state))
+    if required is None: fail(f"{path}:{number}: unknown {kind} state {state!r}")
+    if not required <= r.keys(): fail(f"{path}:{number}: {kind}/{state} record lacks {sorted(required - r.keys())}")
+    extra = r.keys() - COMMON[kind] - required
+    if extra: fail(f"{path}:{number}: {kind}/{state} record has unknown fields {sorted(extra)}")
+    if kind == "eval":
+        if r["limit"] not in ("transaction", "high"): fail(f"{path}:{number}: unknown limit {r['limit']!r}")
+        if not isinstance(r["vector"], int): fail(f"{path}:{number}: vector is not an integer")
+        if "traces" in r and not (isinstance(r["traces"], list) and all(isinstance(t, str) for t in r["traces"])):
+            fail(f"{path}:{number}: traces is not a list of strings")
+        for field in ("cpu", "mem"):
+            if field in r and not isinstance(r[field], int): fail(f"{path}:{number}: {field} is not an integer")
 
 def load(path):
     records = {}
@@ -17,58 +55,73 @@ def load(path):
         try:
             r = json.loads(line)
         except json.JSONDecodeError as e:
-            sys.exit(f"{path}:{number}: malformed record: {e}")
-        if not isinstance(r, dict) or "case" not in r or "kind" not in r:
-            sys.exit(f"{path}:{number}: malformed record")
-        if "traces" in r and not (isinstance(r["traces"], list) and all(isinstance(t, str) for t in r["traces"])):
-            sys.exit(f"{path}:{number}: traces is not a list of strings")
+            fail(f"{path}:{number}: malformed record: {e}")
+        validate(path, number, r)
         rid = (r["case"], r.get("level", ""), r["kind"], r.get("vector", ""), r.get("limit", ""))
-        if rid in records:
-            sys.exit(f"{path}:{number}: duplicate record {rid}")
+        if rid in records: fail(f"{path}:{number}: duplicate record {rid}")
         records[rid] = r
+    # Exactly one higher-limit retry for each transaction-limit exhaustion, and none for anything else.
+    for rid, r in records.items():
+        if r["kind"] != "eval": continue
+        if rid[4] == "transaction" and r["outcome"] == "exhausted" and rid[:4] + ("high",) not in records:
+            fail(f"{path}: exhausted evaluation {rid} has no higher-limit retry")
+        if rid[4] == "high":
+            t = records.get(rid[:4] + ("transaction",))
+            if t is None or t["outcome"] != "exhausted": fail(f"{path}: orphan higher-limit retry {rid}")
+    errors = [rid for rid, r in records.items() if r.get("status") == "harness-error" or r.get("outcome") == "harness-error"]
+    if errors: fail(f"{path}: {len(errors)} harness error(s), e.g. {errors[0]}")
+    skipped = sorted(r["case"] for r in records.values() if r["kind"] == "manifest" and r["status"] == "skipped")
+    digest = hashlib.sha256(("\n".join(skipped) + "\n").encode()).hexdigest()
+    if digest != SKIPPED_SHA256: fail(f"{path}: the {len(skipped)} skipped cases are not the pinned 55 (sha256 {digest})")
     return records
 
 def semantic(r):
     return {k: r.get(k) for k in SEMANTIC}
 
+def budget(r):
+    return (r.get("cpu"), r.get("mem"))
+
 a, b = load(sys.argv[1]), load(sys.argv[2])
 failures, budget_only, inconclusive = [], [], []
 counts = Counter()
 for rid in sorted(set(a) | set(b)):
+    if rid[4] == "high":
+        continue  # compared with their transaction-limit record
     if rid not in a or rid not in b:
-        # A high-limit replay exists only where that side exhausted; it is compared below.
-        if rid[4] == "high":
-            continue
         failures.append(("on one side only", rid))
         continue
     x, y = a[rid], b[rid]
     kind = rid[2]
     if kind == "manifest":
-        counts["manifest " + x["status"]] += 1
+        counts["manifests " + x["status"]] += 1
         if x != y: failures.append(("manifest differs", rid, x, y))
-    elif kind in ("compile", "levels"):
-        counts["compile " + x["status"]] += 1
+    elif kind == "compile":
+        counts["compilations " + x["status"]] += 1
         if x != y: failures.append(("compilation differs", rid, x, y))
-    elif kind == "eval" and rid[4] == "transaction":
-        counts["evaluation " + x["outcome"]] += 1
+    else:
         ex, ey = x["outcome"] == "exhausted", y["outcome"] == "exhausted"
-        if ex != ey:
-            hid = rid[:4] + ("high",)
-            hx = a.get(hid, x) if ex else x
-            hy = b.get(hid, y) if ey else y
-            if hx["outcome"] == "exhausted" and hy["outcome"] == "exhausted":
+        hid = rid[:4] + ("high",)
+        if ex and ey:
+            counts["evaluations bounded (both exhausted the transaction limit)"] += 1
+            if semantic(x) != semantic(y): failures.append(("bounded evaluation differs", rid, x, y))
+            hx, hy = a[hid], b[hid]
+            if semantic(hx) != semantic(hy): failures.append(("higher-limit retry differs", hid, hx, hy))
+            elif budget(hx) != budget(hy): budget_only.append((hid, budget(hx), budget(hy)))
+            if budget(x) != budget(y): budget_only.append((rid, budget(x), budget(y)))
+        elif ex or ey:
+            hx = a[hid] if ex else x
+            hy = b[hid] if ey else y
+            if hx["outcome"] == "exhausted" or hy["outcome"] == "exhausted":
+                counts["evaluations inconclusive"] += 1
                 inconclusive.append(rid)
-            elif hx["outcome"] == "exhausted" or hy["outcome"] == "exhausted":
-                failures.append(("one side terminates even at the higher limit", rid, hx, hy))
             elif semantic(hx) != semantic(hy):
                 failures.append(("evaluation differs at the higher limit", rid, hx, hy))
-            continue
-        if semantic(x) != semantic(y):
-            failures.append(("evaluation differs", rid, x, y))
-        elif (x.get("cpu"), x.get("mem")) != (y.get("cpu"), y.get("mem")):
-            budget_only.append((rid, (x.get("cpu"), x.get("mem")), (y.get("cpu"), y.get("mem"))))
-    elif kind == "eval":
-        if semantic(x) != semantic(y): failures.append(("high-limit evaluation differs", rid, x, y))
+            else:
+                counts["evaluations demonstrated " + hx["outcome"] + " (after a one-sided exhaustion)"] += 1
+        else:
+            counts["evaluations demonstrated " + x["outcome"]] += 1
+            if semantic(x) != semantic(y): failures.append(("evaluation differs", rid, x, y))
+            elif budget(x) != budget(y): budget_only.append((rid, budget(x), budget(y)))
 
 print("records:", len(a), "and", len(b))
 for k in sorted(counts): print(f"  {k}: {counts[k]}")
@@ -76,5 +129,5 @@ print("unaccepted differences:", len(failures))
 for f in failures[:20]: print("  ", f)
 print("budget-only differences (I6b):", len(budget_only))
 for d in budget_only[:20]: print("  ", d)
-print("inconclusive (exhausted at the higher limit on both sides after a one-sided exhaustion):", len(inconclusive))
+print("inconclusive (one-sided exhaustion that persists at the higher limit):", len(inconclusive))
 sys.exit(1 if failures else 0)

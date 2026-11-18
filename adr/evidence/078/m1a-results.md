@@ -128,20 +128,22 @@ On pre21 that is 12 programs, 408 breakpoint stops, 408 locals snapshots (314 lo
 
 ## ADR-075's corpus replay (I6a; required for M1a's exit, ADR-078 r7)
 
-The runner and comparator were corrected after Codex's second review (C12, C13). The results, commands and counts are
-in `m1a-corpus-replay.txt`.
+The runner and comparator were corrected after Codex's second review (C12, C13), and again after its third (C20, C21,
+C23, C24, C27). The results, commands, counts and the class-file fingerprints of both runs are in
+`m1a-corpus-replay.txt`.
 
 | | |
 |---|---|
 | Corpus | The ADR-074 corpus that ADR-075 used: `/Users/satya/work/bloxbean/julc-327-base/build/corpus327`, 20,407 manifests |
 | Runner | `Adr078Replay.java.txt`. It decodes sources with `CorpusFiles.text`, restores the recorded options (target, level, cost profile, source maps, disabled rules), dispatches the recorded entry point, and writes one JSON record per line. |
-| Comparator | `compare_replay.py.txt`. It is strict (JSON, no duplicates), exits 1 on any unaccepted difference, and reports budget-only differences. |
+| Comparator | `compare_replay.py.txt`. It validates every record against its kind and outcome, requires one higher-limit retry per exhausted evaluation and no other, fails on any harness error, pins the 55 excluded ids, exits 1 on any unaccepted difference, and reports budget-only differences, bounded comparisons and inconclusive cases apart. |
 
 **Results.**
 - **Coverage.** 20,352 manifests were replayed; 55 were skipped (JavaLibraryProvider entries and custom lookups).
   That gives 54,691 case × level compilations: 47,593 compiled and 7,098 rejected, with no harness errors. There are
-  266,441 evaluations, of which 112 exhaust the budget.
-- **Comparison.** The pre21 and M1a outputs are byte-identical: 0 unaccepted differences, 0 budget-only differences,
+  266,441 evaluations. 112 of them exhaust the transaction limit on both sides; they are bounded comparisons, and
+  their higher-limit retries are identical in outcome, traces and budget.
+- **Comparison.** The pre21 and head outputs are byte-identical: 0 unaccepted differences, 0 budget-only differences,
   0 inconclusive.
 - **Comparator controls.** The comparator's negative controls behave as they should
   (`m1a-replay-comparator-controls.txt`).
@@ -269,6 +271,63 @@ not used to infer them (C19).
   The two VM modules do not depend on `julc-compiler`. Gradle kept their test results up to date (green, from the
   first full build at `21805157`), so they did not re-run.
 
+## Changes after Codex's third M1a review (C20–C28) and Fable's (F9)
+
+- **F9 = C26 (code).** The assembly observer is no longer a public static hook with thread-locals.
+  - `ValidatorAssembly.Frontend` carries it as a component, beside `methodBound`. `ValidatorAssembly.observing()`,
+    `observed()` and both thread-locals are gone.
+  - `methodBound` is now a `MethodBound(handler, binder, binding)`. `wrap()` passes the handler tag explicitly to
+    `wrapMethodBindings` and `bindLibraries` (`-1` for a single-purpose validator or a method).
+  - `JavacCompilation` keeps the observer in a field and calls it from its own `methodBound` callback, so the test
+    records what the frontend receives.
+  - The test entry point is `Adr078AssemblyBridge`, in the test sources. Production code gains no observer entry
+    point.
+  - **API note.** `ValidatorAssembly.Frontend` is public because `JavacCompilation` lives in another package. Its
+    `methodBound` type and arity changed from pre21's, and `MethodBound` is a new public nested interface. Only
+    `JavacCompilation` and a test construct a `Frontend`. No other module or sibling repository uses it.
+  - **Bytes.** Unchanged. The corrected corpus replay and the julc-examples gate (release FLAT, maps-on FLAT and the
+    complete source maps) are identical to pre21's on the round-3 classes.
+- **C20.** The comparator validates each record against its kind and outcome: required fields, no unknown kinds,
+  statuses, outcomes or fields. It requires exactly one higher-limit retry per exhausted evaluation and rejects
+  orphans. It compares matched higher-limit retries: semantics, and budgets reported as budget-only. All of these
+  controls are in `m1a-replay-comparator-controls.txt`:
+  - a missing higher-limit record;
+  - an orphan retry;
+  - `compile/ok` without `flat`;
+  - an unknown kind;
+  - a higher-limit CPU change, which is reported and passes.
+- **C21.** In the runner, preparation (options, sources, staging files) and result adaptation are outside the compiler
+  call's exception boundary. A failure there is a `harness-error` record, and any harness error fails the comparison,
+  even one that both sides share. The control runs the runner with `-Dadr078.tmp` set to a regular file. The two
+  `compilePath` manifests give harness errors, not rejections. Spliced into both outputs, they make the comparator exit 1.
+- **C22.** The exception for custom registries and other frontends is in D1b, D2 and the release note (ADR r9). Two
+  tests pin it end to end, both recorded on pre21 (`c22-probes.txt`, `C22Probes.java.txt`):
+  - `aCustomRegistrysMaterialisedBindingIsNoCall`: pre21 binds z, a, b; the head binds a, b, z.
+  - `aGenuineCycleBesideACustomRegistrysBindingIsTheOneReported`: pre21 rejects with `Unbound variable: q.M.a`, the
+    head with `Unbound variable: q.M.d`.
+- **C23.** The runner always passes the recorded library list, even an empty one, so it never falls into the
+  class-path-scanning overload. It checks the recorded cost profile's parameter hash.
+- **C24.** Bounded comparisons (112, both sides exhausted) are counted apart from inconclusive ones. A one-sided
+  exhaustion that persists at the higher limit is inconclusive, reported, and passes (ADR I6a). One that the higher limit
+  resolves is compared. Both are controls. The fixture oracle checks that the evaluation ids made equal the recorded
+  ones, both ways.
+- **C25.** `everyBindingReachesTheMethodBoundCallbackOfItsHandler` compares, per handler, the multiset of binders the
+  frontend's callback received with that handler's emitted PIR. Each received binding must also enclose the next one
+  in the handler's chain. These mutations fail it:
+  - giving one library binding the other handler's tag (both a symmetric and an asymmetric case);
+  - suppressing the callback for one library method.
+
+  Deleting the higher-limit applied evaluation, or the C12 tight limit, fails `evaluationsMatchPre21`.
+- **C27.** The 55 excluded case ids are pinned (SHA-256 `b95d72fa…`); an extra exclusion fails. The ADR's exit
+  criterion states the 20,352-manifest scope (r9).
+- **C28.**
+  - The README's FLAT count is now 47,593.
+  - `m1a-pre21-recording.md` gives the 1,152 evaluations, the exact diagnostics and the two-way id check.
+  - The `LibraryBindingOrder` class Javadoc states the order: content key, then first-use rank. A qualified name
+    decides only in D1b and in a stalled group.
+  - The runner imports `NoSuchAlgorithmException`.
+  - Each run log starts with the SHA-256 of the compiler class files it loaded.
+
 ## M3 (JOUST's half of the gate)
 
 M3 passed on `4bac295d` (`m3-joust-gate.txt`):
@@ -276,7 +335,8 @@ M3 passed on `4bac295d` (`m3-joust-gate.txt`):
 - Crowdfund `28e115b5…` and Tips `80648854…` kept;
 - source-map mode 67/67 identical.
 
-C10 changed main code afterwards, so M3 is to be re-run on the final head.
+The coordinator re-ran it on `2c0edb6e` after C10 (`m3-joust-gate-2c0edb6e.txt`): passed, every `[hash]` line
+identical to the `4bac295d` run. Round 3 (F9/C26) changed main code again, so M3 is to be re-run on the final head.
 
 ## Not done in M1a
 

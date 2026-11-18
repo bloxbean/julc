@@ -1,0 +1,71 @@
+package c22;
+
+import org.julclang.compiler.*;
+import org.julclang.compiler.pir.PirTerm;
+import org.julclang.core.flat.UplcFlatEncoder;
+import org.julclang.stdlib.StdlibRegistry;
+
+import java.security.MessageDigest;
+import java.util.*;
+
+/** Codex M1a C22: a custom registry whose Math.abs builder applies a materialised q.M.b. */
+public class C22Probe {
+    public static void main(String[] a) throws Exception {
+        String provided = "package q;\nimport org.julclang.stdlib.annotation.OnchainLibrary;\n@OnchainLibrary\npublic class M {\n    public static long b(long y) { return y; }\n}\n";
+        var provider = new JavaLibraryProvider(List.of(provided), null, new CompilerOptions());
+        PirTerm materialised = provider.materialize("q.M.b");
+        System.out.println("materialised: " + materialised);
+        var registry = new StdlibRegistry();
+        registry.register("Math", "abs", args -> new PirTerm.App(materialised, args.getFirst()));
+        String library = "package q;\nimport org.julclang.stdlib.annotation.OnchainLibrary;\n@OnchainLibrary\npublic class M {\n"
+                + "    public static long a(long x) { return Math.abs(x); }\n"
+                + "    public static long b(long x) { return a(x) + 9; }\n"
+                + "    public static long z(long x) { return x + 9; }\n}\n";
+        String target = "package v;\nimport q.M;\nclass T {\n    static long f(long x) { return M.b(x) + M.z(x); }\n}\n";
+        var options = new CompilerOptions().setTarget(CompilerTarget.PLUTUS_V3_PV11).setOptimizationLevel(OptimizationLevel.NONE);
+        try {
+            var r = new JulcCompiler(registry, options).compileMethod(target, "f", List.of(library));
+            byte[] bytes = UplcFlatEncoder.encodeProgram(r.program());
+            String pir = r.pirFormatted();
+            var order = new ArrayList<String>();
+            for (String n : List.of("q.M.a", "q.M.b", "q.M.z")) order.add(pir.indexOf("(let " + n + " =") + ":" + n);
+            order.sort(Comparator.comparingInt(x -> Integer.parseInt(x.substring(0, x.indexOf(':')))));
+            System.out.println("compiled " + HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)) + " " + bytes.length + " B; outermost first " + order);
+        } catch (RuntimeException e) {
+            System.out.println("rejected " + e.getClass().getSimpleName() + ": " + String.valueOf(e.getMessage()).lines().findFirst().orElse(""));
+        }
+    }
+}
+
+// ----------------------------------------------------------------------------------------------------------
+
+package c22d;
+
+import org.julclang.compiler.*;
+import org.julclang.compiler.pir.PirTerm;
+import org.julclang.stdlib.StdlibRegistry;
+
+import java.util.*;
+
+/** Codex M1a C22: the genuine cycle's diagnostic next to a materialised q.M.b in a custom registry's Math.abs. */
+public class C22Diag {
+    public static void main(String[] a) throws Exception {
+        String provided = "package q;\nimport org.julclang.stdlib.annotation.OnchainLibrary;\n@OnchainLibrary\npublic class M {\n    public static long b(long y) { return y; }\n}\n";
+        PirTerm materialised = new JavaLibraryProvider(List.of(provided), null, new CompilerOptions()).materialize("q.M.b");
+        var custom = new StdlibRegistry();
+        custom.register("Math", "abs", args -> new PirTerm.App(materialised, args.getFirst()));
+        String library = "package q;\nimport org.julclang.stdlib.annotation.OnchainLibrary;\n@OnchainLibrary\npublic class M {\n"
+                + "    public static long a(long x) { return Math.abs(x); }\n"
+                + "    public static long b(long x) { return a(x) + 1; }\n"
+                + "    public static long c(long x) { return d(x) + 1; }\n"
+                + "    public static long d(long x) { return c(x) - 1; }\n}\n";
+        String target = "package v;\nimport q.M;\nclass T {\n    static long f(long x) { return M.b(x); }\n}\n";
+        var options = new CompilerOptions().setTarget(CompilerTarget.PLUTUS_V3_PV11).setOptimizationLevel(OptimizationLevel.NONE);
+        try {
+            new JulcCompiler(custom, options).compileMethod(target, "f", List.of(library));
+            System.out.println("compiled");
+        } catch (CompilerException e) {
+            System.out.println("[" + e.getMessage() + "]");
+        }
+    }
+}

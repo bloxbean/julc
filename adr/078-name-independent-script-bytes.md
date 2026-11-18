@@ -105,7 +105,8 @@ is not a call). Since r8 this one lexical graph also schedules the content keys 
   rejects), rank the smallest by `(content key, qualified name)` and continue. The rejection is unchanged and the walk
   terminates. This relies on mutual library recursion staying rejected (F16: reviewer note on that dependency).
   Kahn's algorithm emits such a stalled group in pre21's `(content key, qualified name)` order, so the rejection
-  names the same method (r7).
+  names the same method (r7). That holds for programs the javac frontend builds; for custom registries and other
+  frontends, see D2's exception (r9).
 - **Cost** (incremental):
   - counts of unranked callers;
   - a priority queue of the methods whose count is 0;
@@ -117,7 +118,18 @@ is not a call). Since r8 this one lexical graph also schedules the content keys 
 
 - Among ready library methods with equal content keys, JuLC chooses the lower first-use rank. For otherwise unreached
   methods a qualified-name fallback remains (D1b).
-- Programs without equal-key methods are byte-identical to pre21's.
+- Programs without equal-key methods are byte-identical to pre21's. That holds for every program the javac frontend
+  builds from Java sources (the corpus replay and the julc-examples gate).
+- **Exception (r9, Codex C22): custom registries and other frontends.** A library body built through a custom registry
+  or another frontend can hold a closed binding spelled like another library method, for example a materialised
+  `let q.M.b = λy.y in q.M.b`. pre21's spelling search read that as a call, and could key the method with group tokens
+  or stall on a false cycle. With the one lexical graph, such a program's order, acceptance and diagnostics can change
+  even without equal keys.
+  - Codex's case: a registry's `Math.abs` builder applies a materialised `q.M.b`. pre21 binds z, a, b; this ADR binds
+    a, b, z. It is pinned by `LibraryTieOrderFixturesTest.aCustomRegistrysMaterialisedBindingIsNoCall`.
+  - A genuine cycle beside it: with c and d calling each other, pre21 reports `Unbound variable: q.M.a` (its stalled
+    group holds the false cycle too) and this ADR reports `Unbound variable: q.M.d`. The program stays rejected. It is
+    pinned by `aGenuineCycleBesideACustomRegistrysBindingIsTheOneReported`.
 - In programs with them, the tied methods move, and Kahn's interleaving can move others too.
 - There is no merging and no pruning.
 
@@ -336,8 +348,11 @@ JOUST's D12 is an M3 deliverable.
   > Among ready library methods with equal content keys (methods whose compiled bodies are the same apart from names),
   > JuLC now chooses the one the program uses first. For otherwise unreached methods, a qualified-name fallback
   > remains. Recompiling can change affected scripts (measured: …); scripts already compiled or deployed are
-  > unaffected. Without a budget limit the results, failures and traces are the same; the budget can differ. Names and
-  > orders still reach the bytes in the cases listed in ADR-078's known limits.
+  > unaffected. Programs compiled from Java sources change only where such methods exist. A program whose library
+  > bodies come through a custom registry or another frontend may also change its binding order, compile where it was
+  > rejected, or name a different method in a rejection. Without a budget limit the results, failures and traces are
+  > the same; the budget can differ. Names and orders still reach the bytes in the cases listed in ADR-078's known
+  > limits.
 
 ## Risks
 
@@ -356,8 +371,10 @@ JOUST's D12 is an M3 deliverable.
     - the gate passes;
     - D5 is green;
     - the oracles run against `08b021ce`;
-    - ADR-075's corpus replay, run against `08b021ce`: the ADR-074 corpus, 20,407 cases. **It is required (r7).** It is
-      the broadest I6a evidence: unbounded outcomes and traces are compared, and budgets are reported;
+    - ADR-075's corpus replay, run against `08b021ce`: the ADR-074 corpus, 20,407 manifests. **It is required (r7).** It
+      is the broadest I6a evidence: unbounded outcomes and traces are compared, and budgets are reported.
+      - **Scope:** the 20,352 manifests the runner replays. The 55 it excludes (JavaLibraryProvider entries and custom
+        lookups) are pinned by their sorted ids (SHA-256 `b95d72fa…`), so an extra exclusion fails the comparison.
     - every in-repo byte change is explained;
     - the compile time is measured;
     - `./gradlew build` is green.
@@ -424,3 +441,8 @@ JOUST's D12 is an M3 deliverable.
     library bodies hold such a binding may order differently, or now compile where it was rejected.
   - **Lemma 3** restated.
   - **M3:** status recorded.
+- **r9 (2026-11-19).** After Codex's third M1a review (C20–C28) and Fable's F9.
+  - **The exception for custom registries and other frontends** (C22) is stated in D1b, D2 and the release note, with
+    both of Codex's cases (an order change and a changed cycle diagnostic) pinned by tests.
+  - **The corpus replay's scope** and its pinned exclusions are stated in M1a's exit (C27).
+  - The decision is unchanged.

@@ -1,39 +1,56 @@
-# ADR-078 M1a: ADR-075's corpus replay, corrected after Codex's second M1a review (C12, C13). 2026-11-19.
-# pre21: the 0.1.0-pre21 Maven artifacts (julc-tools + julc-vm-java class path). M1a: this branch, main code with r8's
-# single lexical dependency graph (C10), compiled from the working tree that became the final head.
+# ADR-078 M1a: ADR-075's corpus replay, corrected after Codex's third M1a review (C20, C21, C23, C24, C27, C28).
+# 2026-11-19. pre21: the 0.1.0-pre21 Maven artifacts (julc-tools + julc-vm-java class path). Head: this branch's
+# julc-compiler test runtime class path, built from the working tree that became the final head (round 3: the observer
+# carried in the Frontend record, F9/C26; the LibraryBindingOrder Javadoc, C28).
 # Corpus: the ADR-074 corpus ADR-075 used, julc-327-base/build/corpus327: 20,407 manifests.
-# Runner: Adr078Replay.java.txt (sources decoded with CorpusFiles.text; recorded target, level, cost profile, source
-# maps and disabledRules restored; the recorded entry point dispatched; one JSON record per line). Both runs used the
-# same -Dadr078.tmp directory, sequentially, since compilePath diagnostics carry the file path.
-# Comparator: compare_replay.py.txt (strict JSON; exits 1 on any unaccepted difference; budget-only differences reported).
+# Runner: Adr078Replay.java.txt. Sources decoded with CorpusFiles.text; the recorded target, level, cost profile
+# (its parameter hash checked against the recorded one, C23), source maps and disabledRules restored; the recorded
+# entry point dispatched, always with the recorded library list, even an empty one (C23). Preparation (options,
+# sources, staging files for path entry points) and result adaptation are outside the compiler call's exception
+# boundary, so a failure there is a harness error, never a rejection (C21). The run log starts with the SHA-256 of the
+# compiler class files it loaded (C28). One JSON record per line.
+# Comparator: compare_replay.py.txt. Validates every record against its kind and outcome; rejects unknown kinds and
+# fields, orphan or missing higher-limit retries, and any harness error, even one both sides share (C20, C21); pins the
+# 55 excluded case ids (SHA-256 b95d72fa4d276c2e5ac8875804dc500a869734430241f9347c39fd280dc82798, C27); compares
+# matched higher-limit retries' semantics and budgets; counts bounded and inconclusive evaluations separately (C24).
 
-Commands (class paths as in m1a-pre21-recording.md):
-  java -Xmx6g -Dadr078.tmp=<tmp> -cp "<runner>:<pre21 class path>" replay.Adr078Replay <corpus> r3-pre21.jsonl
-  java -Xmx6g -Dadr078.tmp=<tmp> -cp "<runner>:<julc-compiler test class path>" replay.Adr078Replay <corpus> r3-m1a.jsonl
-  python3 compare_replay.py.txt r3-pre21.jsonl r3-m1a.jsonl
+Commands (class paths as in m1a-pre21-recording.md; both runs sequential, with the same -Dadr078.tmp directory, since a
+compilePath diagnostic carries the staged file's path):
+  java -Xmx6g -Dadr078.tmp=<tmp> -cp "<runner>:<pre21 class path>" replay.Adr078Replay <corpus> r5-pre21.jsonl
+  java -Xmx6g -Dadr078.tmp=<tmp> -cp "<runner>:<julc-compiler test class path>" replay.Adr078Replay <corpus> r7-head.jsonl
+  python3 compare_replay.py.txt r5-pre21.jsonl r7-head.jsonl
+
+Compiler class files loaded (SHA-256, from the run logs):
+  pre21 (julc-compiler-0.1.0-pre21.jar)
+    JulcCompiler         4ec3a0d37adf0f4b…
+    LibraryBindingOrder  0bd20cd5906ee3ea…
+    ValidatorAssembly    77cea13f8e3e03b1…
+    FirstUseRanks        absent
+  head (julc-compiler/build/classes/java/main)
+    JulcCompiler         4ec3a0d37adf0f4b…
+    LibraryBindingOrder  defab323b293067d…
+    ValidatorAssembly    ee8201bb6338c863…
+    FirstUseRanks        4916e359d7d0878d…
+  JulcCompiler's class file is the same on both sides; the replay therefore checks the classes that changed.
 
 Output: both files 341,651 records, byte-identical (sha256 e04953cd026364434b3a519407e49c268501cfba51653be1457347250356eb84).
 
 Counts (from the manifests and records):
   manifests                                     20,407
-    skipped (JavaLibraryProvider entry: 49; custom lookup: 6)    55
+    skipped (JavaLibraryProvider entry: 49; custom lookup: 6)    55   (ids pinned, sha256 b95d72fa…)
     replayed (every other entry point; default and none lookups) 20,352
   case x level compilations                     54,691
     compiled (FLAT digest recorded)             47,593
     rejected by the compiler (threw)             7,098
-    harness or VM initialisation errors              0
-  evaluations (compileMethod, default lookup, 12,077 cases, 7 vectors, transaction limit)   266,441
-    ok 98,422; fail 167,907; exhausted 112 (all 112 exhaust at the higher limit too, on both sides)
+    harness errors                                   0
+  evaluations (compileMethod, default lookup, 7 vectors, transaction limit)   266,441
+    demonstrated ok 98,422; demonstrated fail 167,907
+    bounded (both sides exhausted the transaction limit) 112: each has one higher-limit retry per side, and the
+      retries' outcomes, traces and budgets are identical (all 112 still exhaust there)
 
 Comparison:
   unaccepted differences          0
   budget-only differences (I6b)   0
   inconclusive                    0
 
-The comparator's negative controls (m1a-replay-comparator-controls.txt): a changed result digest, trace list, FLAT
-digest or a missing record each exit 1; a malformed ([TRACE]-style) or duplicate line is rejected; a budget-only change
-is reported and exits 0.
-
-C10: the M1a run above is with r8's single lexical dependency graph. Before it (the r7 code, spelling-search graph for
-Kahn and the keys), the replay was also identical to pre21 but for one compilePath diagnostic that carried the
-tmp-directory path (the two runs then used different tmp directories). So C10 changed no bytes on this corpus.
+The comparator's negative controls and the C21 path-staging failure: m1a-replay-comparator-controls.txt.

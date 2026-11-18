@@ -1,0 +1,18 @@
+# ADR-078 M1a, Codex's third review, C22: a custom registry whose Math.abs builder applies a materialised q.M.b
+# (JavaLibraryProvider.materialize, a closed `let q.M.b = λy.y in q.M.b`). Probes: C22Probes.java.txt. Run with
+# -Djulc.verifyBinderNamespace=false (the materialised binders were not built for the program's source), at NONE,
+# on the pre21 class path and on the M1a head's julc-compiler class path. 2026-11-19.
+
+C22Probe: library a(x) = Math.abs(x), b(x) = a(x) + 9, z(x) = x + 9; f(x) = M.b(x) + M.z(x)
+  pre21  compiled 9aa526d2d3c539d214028d05cb7ffd1b74adcc0ef36ce6f8cb53c93360c48cbe 48 B; outermost first z, a, b
+  head   compiled d0e16561f2dc5cc2323efa67c78ba7a380b84dcec13a808e074ee77459ed5b53 48 B; outermost first a, b, z
+
+C22Diag: library a(x) = Math.abs(x), b(x) = a(x) + 1, c(x) = d(x) + 1, d(x) = c(x) - 1; f(x) = M.b(x)
+  pre21  rejected: Unbound variable: q.M.a
+  head   rejected: Unbound variable: q.M.d
+
+Both are pinned on the head by LibraryTieOrderFixturesTest (aCustomRegistrysMaterialisedBindingIsNoCall,
+aGenuineCycleBesideACustomRegistrysBindingIsTheOneReported). Codex's own C22 case used another target (its digests
+were d281d488… and b3b04115…); the order change, z, a, b to a, b, z, is the same. Codex's cycle case named q.M.b and
+q.M.c; this probe's names q.M.a and q.M.d: in both, pre21's stalled group holds the false cycle and the head's holds
+only the genuine one.

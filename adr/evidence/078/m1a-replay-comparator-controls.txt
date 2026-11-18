@@ -1,7 +1,40 @@
-a changed result digest: exit 1; ['unaccepted differences: 1', 'budget-only differences (I6b): 0']
-a changed trace list: exit 1; ['unaccepted differences: 1', 'budget-only differences (I6b): 0']
-a changed FLAT digest: exit 1; ['unaccepted differences: 1', 'budget-only differences (I6b): 0']
-a record missing: exit 1; ['unaccepted differences: 1', 'budget-only differences (I6b): 0']
+# ADR-078 M1a: the replay comparator's negative controls, after Codex's third M1a review (C20, C21, C24, C27).
+# 2026-11-19. Each control edits a copy of the head's replay output (or both outputs) and runs compare_replay.py.txt
+# against the pre21 output. Any unaccepted difference, schema error, harness error, missing or orphan higher-limit
+# retry, or a change in the pinned exclusions exits 1. Budget-only differences and inconclusive cases are reported
+# and exit 0, per ADR-078's I6a rule.
+
+a changed result digest: exit 1; ['evaluation differs', ..., 'budget-only differences (I6b): 0', 'inconclusive (one-sided exhaustion that persists at the higher limit): 0']
+a changed trace list: exit 1; ['evaluation differs', ..., 'budget-only differences (I6b): 0', 'inconclusive (one-sided exhaustion that persists at the higher limit): 0']
+a changed FLAT digest: exit 1; ['compilation differs', ..., 'budget-only differences (I6b): 0', 'inconclusive (one-sided exhaustion that persists at the higher limit): 0']
+a record missing: exit 1; ["   ('on one side only', ('00131a41e259748168f04280bab8ef60dbb77802e34945f0c10cc50bf1e7f4fc', 'BASELINE', 'eval', 0, 'transaction'))", 'budget-only differences (I6b): 0', 'inconclusive (one-sided exhaustion that persists at the higher limit): 0']
+a missing higher-limit record: exit 1; ["ctl.jsonl: exhausted evaluation ('02418a2d9c879e4f2f3b75f9f7f432f3898e6a32fb822a79c4a4f6b26cae4514', 'BASELINE', 'eval', 2, 'transaction') has no higher-limit retry"]
+an orphan higher-limit retry: exit 1; ["ctl.jsonl: orphan higher-limit retry ('00131a41e259748168f04280bab8ef60dbb77802e34945f0c10cc50bf1e7f4fc', 'BASELINE', 'eval', 0, 'high')"]
+compile/ok without flat: exit 1; ["ctl.jsonl:1: compile/ok record lacks ['flat']"]
+an unknown kind: exit 1; ["ctl.jsonl:341652: unknown kind 'mystery'"]
+an extra excluded case: exit 1; ['ctl.jsonl: the 56 skipped cases are not the pinned 55 (sha256 42d525b635b36c15833c8a89c4e28bbbb9d3e253aaa7fe667bf4ce370f6e51ad)']
+a harness error (one side): exit 1; ["ctl.jsonl: 1 harness error(s), e.g. ('00020fc31c083d2054f89216f9c3a37b9b04e48707862f943e7251066e507d94', 'BASELINE', 'compile', '', '')"]
 a malformed line: exit 1; ['ctl.jsonl:6: malformed record: Expecting value: line 1 column 2 (char 1)']
 a duplicate record: exit 1; ["ctl.jsonl:7: duplicate record ('00131a41e259748168f04280bab8ef60dbb77802e34945f0c10cc50bf1e7f4fc', 'BASELINE', 'compile', '', '')"]
-a budget-only change: exit 0; ['unaccepted differences: 0', 'budget-only differences (I6b): 1']
+a transaction-limit budget-only change: exit 0; ['budget-only differences (I6b): 1', "   (('00131a41e259748168f04280bab8ef60dbb77802e34945f0c10cc50bf1e7f4fc', 'BASELINE', 'eval', 0, 'transaction'), (64100, 500), (64101, 500))", 'inconclusive (one-sided exhaustion that persists at the higher limit): 0']
+a higher-limit CPU change: exit 0; ['budget-only differences (I6b): 1', "   (('02418a2d9c879e4f2f3b75f9f7f432f3898e6a32fb822a79c4a4f6b26cae4514', 'BASELINE', 'eval', 2, 'high'), (340118150437, 1400000028), (340118150438, 1400000028))", 'inconclusive (one-sided exhaustion that persists at the higher limit): 0']
+a one-sided exhaustion that persists at the higher limit: exit 0; ['unaccepted differences: 0', 'inconclusive (one-sided exhaustion that persists at the higher limit): 1']
+a one-sided exhaustion that the higher limit resolves to the same result: exit 0; ['  evaluations demonstrated ok (after a one-sided exhaustion): 1', 'unaccepted differences: 0', 'inconclusive (one-sided exhaustion that persists at the higher limit): 0']
+
+C21: a path-staging failure. Adr078Replay with -Dadr078.tmp set to a regular file, on three corpus manifests (two
+compilePath, one compileMethod; c21c/corpus, symlinks into corpus327):
+{"case":"a77fe2738ffede8cd52f5edf4078160212d66edf439f9a546f41d6cbf9bcebc9","level":"PV11_SAFE","kind":"compile","status":"harness-error","error":"java.nio.file.FileSystemException: c21c/not-a-directory/replay078: Not a directory"}
+{"case":"a77fe2738ffede8cd52f5edf4078160212d66edf439f9a546f41d6cbf9bcebc9","kind":"manifest","status":"eligible","entry":"compilePath","lookup":"default"}
+{"case":"b5e0ef899bd7a7e8c2b96705ba7ce0e10d972219762b36847d0d01ce60375e42","level":"PV11_SAFE","kind":"compile","status":"ok","flat":"07dc973181a9c1220e1b1116ab6fc5ca6e5c7ee81eb88acefe126ce08412a4f6"}
+{"case":"b5e0ef899bd7a7e8c2b96705ba7ce0e10d972219762b36847d0d01ce60375e42","kind":"manifest","status":"eligible","entry":"compileMethod","lookup":"default"}
+{"case":"dd1420a0882396312d18fb1a4f9d2941467835bec7070725f29a21988ea724cf","level":"PV11_SAFE","kind":"compile","status":"harness-error","error":"java.nio.file.FileSystemException: c21c/not-a-directory/replay078: Not a directory"}
+{"case":"dd1420a0882396312d18fb1a4f9d2941467835bec7070725f29a21988ea724cf","kind":"manifest","status":"eligible","entry":"compilePath","lookup":"default"}
+  The staging failure is a harness error, not a compiler rejection ("threw"). Spliced into both full outputs, in the
+  same place (c21c/pre21-staged.jsonl, c21c/head-staged.jsonl), so that the two sides match:
+  c21c/pre21-staged.jsonl: 2 harness error(s), e.g. ('a77fe2738ffede8cd52f5edf4078160212d66edf439f9a546f41d6cbf9bcebc9', 'PV11_SAFE', 'compile', '', '')
+  exit 1
+
+The tmp directory is part of the input: a compilePath diagnostic carries the staged file's path. A head run with
+another -Dadr078.tmp (rtmp6) gave exactly one unaccepted difference, the one compilePath rejection whose message
+names the path (case bc7fe3b8…, PV11_SAFE); the run with pre21's directory (rtmp) is byte-identical. Both runs of the
+final replay therefore use the same directory.

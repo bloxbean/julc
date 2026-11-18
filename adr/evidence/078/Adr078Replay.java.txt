@@ -23,6 +23,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import java.util.concurrent.*;
 
@@ -56,6 +57,15 @@ public class Adr078Replay {
     });
 
     public static void main(String[] a) throws Exception {
+        // The class files this run compiled with, so a log shows which compiler it replayed.
+        for (String name : List.of("org.julclang.compiler.JulcCompiler", "org.julclang.compiler.codegen.LibraryBindingOrder",
+                "org.julclang.compiler.codegen.ValidatorAssembly", "org.julclang.compiler.codegen.FirstUseRanks")) {
+            String resource = name.replace('.', '/') + ".class";
+            try (var in = Adr078Replay.class.getClassLoader().getResourceAsStream(resource)) {
+                System.out.println("class " + name + " " + (in == null ? "absent" : sha(in.readAllBytes()))
+                        + " from " + Adr078Replay.class.getClassLoader().getResource(resource));
+            }
+        }
         Path root = Path.of(a[0]);
         var cases = new ArrayList<Path>();
         try (var dirs = Files.list(root.resolve("cases"))) { dirs.sorted().forEach(cases::add); }
@@ -107,16 +117,26 @@ public class Adr078Replay {
             return;
         }
         for (String level : levels) {
-            CompilerOptions options;
+            // Preparation: options, sources and any files a path entry point reads. A failure here is the harness's.
+            JulcCompiler compiler;
             String mainText;
             List<String> libraryTexts = new ArrayList<>();
-            JulcCompiler compiler;
+            List<Path> stagedLibraries = new ArrayList<>();
+            Path stagedMain = null;
             try {
-                options = new CompilerOptions();
+                var options = new CompilerOptions();
                 options.setTarget(CompilerTargetRegistry.targetForProfileId(field(fields, "target")));
                 options.setOptimizationLevel(OptimizationLevel.valueOf(level));
                 String cost = field(fields, "costProfile");
-                if (cost != null) options.setOptimizationCostProfile(OptimizationCostProfiles.forId(cost.split(" ")[0]));
+                if (cost != null) {
+                    String[] parts = cost.split(" ");
+                    var profile = OptimizationCostProfiles.forId(parts[0]);
+                    if (parts.length > 1 && !profile.parameterHash().equals(parts[1])) {
+                        throw new IllegalStateException("cost profile " + parts[0] + " has parameter hash " + profile.parameterHash()
+                                + ", the case recorded " + parts[1]);
+                    }
+                    options.setOptimizationCostProfile(profile);
+                }
                 options.setSourceMapEnabled(Boolean.parseBoolean(field(fields, "sourceMap")));
                 String disabled = field(fields, "disabledRules");
                 if (disabled != null) for (String rule : disabled.split(",")) options.disableOptimizationRule(rule.trim());
@@ -124,16 +144,37 @@ public class Adr078Replay {
                 compiler = new JulcCompiler(lookup, options);
                 mainText = main == null ? null : source(root, main[0]);
                 for (var library : libraries) libraryTexts.add(source(root, library[0]));
+                if (entry.equals("compilePath") || entry.equals("compileContractPath")) {
+                    Path tmp = Path.of(System.getProperty("adr078.tmp", System.getProperty("java.io.tmpdir")), "replay078", key + "-" + level);
+                    Files.createDirectories(tmp);
+                    stagedMain = tmp.resolve(main.length > 1 ? main[1] : "Main.java");
+                    Files.createDirectories(stagedMain.getParent());
+                    Files.writeString(stagedMain, mainText);
+                    for (int i = 0; i < libraries.size(); i++) {
+                        Path file = tmp.resolve(libraries.get(i).length > 1 ? libraries.get(i)[1] : "Lib" + i + ".java");
+                        Files.createDirectories(file.getParent());
+                        Files.writeString(file, libraryTexts.get(i));
+                        stagedLibraries.add(file);
+                    }
+                }
             } catch (Throwable e) {
                 put(records, record("case", key, "level", level, "kind", "compile", "status", "harness-error", "error", e.toString()));
                 continue;
             }
-            CompileResult result;
+            // The compiler call alone: what it throws is the compiler's rejection.
+            Object outcome;
             try {
-                result = compileResult(run(key + "-" + level, compiler, entry, method, main, mainText, libraries, libraryTexts));
+                outcome = run(compiler, entry, method, mainText, libraryTexts, stagedMain, stagedLibraries);
             } catch (Throwable e) {
                 put(records, record("case", key, "level", level, "kind", "compile", "status", "threw",
                         "error", e.getClass().getName() + " " + sha(String.valueOf(e.getMessage()).getBytes(StandardCharsets.UTF_8))));
+                continue;
+            }
+            CompileResult result;
+            try {
+                result = compileResult(outcome);
+            } catch (Throwable e) {
+                put(records, record("case", key, "level", level, "kind", "compile", "status", "harness-error", "error", e.toString()));
                 continue;
             }
             if (result.hasErrors() || result.program() == null) {
@@ -145,15 +186,22 @@ public class Adr078Replay {
                     "flat", sha(UplcFlatEncoder.encodeProgram(result.program()))));
             if (!"compileMethod".equals(entry) || !lookupId.startsWith("default:")) continue;
             for (int v = 0; v < VECTORS.size(); v++) {
+                EvalResult transaction;
                 try {
-                    var outcome = VM.get().evaluateWithArgs(result.program(), VECTORS.get(v), LIMIT);
-                    put(records, evaluation(key, level, v, "transaction", outcome));
-                    if (outcome instanceof EvalResult.BudgetExhausted) {
-                        put(records, evaluation(key, level, v, "high", VM.get().evaluateWithArgs(result.program(), VECTORS.get(v), HIGH)));
-                    }
+                    transaction = VM.get().evaluateWithArgs(result.program(), VECTORS.get(v), LIMIT);
                 } catch (Throwable e) {
                     put(records, record("case", key, "level", level, "kind", "eval", "vector", v, "limit", "transaction",
                             "outcome", "harness-error", "error", e.toString()));
+                    continue;
+                }
+                put(records, evaluation(key, level, v, "transaction", transaction));
+                if (transaction instanceof EvalResult.BudgetExhausted) {
+                    try {
+                        put(records, evaluation(key, level, v, "high", VM.get().evaluateWithArgs(result.program(), VECTORS.get(v), HIGH)));
+                    } catch (Throwable e) {
+                        put(records, record("case", key, "level", level, "kind", "eval", "vector", v, "limit", "high",
+                                "outcome", "harness-error", "error", e.toString()));
+                    }
                 }
             }
         }
@@ -195,30 +243,18 @@ public class Adr078Replay {
         };
     }
 
-    private static Object run(String id, JulcCompiler compiler, String entry, String method, String[] main, String mainText,
-                              List<String[]> libraries, List<String> libraryTexts) throws Exception {
+    /** The recorded entry point, with the recorded library list (empty or not: never the class-path overload). */
+    private static Object run(JulcCompiler compiler, String entry, String method, String mainText, List<String> libraryTexts,
+                              Path stagedMain, List<Path> stagedLibraries) throws Exception {
         return switch (entry) {
-            case "compile" -> libraryTexts.isEmpty() ? compiler.compile(mainText) : compiler.compile(mainText, libraryTexts);
+            case "compile" -> compiler.compile(mainText, libraryTexts);
             case "compileWithDetails" -> compiler.compileWithDetails(mainText, libraryTexts);
             case "compileMethod" -> compiler.compileMethod(mainText, method, libraryTexts);
             case "compileContract" -> compiler.compileContract(mainText, libraryTexts);
             case "compileContractWithDetails" -> compiler.compileContractWithDetails(mainText, libraryTexts);
             case "compileForDebug" -> compiler.compileForDebug(mainText, libraryTexts);
-            case "compilePath", "compileContractPath" -> {
-                Path tmp = Path.of(System.getProperty("adr078.tmp", System.getProperty("java.io.tmpdir")), "replay078", id);
-                Files.createDirectories(tmp);
-                Path mainFile = tmp.resolve(main.length > 1 ? main[1] : "Main.java");
-                Files.createDirectories(mainFile.getParent());
-                Files.writeString(mainFile, mainText);
-                var libraryFiles = new ArrayList<Path>();
-                for (int i = 0; i < libraries.size(); i++) {
-                    Path file = tmp.resolve(libraries.get(i).length > 1 ? libraries.get(i)[1] : "Lib" + i + ".java");
-                    Files.createDirectories(file.getParent());
-                    Files.writeString(file, libraryTexts.get(i));
-                    libraryFiles.add(file);
-                }
-                yield entry.equals("compilePath") ? compiler.compile(mainFile, libraryFiles) : compiler.compileContract(mainFile, libraryFiles);
-            }
+            case "compilePath" -> compiler.compile(stagedMain, stagedLibraries);
+            case "compileContractPath" -> compiler.compileContract(stagedMain, stagedLibraries);
             default -> throw new IllegalStateException("unknown entry " + entry);
         };
     }
@@ -278,7 +314,7 @@ public class Adr078Replay {
     private static String sha(byte[] bytes) {
         try {
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
-        } catch (java.security.NoSuchAlgorithmException e) {
+        } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException(e);
         }
     }
