@@ -596,9 +596,10 @@ jobs:
         if-no-files-found: error
         retention-days: 14
 
-  # ADR-077 D8a: the durable anchor of the npm files. A GitHub artifact attestation, signed with Sigstore under this
-  # workflow's identity at this tag and kept in GitHub's attestation store, of the three npm tarballs and the two engine
-  # archives, after checking them against the wasm job's digests. Every later check (npm-dry-run, npm-publish,
+  # ADR-077 D8a: the durable anchor of the npm files. One GitHub artifact attestation (one statement, five subjects),
+  # signed with Sigstore under this workflow's identity at this tag and kept in GitHub's attestation store, of the three
+  # npm tarballs and the two engine archives, after checking them against the wasm job's digests. The npm jobs require
+  # the five files to be exactly one statement's subjects, so files of two attempts can never be mixed. Every later check (npm-dry-run, npm-publish,
   # npm-verify, a recovery dispatch) verifies each file of the npm-packages artifact with gh attestation verify
   # --signer-workflow ... --source-ref refs/tags/v<version> --source-digest --signer-digest. No build, no checkout.
   attest:
@@ -950,6 +951,8 @@ jobs:
         GH_TOKEN: ${{ github.token }}
         SOURCE_DIGEST: ${{ github.sha }}
         SIGNER_DIGEST: ${{ github.workflow_sha }}
+        # The run the artifact came from: the one attest statement covering the five files must be that run's.
+        NPM_FILES_RUN: ${{ steps.run.outputs.run_id || github.run_id }}
       shell: bash
       run: bash julc-wasm/src/ci/npm-files.sh "$VERSION" assets
 
@@ -1083,6 +1086,8 @@ jobs:
         GH_TOKEN: ${{ github.token }}
         SOURCE_DIGEST: ${{ github.sha }}
         SIGNER_DIGEST: ${{ github.workflow_sha }}
+        # The run the artifact came from: the one attest statement covering the five files must be that run's.
+        NPM_FILES_RUN: ${{ steps.run.outputs.run_id || github.run_id }}
       shell: bash
       run: bash julc-wasm/src/ci/npm-files.sh "$VERSION" assets
 
@@ -1180,6 +1185,8 @@ jobs:
         GH_TOKEN: ${{ github.token }}
         SOURCE_DIGEST: ${{ github.sha }}
         SIGNER_DIGEST: ${{ github.workflow_sha }}
+        # The run the artifact came from: the one attest statement covering the five files must be that run's.
+        NPM_FILES_RUN: ${{ steps.run.outputs.run_id || github.run_id }}
       shell: bash
       run: bash julc-wasm/src/ci/npm-files.sh "$VERSION" assets
 

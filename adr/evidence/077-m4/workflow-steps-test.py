@@ -62,14 +62,24 @@ elif args[:2] == ['release', 'upload']:
     save()
     open(os.path.join(state, 'uploads'), 'a').write(name + '\n')
 elif args[:2] == ['attestation', 'verify']:
-    data = open(args[2], 'rb').read()
+    # Attestations are statements: {subjects: {name: sha256}, source, signer, ref, run, attempt}.
+    digest = hashlib.sha256(open(args[2], 'rb').read()).hexdigest()
     attested_file = os.path.join(state, 'attested.json')
-    att = json.load(open(attested_file)) if os.path.exists(attested_file) else {}
-    entry = att.get(hashlib.sha256(data).hexdigest())
-    if not entry: sys.stderr.write('no attestation\n'); sys.exit(1)
-    for flag, key in [('--source-digest', 'source'), ('--signer-digest', 'signer'), ('--source-ref', 'ref')]:
-        if opt(flag) is not None and opt(flag) != entry[key]:
-            sys.stderr.write(f'{flag} {opt(flag)} != {entry[key]}\n'); sys.exit(1)
+    statements = json.load(open(attested_file)) if os.path.exists(attested_file) else []
+    covering = [st for st in statements if digest in st['subjects'].values()]
+    if not covering: sys.stderr.write('no attestation\n'); sys.exit(1)
+    verified = []
+    for st in covering:
+        wrong = [f'{flag} {opt(flag)} != {st[key]}' for flag, key in [('--source-digest', 'source'),
+                 ('--signer-digest', 'signer'), ('--source-ref', 'ref')] if opt(flag) is not None and opt(flag) != st[key]]
+        if not wrong: verified.append(st)
+    if not verified: sys.stderr.write(wrong[0] + '\n'); sys.exit(1)
+    if opt('--format') == 'json':
+        print(json.dumps([{'verificationResult': {
+            'statement': {'subject': [{'name': n, 'digest': {'sha256': d}} for n, d in st['subjects'].items()]},
+            'signature': {'certificate': {'runInvocationURI':
+                f"https://github.com/bloxbean/julc/actions/runs/{st['run']}/attempts/{st['attempt']}"}}}}
+            for st in verified]))
     sys.exit(0)
 elif args[0] == 'api':
     if opt('-X') == 'DELETE':
@@ -89,6 +99,9 @@ elif args[0] == 'api':
         matches = [r for r in visible if r['tag'] == tag]
         if not matches:
             sys.stderr.write('gh: Not Found (HTTP 404)\n'); sys.exit(1)
+        if not jq:
+            print(json.dumps({'draft': matches[0]['draft'], 'assets': [{'name': a['name'], 'state': a['state'],
+                'digest': a.get('digest')} for a in matches[0]['assets']]})); sys.exit(0)
         for a in matches[0]['assets']:
             print(f"{a['name']} {a['state']} {a.get('digest', '')}")
         sys.exit(0)
@@ -103,8 +116,12 @@ elif args[0] == 'api':
         matching = [r for r in runs if r['event'] == query['event'] and r['head_sha'] == query['head_sha']]
         if jq == '.total_count':
             print(faults.get('total_count', len(matching))); sys.exit(0)
-        for r in matching[:faults.get('listed', len(matching))]:
-            print(f"{r['id']} {r['head_branch']}")
+        rows = [f"{r['id']} {r['head_branch']}" for r in matching[:faults.get('listed', len(matching))]]
+        if 'duplicate' in faults:
+            rows += [f"{r['id']} {r['head_branch']}" for r in matching if r['id'] == faults['duplicate']]
+        if faults.get('malformed'):
+            rows = ['abc ' + r.split(' ')[1] for r in rows]
+        print('\n'.join(rows))
         sys.exit(0)
     if '/actions/runs/' in url:
         runs_file = os.path.join(state, 'runs.json')
@@ -190,8 +207,17 @@ def tool_dir(tmp):
 def github(tmp, releases, attested=None):
     state = tempfile.mkdtemp(dir=tmp)
     json.dump(releases, open(os.path.join(state, 'releases.json'), 'w'))
-    json.dump(attested or {}, open(os.path.join(state, 'attested.json'), 'w'))
+    json.dump(attested or [], open(os.path.join(state, 'attested.json'), 'w'))
     return state
+
+
+ARTIFACT_RUN = 777
+
+
+def statement(files, run=ARTIFACT_RUN, attempt=1, **identity):
+    """One attest statement over the five npm files (as attest-build-provenance makes it: five subjects)."""
+    return {'subjects': {f: sha(files[f]) for f in FILES}, 'source': TAG_SHA, 'signer': TAG_SHA,
+            'ref': f'refs/tags/v{V}', 'run': run, 'attempt': attempt, **identity}
 
 
 sha = lambda text: hashlib.sha256(text.encode()).hexdigest()
@@ -356,7 +382,7 @@ def failed_upload_recovery(tmp):
     npm = {f: f'bytes of {f}' for f in FILES + [SUMS]}
     data = {FILES[3]: npm[FILES[3]], FILES[4]: npm[FILES[4]], f'julc-wasm-{V}-SHA256SUMS.txt': 'sums',
             f'julc-{V}-linux-x86_64.zip': 'cli'}
-    attested = {sha(npm[f]): {'source': TAG_SHA, 'signer': TAG_SHA, 'ref': f'refs/tags/v{V}'} for f in FILES}
+    attested = [statement(npm)]
     for recovery in ['re-run failed jobs', 'by hand after a refused full re-run']:
         state = github(tmp, [], attested)
         result, _ = create_step(tmp, state, data, fail_upload=FILES[3])
@@ -420,7 +446,8 @@ def npm_dir(tmp, files):
 def npm_files(state, directory):
     return subprocess.run(['bash', NPM_FILES, V, directory], text=True, capture_output=True,
                           env={**os.environ, 'FAKE_GH': state, 'FAKE_TOKEN': 'read', 'GH_TOKEN': 'x',
-                               'GITHUB_REPOSITORY': 'bloxbean/julc', 'SOURCE_DIGEST': TAG_SHA, 'SIGNER_DIGEST': TAG_SHA})
+                               'GITHUB_REPOSITORY': 'bloxbean/julc', 'SOURCE_DIGEST': TAG_SHA, 'SIGNER_DIGEST': TAG_SHA,
+                               'NPM_FILES_RUN': str(ARTIFACT_RUN)})
 
 
 def npm_run_lookup(tmp):
@@ -460,11 +487,14 @@ def npm_run_lookup(tmp):
          [run_(13, [attest('success')]), run_(14, [attest('skipped')], artifacts=[])], expect=(13, 900))
     case('a run of another tag on the same commit is not chosen',
          [run_(15, [attest('success')]), run_(16, [attest('success')], branch=f'v{V}-rc1')], expect=(15, 900))
-    case('no run for the tag', [], expect_text=gone)
-    case('a run whose attest failed', [run_(17, [attest('failure')])], expect_text=gone)
+    no_run = 'No run of native-image-release.yml for the push'
+    not_yet = 'has a successful attestation yet'
+    case('no run for the tag', [], expect_text=no_run)
+    case('a run whose attest failed: not expiry, re-run it', [run_(17, [attest('failure')])], expect_text=not_yet)
+    case('a run whose attest has not run yet', [run_(32, [attest('queued')])], expect_text=not_yet)
     case('a dispatch run is not the tag\'s push run', [run_(18, [attest('success')], event='workflow_dispatch')],
-         expect_text=gone)
-    case('a run at another commit', [run_(19, [attest('success')], sha_='b' * 40)], expect_text=gone)
+         expect_text=no_run)
+    case('a run at another commit', [run_(19, [attest('success')], sha_='b' * 40)], expect_text=no_run)
     case('the artifact has expired (14 days)', [run_(20, [attest('success')],
                                                     artifacts=[{'id': 1, 'name': 'npm-packages', 'expired': True}])],
          expect_text=gone)
@@ -477,9 +507,60 @@ def npm_run_lookup(tmp):
     case('more than 1,000 runs: completeness cannot be established', [run_(28, [attest('success')])],
          expect_text='incomplete', faults={'total_count': 1001})
     case('fewer runs read than the total', [run_(29, [attest('success')]), run_(30, [attest('skipped')])],
-         expect_text='1 of 2 runs read', faults={'listed': 1})
+         expect_text='1 distinct of 1 rows read, 2 reported', faults={'listed': 1})
     case('the artifact list unreadable (HTTP 500)', [run_(31, [attest('success')])], expect_text=unreadable,
          faults={'artifacts': True})
+    case('overlapping pages: a run listed twice, the total met by rows (R23-C8)',
+         [run_(33, [attest('skipped')], artifacts=[]), run_(34, [attest('success')]), run_(35, [attest('skipped')])],
+         expect_text='inconsistent', faults={'duplicate': 34, 'listed': 2})
+    case('a malformed run id', [run_(36, [attest('success')])], expect_text='malformed', faults={'malformed': True})
+
+
+def runbook_release_check(tmp):
+    """RUNBOOK.md's check of a release completed by hand (R23-C5, R23-C9, R23-F5), on gh run download's nested layout."""
+    text = open(os.path.join(ROOT, 'adr/evidence/077-m4/RUNBOOK.md')).read()
+    start = text.index('  (\n    set -euo pipefail\n    version=<version>')
+    block = text[start:text.index('  )\n  ```', start) + 4].replace('\n  ', '\n').strip().replace('<version>', V)
+    labels = ['macos-aarch64', 'linux-x86_64', 'linux-arm64', 'windows-x86_64']
+    inventory = {**{f'release-cli-{l}/julc-{V}-{l}.zip': f'cli {l}' for l in labels},
+                 **{f'release-playground-{l}/julc-playground-{V}-{l}.zip': f'pg {l}' for l in labels},
+                 f'release-shadow-jars/julc-compiler-all-{V}-all.jar': 'compiler',
+                 f'release-shadow-jars/julc-vm-java-all-{V}-all.jar': 'vm', f'release-wasm/{FILES[3]}': 'vm archive',
+                 f'release-wasm/{FILES[4]}': 'full archive', f'release-wasm/julc-playground-static-{V}.tar.gz': 'static',
+                 f'release-wasm/julc-wasm-{V}-SHA256SUMS.txt': 'sums'}
+    def case(label, files, assets, expect_ok, expect_text, draft=False, path_extra=None):
+        state = github(tmp, [{'id': 7, 'tag': f'v{V}', 'draft': draft, 'assets': assets}])
+        work = tempfile.mkdtemp(dir=tmp)
+        os.makedirs(os.path.join(work, 'dist'))
+        for rel, content in files.items():
+            os.makedirs(os.path.dirname(os.path.join(work, 'dist', rel)), exist_ok=True)
+            open(os.path.join(work, 'dist', rel), 'w').write(content)
+        env = {**os.environ, 'FAKE_GH': state, 'FAKE_TOKEN': 'write'}
+        if path_extra is not None: env['PATH'] = path_extra
+        result = subprocess.run(['bash', '-c', block], cwd=work, env=env, text=True, capture_output=True)
+        check(f'runbook release check: {label}', (result.returncode == 0) == expect_ok
+              and expect_text in result.stdout + result.stderr, result.stdout + result.stderr)
+    released = lambda files: [asset(i, os.path.basename(r), c) for i, (r, c) in enumerate(files.items())]
+    case('the 14 files, nested as gh run download leaves them, all attached', inventory, released(inventory), True,
+         f'ok julc-{V}-windows-x86_64.zip')
+    missing = {r: c for r, c in inventory.items() if 'windows' not in r or 'playground' in r}
+    case('the same CLI zip absent from the artifacts and the release', missing, released(missing), False,
+         f'> julc-{V}-windows-x86_64.zip')
+    case('an empty download and an empty release', {}, [], False, 'differ from the inventory')
+    changed = {**inventory, f'release-wasm/{FILES[4]}': 'another archive'}
+    case('a differing asset', changed, released(inventory), False, f'DIFFERENT {FILES[4]}')
+    case('an asset not in the inventory (an npm tarball)', inventory,
+         released(inventory) + [asset(99, FILES[0], 'npm')], False, f'< {FILES[0]}')
+    case('a file found twice under dist', {**inventory, f'extra/julc-{V}-linux-arm64.zip': 'cli linux-arm64'},
+         released(inventory), False, 'found twice')
+    case('a draft', inventory, released(inventory), False, 'is a draft', draft=True)
+    tools = os.path.join(tmp, 'no-sha-tools')
+    os.makedirs(tools, exist_ok=True)
+    for tool in ['bash', 'gh', 'jq', 'sort', 'cut', 'awk', 'diff', 'find', 'mktemp', 'uniq', 'cat', 'basename', 'python3']:
+        found = shutil.which(tool)
+        if found and not os.path.exists(os.path.join(tools, tool)): os.symlink(found, os.path.join(tools, tool))
+    case('no sha256sum and no shasum: refused up front', inventory, released(inventory), False,
+         'needs sha256sum or shasum', path_extra=tools)
 
 
 def ref_check(tmp):
@@ -528,7 +609,7 @@ def release_verified(tmp):
 
 def npm_files_check(tmp):
     data = {f: f'bytes of {f}' for f in FILES + [SUMS]}
-    good = {sha(data[f]): {'source': TAG_SHA, 'signer': TAG_SHA, 'ref': f'refs/tags/v{V}'} for f in FILES}
+    good = [statement(data)]
     released = [asset(1, FILES[3], data[FILES[3]]), asset(2, FILES[4], data[FILES[4]]), asset(3, 'other.zip', 'z')]
     def case(label, files, attested, expect_ok, expect_text, releases=None):
         state = github(tmp, releases if releases is not None
@@ -539,27 +620,41 @@ def npm_files_check(tmp):
         verified = [c for c in calls if c[:2] == ['attestation', 'verify']]
         flags_ok = all('--source-digest' in c and '--signer-digest' in c and '--deny-self-hosted-runners' in c
                        and c[c.index('--signer-workflow') + 1] == 'bloxbean/julc/.github/workflows/native-image-release.yml'
-                       and c[c.index('--source-ref') + 1] == f'refs/tags/v{V}' for c in verified)
+                       and c[c.index('--source-ref') + 1] == f'refs/tags/v{V}' and c[c.index('--format') + 1] == 'json'
+                       for c in verified)
+        texts = expect_text if isinstance(expect_text, tuple) else (expect_text,)
         check(f'npm-files.sh: {label}',
-              (result.returncode == 0) == expect_ok and expect_text in result.stdout + result.stderr and flags_ok,
-              result.stdout + result.stderr + json.dumps(verified[:1]))
+              (result.returncode == 0) == expect_ok and any(t in result.stdout + result.stderr for t in texts)
+              and flags_ok, result.stdout + result.stderr + json.dumps(verified[:1]))
         return verified
-    verified = case('the five files and the checksum file, attested; the archives public', data, good, True,
-                    f'public: julc-wasm-{V}.tar.gz')
-    check('npm-files.sh verifies the attestation of all five files',
-          sorted(os.path.basename(c[2]) for c in verified) == sorted(FILES), repr(verified))
+    verified = case('the five files and the checksum file, one attested set of this run; the archives public', data,
+                    good, True, f'public: julc-wasm-{V}.tar.gz')
+    check('npm-files.sh verifies one attestation, the first file\'s, and reads its statement',
+          [os.path.basename(c[2]) for c in verified] == [FILES[0]], repr(verified))
     for missing in FILES + [SUMS]:
         case(f'{missing} missing from the artifact', {f: c for f, c in data.items() if f != missing}, good, False,
              f'have no {missing}')
     for replaced in FILES:
-        case(f'{replaced} replaced (fails its attestation)',
-             {f: c + (' edited' if f == replaced else '') for f, c in data.items()}, good, False, 'no attestation')
-    case('an attestation of the same tag at another commit (--source-digest)', data,
-         {k: {**v, 'source': 'b' * 40} for k, v in good.items()}, False, '--source-digest')
-    case('an attestation by another commit\'s workflow (--signer-digest)', data,
-         {k: {**v, 'signer': 'c' * 40} for k, v in good.items()}, False, '--signer-digest')
-    case('an attestation for another ref', data, {k: {**v, 'ref': 'refs/heads/main'} for k, v in good.items()},
-         False, '--source-ref')
+        case(f'{replaced} replaced (not the attested set)',
+             {f: c + (' edited' if f == replaced else '') for f, c in data.items()}, good, False,
+             ('no attestation', 'not one attested set'))
+    case('an attestation of the same tag at another commit (--source-digest)', data, [statement(data, source='b' * 40)],
+         False, '--source-digest')
+    case('an attestation by another commit\'s workflow (--signer-digest)', data, [statement(data, signer='c' * 40)],
+         False, '--signer-digest')
+    case('an attestation for another ref', data, [statement(data, ref='refs/heads/main')], False, '--source-ref')
+    case('an attestation of another run', data, [statement(data, run=999)], False, 'not one attested set')
+    # R23-C7: two attempts that signed builds with identical archives but different client and wrapper bytes.
+    other = {**data, FILES[0]: 'client of attempt 2', FILES[1]: 'vm package of attempt 2', FILES[2]: 'full of attempt 2'}
+    both = [statement(data, attempt=1), statement(other, attempt=2)]
+    mixed = {**other, FILES[0]: data[FILES[0]]}
+    case('a set mixed from two attempts\' attested files is refused', mixed, both, False, 'not one attested set')
+    case('a set mixed the other way is refused', {**data, FILES[1]: other[FILES[1]]}, both, False, 'not one attested set')
+    case('the original artifact expired and the later attempt\'s remains: one set, accepted', other, both, True,
+         'the five files are one set')
+    case('a statement with a sixth subject is not this set', data,
+         [{**statement(data), 'subjects': {**statement(data)['subjects'], 'extra.tgz': sha('x')}}], False,
+         'not one attested set')
     case('no published release (npm gets only versions whose archives are public)', data, good, False,
          'has no published GitHub release', releases=[])
     case('a draft release is invisible to the read-only token', data, good, False, 'has no published GitHub release',
@@ -574,10 +669,22 @@ def npm_files_check(tmp):
 def graph():
     jobs = WORKFLOW['jobs']
     text = open(WORKFLOW_FILE).read()
-    unpinned = [line.strip() for line in text.splitlines()
-                if re.match(r'\s*(- )?uses: ', line) and not re.search(r'@[0-9a-f]{40} # v\d', line)
-                and './.github/workflows/' not in line]
-    check('every action is pinned to a full commit SHA with its version', not unpinned, '\n'.join(unpinned))
+    # This workflow and every local reusable workflow it calls (R23-C11), followed transitively.
+    files, seen = [WORKFLOW_FILE], set()
+    unpinned = []
+    while files:
+        current = files.pop()
+        if current in seen: continue
+        seen.add(current)
+        for line in open(current).read().splitlines():
+            if not re.match(r'\s*(- )?uses: ', line): continue
+            local = re.search(r'uses: (\./\.github/workflows/[^\s@]+)', line)
+            if local:
+                files.append(os.path.join(ROOT, local.group(1)))
+            elif not re.search(r'@[0-9a-f]{40} # v\d', line):
+                unpinned.append(f'{os.path.relpath(current, ROOT)}: {line.strip()}')
+    check(f'every action is pinned to a full commit SHA with its version, in {len(seen)} workflow files',
+          not unpinned and len(seen) >= 2, '\n'.join(unpinned))
     with_id_token = sorted(j for j, s in jobs.items() if (s.get('permissions') or {}).get('id-token') == 'write')
     check('only attest and npm-publish hold id-token: write', with_id_token == ['attest', 'npm-publish'],
           repr(with_id_token))
@@ -662,6 +769,7 @@ def main():
     release_verified(tmp)
     npm_run_lookup(tmp)
     npm_files_check(tmp)
+    runbook_release_check(tmp)
     graph()
     shutil.rmtree(tmp)
     print(f'{failures} failure(s)')

@@ -29,11 +29,20 @@ if ! total=$(gh api "$query" --jq '.total_count'); then unreadable "listing the 
 if ! listed=$(gh api --paginate "$query" --jq '.workflow_runs[] | "\(.id) \(.head_branch)"'); then
   unreadable "listing the workflow's runs"
 fi
-count=$(grep -c . <<< "$listed" || true)
-if [[ ! "$total" =~ ^[0-9]+$ || "$total" -gt 1000 || "$count" -ne "$total" ]]; then
-  unreadable "the run list is incomplete: ${count} of ${total} runs read"
+# Each row a numeric run id and a branch; the distinct ids must be exactly as many as GitHub says there are (pages can
+# overlap when runs are added while reading).
+if [[ -n "$listed" ]] && grep -qvE '^[0-9]+ [^ ]+$' <<< "$listed"; then unreadable "a malformed run list"; fi
+rows=$(grep -c . <<< "$listed" || true)
+count=$({ cut -d' ' -f1 <<< "$listed" | grep . || true; } | sort -u | wc -l | tr -d ' ')
+if [[ ! "$total" =~ ^[0-9]+$ || "$total" -gt 1000 || "$count" -ne "$total" || "$rows" -ne "$count" ]]; then
+  unreadable "the run list is incomplete or inconsistent: ${count} distinct of ${rows} rows read, ${total} reported"
 fi
 runs=$(awk -v branch="v${version}" '$2 == branch { print $1 }' <<< "$listed")
+if [[ -z "$runs" ]]; then
+  echo "::error::No run of native-image-release.yml for the push of v${version} (${SOURCE_DIGEST}) was found: the tag's" \
+    "release run is needed to publish its npm files." >&2
+  exit 1
+fi
 attested=()
 for run in $runs; do
   if ! jobs=$(gh api --paginate "${api}/runs/${run}/jobs?filter=all&per_page=100" \
@@ -43,7 +52,9 @@ for run in $runs; do
   if [[ -n "$jobs" ]]; then attested+=("$run"); fi
 done
 if [[ ${#attested[@]} -eq 0 ]]; then
-  gone "no run of native-image-release.yml for the push of v${version} (${SOURCE_DIGEST}) attested them"
+  echo "::error::No run for the push of v${version} has a successful attestation yet (runs: ${runs//$'\n'/, }). Check" \
+    "the original push run: if its attest job failed or has not run, \"Re-run failed jobs\" there, then dispatch again." >&2
+  exit 1
 fi
 if [[ ${#attested[@]} -gt 1 ]]; then
   echo "::error::Several runs for the push of v${version} attested npm files (${attested[*]}); a release is built once," \
