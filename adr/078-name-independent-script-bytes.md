@@ -95,13 +95,16 @@ unranked method gives it the next rank, and its body is walked there.
 are walked next, once each, in the order the assembly receives them, which is declaration order. Their binding order is
 unchanged.
 
-**D1b. Unread library methods.** On the library call graph without self-edges:
+**D1b. Unread library methods.** On the library call graph without self-edges, where a method calls another when
+the other's name is free in its body, resolved lexically (r7; a local spelled like a method is not a call):
 - **The step:** repeatedly, among the unranked methods that no unranked library method calls, rank the one with the
   smallest content key and walk it.
 - **The fallback:** if several share that key, **the qualified name decides**.
 - **Cycles:** if every unranked method is called by another unranked one (a mutual-recursion cycle, which pre21
   rejects), rank the smallest by `(content key, qualified name)` and continue. The rejection is unchanged and the walk
   terminates. This relies on mutual library recursion staying rejected (F16: reviewer note on that dependency).
+  Kahn's algorithm emits such a stalled group in pre21's `(content key, qualified name)` order, so the rejection
+  names the same method (r7).
 - **Cost** (incremental):
   - counts of unranked callers;
   - a priority queue of the methods whose count is 0;
@@ -125,7 +128,9 @@ describe the assembled PIR; the gate covers the final bytes.
 2. **Independence of what is not reached.** What D1a and D1a′ reach is ordered independently of what they do not
    reach. A reached method calls only reached methods.
 3. **Transposition.** Swapping two adjacent bindings with α-equal values, which nothing reads, gives an α-equal
-   assembled program. Blocks follow by composition.
+   assembled program. Blocks follow by composition. Under D1b, such twins lie in one run of equal-key methods. A
+   member of that run that is not identical to them can be bound between them (r7). Two identical values that nothing
+   reads still swap without effect wherever they are.
 4. **Equal keys are not identical, and not always adjacent.** Twins can call different twins, and a dependent of one
    twin can be bound between them.
 
@@ -388,7 +393,14 @@ JOUST's D12 is an M3 deliverable.
   - "Registered library binding supplied to assembly", and helper order versus binding order (C42).
   - A finding-ID legend; I6a's "at most once" explained; "(methods whose compiled bodies are the same apart from
     names)" in the release note (F22).
-- **r7 (2026-11-19).** Implementation notes from the M1a review (Fable M1A-F1–F6). No decision changes.
+- **r7 (2026-11-19).** Implementation notes from the M1a reviews (Fable M1A-F1–F6; Codex M1a C1–C9). No decision
+  changes.
+  - **D1b:** the call graph is built from free (lexically resolved) references. Kahn's dependency graph and the content
+    key keep their spelling search. No Java program can tell the two apart, since library binders are qualified and
+    locals cannot contain dots.
+  - **D1b:** a stalled group is emitted in pre21's order.
+  - **Lemma 3:** the twins form one equal-key run.
+  - **Recursive groups:** a group's names are bound once for all of its parts.
   - **D1a:** the `@Param` decoders are not walked, since they hold no method reference. The child order is
     `LibraryBindingOrder.children`, which the content key now shares.
   - **D5:** the JOUST fixture is M3's gate. JuLC carries JuLC-only stand-ins, including compiled validators.

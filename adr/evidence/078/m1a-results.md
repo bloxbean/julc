@@ -162,6 +162,70 @@ key, and so every binding order, unchanged.
 - **F6.** `Rule.UNREAD_BY_NAME` is documented: the last member of a tied group is labelled `UNREAD_BY_KEY`. The pre21
   Maven coordinates are in `m1a-pre21-recording.md`.
 
+## Changes after Codex's M1a review (C1–C9)
+
+- **C1 (code).** D1b took its call graph from `PirHelpers.containsVarRef`, a spelling search, so a local spelled like
+  a library method counted as a call.
+  - Both of Codex's hand-built PIR reproductions now give the correct result (`FirstUseRanksTest.aLocalSpelledLikeAMethodIsNotACall`):
+    - unread equal-key `q.M.a = λx.x` and `q.M.b = λq.M.a.q.M.a`: `a` is chosen by name, where `b` was chosen
+      `UNREAD_BY_KEY` before;
+    - both locals spelled like the other method: no spurious `CYCLE`.
+  - D1b now uses each method's free names (`PirSubstitution.collectFreeVarNames`), itself excluded.
+  - Kahn's dependency graph and the content key's computation order still use `containsVarRef`, which is pre21's
+    behaviour. The key's encoding already resolves variables lexically. No Java source can produce the difference,
+    because library binders are qualified (dotted) and Java locals cannot contain dots. Bytes are unchanged: the corpus
+    replay below is identical.
+- **C2.** Two new assembly fixtures:
+  - a multi-purpose validator whose handlers are declared against tag order and first use opposite twins;
+  - an unread helper declared before a `compileMethod` target.
+
+  Each has an emitted-order assertion: the first-used twin's `let` comes first in the PIR. Each of Codex's three
+  mutations, applied one at a time, now fails `theAssemblysRootsDecideTheEmittedOrder`; removing the roots also fails
+  `sameFixturesGiveTheBasesBytesInEveryMode`:
+  - no purpose-tag sort;
+  - `Roots.NONE` in `validator()`;
+  - no target root in `method()`.
+- **I3.** The sorted multiset of method binders in each variant's PIR equals pre21's in every mode. C22 binds both the
+  helper and the library copy of `q.H.g`.
+- **C3, the I6a oracle.**
+  - **What is compared:** results as FLAT-encoded terms, the whole failure reason, and traces as a list.
+  - **Returned functions:** the first argument vector is empty, so the result is the function itself, which is then
+    applied to the next vector and compared.
+  - **Traces:** a fixture traces `["two", "t", "t", "one"]` in order.
+  - **Exhaustion:** a one-sided exhaustion is replayed at a higher limit. pre21 terminating where this build does not
+    is a failure; both exhausting is inconclusive.
+  - **C12's tight limit:** the outcomes are recorded for pre21 (`alpha` Success, `zeta` Exhausted) and asserted for M1a
+    (both Success).
+  - **Result:** 1,152 evaluations compared, 296 of them applied functions and 32 with traces; 0 inconclusive; no
+    mismatch.
+  - **Budgets that changed (I6b):** only C12's `zeta` at pv11-safe and pv11-costed, now the `alpha` program's.
+- **C4.** The complete pre21 source maps (every DFS index, with file, line, column and fragment) are equal for every
+  fixture variant and source-map mode. Renamed variants equal their base's map carried through the rename mapping. The
+  mapping is token by token; fragments are renamed all at once, and a fragment the compiler truncated is compared on
+  the prefix both sides have. Without the mapping, the maps differ (negative control).
+- **C5.** A stalled recursive group is emitted in pre21's `(content key, name)` order. The cycle fixture's diagnostic
+  equals pre21's with the I13 check off ("Unbound variable: q.M.odd") and on (the I13 message).
+- **C6.** An `Observer.chose` hook reports every equal-key choice of Kahn's algorithm. On 500 random DAGs:
+  - the winner always has the lowest rank;
+  - unread identical twins lie in one equal-key run (Lemma 3's block; a non-identical member of the run can sit between
+    them);
+  - a dependent is bound between reached twins in some cases (Lemma 4).
+- **C7.** A recursive group's names are bound once for all of its parts, in both the key and the walk. A
+  4,096-binding group is walked in linear time.
+- **C8.**
+  - Rewrites alternate between `REVERSED` (names in exactly the reverse of the base order) and `RANDOM`.
+  - Coverage is asserted per kind and mode (200 of each per mode).
+  - The recording carries a digest of every generated source, so a stale `pre21-programs.txt` fails the test.
+  - On M1a: 41/41 per program and mode. On pre21: 1–24 of 41.
+- **C9.** The Javadoc states the ready-method order and where a name decides; `FIRST_USE` covers D1b's walked callees.
+
+## Re-run on the final main code
+
+| Check | Result |
+|---|---|
+| Corpus replay (`ba7a638c`) | Output byte-identical to pre21's (SHA-256 `669953bf…` on both sides) |
+| julc-examples gate | Release FLAT, maps-on FLAT and complete source maps identical for all 43 programs |
+
 ## Not done in M1a
 
 - **The JOUST half of the gate** is M3.
