@@ -915,18 +915,22 @@ nor their checksum file (r19 to r22 did).
   - After the upload, it checks that exactly one release exists for the tag, that it is published, and that every
     file is attached as `uploaded` with this run's SHA-256 (r19).
 - **A release is built once.**
-  - A build-free `release-guard` job (r23, R23-C13; the check was in `wasm` from r8 to r23's first rounds) checks
-    whether the tag has any GitHub release. Every job that builds a release file (`native-image`, `wasm`,
-    `native-image-playground`, `shadow-jars`) needs it, so if a release exists nothing is built, and the job says so
-    with a message pointing to recovery (this workflow never makes drafts, so the read-only token sees every release
-    it makes).
+  - Every job that builds a release file (`native-image`, `wasm`, `native-image-playground`, `shadow-jars`) first
+    runs `julc-wasm/src/ci/release-guard.sh`, before building (r23, R23-C13/C19; only `wasm` checked before): if the
+    tag has a published GitHub release, the job stops with a message pointing to recovery. Each job checks for
+    itself, so a targeted re-run of one job after the release exists builds nothing either; a retry of a failed
+    build before the release exists still builds. The check uses the read-only token, which cannot see drafts
+    (listing drafts needs push access); this workflow never makes drafts, and `github-release`, with its write
+    token, refuses one (R23-C24).
   - So a whole-workflow re-run, which would rebuild different bytes (ADR-057, open question 4; no native image or jar
     is reproducible either), changes nothing: no second upload of any `release-*` or `npm-packages` artifact.
   - `github-release` requires the 14-file inventory (4 CLI zips, 4 playground zips, 2 shadow jars, the 2 engine
     archives, the static playground, the archives' `SHA256SUMS`) before creating or changing the release, and after
     uploading requires the release's assets to be exactly those files (R23-C16).
-  - Completing a release by hand downloads the original run's ten `release-*` artifacts by id, and refuses if any
-    name occurs more than once (R23-C13).
+  - Completing a release by hand first checks that the run is `native-image-release.yml`'s push run of the tag at
+    the tag's commit, downloads its ten `release-*` artifacts by id (refusing a name uploaded twice, a missing one,
+    a non-positive id or an `expired` that is not `false`), requires the 14-file inventory, and checks every
+    completed release asset against those files, before any delete or upload (R23-C13, R23-C20).
   - After a refused whole-workflow re-run, a release whose upload failed is completed by hand from the original run's
     artifacts (`adr/evidence/077-m4/RUNBOOK.md`), then published to npm by a dispatch (r21, M4-F13):
     - each attached asset is checked against those artifacts by `state` and SHA-256 `digest`;
@@ -937,7 +941,7 @@ nor their checksum file (r19 to r22 did).
   - **Within the original attempt,** before any full re-run, "re-run failed jobs" recovers. It keeps that attempt's
     assets, artifacts and job outputs.
   - **After a refused full re-run, or once the original attempt can no longer be re-run,** only the manual
-    `workflow_dispatch` entry recovers. After the early stop in `release-guard`, "re-run failed jobs" would hit the same stop,
+    `workflow_dispatch` entry recovers. After the early stop in the build jobs, "re-run failed jobs" would hit the same stop,
     and the downstream jobs would lack their artifacts.
 - **The `workflow_dispatch` entry's contract:**
   - It is dispatched on the tag itself: its execution ref must be exactly `refs/tags/v<version>`. A run on a branch,
@@ -2046,8 +2050,8 @@ choosing the recommendation recorded with each.
     - R23-F6: the rehearsal states what a dispatch's by-id download should show.
     - The dispatch contract's ref check is described as it runs: after `npm-gates`' pinned checkout and Node set-up.
   - **Review round 3 of r23** (Codex R23-C13 to C18; Fable R23-F7, a symptom-to-action table in the runbook):
-    - R23-C13: a build-free `release-guard` job, needed by every job that builds a release file, stops a
-      whole-workflow re-run when the tag has a release; manual completion downloads the original run's `release-*`
+    - R23-C13: a build-free `release-guard` job, needed by every job that builds a release file (moved into each job
+      in round 4), stops a whole-workflow re-run when the tag has a release; manual completion downloads the original run's `release-*`
       artifacts by id and refuses a name that occurs twice.
     - R23-C14: the attestation check compares structured {name, sha256} arrays, checks each hash, and requires the
       run invocation to be exactly the artifact's run with a positive attempt.
@@ -2062,3 +2066,17 @@ choosing the recommendation recorded with each.
       attestations list. Anything else (a 206, an empty or latest-less 200, an array holder) fails the job; only a
       404 means "not published", so an incomplete answer can never make a prerelease look like "no final version
       yet" or switch the no-backwards check off.
+  - **Review round 4 of r23** (Codex R23-C19 to C24, Fable R23-F8):
+    - R23-C19: the release check runs inside every build job, before building (`release-guard.sh`), so a targeted
+      re-run of one job after the release exists builds nothing; the separate `release-guard` job is gone.
+    - R23-C20: manual completion binds the run to the workflow, push event, tag and commit, requires positive
+      artifact ids and `expired == false`, and checks the inventory and every completed asset before changing
+      anything.
+    - R23-C21: the attestation answer must be exactly one JSON array, the match is a `jq -e` boolean, and the attempt
+      number is anchored as the whole string (a trailing newline fails).
+    - R23-C22: job and artifact rows are classified from well-typed fields; an `expired` that is null is unreadable
+      history, not expiry; a pending job's null conclusion is accepted.
+    - R23-C23: each version entry must name the package itself.
+    - R23-C24, R23-F8: the read-only check and the draft refusal are described apart; the rehearsal runs the
+      manual completion's preparation once, and a build test ties the runbook's artifact and file lists to the
+      workflow.

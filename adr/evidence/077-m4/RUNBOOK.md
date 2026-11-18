@@ -182,11 +182,15 @@ a final version is published, to `next`):
    ids; the download puts the six files directly in `assets/` (not in a subdirectory); `npm-files.sh` prints
    "the five files are one set, run <id>" and "public: …" for both archives. Only a real dispatch exercises the
    by-id download.
-5. **A whole-workflow re-run** of the candidate's run stops in `release-guard` ("already has a GitHub release"):
-   no job that builds a release file (`native-image`, `wasm`, `native-image-playground`, `shadow-jars`) runs.
-6. **The ref check:** a dispatch from `main` (step 3) fails in `npm-gates`; `npm-publish`'s own exact-ref check is
+5. **A whole-workflow re-run** of the candidate's run builds nothing: every job that builds a release file
+   (`native-image`, `wasm`, `native-image-playground`, `shadow-jars`) stops at its first step after checkout,
+   "Refuse to build a released version again" ("already has a GitHub release"). So does a re-run of one of them.
+6. **The manual completion's preparation** (R23-F8): run the preparation script (in "Recovery") once against the candidate's run
+   (with `version` and `run` filled in). Expect ten artifact directories under `dist/`, 14 files, every completed
+   asset checked, and nothing to delete or upload (the candidate's release is complete). It changes nothing.
+7. **The ref check:** a dispatch from `main` (step 3) fails in `npm-gates`; `npm-publish`'s own exact-ref check is
    covered by `workflow-steps-test.py` (main, `release/**`, another tag, a branch named like the tag).
-7. **Checks that need a modified workflow** (a deliberately failed `attest`, a failed upload): never on the real
+8. **Checks that need a modified workflow** (a deliberately failed `attest`, a failed upload): never on the real
    repository, where they would leave a permanent `v*` tag and release made by a modified workflow. Run them in a
    fork or a scratch repository, with `npm_publish = false` (dry-run mode) and no trusted publisher: for example
    `run: exit 1` before the attest step must leave `github-release` and `npm-dry-run` skipped and no release created.
@@ -196,8 +200,10 @@ a final version is published, to `next`):
 1. Decide `github_release` and `npm_publish` in `gradle.properties` on the release commit. `npm_publish = true` needs
    `github_release = true`; npm publishes only versions whose engine archives the GitHub release attaches. The gates
    are fixed at the tag (above).
-   **Never create a GitHub release, or a draft, for the tag by hand** before the run: `release-guard` stops every build when the tag already
-   has a release ("built once"), and `github-release` refuses a draft.
+   **Never create a GitHub release, or a draft, for the tag by hand** before the run. Two separate checks catch it:
+   every build job's read-only "Refuse to build a released version again" step stops when the tag has a published
+   release ("built once"); it cannot see a draft, since listing drafts needs push access. `github-release`, with its
+   write token, sees drafts and refuses one.
 2. Tag as usual (`tag-release.yml`, with a release owner's approval). The tag push runs the whole workflow.
 3. A published version can never be replaced, unpublished for reuse, or published again with other bytes. Check the
    release notes (D7: every API change is listed) before setting `npm_publish = true`.
@@ -212,7 +218,7 @@ Find your case first; the explanations follow.
 | What you see | Do this |
 |---|---|
 | A job failed, and no whole-workflow re-run has been made | "Re-run failed jobs" in that run |
-| `release-guard` ("Refuse to build a released version again") says the tag "already has a GitHub release" | Nothing was built. Complete the release by hand if assets are missing (below), then dispatch on the tag |
+| A build job's "Refuse to build a released version again" says the tag "already has a GitHub release" | Nothing was built. Complete the release by hand if assets are missing (below), then dispatch on the tag |
 | Dispatch: "No run of native-image-release.yml for the push of v… was found" | The tag's release run is needed: check the tag and its push run |
 | Dispatch: "No run for the push of v… has a successful attestation yet" | "Re-run failed jobs" in the tag's push run, then dispatch again |
 | Dispatch: "Several runs for the push of v… attested npm files" | Stop: a maintainer decides which build is the release |
@@ -223,8 +229,9 @@ Find your case first; the explanations follow.
 | `npm-verify` failed | Treat the release as bad until the cause is known ("A bad release") |
 
 A release is built once. Web Image output is not byte-identical across builds, so the workflow never rebuilds a
-version that has a GitHub release: `release-guard`, which every release build needs, stops first, with a message
-pointing here, so a whole-workflow re-run builds nothing. Never delete release assets or
+version that has a published GitHub release: every job that builds a release file checks first, before building, with
+a message pointing here, so neither a whole-workflow re-run nor a re-run of one job builds anything once the release
+exists. (That read-only check cannot see drafts; `github-release` refuses a draft.) Never delete release assets or
 recreate a release to "start again"; npm is the record once a version is published.
 
 **The recovery window is 14 days from the tag's run**: npm is published only from that run's `npm-packages`
@@ -255,22 +262,37 @@ refs/tags/v<version>`, plus `npm audit signatures` in a project that installs it
   with the same bytes, deletes a failed upload's `starter` placeholder and uploads it again, stops if a completed
   asset differs, and finally checks the release is published with every file's bytes. `npm-publish` skips each
   version already on npm with the same tarball and this workflow's provenance, and publishes the rest.
-- **After a whole-workflow re-run** (refused in `release-guard`, since the tag has a release): "Re-run failed jobs" can no longer
+- **After a whole-workflow re-run** (refused in every build job, since the tag has a release): "Re-run failed jobs" can no longer
   reach the original attempt. Finish the release by hand from the original run's artifacts (kept 14 days; the bytes
   are the ones its digests and checksum files name), never replacing a completed asset, then dispatch on the tag for
   npm (which reads the run's `npm-packages` artifact, not the release):
-  Download the original run's ten `release-*` artifacts by id, refusing if any name occurs more than once (a rebuild
-  uploaded it again, so which bytes are the release's is ambiguous), if any is missing or expired, or if anything
-  else is named `release-*`. Each lands in its own directory, `dist/<artifact name>/`:
+  First prepare, changing nothing: this checks that the run is this workflow's push run of the tag at the tag's
+  commit, downloads its ten `release-*` artifacts by id (refusing a name uploaded twice by a rebuild, a missing,
+  expired or malformed one), requires the 14-file inventory under `dist/`, and checks every completed asset the
+  release already has against those files. It then prints what to delete (failed-upload placeholders) and upload:
   ```
   (
     set -euo pipefail
+    version=<version>
     run=<original run id>
-    command -v unzip > /dev/null && command -v jq > /dev/null || { echo "needs unzip and jq"; exit 1; }
+    for tool in gh jq unzip; do command -v "$tool" > /dev/null || { echo "needs $tool"; exit 1; }; done
+    if command -v sha256sum > /dev/null; then sha() { sha256sum "$1" | cut -d' ' -f1; }
+    elif command -v shasum > /dev/null; then sha() { shasum -a 256 "$1" | cut -d' ' -f1; }
+    else echo "needs sha256sum or shasum"; exit 1; fi
     work=$(mktemp -d)
-    rm -rf dist && mkdir dist
-    gh api --paginate "repos/bloxbean/julc/actions/runs/${run}/artifacts?per_page=100" \
-      --jq '.artifacts[] | select(.name | startswith("release-")) | "\(.id) \(.name) \(.expired)"' > "$work/artifacts.txt"
+    # The run: native-image-release.yml, pushed by the tag v<version>, at the tag's commit.
+    read -r type sha <<< "$(gh api "repos/bloxbean/julc/git/ref/tags/v${version}" --jq '.object | "\(.type) \(.sha)"')"
+    if [ "$type" = tag ]; then sha=$(gh api "repos/bloxbean/julc/git/tags/${sha}" --jq '.object.sha'); fi
+    gh api "repos/bloxbean/julc/actions/runs/${run}" > "$work/run.json"
+    jq -e --arg branch "v${version}" --arg sha "$sha" '.path == ".github/workflows/native-image-release.yml"
+        and .event == "push" and .head_branch == $branch and .head_sha == $sha' "$work/run.json" > /dev/null \
+      || { echo "run ${run} is not native-image-release.yml's push run of v${version} at ${sha}"; exit 1; }
+    # Its ten release-* artifacts, each once, well formed and not expired.
+    gh api --paginate "repos/bloxbean/julc/actions/runs/${run}/artifacts?per_page=100" --jq '.artifacts[]
+        | select((.name | type) != "string" or (.name | startswith("release-")))
+        | if (.id | type) == "number" and .id > 0 and (.name | type) == "string" and .expired == false
+          then "\(.id) \(.name)" else "BAD \(.name) expired=\(.expired)" end' > "$work/artifacts.txt"
+    if grep '^BAD' "$work/artifacts.txt"; then echo "malformed or expired artifacts"; exit 1; fi
     for label in macos-aarch64 linux-x86_64 linux-arm64 windows-x86_64; do
       echo "release-cli-${label}"; echo "release-playground-${label}"
     done > "$work/expected.txt"
@@ -280,20 +302,44 @@ refs/tags/v<version>`, plus `npm audit signatures` in a project that installs it
     [ -z "$dupes" ] || { echo "uploaded more than once (a rebuild): $dupes"; exit 1; }
     diff <(cut -d' ' -f2 "$work/artifacts.txt" | sort) "$work/expected.txt" \
       || { echo "the run's release-* artifacts are not the ten expected (< extra, > missing)"; exit 1; }
-    if grep -q ' true$' "$work/artifacts.txt"; then echo "expired: $(grep ' true$' "$work/artifacts.txt")"; exit 1; fi
-    while read -r id name expired; do
+    rm -rf dist && mkdir dist
+    while read -r id name; do
       gh api "repos/bloxbean/julc/actions/artifacts/${id}/zip" > "$work/${name}.zip"
       mkdir "dist/${name}" && unzip -q "$work/${name}.zip" -d "dist/${name}"
     done < "$work/artifacts.txt"
-    find dist -type f
+    # The 14-file inventory, each name once.
+    for label in macos-aarch64 linux-x86_64 linux-arm64 windows-x86_64; do
+      echo "julc-${version}-${label}.zip"; echo "julc-playground-${version}-${label}.zip"
+    done > "$work/inventory.txt"
+    printf '%s\n' "julc-compiler-all-${version}-all.jar" "julc-vm-java-all-${version}-all.jar" \
+      "julc-wasm-${version}.tar.gz" "julc-vm-wasm-${version}.tar.gz" "julc-playground-static-${version}.tar.gz" \
+      "julc-wasm-${version}-SHA256SUMS.txt" >> "$work/inventory.txt"
+    sort -o "$work/inventory.txt" "$work/inventory.txt"
+    find dist -type f | while read -r f; do echo "$(basename "$f") $(sha "$f") $f"; done | sort > "$work/files.txt"
+    diff <(cut -d' ' -f1 "$work/files.txt") "$work/inventory.txt" \
+      || { echo "the artifacts' files are not the inventory (< extra or twice, > missing)"; exit 1; }
+    # The release as it is: every completed asset one of these files, with the same bytes.
+    gh api "repos/bloxbean/julc/releases/tags/v${version}" > "$work/release.json"
+    [ "$(jq -r .draft "$work/release.json")" = false ] || { echo "the release is a draft"; exit 1; }
+    jq -r '.assets[] | "\(.id) \(.name) \(.state) \(.digest)"' "$work/release.json" > "$work/assets.txt"
+    failed=0
+    while read -r id name state digest; do
+      file=$(awk -v n="$name" '$1 == n { print $2 " " $3 }' "$work/files.txt")
+      case "$state" in
+        uploaded) [ -n "$file" ] && [ "$digest" = "sha256:${file%% *}" ] \
+            || { echo "completed asset $name differs from the run's file or is not in the inventory"; failed=1; } ;;
+        starter) echo "delete: gh api -X DELETE repos/bloxbean/julc/releases/assets/${id}    # ${name}" ;;
+        *) echo "asset $name is in state $state"; failed=1 ;;
+      esac
+    done < "$work/assets.txt"
+    [ "$failed" = 0 ] || exit 1
+    while read -r name _ path; do
+      grep -q " ${name} uploaded " "$work/assets.txt" \
+        || echo "upload: gh release upload v${version} ${path} --repo bloxbean/julc"
+    done < "$work/files.txt"
   )
   ```
-  Then attach the files the release lacks, never replacing a completed asset:
-  ```
-  gh api repos/bloxbean/julc/releases/tags/v<version> --jq '.assets[] | "\(.id) \(.name) \(.state)"'
-  gh api -X DELETE repos/bloxbean/julc/releases/assets/<id of each asset in state starter>
-  gh release upload v<version> <each missing file, as listed by find> --repo bloxbean/julc      # never --clobber
-  ```
+  Run the printed deletes, then the uploads (never with `--clobber`).
   Then check the release against the release's inventory (the 14 files `github-release` attaches: 4 CLI zips, 4
   playground zips, 2 shadow jars, the 2 engine archives, the static playground and `julc-wasm-<version>-SHA256SUMS.txt`)
   and the original run's files, as the workflow's final check does. It prints `ok` for each file and fails
