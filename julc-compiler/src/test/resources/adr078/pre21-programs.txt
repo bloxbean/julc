@@ -1,0 +1,27 @@
+# ADR-078 D5: the generated programs (Adr078Programs: seed 78, 3 programs, 40 rewrites each) on JuLC 0.1.0-pre21 (08b021ce).
+# Produced by Adr078Programs.main on the pre21 artifacts. Every rewrite compiled on pre21; the qualified-name tie-break made
+# most of them differ from the base, which is what the tie rule fixes.
+program 0 | none = 41/41 compile, 5 give the base's bytes
+program 0 | none+maps = 41/41 compile, 5 give the base's bytes
+program 0 | baseline = 41/41 compile, 11 give the base's bytes
+program 0 | baseline+maps = 41/41 compile, 5 give the base's bytes
+program 0 | pv11-safe = 41/41 compile, 11 give the base's bytes
+program 0 | pv11-safe+maps = 41/41 compile, 5 give the base's bytes
+program 0 | pv11-costed = 41/41 compile, 11 give the base's bytes
+program 0 | pv11-costed+maps = 41/41 compile, 5 give the base's bytes
+program 1 | none = 41/41 compile, 2 give the base's bytes
+program 1 | none+maps = 41/41 compile, 2 give the base's bytes
+program 1 | baseline = 41/41 compile, 23 give the base's bytes
+program 1 | baseline+maps = 41/41 compile, 2 give the base's bytes
+program 1 | pv11-safe = 41/41 compile, 23 give the base's bytes
+program 1 | pv11-safe+maps = 41/41 compile, 2 give the base's bytes
+program 1 | pv11-costed = 41/41 compile, 23 give the base's bytes
+program 1 | pv11-costed+maps = 41/41 compile, 2 give the base's bytes
+program 2 | none = 41/41 compile, 5 give the base's bytes
+program 2 | none+maps = 41/41 compile, 5 give the base's bytes
+program 2 | baseline = 41/41 compile, 18 give the base's bytes
+program 2 | baseline+maps = 41/41 compile, 5 give the base's bytes
+program 2 | pv11-safe = 41/41 compile, 18 give the base's bytes
+program 2 | pv11-safe+maps = 41/41 compile, 5 give the base's bytes
+program 2 | pv11-costed = 41/41 compile, 18 give the base's bytes
+program 2 | pv11-costed+maps = 41/41 compile, 5 give the base's bytes

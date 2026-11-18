@@ -1,0 +1,1308 @@
+# ADR-078 D5: the fixed fixtures' outcomes on JuLC 0.1.0-pre21 (08b021ce): fixture | variant | mode [| eval i | budget i].
+# Produced by Adr078Fixtures.main on the pre21 artifacts (see adr/evidence/078/m1a-pre21-recording.md).
+# Compilation: sha256 of the FLAT program and its size, or REJECTED and the first line of the rejection.
+# eval i: the outcome on arguments(fixture).get(i) under REPLAY_LIMIT (result term, failure reason, traces).
+twins-reached | alpha/beta | none = d4f49c029a049604b7d23aeb7920d37bc1172a09d9f446b0e1190c2d40a2581b 114 B
+twins-reached | alpha/beta | none | eval 0 = SUCCESS (con integer 15) traces=[]
+twins-reached | alpha/beta | none | budget 0 = 2763125 cpu, 11448 mem
+twins-reached | alpha/beta | none | eval 1 = SUCCESS (con integer 6) traces=[]
+twins-reached | alpha/beta | none | budget 1 = 2763125 cpu, 11448 mem
+twins-reached | alpha/beta | none+maps = d4f49c029a049604b7d23aeb7920d37bc1172a09d9f446b0e1190c2d40a2581b 114 B
+twins-reached | alpha/beta | none+maps | eval 0 = SUCCESS (con integer 15) traces=[]
+twins-reached | alpha/beta | none+maps | budget 0 = 2763125 cpu, 11448 mem
+twins-reached | alpha/beta | none+maps | eval 1 = SUCCESS (con integer 6) traces=[]
+twins-reached | alpha/beta | none+maps | budget 1 = 2763125 cpu, 11448 mem
+twins-reached | alpha/beta | baseline = d4f49c029a049604b7d23aeb7920d37bc1172a09d9f446b0e1190c2d40a2581b 114 B
+twins-reached | alpha/beta | baseline | eval 0 = SUCCESS (con integer 15) traces=[]
+twins-reached | alpha/beta | baseline | budget 0 = 2763125 cpu, 11448 mem
+twins-reached | alpha/beta | baseline | eval 1 = SUCCESS (con integer 6) traces=[]
+twins-reached | alpha/beta | baseline | budget 1 = 2763125 cpu, 11448 mem
+twins-reached | alpha/beta | baseline+maps = d4f49c029a049604b7d23aeb7920d37bc1172a09d9f446b0e1190c2d40a2581b 114 B
+twins-reached | alpha/beta | baseline+maps | eval 0 = SUCCESS (con integer 15) traces=[]
+twins-reached | alpha/beta | baseline+maps | budget 0 = 2763125 cpu, 11448 mem
+twins-reached | alpha/beta | baseline+maps | eval 1 = SUCCESS (con integer 6) traces=[]
+twins-reached | alpha/beta | baseline+maps | budget 1 = 2763125 cpu, 11448 mem
+twins-reached | alpha/beta | pv11-safe = 08cad3817b280270e7ca79a988cd8d2765232aeb20a494f3123675f3214b1226 90 B
+twins-reached | alpha/beta | pv11-safe | eval 0 = SUCCESS (con integer 15) traces=[]
+twins-reached | alpha/beta | pv11-safe | budget 0 = 1634831 cpu, 7242 mem
+twins-reached | alpha/beta | pv11-safe | eval 1 = SUCCESS (con integer 6) traces=[]
+twins-reached | alpha/beta | pv11-safe | budget 1 = 1634831 cpu, 7242 mem
+twins-reached | alpha/beta | pv11-safe+maps = 08cad3817b280270e7ca79a988cd8d2765232aeb20a494f3123675f3214b1226 90 B
+twins-reached | alpha/beta | pv11-safe+maps | eval 0 = SUCCESS (con integer 15) traces=[]
+twins-reached | alpha/beta | pv11-safe+maps | budget 0 = 1634831 cpu, 7242 mem
+twins-reached | alpha/beta | pv11-safe+maps | eval 1 = SUCCESS (con integer 6) traces=[]
+twins-reached | alpha/beta | pv11-safe+maps | budget 1 = 1634831 cpu, 7242 mem
+twins-reached | alpha/beta | pv11-costed = 08cad3817b280270e7ca79a988cd8d2765232aeb20a494f3123675f3214b1226 90 B
+twins-reached | alpha/beta | pv11-costed | eval 0 = SUCCESS (con integer 15) traces=[]
+twins-reached | alpha/beta | pv11-costed | budget 0 = 1634831 cpu, 7242 mem
+twins-reached | alpha/beta | pv11-costed | eval 1 = SUCCESS (con integer 6) traces=[]
+twins-reached | alpha/beta | pv11-costed | budget 1 = 1634831 cpu, 7242 mem
+twins-reached | alpha/beta | pv11-costed+maps = 08cad3817b280270e7ca79a988cd8d2765232aeb20a494f3123675f3214b1226 90 B
+twins-reached | alpha/beta | pv11-costed+maps | eval 0 = SUCCESS (con integer 15) traces=[]
+twins-reached | alpha/beta | pv11-costed+maps | budget 0 = 1634831 cpu, 7242 mem
+twins-reached | alpha/beta | pv11-costed+maps | eval 1 = SUCCESS (con integer 6) traces=[]
+twins-reached | alpha/beta | pv11-costed+maps | budget 1 = 1634831 cpu, 7242 mem
+twins-reached | zeta/beta | none = aac72b6b32bdf469909af30e71215019e23a14ef3bc9d48fa0f893b972ee1646 114 B
+twins-reached | zeta/beta | none | eval 0 = SUCCESS (con integer 15) traces=[]
+twins-reached | zeta/beta | none | budget 0 = 2763125 cpu, 11448 mem
+twins-reached | zeta/beta | none | eval 1 = SUCCESS (con integer 6) traces=[]
+twins-reached | zeta/beta | none | budget 1 = 2763125 cpu, 11448 mem
+twins-reached | zeta/beta | none+maps = aac72b6b32bdf469909af30e71215019e23a14ef3bc9d48fa0f893b972ee1646 114 B
+twins-reached | zeta/beta | none+maps | eval 0 = SUCCESS (con integer 15) traces=[]
+twins-reached | zeta/beta | none+maps | budget 0 = 2763125 cpu, 11448 mem
+twins-reached | zeta/beta | none+maps | eval 1 = SUCCESS (con integer 6) traces=[]
+twins-reached | zeta/beta | none+maps | budget 1 = 2763125 cpu, 11448 mem
+twins-reached | zeta/beta | baseline = aac72b6b32bdf469909af30e71215019e23a14ef3bc9d48fa0f893b972ee1646 114 B
+twins-reached | zeta/beta | baseline | eval 0 = SUCCESS (con integer 15) traces=[]
+twins-reached | zeta/beta | baseline | budget 0 = 2763125 cpu, 11448 mem
+twins-reached | zeta/beta | baseline | eval 1 = SUCCESS (con integer 6) traces=[]
+twins-reached | zeta/beta | baseline | budget 1 = 2763125 cpu, 11448 mem
+twins-reached | zeta/beta | baseline+maps = aac72b6b32bdf469909af30e71215019e23a14ef3bc9d48fa0f893b972ee1646 114 B
+twins-reached | zeta/beta | baseline+maps | eval 0 = SUCCESS (con integer 15) traces=[]
+twins-reached | zeta/beta | baseline+maps | budget 0 = 2763125 cpu, 11448 mem
+twins-reached | zeta/beta | baseline+maps | eval 1 = SUCCESS (con integer 6) traces=[]
+twins-reached | zeta/beta | baseline+maps | budget 1 = 2763125 cpu, 11448 mem
+twins-reached | zeta/beta | pv11-safe = 54fdfdded89fed930262aa01540c9e9a71be6f088762c676bc72e8fbbdecc49a 90 B
+twins-reached | zeta/beta | pv11-safe | eval 0 = SUCCESS (con integer 15) traces=[]
+twins-reached | zeta/beta | pv11-safe | budget 0 = 1634831 cpu, 7242 mem
+twins-reached | zeta/beta | pv11-safe | eval 1 = SUCCESS (con integer 6) traces=[]
+twins-reached | zeta/beta | pv11-safe | budget 1 = 1634831 cpu, 7242 mem
+twins-reached | zeta/beta | pv11-safe+maps = 54fdfdded89fed930262aa01540c9e9a71be6f088762c676bc72e8fbbdecc49a 90 B
+twins-reached | zeta/beta | pv11-safe+maps | eval 0 = SUCCESS (con integer 15) traces=[]
+twins-reached | zeta/beta | pv11-safe+maps | budget 0 = 1634831 cpu, 7242 mem
+twins-reached | zeta/beta | pv11-safe+maps | eval 1 = SUCCESS (con integer 6) traces=[]
+twins-reached | zeta/beta | pv11-safe+maps | budget 1 = 1634831 cpu, 7242 mem
+twins-reached | zeta/beta | pv11-costed = 54fdfdded89fed930262aa01540c9e9a71be6f088762c676bc72e8fbbdecc49a 90 B
+twins-reached | zeta/beta | pv11-costed | eval 0 = SUCCESS (con integer 15) traces=[]
+twins-reached | zeta/beta | pv11-costed | budget 0 = 1634831 cpu, 7242 mem
+twins-reached | zeta/beta | pv11-costed | eval 1 = SUCCESS (con integer 6) traces=[]
+twins-reached | zeta/beta | pv11-costed | budget 1 = 1634831 cpu, 7242 mem
+twins-reached | zeta/beta | pv11-costed+maps = 54fdfdded89fed930262aa01540c9e9a71be6f088762c676bc72e8fbbdecc49a 90 B
+twins-reached | zeta/beta | pv11-costed+maps | eval 0 = SUCCESS (con integer 15) traces=[]
+twins-reached | zeta/beta | pv11-costed+maps | budget 0 = 1634831 cpu, 7242 mem
+twins-reached | zeta/beta | pv11-costed+maps | eval 1 = SUCCESS (con integer 6) traces=[]
+twins-reached | zeta/beta | pv11-costed+maps | budget 1 = 1634831 cpu, 7242 mem
+twins-reached | beta/alpha swapped uses | none = aac72b6b32bdf469909af30e71215019e23a14ef3bc9d48fa0f893b972ee1646 114 B
+twins-reached | beta/alpha swapped uses | none | eval 0 = SUCCESS (con integer 15) traces=[]
+twins-reached | beta/alpha swapped uses | none | budget 0 = 2763125 cpu, 11448 mem
+twins-reached | beta/alpha swapped uses | none | eval 1 = SUCCESS (con integer 6) traces=[]
+twins-reached | beta/alpha swapped uses | none | budget 1 = 2763125 cpu, 11448 mem
+twins-reached | beta/alpha swapped uses | none+maps = aac72b6b32bdf469909af30e71215019e23a14ef3bc9d48fa0f893b972ee1646 114 B
+twins-reached | beta/alpha swapped uses | none+maps | eval 0 = SUCCESS (con integer 15) traces=[]
+twins-reached | beta/alpha swapped uses | none+maps | budget 0 = 2763125 cpu, 11448 mem
+twins-reached | beta/alpha swapped uses | none+maps | eval 1 = SUCCESS (con integer 6) traces=[]
+twins-reached | beta/alpha swapped uses | none+maps | budget 1 = 2763125 cpu, 11448 mem
+twins-reached | beta/alpha swapped uses | baseline = aac72b6b32bdf469909af30e71215019e23a14ef3bc9d48fa0f893b972ee1646 114 B
+twins-reached | beta/alpha swapped uses | baseline | eval 0 = SUCCESS (con integer 15) traces=[]
+twins-reached | beta/alpha swapped uses | baseline | budget 0 = 2763125 cpu, 11448 mem
+twins-reached | beta/alpha swapped uses | baseline | eval 1 = SUCCESS (con integer 6) traces=[]
+twins-reached | beta/alpha swapped uses | baseline | budget 1 = 2763125 cpu, 11448 mem
+twins-reached | beta/alpha swapped uses | baseline+maps = aac72b6b32bdf469909af30e71215019e23a14ef3bc9d48fa0f893b972ee1646 114 B
+twins-reached | beta/alpha swapped uses | baseline+maps | eval 0 = SUCCESS (con integer 15) traces=[]
+twins-reached | beta/alpha swapped uses | baseline+maps | budget 0 = 2763125 cpu, 11448 mem
+twins-reached | beta/alpha swapped uses | baseline+maps | eval 1 = SUCCESS (con integer 6) traces=[]
+twins-reached | beta/alpha swapped uses | baseline+maps | budget 1 = 2763125 cpu, 11448 mem
+twins-reached | beta/alpha swapped uses | pv11-safe = 54fdfdded89fed930262aa01540c9e9a71be6f088762c676bc72e8fbbdecc49a 90 B
+twins-reached | beta/alpha swapped uses | pv11-safe | eval 0 = SUCCESS (con integer 15) traces=[]
+twins-reached | beta/alpha swapped uses | pv11-safe | budget 0 = 1634831 cpu, 7242 mem
+twins-reached | beta/alpha swapped uses | pv11-safe | eval 1 = SUCCESS (con integer 6) traces=[]
+twins-reached | beta/alpha swapped uses | pv11-safe | budget 1 = 1634831 cpu, 7242 mem
+twins-reached | beta/alpha swapped uses | pv11-safe+maps = 54fdfdded89fed930262aa01540c9e9a71be6f088762c676bc72e8fbbdecc49a 90 B
+twins-reached | beta/alpha swapped uses | pv11-safe+maps | eval 0 = SUCCESS (con integer 15) traces=[]
+twins-reached | beta/alpha swapped uses | pv11-safe+maps | budget 0 = 1634831 cpu, 7242 mem
+twins-reached | beta/alpha swapped uses | pv11-safe+maps | eval 1 = SUCCESS (con integer 6) traces=[]
+twins-reached | beta/alpha swapped uses | pv11-safe+maps | budget 1 = 1634831 cpu, 7242 mem
+twins-reached | beta/alpha swapped uses | pv11-costed = 54fdfdded89fed930262aa01540c9e9a71be6f088762c676bc72e8fbbdecc49a 90 B
+twins-reached | beta/alpha swapped uses | pv11-costed | eval 0 = SUCCESS (con integer 15) traces=[]
+twins-reached | beta/alpha swapped uses | pv11-costed | budget 0 = 1634831 cpu, 7242 mem
+twins-reached | beta/alpha swapped uses | pv11-costed | eval 1 = SUCCESS (con integer 6) traces=[]
+twins-reached | beta/alpha swapped uses | pv11-costed | budget 1 = 1634831 cpu, 7242 mem
+twins-reached | beta/alpha swapped uses | pv11-costed+maps = 54fdfdded89fed930262aa01540c9e9a71be6f088762c676bc72e8fbbdecc49a 90 B
+twins-reached | beta/alpha swapped uses | pv11-costed+maps | eval 0 = SUCCESS (con integer 15) traces=[]
+twins-reached | beta/alpha swapped uses | pv11-costed+maps | budget 0 = 1634831 cpu, 7242 mem
+twins-reached | beta/alpha swapped uses | pv11-costed+maps | eval 1 = SUCCESS (con integer 6) traces=[]
+twins-reached | beta/alpha swapped uses | pv11-costed+maps | budget 1 = 1634831 cpu, 7242 mem
+twins-reached | class Z, package z.moved | none = d4f49c029a049604b7d23aeb7920d37bc1172a09d9f446b0e1190c2d40a2581b 114 B
+twins-reached | class Z, package z.moved | none | eval 0 = SUCCESS (con integer 15) traces=[]
+twins-reached | class Z, package z.moved | none | budget 0 = 2763125 cpu, 11448 mem
+twins-reached | class Z, package z.moved | none | eval 1 = SUCCESS (con integer 6) traces=[]
+twins-reached | class Z, package z.moved | none | budget 1 = 2763125 cpu, 11448 mem
+twins-reached | class Z, package z.moved | none+maps = d4f49c029a049604b7d23aeb7920d37bc1172a09d9f446b0e1190c2d40a2581b 114 B
+twins-reached | class Z, package z.moved | none+maps | eval 0 = SUCCESS (con integer 15) traces=[]
+twins-reached | class Z, package z.moved | none+maps | budget 0 = 2763125 cpu, 11448 mem
+twins-reached | class Z, package z.moved | none+maps | eval 1 = SUCCESS (con integer 6) traces=[]
+twins-reached | class Z, package z.moved | none+maps | budget 1 = 2763125 cpu, 11448 mem
+twins-reached | class Z, package z.moved | baseline = d4f49c029a049604b7d23aeb7920d37bc1172a09d9f446b0e1190c2d40a2581b 114 B
+twins-reached | class Z, package z.moved | baseline | eval 0 = SUCCESS (con integer 15) traces=[]
+twins-reached | class Z, package z.moved | baseline | budget 0 = 2763125 cpu, 11448 mem
+twins-reached | class Z, package z.moved | baseline | eval 1 = SUCCESS (con integer 6) traces=[]
+twins-reached | class Z, package z.moved | baseline | budget 1 = 2763125 cpu, 11448 mem
+twins-reached | class Z, package z.moved | baseline+maps = d4f49c029a049604b7d23aeb7920d37bc1172a09d9f446b0e1190c2d40a2581b 114 B
+twins-reached | class Z, package z.moved | baseline+maps | eval 0 = SUCCESS (con integer 15) traces=[]
+twins-reached | class Z, package z.moved | baseline+maps | budget 0 = 2763125 cpu, 11448 mem
+twins-reached | class Z, package z.moved | baseline+maps | eval 1 = SUCCESS (con integer 6) traces=[]
+twins-reached | class Z, package z.moved | baseline+maps | budget 1 = 2763125 cpu, 11448 mem
+twins-reached | class Z, package z.moved | pv11-safe = 08cad3817b280270e7ca79a988cd8d2765232aeb20a494f3123675f3214b1226 90 B
+twins-reached | class Z, package z.moved | pv11-safe | eval 0 = SUCCESS (con integer 15) traces=[]
+twins-reached | class Z, package z.moved | pv11-safe | budget 0 = 1634831 cpu, 7242 mem
+twins-reached | class Z, package z.moved | pv11-safe | eval 1 = SUCCESS (con integer 6) traces=[]
+twins-reached | class Z, package z.moved | pv11-safe | budget 1 = 1634831 cpu, 7242 mem
+twins-reached | class Z, package z.moved | pv11-safe+maps = 08cad3817b280270e7ca79a988cd8d2765232aeb20a494f3123675f3214b1226 90 B
+twins-reached | class Z, package z.moved | pv11-safe+maps | eval 0 = SUCCESS (con integer 15) traces=[]
+twins-reached | class Z, package z.moved | pv11-safe+maps | budget 0 = 1634831 cpu, 7242 mem
+twins-reached | class Z, package z.moved | pv11-safe+maps | eval 1 = SUCCESS (con integer 6) traces=[]
+twins-reached | class Z, package z.moved | pv11-safe+maps | budget 1 = 1634831 cpu, 7242 mem
+twins-reached | class Z, package z.moved | pv11-costed = 08cad3817b280270e7ca79a988cd8d2765232aeb20a494f3123675f3214b1226 90 B
+twins-reached | class Z, package z.moved | pv11-costed | eval 0 = SUCCESS (con integer 15) traces=[]
+twins-reached | class Z, package z.moved | pv11-costed | budget 0 = 1634831 cpu, 7242 mem
+twins-reached | class Z, package z.moved | pv11-costed | eval 1 = SUCCESS (con integer 6) traces=[]
+twins-reached | class Z, package z.moved | pv11-costed | budget 1 = 1634831 cpu, 7242 mem
+twins-reached | class Z, package z.moved | pv11-costed+maps = 08cad3817b280270e7ca79a988cd8d2765232aeb20a494f3123675f3214b1226 90 B
+twins-reached | class Z, package z.moved | pv11-costed+maps | eval 0 = SUCCESS (con integer 15) traces=[]
+twins-reached | class Z, package z.moved | pv11-costed+maps | budget 0 = 1634831 cpu, 7242 mem
+twins-reached | class Z, package z.moved | pv11-costed+maps | eval 1 = SUCCESS (con integer 6) traces=[]
+twins-reached | class Z, package z.moved | pv11-costed+maps | budget 1 = 1634831 cpu, 7242 mem
+C11-unread-helper-reads-twin | alpha | none = c97964c8c4a2959f837923f495bdcc3b8da901f79f7526a7e4904df58c9ddbf3 35 B
+C11-unread-helper-reads-twin | alpha | none | eval 0 = SUCCESS (con integer 5) traces=[]
+C11-unread-helper-reads-twin | alpha | none | budget 0 = 404844 cpu, 2532 mem
+C11-unread-helper-reads-twin | alpha | none | eval 1 = SUCCESS (con integer 2) traces=[]
+C11-unread-helper-reads-twin | alpha | none | budget 1 = 404844 cpu, 2532 mem
+C11-unread-helper-reads-twin | alpha | none+maps = c97964c8c4a2959f837923f495bdcc3b8da901f79f7526a7e4904df58c9ddbf3 35 B
+C11-unread-helper-reads-twin | alpha | none+maps | eval 0 = SUCCESS (con integer 5) traces=[]
+C11-unread-helper-reads-twin | alpha | none+maps | budget 0 = 404844 cpu, 2532 mem
+C11-unread-helper-reads-twin | alpha | none+maps | eval 1 = SUCCESS (con integer 2) traces=[]
+C11-unread-helper-reads-twin | alpha | none+maps | budget 1 = 404844 cpu, 2532 mem
+C11-unread-helper-reads-twin | alpha | baseline = e2f3eac0da953ada2445187617063c26695575e10500c8896991bd6e4b15eaae 15 B
+C11-unread-helper-reads-twin | alpha | baseline | eval 0 = SUCCESS (con integer 5) traces=[]
+C11-unread-helper-reads-twin | alpha | baseline | budget 0 = 260844 cpu, 1632 mem
+C11-unread-helper-reads-twin | alpha | baseline | eval 1 = SUCCESS (con integer 2) traces=[]
+C11-unread-helper-reads-twin | alpha | baseline | budget 1 = 260844 cpu, 1632 mem
+C11-unread-helper-reads-twin | alpha | baseline+maps = c97964c8c4a2959f837923f495bdcc3b8da901f79f7526a7e4904df58c9ddbf3 35 B
+C11-unread-helper-reads-twin | alpha | baseline+maps | eval 0 = SUCCESS (con integer 5) traces=[]
+C11-unread-helper-reads-twin | alpha | baseline+maps | budget 0 = 404844 cpu, 2532 mem
+C11-unread-helper-reads-twin | alpha | baseline+maps | eval 1 = SUCCESS (con integer 2) traces=[]
+C11-unread-helper-reads-twin | alpha | baseline+maps | budget 1 = 404844 cpu, 2532 mem
+C11-unread-helper-reads-twin | alpha | pv11-safe = e2f3eac0da953ada2445187617063c26695575e10500c8896991bd6e4b15eaae 15 B
+C11-unread-helper-reads-twin | alpha | pv11-safe | eval 0 = SUCCESS (con integer 5) traces=[]
+C11-unread-helper-reads-twin | alpha | pv11-safe | budget 0 = 260844 cpu, 1632 mem
+C11-unread-helper-reads-twin | alpha | pv11-safe | eval 1 = SUCCESS (con integer 2) traces=[]
+C11-unread-helper-reads-twin | alpha | pv11-safe | budget 1 = 260844 cpu, 1632 mem
+C11-unread-helper-reads-twin | alpha | pv11-safe+maps = c97964c8c4a2959f837923f495bdcc3b8da901f79f7526a7e4904df58c9ddbf3 35 B
+C11-unread-helper-reads-twin | alpha | pv11-safe+maps | eval 0 = SUCCESS (con integer 5) traces=[]
+C11-unread-helper-reads-twin | alpha | pv11-safe+maps | budget 0 = 404844 cpu, 2532 mem
+C11-unread-helper-reads-twin | alpha | pv11-safe+maps | eval 1 = SUCCESS (con integer 2) traces=[]
+C11-unread-helper-reads-twin | alpha | pv11-safe+maps | budget 1 = 404844 cpu, 2532 mem
+C11-unread-helper-reads-twin | alpha | pv11-costed = e2f3eac0da953ada2445187617063c26695575e10500c8896991bd6e4b15eaae 15 B
+C11-unread-helper-reads-twin | alpha | pv11-costed | eval 0 = SUCCESS (con integer 5) traces=[]
+C11-unread-helper-reads-twin | alpha | pv11-costed | budget 0 = 260844 cpu, 1632 mem
+C11-unread-helper-reads-twin | alpha | pv11-costed | eval 1 = SUCCESS (con integer 2) traces=[]
+C11-unread-helper-reads-twin | alpha | pv11-costed | budget 1 = 260844 cpu, 1632 mem
+C11-unread-helper-reads-twin | alpha | pv11-costed+maps = c97964c8c4a2959f837923f495bdcc3b8da901f79f7526a7e4904df58c9ddbf3 35 B
+C11-unread-helper-reads-twin | alpha | pv11-costed+maps | eval 0 = SUCCESS (con integer 5) traces=[]
+C11-unread-helper-reads-twin | alpha | pv11-costed+maps | budget 0 = 404844 cpu, 2532 mem
+C11-unread-helper-reads-twin | alpha | pv11-costed+maps | eval 1 = SUCCESS (con integer 2) traces=[]
+C11-unread-helper-reads-twin | alpha | pv11-costed+maps | budget 1 = 404844 cpu, 2532 mem
+C11-unread-helper-reads-twin | zeta | none = b98a5f7caf3e5e2963908d16e0167294755ce6dd30fe9746eae3800d34b7135c 35 B
+C11-unread-helper-reads-twin | zeta | none | eval 0 = SUCCESS (con integer 5) traces=[]
+C11-unread-helper-reads-twin | zeta | none | budget 0 = 404844 cpu, 2532 mem
+C11-unread-helper-reads-twin | zeta | none | eval 1 = SUCCESS (con integer 2) traces=[]
+C11-unread-helper-reads-twin | zeta | none | budget 1 = 404844 cpu, 2532 mem
+C11-unread-helper-reads-twin | zeta | none+maps = b98a5f7caf3e5e2963908d16e0167294755ce6dd30fe9746eae3800d34b7135c 35 B
+C11-unread-helper-reads-twin | zeta | none+maps | eval 0 = SUCCESS (con integer 5) traces=[]
+C11-unread-helper-reads-twin | zeta | none+maps | budget 0 = 404844 cpu, 2532 mem
+C11-unread-helper-reads-twin | zeta | none+maps | eval 1 = SUCCESS (con integer 2) traces=[]
+C11-unread-helper-reads-twin | zeta | none+maps | budget 1 = 404844 cpu, 2532 mem
+C11-unread-helper-reads-twin | zeta | baseline = e2f3eac0da953ada2445187617063c26695575e10500c8896991bd6e4b15eaae 15 B
+C11-unread-helper-reads-twin | zeta | baseline | eval 0 = SUCCESS (con integer 5) traces=[]
+C11-unread-helper-reads-twin | zeta | baseline | budget 0 = 260844 cpu, 1632 mem
+C11-unread-helper-reads-twin | zeta | baseline | eval 1 = SUCCESS (con integer 2) traces=[]
+C11-unread-helper-reads-twin | zeta | baseline | budget 1 = 260844 cpu, 1632 mem
+C11-unread-helper-reads-twin | zeta | baseline+maps = b98a5f7caf3e5e2963908d16e0167294755ce6dd30fe9746eae3800d34b7135c 35 B
+C11-unread-helper-reads-twin | zeta | baseline+maps | eval 0 = SUCCESS (con integer 5) traces=[]
+C11-unread-helper-reads-twin | zeta | baseline+maps | budget 0 = 404844 cpu, 2532 mem
+C11-unread-helper-reads-twin | zeta | baseline+maps | eval 1 = SUCCESS (con integer 2) traces=[]
+C11-unread-helper-reads-twin | zeta | baseline+maps | budget 1 = 404844 cpu, 2532 mem
+C11-unread-helper-reads-twin | zeta | pv11-safe = e2f3eac0da953ada2445187617063c26695575e10500c8896991bd6e4b15eaae 15 B
+C11-unread-helper-reads-twin | zeta | pv11-safe | eval 0 = SUCCESS (con integer 5) traces=[]
+C11-unread-helper-reads-twin | zeta | pv11-safe | budget 0 = 260844 cpu, 1632 mem
+C11-unread-helper-reads-twin | zeta | pv11-safe | eval 1 = SUCCESS (con integer 2) traces=[]
+C11-unread-helper-reads-twin | zeta | pv11-safe | budget 1 = 260844 cpu, 1632 mem
+C11-unread-helper-reads-twin | zeta | pv11-safe+maps = b98a5f7caf3e5e2963908d16e0167294755ce6dd30fe9746eae3800d34b7135c 35 B
+C11-unread-helper-reads-twin | zeta | pv11-safe+maps | eval 0 = SUCCESS (con integer 5) traces=[]
+C11-unread-helper-reads-twin | zeta | pv11-safe+maps | budget 0 = 404844 cpu, 2532 mem
+C11-unread-helper-reads-twin | zeta | pv11-safe+maps | eval 1 = SUCCESS (con integer 2) traces=[]
+C11-unread-helper-reads-twin | zeta | pv11-safe+maps | budget 1 = 404844 cpu, 2532 mem
+C11-unread-helper-reads-twin | zeta | pv11-costed = e2f3eac0da953ada2445187617063c26695575e10500c8896991bd6e4b15eaae 15 B
+C11-unread-helper-reads-twin | zeta | pv11-costed | eval 0 = SUCCESS (con integer 5) traces=[]
+C11-unread-helper-reads-twin | zeta | pv11-costed | budget 0 = 260844 cpu, 1632 mem
+C11-unread-helper-reads-twin | zeta | pv11-costed | eval 1 = SUCCESS (con integer 2) traces=[]
+C11-unread-helper-reads-twin | zeta | pv11-costed | budget 1 = 260844 cpu, 1632 mem
+C11-unread-helper-reads-twin | zeta | pv11-costed+maps = b98a5f7caf3e5e2963908d16e0167294755ce6dd30fe9746eae3800d34b7135c 35 B
+C11-unread-helper-reads-twin | zeta | pv11-costed+maps | eval 0 = SUCCESS (con integer 5) traces=[]
+C11-unread-helper-reads-twin | zeta | pv11-costed+maps | budget 0 = 404844 cpu, 2532 mem
+C11-unread-helper-reads-twin | zeta | pv11-costed+maps | eval 1 = SUCCESS (con integer 2) traces=[]
+C11-unread-helper-reads-twin | zeta | pv11-costed+maps | budget 1 = 404844 cpu, 2532 mem
+C12-index-width | alpha | none = 848be6df2ff9a31114ed6f057f77bb4bf6ac436c8a6d812aa59dbac0cecbc0c3 1012 B
+C12-index-width | alpha | none | eval 0 = SUCCESS (con integer 143) traces=[]
+C12-index-width | alpha | none | budget 0 = 31201556 cpu, 102366 mem
+C12-index-width | alpha | none | eval 1 = SUCCESS (con integer 137) traces=[]
+C12-index-width | alpha | none | budget 1 = 31201556 cpu, 102366 mem
+C12-index-width | alpha | none+maps = 848be6df2ff9a31114ed6f057f77bb4bf6ac436c8a6d812aa59dbac0cecbc0c3 1012 B
+C12-index-width | alpha | none+maps | eval 0 = SUCCESS (con integer 143) traces=[]
+C12-index-width | alpha | none+maps | budget 0 = 31201556 cpu, 102366 mem
+C12-index-width | alpha | none+maps | eval 1 = SUCCESS (con integer 137) traces=[]
+C12-index-width | alpha | none+maps | budget 1 = 31201556 cpu, 102366 mem
+C12-index-width | alpha | baseline = 848be6df2ff9a31114ed6f057f77bb4bf6ac436c8a6d812aa59dbac0cecbc0c3 1012 B
+C12-index-width | alpha | baseline | eval 0 = SUCCESS (con integer 143) traces=[]
+C12-index-width | alpha | baseline | budget 0 = 31201556 cpu, 102366 mem
+C12-index-width | alpha | baseline | eval 1 = SUCCESS (con integer 137) traces=[]
+C12-index-width | alpha | baseline | budget 1 = 31201556 cpu, 102366 mem
+C12-index-width | alpha | baseline+maps = 848be6df2ff9a31114ed6f057f77bb4bf6ac436c8a6d812aa59dbac0cecbc0c3 1012 B
+C12-index-width | alpha | baseline+maps | eval 0 = SUCCESS (con integer 143) traces=[]
+C12-index-width | alpha | baseline+maps | budget 0 = 31201556 cpu, 102366 mem
+C12-index-width | alpha | baseline+maps | eval 1 = SUCCESS (con integer 137) traces=[]
+C12-index-width | alpha | baseline+maps | budget 1 = 31201556 cpu, 102366 mem
+C12-index-width | alpha | pv11-safe = c8489246affdc535e5b559c5b75c027ef31b5285aa003384721ca78b25c95380 1010 B
+C12-index-width | alpha | pv11-safe | eval 0 = SUCCESS (con integer 143) traces=[]
+C12-index-width | alpha | pv11-safe | budget 0 = 31073556 cpu, 101566 mem
+C12-index-width | alpha | pv11-safe | eval 1 = SUCCESS (con integer 137) traces=[]
+C12-index-width | alpha | pv11-safe | budget 1 = 31073556 cpu, 101566 mem
+C12-index-width | alpha | pv11-safe+maps = 848be6df2ff9a31114ed6f057f77bb4bf6ac436c8a6d812aa59dbac0cecbc0c3 1012 B
+C12-index-width | alpha | pv11-safe+maps | eval 0 = SUCCESS (con integer 143) traces=[]
+C12-index-width | alpha | pv11-safe+maps | budget 0 = 31201556 cpu, 102366 mem
+C12-index-width | alpha | pv11-safe+maps | eval 1 = SUCCESS (con integer 137) traces=[]
+C12-index-width | alpha | pv11-safe+maps | budget 1 = 31201556 cpu, 102366 mem
+C12-index-width | alpha | pv11-costed = c8489246affdc535e5b559c5b75c027ef31b5285aa003384721ca78b25c95380 1010 B
+C12-index-width | alpha | pv11-costed | eval 0 = SUCCESS (con integer 143) traces=[]
+C12-index-width | alpha | pv11-costed | budget 0 = 31073556 cpu, 101566 mem
+C12-index-width | alpha | pv11-costed | eval 1 = SUCCESS (con integer 137) traces=[]
+C12-index-width | alpha | pv11-costed | budget 1 = 31073556 cpu, 101566 mem
+C12-index-width | alpha | pv11-costed+maps = 848be6df2ff9a31114ed6f057f77bb4bf6ac436c8a6d812aa59dbac0cecbc0c3 1012 B
+C12-index-width | alpha | pv11-costed+maps | eval 0 = SUCCESS (con integer 143) traces=[]
+C12-index-width | alpha | pv11-costed+maps | budget 0 = 31201556 cpu, 102366 mem
+C12-index-width | alpha | pv11-costed+maps | eval 1 = SUCCESS (con integer 137) traces=[]
+C12-index-width | alpha | pv11-costed+maps | budget 1 = 31201556 cpu, 102366 mem
+C12-index-width | zeta | none = 4ab65773da337e917d9ade748526156aadd66db1c1e7ddcd77632ffc17ca40f3 1012 B
+C12-index-width | zeta | none | eval 0 = SUCCESS (con integer 143) traces=[]
+C12-index-width | zeta | none | budget 0 = 31201556 cpu, 102366 mem
+C12-index-width | zeta | none | eval 1 = SUCCESS (con integer 137) traces=[]
+C12-index-width | zeta | none | budget 1 = 31201556 cpu, 102366 mem
+C12-index-width | zeta | none+maps = 4ab65773da337e917d9ade748526156aadd66db1c1e7ddcd77632ffc17ca40f3 1012 B
+C12-index-width | zeta | none+maps | eval 0 = SUCCESS (con integer 143) traces=[]
+C12-index-width | zeta | none+maps | budget 0 = 31201556 cpu, 102366 mem
+C12-index-width | zeta | none+maps | eval 1 = SUCCESS (con integer 137) traces=[]
+C12-index-width | zeta | none+maps | budget 1 = 31201556 cpu, 102366 mem
+C12-index-width | zeta | baseline = 4ab65773da337e917d9ade748526156aadd66db1c1e7ddcd77632ffc17ca40f3 1012 B
+C12-index-width | zeta | baseline | eval 0 = SUCCESS (con integer 143) traces=[]
+C12-index-width | zeta | baseline | budget 0 = 31201556 cpu, 102366 mem
+C12-index-width | zeta | baseline | eval 1 = SUCCESS (con integer 137) traces=[]
+C12-index-width | zeta | baseline | budget 1 = 31201556 cpu, 102366 mem
+C12-index-width | zeta | baseline+maps = 4ab65773da337e917d9ade748526156aadd66db1c1e7ddcd77632ffc17ca40f3 1012 B
+C12-index-width | zeta | baseline+maps | eval 0 = SUCCESS (con integer 143) traces=[]
+C12-index-width | zeta | baseline+maps | budget 0 = 31201556 cpu, 102366 mem
+C12-index-width | zeta | baseline+maps | eval 1 = SUCCESS (con integer 137) traces=[]
+C12-index-width | zeta | baseline+maps | budget 1 = 31201556 cpu, 102366 mem
+C12-index-width | zeta | pv11-safe = 4ab65773da337e917d9ade748526156aadd66db1c1e7ddcd77632ffc17ca40f3 1012 B
+C12-index-width | zeta | pv11-safe | eval 0 = SUCCESS (con integer 143) traces=[]
+C12-index-width | zeta | pv11-safe | budget 0 = 31201556 cpu, 102366 mem
+C12-index-width | zeta | pv11-safe | eval 1 = SUCCESS (con integer 137) traces=[]
+C12-index-width | zeta | pv11-safe | budget 1 = 31201556 cpu, 102366 mem
+C12-index-width | zeta | pv11-safe+maps = 4ab65773da337e917d9ade748526156aadd66db1c1e7ddcd77632ffc17ca40f3 1012 B
+C12-index-width | zeta | pv11-safe+maps | eval 0 = SUCCESS (con integer 143) traces=[]
+C12-index-width | zeta | pv11-safe+maps | budget 0 = 31201556 cpu, 102366 mem
+C12-index-width | zeta | pv11-safe+maps | eval 1 = SUCCESS (con integer 137) traces=[]
+C12-index-width | zeta | pv11-safe+maps | budget 1 = 31201556 cpu, 102366 mem
+C12-index-width | zeta | pv11-costed = 4ab65773da337e917d9ade748526156aadd66db1c1e7ddcd77632ffc17ca40f3 1012 B
+C12-index-width | zeta | pv11-costed | eval 0 = SUCCESS (con integer 143) traces=[]
+C12-index-width | zeta | pv11-costed | budget 0 = 31201556 cpu, 102366 mem
+C12-index-width | zeta | pv11-costed | eval 1 = SUCCESS (con integer 137) traces=[]
+C12-index-width | zeta | pv11-costed | budget 1 = 31201556 cpu, 102366 mem
+C12-index-width | zeta | pv11-costed+maps = 4ab65773da337e917d9ade748526156aadd66db1c1e7ddcd77632ffc17ca40f3 1012 B
+C12-index-width | zeta | pv11-costed+maps | eval 0 = SUCCESS (con integer 143) traces=[]
+C12-index-width | zeta | pv11-costed+maps | budget 0 = 31201556 cpu, 102366 mem
+C12-index-width | zeta | pv11-costed+maps | eval 1 = SUCCESS (con integer 137) traces=[]
+C12-index-width | zeta | pv11-costed+maps | budget 1 = 31201556 cpu, 102366 mem
+C13-cross-class-recursive-types | A | none = bc83b4f56903ccf51df6e2127c39889b5a305c7ac835bf47e183ba56a4c8a7a0 99 B
+C13-cross-class-recursive-types | A | none | eval 0 = SUCCESS (con bool False) traces=[]
+C13-cross-class-recursive-types | A | none | budget 0 = 1800589 cpu, 7354 mem
+C13-cross-class-recursive-types | A | none | eval 1 = SUCCESS (con bool False) traces=[]
+C13-cross-class-recursive-types | A | none | budget 1 = 1800589 cpu, 7354 mem
+C13-cross-class-recursive-types | A | none+maps = bc83b4f56903ccf51df6e2127c39889b5a305c7ac835bf47e183ba56a4c8a7a0 99 B
+C13-cross-class-recursive-types | A | none+maps | eval 0 = SUCCESS (con bool False) traces=[]
+C13-cross-class-recursive-types | A | none+maps | budget 0 = 1800589 cpu, 7354 mem
+C13-cross-class-recursive-types | A | none+maps | eval 1 = SUCCESS (con bool False) traces=[]
+C13-cross-class-recursive-types | A | none+maps | budget 1 = 1800589 cpu, 7354 mem
+C13-cross-class-recursive-types | A | baseline = bc83b4f56903ccf51df6e2127c39889b5a305c7ac835bf47e183ba56a4c8a7a0 99 B
+C13-cross-class-recursive-types | A | baseline | eval 0 = SUCCESS (con bool False) traces=[]
+C13-cross-class-recursive-types | A | baseline | budget 0 = 1800589 cpu, 7354 mem
+C13-cross-class-recursive-types | A | baseline | eval 1 = SUCCESS (con bool False) traces=[]
+C13-cross-class-recursive-types | A | baseline | budget 1 = 1800589 cpu, 7354 mem
+C13-cross-class-recursive-types | A | baseline+maps = bc83b4f56903ccf51df6e2127c39889b5a305c7ac835bf47e183ba56a4c8a7a0 99 B
+C13-cross-class-recursive-types | A | baseline+maps | eval 0 = SUCCESS (con bool False) traces=[]
+C13-cross-class-recursive-types | A | baseline+maps | budget 0 = 1800589 cpu, 7354 mem
+C13-cross-class-recursive-types | A | baseline+maps | eval 1 = SUCCESS (con bool False) traces=[]
+C13-cross-class-recursive-types | A | baseline+maps | budget 1 = 1800589 cpu, 7354 mem
+C13-cross-class-recursive-types | A | pv11-safe = d4d2a153cf1e14721e09c03c58ad112282c88e0bb0b8460ff9d2261c20e5293b 95 B
+C13-cross-class-recursive-types | A | pv11-safe | eval 0 = SUCCESS (con bool False) traces=[]
+C13-cross-class-recursive-types | A | pv11-safe | budget 0 = 1612540 cpu, 6653 mem
+C13-cross-class-recursive-types | A | pv11-safe | eval 1 = SUCCESS (con bool False) traces=[]
+C13-cross-class-recursive-types | A | pv11-safe | budget 1 = 1612540 cpu, 6653 mem
+C13-cross-class-recursive-types | A | pv11-safe+maps = d4d2a153cf1e14721e09c03c58ad112282c88e0bb0b8460ff9d2261c20e5293b 95 B
+C13-cross-class-recursive-types | A | pv11-safe+maps | eval 0 = SUCCESS (con bool False) traces=[]
+C13-cross-class-recursive-types | A | pv11-safe+maps | budget 0 = 1612540 cpu, 6653 mem
+C13-cross-class-recursive-types | A | pv11-safe+maps | eval 1 = SUCCESS (con bool False) traces=[]
+C13-cross-class-recursive-types | A | pv11-safe+maps | budget 1 = 1612540 cpu, 6653 mem
+C13-cross-class-recursive-types | A | pv11-costed = d4d2a153cf1e14721e09c03c58ad112282c88e0bb0b8460ff9d2261c20e5293b 95 B
+C13-cross-class-recursive-types | A | pv11-costed | eval 0 = SUCCESS (con bool False) traces=[]
+C13-cross-class-recursive-types | A | pv11-costed | budget 0 = 1612540 cpu, 6653 mem
+C13-cross-class-recursive-types | A | pv11-costed | eval 1 = SUCCESS (con bool False) traces=[]
+C13-cross-class-recursive-types | A | pv11-costed | budget 1 = 1612540 cpu, 6653 mem
+C13-cross-class-recursive-types | A | pv11-costed+maps = d4d2a153cf1e14721e09c03c58ad112282c88e0bb0b8460ff9d2261c20e5293b 95 B
+C13-cross-class-recursive-types | A | pv11-costed+maps | eval 0 = SUCCESS (con bool False) traces=[]
+C13-cross-class-recursive-types | A | pv11-costed+maps | budget 0 = 1612540 cpu, 6653 mem
+C13-cross-class-recursive-types | A | pv11-costed+maps | eval 1 = SUCCESS (con bool False) traces=[]
+C13-cross-class-recursive-types | A | pv11-costed+maps | budget 1 = 1612540 cpu, 6653 mem
+C13-cross-class-recursive-types | Z | none = 06c2560bfc585e20b170b03549040bc747bc08f37a8750252455f6f6b7380695 99 B
+C13-cross-class-recursive-types | Z | none | eval 0 = SUCCESS (con bool False) traces=[]
+C13-cross-class-recursive-types | Z | none | budget 0 = 1800589 cpu, 7354 mem
+C13-cross-class-recursive-types | Z | none | eval 1 = SUCCESS (con bool False) traces=[]
+C13-cross-class-recursive-types | Z | none | budget 1 = 1800589 cpu, 7354 mem
+C13-cross-class-recursive-types | Z | none+maps = 06c2560bfc585e20b170b03549040bc747bc08f37a8750252455f6f6b7380695 99 B
+C13-cross-class-recursive-types | Z | none+maps | eval 0 = SUCCESS (con bool False) traces=[]
+C13-cross-class-recursive-types | Z | none+maps | budget 0 = 1800589 cpu, 7354 mem
+C13-cross-class-recursive-types | Z | none+maps | eval 1 = SUCCESS (con bool False) traces=[]
+C13-cross-class-recursive-types | Z | none+maps | budget 1 = 1800589 cpu, 7354 mem
+C13-cross-class-recursive-types | Z | baseline = 06c2560bfc585e20b170b03549040bc747bc08f37a8750252455f6f6b7380695 99 B
+C13-cross-class-recursive-types | Z | baseline | eval 0 = SUCCESS (con bool False) traces=[]
+C13-cross-class-recursive-types | Z | baseline | budget 0 = 1800589 cpu, 7354 mem
+C13-cross-class-recursive-types | Z | baseline | eval 1 = SUCCESS (con bool False) traces=[]
+C13-cross-class-recursive-types | Z | baseline | budget 1 = 1800589 cpu, 7354 mem
+C13-cross-class-recursive-types | Z | baseline+maps = 06c2560bfc585e20b170b03549040bc747bc08f37a8750252455f6f6b7380695 99 B
+C13-cross-class-recursive-types | Z | baseline+maps | eval 0 = SUCCESS (con bool False) traces=[]
+C13-cross-class-recursive-types | Z | baseline+maps | budget 0 = 1800589 cpu, 7354 mem
+C13-cross-class-recursive-types | Z | baseline+maps | eval 1 = SUCCESS (con bool False) traces=[]
+C13-cross-class-recursive-types | Z | baseline+maps | budget 1 = 1800589 cpu, 7354 mem
+C13-cross-class-recursive-types | Z | pv11-safe = 555c3d7b809a3ab3d165226bf74c676b195c4e2f2f028f7efcfd2d6934e35ff5 95 B
+C13-cross-class-recursive-types | Z | pv11-safe | eval 0 = SUCCESS (con bool False) traces=[]
+C13-cross-class-recursive-types | Z | pv11-safe | budget 0 = 1612540 cpu, 6653 mem
+C13-cross-class-recursive-types | Z | pv11-safe | eval 1 = SUCCESS (con bool False) traces=[]
+C13-cross-class-recursive-types | Z | pv11-safe | budget 1 = 1612540 cpu, 6653 mem
+C13-cross-class-recursive-types | Z | pv11-safe+maps = 555c3d7b809a3ab3d165226bf74c676b195c4e2f2f028f7efcfd2d6934e35ff5 95 B
+C13-cross-class-recursive-types | Z | pv11-safe+maps | eval 0 = SUCCESS (con bool False) traces=[]
+C13-cross-class-recursive-types | Z | pv11-safe+maps | budget 0 = 1612540 cpu, 6653 mem
+C13-cross-class-recursive-types | Z | pv11-safe+maps | eval 1 = SUCCESS (con bool False) traces=[]
+C13-cross-class-recursive-types | Z | pv11-safe+maps | budget 1 = 1612540 cpu, 6653 mem
+C13-cross-class-recursive-types | Z | pv11-costed = 555c3d7b809a3ab3d165226bf74c676b195c4e2f2f028f7efcfd2d6934e35ff5 95 B
+C13-cross-class-recursive-types | Z | pv11-costed | eval 0 = SUCCESS (con bool False) traces=[]
+C13-cross-class-recursive-types | Z | pv11-costed | budget 0 = 1612540 cpu, 6653 mem
+C13-cross-class-recursive-types | Z | pv11-costed | eval 1 = SUCCESS (con bool False) traces=[]
+C13-cross-class-recursive-types | Z | pv11-costed | budget 1 = 1612540 cpu, 6653 mem
+C13-cross-class-recursive-types | Z | pv11-costed+maps = 555c3d7b809a3ab3d165226bf74c676b195c4e2f2f028f7efcfd2d6934e35ff5 95 B
+C13-cross-class-recursive-types | Z | pv11-costed+maps | eval 0 = SUCCESS (con bool False) traces=[]
+C13-cross-class-recursive-types | Z | pv11-costed+maps | budget 0 = 1612540 cpu, 6653 mem
+C13-cross-class-recursive-types | Z | pv11-costed+maps | eval 1 = SUCCESS (con bool False) traces=[]
+C13-cross-class-recursive-types | Z | pv11-costed+maps | budget 1 = 1612540 cpu, 6653 mem
+C14-overload-family-together | inc | none = 947c4fd06179686ddeb94d8cadb0b3e0378f1a21c8aed51d0c35ef9071200773 31 B
+C14-overload-family-together | inc | none | eval 0 = SUCCESS (con integer 8) traces=[]
+C14-overload-family-together | inc | none | budget 0 = 900468 cpu, 3738 mem
+C14-overload-family-together | inc | none | eval 1 = SUCCESS (con integer 5) traces=[]
+C14-overload-family-together | inc | none | budget 1 = 900468 cpu, 3738 mem
+C14-overload-family-together | inc | none+maps = 947c4fd06179686ddeb94d8cadb0b3e0378f1a21c8aed51d0c35ef9071200773 31 B
+C14-overload-family-together | inc | none+maps | eval 0 = SUCCESS (con integer 8) traces=[]
+C14-overload-family-together | inc | none+maps | budget 0 = 900468 cpu, 3738 mem
+C14-overload-family-together | inc | none+maps | eval 1 = SUCCESS (con integer 5) traces=[]
+C14-overload-family-together | inc | none+maps | budget 1 = 900468 cpu, 3738 mem
+C14-overload-family-together | inc | baseline = 947c4fd06179686ddeb94d8cadb0b3e0378f1a21c8aed51d0c35ef9071200773 31 B
+C14-overload-family-together | inc | baseline | eval 0 = SUCCESS (con integer 8) traces=[]
+C14-overload-family-together | inc | baseline | budget 0 = 900468 cpu, 3738 mem
+C14-overload-family-together | inc | baseline | eval 1 = SUCCESS (con integer 5) traces=[]
+C14-overload-family-together | inc | baseline | budget 1 = 900468 cpu, 3738 mem
+C14-overload-family-together | inc | baseline+maps = 947c4fd06179686ddeb94d8cadb0b3e0378f1a21c8aed51d0c35ef9071200773 31 B
+C14-overload-family-together | inc | baseline+maps | eval 0 = SUCCESS (con integer 8) traces=[]
+C14-overload-family-together | inc | baseline+maps | budget 0 = 900468 cpu, 3738 mem
+C14-overload-family-together | inc | baseline+maps | eval 1 = SUCCESS (con integer 5) traces=[]
+C14-overload-family-together | inc | baseline+maps | budget 1 = 900468 cpu, 3738 mem
+C14-overload-family-together | inc | pv11-safe = 947c4fd06179686ddeb94d8cadb0b3e0378f1a21c8aed51d0c35ef9071200773 31 B
+C14-overload-family-together | inc | pv11-safe | eval 0 = SUCCESS (con integer 8) traces=[]
+C14-overload-family-together | inc | pv11-safe | budget 0 = 900468 cpu, 3738 mem
+C14-overload-family-together | inc | pv11-safe | eval 1 = SUCCESS (con integer 5) traces=[]
+C14-overload-family-together | inc | pv11-safe | budget 1 = 900468 cpu, 3738 mem
+C14-overload-family-together | inc | pv11-safe+maps = 947c4fd06179686ddeb94d8cadb0b3e0378f1a21c8aed51d0c35ef9071200773 31 B
+C14-overload-family-together | inc | pv11-safe+maps | eval 0 = SUCCESS (con integer 8) traces=[]
+C14-overload-family-together | inc | pv11-safe+maps | budget 0 = 900468 cpu, 3738 mem
+C14-overload-family-together | inc | pv11-safe+maps | eval 1 = SUCCESS (con integer 5) traces=[]
+C14-overload-family-together | inc | pv11-safe+maps | budget 1 = 900468 cpu, 3738 mem
+C14-overload-family-together | inc | pv11-costed = 947c4fd06179686ddeb94d8cadb0b3e0378f1a21c8aed51d0c35ef9071200773 31 B
+C14-overload-family-together | inc | pv11-costed | eval 0 = SUCCESS (con integer 8) traces=[]
+C14-overload-family-together | inc | pv11-costed | budget 0 = 900468 cpu, 3738 mem
+C14-overload-family-together | inc | pv11-costed | eval 1 = SUCCESS (con integer 5) traces=[]
+C14-overload-family-together | inc | pv11-costed | budget 1 = 900468 cpu, 3738 mem
+C14-overload-family-together | inc | pv11-costed+maps = 947c4fd06179686ddeb94d8cadb0b3e0378f1a21c8aed51d0c35ef9071200773 31 B
+C14-overload-family-together | inc | pv11-costed+maps | eval 0 = SUCCESS (con integer 8) traces=[]
+C14-overload-family-together | inc | pv11-costed+maps | budget 0 = 900468 cpu, 3738 mem
+C14-overload-family-together | inc | pv11-costed+maps | eval 1 = SUCCESS (con integer 5) traces=[]
+C14-overload-family-together | inc | pv11-costed+maps | budget 1 = 900468 cpu, 3738 mem
+C14-overload-family-together | bump | none = 947c4fd06179686ddeb94d8cadb0b3e0378f1a21c8aed51d0c35ef9071200773 31 B
+C14-overload-family-together | bump | none | eval 0 = SUCCESS (con integer 8) traces=[]
+C14-overload-family-together | bump | none | budget 0 = 900468 cpu, 3738 mem
+C14-overload-family-together | bump | none | eval 1 = SUCCESS (con integer 5) traces=[]
+C14-overload-family-together | bump | none | budget 1 = 900468 cpu, 3738 mem
+C14-overload-family-together | bump | none+maps = 947c4fd06179686ddeb94d8cadb0b3e0378f1a21c8aed51d0c35ef9071200773 31 B
+C14-overload-family-together | bump | none+maps | eval 0 = SUCCESS (con integer 8) traces=[]
+C14-overload-family-together | bump | none+maps | budget 0 = 900468 cpu, 3738 mem
+C14-overload-family-together | bump | none+maps | eval 1 = SUCCESS (con integer 5) traces=[]
+C14-overload-family-together | bump | none+maps | budget 1 = 900468 cpu, 3738 mem
+C14-overload-family-together | bump | baseline = 947c4fd06179686ddeb94d8cadb0b3e0378f1a21c8aed51d0c35ef9071200773 31 B
+C14-overload-family-together | bump | baseline | eval 0 = SUCCESS (con integer 8) traces=[]
+C14-overload-family-together | bump | baseline | budget 0 = 900468 cpu, 3738 mem
+C14-overload-family-together | bump | baseline | eval 1 = SUCCESS (con integer 5) traces=[]
+C14-overload-family-together | bump | baseline | budget 1 = 900468 cpu, 3738 mem
+C14-overload-family-together | bump | baseline+maps = 947c4fd06179686ddeb94d8cadb0b3e0378f1a21c8aed51d0c35ef9071200773 31 B
+C14-overload-family-together | bump | baseline+maps | eval 0 = SUCCESS (con integer 8) traces=[]
+C14-overload-family-together | bump | baseline+maps | budget 0 = 900468 cpu, 3738 mem
+C14-overload-family-together | bump | baseline+maps | eval 1 = SUCCESS (con integer 5) traces=[]
+C14-overload-family-together | bump | baseline+maps | budget 1 = 900468 cpu, 3738 mem
+C14-overload-family-together | bump | pv11-safe = 947c4fd06179686ddeb94d8cadb0b3e0378f1a21c8aed51d0c35ef9071200773 31 B
+C14-overload-family-together | bump | pv11-safe | eval 0 = SUCCESS (con integer 8) traces=[]
+C14-overload-family-together | bump | pv11-safe | budget 0 = 900468 cpu, 3738 mem
+C14-overload-family-together | bump | pv11-safe | eval 1 = SUCCESS (con integer 5) traces=[]
+C14-overload-family-together | bump | pv11-safe | budget 1 = 900468 cpu, 3738 mem
+C14-overload-family-together | bump | pv11-safe+maps = 947c4fd06179686ddeb94d8cadb0b3e0378f1a21c8aed51d0c35ef9071200773 31 B
+C14-overload-family-together | bump | pv11-safe+maps | eval 0 = SUCCESS (con integer 8) traces=[]
+C14-overload-family-together | bump | pv11-safe+maps | budget 0 = 900468 cpu, 3738 mem
+C14-overload-family-together | bump | pv11-safe+maps | eval 1 = SUCCESS (con integer 5) traces=[]
+C14-overload-family-together | bump | pv11-safe+maps | budget 1 = 900468 cpu, 3738 mem
+C14-overload-family-together | bump | pv11-costed = 947c4fd06179686ddeb94d8cadb0b3e0378f1a21c8aed51d0c35ef9071200773 31 B
+C14-overload-family-together | bump | pv11-costed | eval 0 = SUCCESS (con integer 8) traces=[]
+C14-overload-family-together | bump | pv11-costed | budget 0 = 900468 cpu, 3738 mem
+C14-overload-family-together | bump | pv11-costed | eval 1 = SUCCESS (con integer 5) traces=[]
+C14-overload-family-together | bump | pv11-costed | budget 1 = 900468 cpu, 3738 mem
+C14-overload-family-together | bump | pv11-costed+maps = 947c4fd06179686ddeb94d8cadb0b3e0378f1a21c8aed51d0c35ef9071200773 31 B
+C14-overload-family-together | bump | pv11-costed+maps | eval 0 = SUCCESS (con integer 8) traces=[]
+C14-overload-family-together | bump | pv11-costed+maps | budget 0 = 900468 cpu, 3738 mem
+C14-overload-family-together | bump | pv11-costed+maps | eval 1 = SUCCESS (con integer 5) traces=[]
+C14-overload-family-together | bump | pv11-costed+maps | budget 1 = 900468 cpu, 3738 mem
+C14-overload-member-alone | inc | none = 947c4fd06179686ddeb94d8cadb0b3e0378f1a21c8aed51d0c35ef9071200773 31 B
+C14-overload-member-alone | inc | none | eval 0 = SUCCESS (con integer 8) traces=[]
+C14-overload-member-alone | inc | none | budget 0 = 900468 cpu, 3738 mem
+C14-overload-member-alone | inc | none | eval 1 = SUCCESS (con integer 5) traces=[]
+C14-overload-member-alone | inc | none | budget 1 = 900468 cpu, 3738 mem
+C14-overload-member-alone | inc | none+maps = 947c4fd06179686ddeb94d8cadb0b3e0378f1a21c8aed51d0c35ef9071200773 31 B
+C14-overload-member-alone | inc | none+maps | eval 0 = SUCCESS (con integer 8) traces=[]
+C14-overload-member-alone | inc | none+maps | budget 0 = 900468 cpu, 3738 mem
+C14-overload-member-alone | inc | none+maps | eval 1 = SUCCESS (con integer 5) traces=[]
+C14-overload-member-alone | inc | none+maps | budget 1 = 900468 cpu, 3738 mem
+C14-overload-member-alone | inc | baseline = 947c4fd06179686ddeb94d8cadb0b3e0378f1a21c8aed51d0c35ef9071200773 31 B
+C14-overload-member-alone | inc | baseline | eval 0 = SUCCESS (con integer 8) traces=[]
+C14-overload-member-alone | inc | baseline | budget 0 = 900468 cpu, 3738 mem
+C14-overload-member-alone | inc | baseline | eval 1 = SUCCESS (con integer 5) traces=[]
+C14-overload-member-alone | inc | baseline | budget 1 = 900468 cpu, 3738 mem
+C14-overload-member-alone | inc | baseline+maps = 947c4fd06179686ddeb94d8cadb0b3e0378f1a21c8aed51d0c35ef9071200773 31 B
+C14-overload-member-alone | inc | baseline+maps | eval 0 = SUCCESS (con integer 8) traces=[]
+C14-overload-member-alone | inc | baseline+maps | budget 0 = 900468 cpu, 3738 mem
+C14-overload-member-alone | inc | baseline+maps | eval 1 = SUCCESS (con integer 5) traces=[]
+C14-overload-member-alone | inc | baseline+maps | budget 1 = 900468 cpu, 3738 mem
+C14-overload-member-alone | inc | pv11-safe = 947c4fd06179686ddeb94d8cadb0b3e0378f1a21c8aed51d0c35ef9071200773 31 B
+C14-overload-member-alone | inc | pv11-safe | eval 0 = SUCCESS (con integer 8) traces=[]
+C14-overload-member-alone | inc | pv11-safe | budget 0 = 900468 cpu, 3738 mem
+C14-overload-member-alone | inc | pv11-safe | eval 1 = SUCCESS (con integer 5) traces=[]
+C14-overload-member-alone | inc | pv11-safe | budget 1 = 900468 cpu, 3738 mem
+C14-overload-member-alone | inc | pv11-safe+maps = 947c4fd06179686ddeb94d8cadb0b3e0378f1a21c8aed51d0c35ef9071200773 31 B
+C14-overload-member-alone | inc | pv11-safe+maps | eval 0 = SUCCESS (con integer 8) traces=[]
+C14-overload-member-alone | inc | pv11-safe+maps | budget 0 = 900468 cpu, 3738 mem
+C14-overload-member-alone | inc | pv11-safe+maps | eval 1 = SUCCESS (con integer 5) traces=[]
+C14-overload-member-alone | inc | pv11-safe+maps | budget 1 = 900468 cpu, 3738 mem
+C14-overload-member-alone | inc | pv11-costed = 947c4fd06179686ddeb94d8cadb0b3e0378f1a21c8aed51d0c35ef9071200773 31 B
+C14-overload-member-alone | inc | pv11-costed | eval 0 = SUCCESS (con integer 8) traces=[]
+C14-overload-member-alone | inc | pv11-costed | budget 0 = 900468 cpu, 3738 mem
+C14-overload-member-alone | inc | pv11-costed | eval 1 = SUCCESS (con integer 5) traces=[]
+C14-overload-member-alone | inc | pv11-costed | budget 1 = 900468 cpu, 3738 mem
+C14-overload-member-alone | inc | pv11-costed+maps = 947c4fd06179686ddeb94d8cadb0b3e0378f1a21c8aed51d0c35ef9071200773 31 B
+C14-overload-member-alone | inc | pv11-costed+maps | eval 0 = SUCCESS (con integer 8) traces=[]
+C14-overload-member-alone | inc | pv11-costed+maps | budget 0 = 900468 cpu, 3738 mem
+C14-overload-member-alone | inc | pv11-costed+maps | eval 1 = SUCCESS (con integer 5) traces=[]
+C14-overload-member-alone | inc | pv11-costed+maps | budget 1 = 900468 cpu, 3738 mem
+C14-overload-member-alone | inc2 | none = a30ac66374d87de4ee22701175ab873d6c93516150516d35ee85aa6c24c39d06 39 B
+C14-overload-member-alone | inc2 | none | eval 0 = SUCCESS (con integer 8) traces=[]
+C14-overload-member-alone | inc2 | none | budget 0 = 948468 cpu, 4038 mem
+C14-overload-member-alone | inc2 | none | eval 1 = SUCCESS (con integer 5) traces=[]
+C14-overload-member-alone | inc2 | none | budget 1 = 948468 cpu, 4038 mem
+C14-overload-member-alone | inc2 | none+maps = a30ac66374d87de4ee22701175ab873d6c93516150516d35ee85aa6c24c39d06 39 B
+C14-overload-member-alone | inc2 | none+maps | eval 0 = SUCCESS (con integer 8) traces=[]
+C14-overload-member-alone | inc2 | none+maps | budget 0 = 948468 cpu, 4038 mem
+C14-overload-member-alone | inc2 | none+maps | eval 1 = SUCCESS (con integer 5) traces=[]
+C14-overload-member-alone | inc2 | none+maps | budget 1 = 948468 cpu, 4038 mem
+C14-overload-member-alone | inc2 | baseline = a30ac66374d87de4ee22701175ab873d6c93516150516d35ee85aa6c24c39d06 39 B
+C14-overload-member-alone | inc2 | baseline | eval 0 = SUCCESS (con integer 8) traces=[]
+C14-overload-member-alone | inc2 | baseline | budget 0 = 948468 cpu, 4038 mem
+C14-overload-member-alone | inc2 | baseline | eval 1 = SUCCESS (con integer 5) traces=[]
+C14-overload-member-alone | inc2 | baseline | budget 1 = 948468 cpu, 4038 mem
+C14-overload-member-alone | inc2 | baseline+maps = a30ac66374d87de4ee22701175ab873d6c93516150516d35ee85aa6c24c39d06 39 B
+C14-overload-member-alone | inc2 | baseline+maps | eval 0 = SUCCESS (con integer 8) traces=[]
+C14-overload-member-alone | inc2 | baseline+maps | budget 0 = 948468 cpu, 4038 mem
+C14-overload-member-alone | inc2 | baseline+maps | eval 1 = SUCCESS (con integer 5) traces=[]
+C14-overload-member-alone | inc2 | baseline+maps | budget 1 = 948468 cpu, 4038 mem
+C14-overload-member-alone | inc2 | pv11-safe = a30ac66374d87de4ee22701175ab873d6c93516150516d35ee85aa6c24c39d06 39 B
+C14-overload-member-alone | inc2 | pv11-safe | eval 0 = SUCCESS (con integer 8) traces=[]
+C14-overload-member-alone | inc2 | pv11-safe | budget 0 = 948468 cpu, 4038 mem
+C14-overload-member-alone | inc2 | pv11-safe | eval 1 = SUCCESS (con integer 5) traces=[]
+C14-overload-member-alone | inc2 | pv11-safe | budget 1 = 948468 cpu, 4038 mem
+C14-overload-member-alone | inc2 | pv11-safe+maps = a30ac66374d87de4ee22701175ab873d6c93516150516d35ee85aa6c24c39d06 39 B
+C14-overload-member-alone | inc2 | pv11-safe+maps | eval 0 = SUCCESS (con integer 8) traces=[]
+C14-overload-member-alone | inc2 | pv11-safe+maps | budget 0 = 948468 cpu, 4038 mem
+C14-overload-member-alone | inc2 | pv11-safe+maps | eval 1 = SUCCESS (con integer 5) traces=[]
+C14-overload-member-alone | inc2 | pv11-safe+maps | budget 1 = 948468 cpu, 4038 mem
+C14-overload-member-alone | inc2 | pv11-costed = a30ac66374d87de4ee22701175ab873d6c93516150516d35ee85aa6c24c39d06 39 B
+C14-overload-member-alone | inc2 | pv11-costed | eval 0 = SUCCESS (con integer 8) traces=[]
+C14-overload-member-alone | inc2 | pv11-costed | budget 0 = 948468 cpu, 4038 mem
+C14-overload-member-alone | inc2 | pv11-costed | eval 1 = SUCCESS (con integer 5) traces=[]
+C14-overload-member-alone | inc2 | pv11-costed | budget 1 = 948468 cpu, 4038 mem
+C14-overload-member-alone | inc2 | pv11-costed+maps = a30ac66374d87de4ee22701175ab873d6c93516150516d35ee85aa6c24c39d06 39 B
+C14-overload-member-alone | inc2 | pv11-costed+maps | eval 0 = SUCCESS (con integer 8) traces=[]
+C14-overload-member-alone | inc2 | pv11-costed+maps | budget 0 = 948468 cpu, 4038 mem
+C14-overload-member-alone | inc2 | pv11-costed+maps | eval 1 = SUCCESS (con integer 5) traces=[]
+C14-overload-member-alone | inc2 | pv11-costed+maps | budget 1 = 948468 cpu, 4038 mem
+C19-unread-twins-different-spellings | alpha(x) | none = f210daa32d7b5d70793ca465f959e585a3c675fb3bb6b3a54c6452cb8394c573 62 B
+C19-unread-twins-different-spellings | alpha(x) | none | eval 0 = SUCCESS (con integer 5) traces=[]
+C19-unread-twins-different-spellings | alpha(x) | none | budget 0 = 356844 cpu, 2232 mem
+C19-unread-twins-different-spellings | alpha(x) | none | eval 1 = SUCCESS (con integer 2) traces=[]
+C19-unread-twins-different-spellings | alpha(x) | none | budget 1 = 356844 cpu, 2232 mem
+C19-unread-twins-different-spellings | alpha(x) | none+maps = f210daa32d7b5d70793ca465f959e585a3c675fb3bb6b3a54c6452cb8394c573 62 B
+C19-unread-twins-different-spellings | alpha(x) | none+maps | eval 0 = SUCCESS (con integer 5) traces=[]
+C19-unread-twins-different-spellings | alpha(x) | none+maps | budget 0 = 356844 cpu, 2232 mem
+C19-unread-twins-different-spellings | alpha(x) | none+maps | eval 1 = SUCCESS (con integer 2) traces=[]
+C19-unread-twins-different-spellings | alpha(x) | none+maps | budget 1 = 356844 cpu, 2232 mem
+C19-unread-twins-different-spellings | alpha(x) | baseline = e2f3eac0da953ada2445187617063c26695575e10500c8896991bd6e4b15eaae 15 B
+C19-unread-twins-different-spellings | alpha(x) | baseline | eval 0 = SUCCESS (con integer 5) traces=[]
+C19-unread-twins-different-spellings | alpha(x) | baseline | budget 0 = 260844 cpu, 1632 mem
+C19-unread-twins-different-spellings | alpha(x) | baseline | eval 1 = SUCCESS (con integer 2) traces=[]
+C19-unread-twins-different-spellings | alpha(x) | baseline | budget 1 = 260844 cpu, 1632 mem
+C19-unread-twins-different-spellings | alpha(x) | baseline+maps = f210daa32d7b5d70793ca465f959e585a3c675fb3bb6b3a54c6452cb8394c573 62 B
+C19-unread-twins-different-spellings | alpha(x) | baseline+maps | eval 0 = SUCCESS (con integer 5) traces=[]
+C19-unread-twins-different-spellings | alpha(x) | baseline+maps | budget 0 = 356844 cpu, 2232 mem
+C19-unread-twins-different-spellings | alpha(x) | baseline+maps | eval 1 = SUCCESS (con integer 2) traces=[]
+C19-unread-twins-different-spellings | alpha(x) | baseline+maps | budget 1 = 356844 cpu, 2232 mem
+C19-unread-twins-different-spellings | alpha(x) | pv11-safe = e2f3eac0da953ada2445187617063c26695575e10500c8896991bd6e4b15eaae 15 B
+C19-unread-twins-different-spellings | alpha(x) | pv11-safe | eval 0 = SUCCESS (con integer 5) traces=[]
+C19-unread-twins-different-spellings | alpha(x) | pv11-safe | budget 0 = 260844 cpu, 1632 mem
+C19-unread-twins-different-spellings | alpha(x) | pv11-safe | eval 1 = SUCCESS (con integer 2) traces=[]
+C19-unread-twins-different-spellings | alpha(x) | pv11-safe | budget 1 = 260844 cpu, 1632 mem
+C19-unread-twins-different-spellings | alpha(x) | pv11-safe+maps = 471fb25d23c281cb7ccac0da6d83265c0834ef4ef4d58ce0a58517d64a786f8c 45 B
+C19-unread-twins-different-spellings | alpha(x) | pv11-safe+maps | eval 0 = SUCCESS (con integer 5) traces=[]
+C19-unread-twins-different-spellings | alpha(x) | pv11-safe+maps | budget 0 = 356844 cpu, 2232 mem
+C19-unread-twins-different-spellings | alpha(x) | pv11-safe+maps | eval 1 = SUCCESS (con integer 2) traces=[]
+C19-unread-twins-different-spellings | alpha(x) | pv11-safe+maps | budget 1 = 356844 cpu, 2232 mem
+C19-unread-twins-different-spellings | alpha(x) | pv11-costed = e2f3eac0da953ada2445187617063c26695575e10500c8896991bd6e4b15eaae 15 B
+C19-unread-twins-different-spellings | alpha(x) | pv11-costed | eval 0 = SUCCESS (con integer 5) traces=[]
+C19-unread-twins-different-spellings | alpha(x) | pv11-costed | budget 0 = 260844 cpu, 1632 mem
+C19-unread-twins-different-spellings | alpha(x) | pv11-costed | eval 1 = SUCCESS (con integer 2) traces=[]
+C19-unread-twins-different-spellings | alpha(x) | pv11-costed | budget 1 = 260844 cpu, 1632 mem
+C19-unread-twins-different-spellings | alpha(x) | pv11-costed+maps = 471fb25d23c281cb7ccac0da6d83265c0834ef4ef4d58ce0a58517d64a786f8c 45 B
+C19-unread-twins-different-spellings | alpha(x) | pv11-costed+maps | eval 0 = SUCCESS (con integer 5) traces=[]
+C19-unread-twins-different-spellings | alpha(x) | pv11-costed+maps | budget 0 = 356844 cpu, 2232 mem
+C19-unread-twins-different-spellings | alpha(x) | pv11-costed+maps | eval 1 = SUCCESS (con integer 2) traces=[]
+C19-unread-twins-different-spellings | alpha(x) | pv11-costed+maps | budget 1 = 356844 cpu, 2232 mem
+C19-unread-twins-different-spellings | zeta(x) | none = f210daa32d7b5d70793ca465f959e585a3c675fb3bb6b3a54c6452cb8394c573 62 B
+C19-unread-twins-different-spellings | zeta(x) | none | eval 0 = SUCCESS (con integer 5) traces=[]
+C19-unread-twins-different-spellings | zeta(x) | none | budget 0 = 356844 cpu, 2232 mem
+C19-unread-twins-different-spellings | zeta(x) | none | eval 1 = SUCCESS (con integer 2) traces=[]
+C19-unread-twins-different-spellings | zeta(x) | none | budget 1 = 356844 cpu, 2232 mem
+C19-unread-twins-different-spellings | zeta(x) | none+maps = f210daa32d7b5d70793ca465f959e585a3c675fb3bb6b3a54c6452cb8394c573 62 B
+C19-unread-twins-different-spellings | zeta(x) | none+maps | eval 0 = SUCCESS (con integer 5) traces=[]
+C19-unread-twins-different-spellings | zeta(x) | none+maps | budget 0 = 356844 cpu, 2232 mem
+C19-unread-twins-different-spellings | zeta(x) | none+maps | eval 1 = SUCCESS (con integer 2) traces=[]
+C19-unread-twins-different-spellings | zeta(x) | none+maps | budget 1 = 356844 cpu, 2232 mem
+C19-unread-twins-different-spellings | zeta(x) | baseline = e2f3eac0da953ada2445187617063c26695575e10500c8896991bd6e4b15eaae 15 B
+C19-unread-twins-different-spellings | zeta(x) | baseline | eval 0 = SUCCESS (con integer 5) traces=[]
+C19-unread-twins-different-spellings | zeta(x) | baseline | budget 0 = 260844 cpu, 1632 mem
+C19-unread-twins-different-spellings | zeta(x) | baseline | eval 1 = SUCCESS (con integer 2) traces=[]
+C19-unread-twins-different-spellings | zeta(x) | baseline | budget 1 = 260844 cpu, 1632 mem
+C19-unread-twins-different-spellings | zeta(x) | baseline+maps = f210daa32d7b5d70793ca465f959e585a3c675fb3bb6b3a54c6452cb8394c573 62 B
+C19-unread-twins-different-spellings | zeta(x) | baseline+maps | eval 0 = SUCCESS (con integer 5) traces=[]
+C19-unread-twins-different-spellings | zeta(x) | baseline+maps | budget 0 = 356844 cpu, 2232 mem
+C19-unread-twins-different-spellings | zeta(x) | baseline+maps | eval 1 = SUCCESS (con integer 2) traces=[]
+C19-unread-twins-different-spellings | zeta(x) | baseline+maps | budget 1 = 356844 cpu, 2232 mem
+C19-unread-twins-different-spellings | zeta(x) | pv11-safe = e2f3eac0da953ada2445187617063c26695575e10500c8896991bd6e4b15eaae 15 B
+C19-unread-twins-different-spellings | zeta(x) | pv11-safe | eval 0 = SUCCESS (con integer 5) traces=[]
+C19-unread-twins-different-spellings | zeta(x) | pv11-safe | budget 0 = 260844 cpu, 1632 mem
+C19-unread-twins-different-spellings | zeta(x) | pv11-safe | eval 1 = SUCCESS (con integer 2) traces=[]
+C19-unread-twins-different-spellings | zeta(x) | pv11-safe | budget 1 = 260844 cpu, 1632 mem
+C19-unread-twins-different-spellings | zeta(x) | pv11-safe+maps = 18ed8febad9dec0a3ea9a5e2dcb8a86fa7841b373558996837ebf7fc69c70ead 45 B
+C19-unread-twins-different-spellings | zeta(x) | pv11-safe+maps | eval 0 = SUCCESS (con integer 5) traces=[]
+C19-unread-twins-different-spellings | zeta(x) | pv11-safe+maps | budget 0 = 356844 cpu, 2232 mem
+C19-unread-twins-different-spellings | zeta(x) | pv11-safe+maps | eval 1 = SUCCESS (con integer 2) traces=[]
+C19-unread-twins-different-spellings | zeta(x) | pv11-safe+maps | budget 1 = 356844 cpu, 2232 mem
+C19-unread-twins-different-spellings | zeta(x) | pv11-costed = e2f3eac0da953ada2445187617063c26695575e10500c8896991bd6e4b15eaae 15 B
+C19-unread-twins-different-spellings | zeta(x) | pv11-costed | eval 0 = SUCCESS (con integer 5) traces=[]
+C19-unread-twins-different-spellings | zeta(x) | pv11-costed | budget 0 = 260844 cpu, 1632 mem
+C19-unread-twins-different-spellings | zeta(x) | pv11-costed | eval 1 = SUCCESS (con integer 2) traces=[]
+C19-unread-twins-different-spellings | zeta(x) | pv11-costed | budget 1 = 260844 cpu, 1632 mem
+C19-unread-twins-different-spellings | zeta(x) | pv11-costed+maps = 18ed8febad9dec0a3ea9a5e2dcb8a86fa7841b373558996837ebf7fc69c70ead 45 B
+C19-unread-twins-different-spellings | zeta(x) | pv11-costed+maps | eval 0 = SUCCESS (con integer 5) traces=[]
+C19-unread-twins-different-spellings | zeta(x) | pv11-costed+maps | budget 0 = 356844 cpu, 2232 mem
+C19-unread-twins-different-spellings | zeta(x) | pv11-costed+maps | eval 1 = SUCCESS (con integer 2) traces=[]
+C19-unread-twins-different-spellings | zeta(x) | pv11-costed+maps | budget 1 = 356844 cpu, 2232 mem
+C19c-local-rename-collides | other's local y | none = 3c8648710267d23304ec82f5890a837bbce5ffed2d530bf77f2777d3f4471512 78 B
+C19c-local-rename-collides | other's local y | none | eval 0 = SUCCESS (con integer 26) traces=[]
+C19c-local-rename-collides | other's local y | none | budget 0 = 2399460 cpu, 8774 mem
+C19c-local-rename-collides | other's local y | none | eval 1 = SUCCESS (con integer 20) traces=[]
+C19c-local-rename-collides | other's local y | none | budget 1 = 2399460 cpu, 8774 mem
+C19c-local-rename-collides | other's local y | none+maps = 3c8648710267d23304ec82f5890a837bbce5ffed2d530bf77f2777d3f4471512 78 B
+C19c-local-rename-collides | other's local y | none+maps | eval 0 = SUCCESS (con integer 26) traces=[]
+C19c-local-rename-collides | other's local y | none+maps | budget 0 = 2399460 cpu, 8774 mem
+C19c-local-rename-collides | other's local y | none+maps | eval 1 = SUCCESS (con integer 20) traces=[]
+C19c-local-rename-collides | other's local y | none+maps | budget 1 = 2399460 cpu, 8774 mem
+C19c-local-rename-collides | other's local y | baseline = 015d9fb989a8412589b6fc409e92a503589de489a3727405bc857fbb5735aa74 73 B
+C19c-local-rename-collides | other's local y | baseline | eval 0 = SUCCESS (con integer 26) traces=[]
+C19c-local-rename-collides | other's local y | baseline | budget 0 = 2303460 cpu, 8174 mem
+C19c-local-rename-collides | other's local y | baseline | eval 1 = SUCCESS (con integer 20) traces=[]
+C19c-local-rename-collides | other's local y | baseline | budget 1 = 2303460 cpu, 8174 mem
+C19c-local-rename-collides | other's local y | baseline+maps = 3c8648710267d23304ec82f5890a837bbce5ffed2d530bf77f2777d3f4471512 78 B
+C19c-local-rename-collides | other's local y | baseline+maps | eval 0 = SUCCESS (con integer 26) traces=[]
+C19c-local-rename-collides | other's local y | baseline+maps | budget 0 = 2399460 cpu, 8774 mem
+C19c-local-rename-collides | other's local y | baseline+maps | eval 1 = SUCCESS (con integer 20) traces=[]
+C19c-local-rename-collides | other's local y | baseline+maps | budget 1 = 2399460 cpu, 8774 mem
+C19c-local-rename-collides | other's local y | pv11-safe = 8c1ce72ec1ae1c0c9b476bbbd94535af74bb166475defd7f5f6615459f2380a6 33 B
+C19c-local-rename-collides | other's local y | pv11-safe | eval 0 = SUCCESS (con integer 26) traces=[]
+C19c-local-rename-collides | other's local y | pv11-safe | budget 0 = 852468 cpu, 3438 mem
+C19c-local-rename-collides | other's local y | pv11-safe | eval 1 = SUCCESS (con integer 20) traces=[]
+C19c-local-rename-collides | other's local y | pv11-safe | budget 1 = 852468 cpu, 3438 mem
+C19c-local-rename-collides | other's local y | pv11-safe+maps = 55b9de3737cbbcb5687c6d2d57b88e9febf9d078f0b0f95f79c2e07d598f9244 45 B
+C19c-local-rename-collides | other's local y | pv11-safe+maps | eval 0 = SUCCESS (con integer 26) traces=[]
+C19c-local-rename-collides | other's local y | pv11-safe+maps | budget 0 = 1044468 cpu, 4638 mem
+C19c-local-rename-collides | other's local y | pv11-safe+maps | eval 1 = SUCCESS (con integer 20) traces=[]
+C19c-local-rename-collides | other's local y | pv11-safe+maps | budget 1 = 1044468 cpu, 4638 mem
+C19c-local-rename-collides | other's local y | pv11-costed = 8c1ce72ec1ae1c0c9b476bbbd94535af74bb166475defd7f5f6615459f2380a6 33 B
+C19c-local-rename-collides | other's local y | pv11-costed | eval 0 = SUCCESS (con integer 26) traces=[]
+C19c-local-rename-collides | other's local y | pv11-costed | budget 0 = 852468 cpu, 3438 mem
+C19c-local-rename-collides | other's local y | pv11-costed | eval 1 = SUCCESS (con integer 20) traces=[]
+C19c-local-rename-collides | other's local y | pv11-costed | budget 1 = 852468 cpu, 3438 mem
+C19c-local-rename-collides | other's local y | pv11-costed+maps = 55b9de3737cbbcb5687c6d2d57b88e9febf9d078f0b0f95f79c2e07d598f9244 45 B
+C19c-local-rename-collides | other's local y | pv11-costed+maps | eval 0 = SUCCESS (con integer 26) traces=[]
+C19c-local-rename-collides | other's local y | pv11-costed+maps | budget 0 = 1044468 cpu, 4638 mem
+C19c-local-rename-collides | other's local y | pv11-costed+maps | eval 1 = SUCCESS (con integer 20) traces=[]
+C19c-local-rename-collides | other's local y | pv11-costed+maps | budget 1 = 1044468 cpu, 4638 mem
+C19c-local-rename-collides | other's local x | none = 3c8648710267d23304ec82f5890a837bbce5ffed2d530bf77f2777d3f4471512 78 B
+C19c-local-rename-collides | other's local x | none | eval 0 = SUCCESS (con integer 26) traces=[]
+C19c-local-rename-collides | other's local x | none | budget 0 = 2399460 cpu, 8774 mem
+C19c-local-rename-collides | other's local x | none | eval 1 = SUCCESS (con integer 20) traces=[]
+C19c-local-rename-collides | other's local x | none | budget 1 = 2399460 cpu, 8774 mem
+C19c-local-rename-collides | other's local x | none+maps = 3c8648710267d23304ec82f5890a837bbce5ffed2d530bf77f2777d3f4471512 78 B
+C19c-local-rename-collides | other's local x | none+maps | eval 0 = SUCCESS (con integer 26) traces=[]
+C19c-local-rename-collides | other's local x | none+maps | budget 0 = 2399460 cpu, 8774 mem
+C19c-local-rename-collides | other's local x | none+maps | eval 1 = SUCCESS (con integer 20) traces=[]
+C19c-local-rename-collides | other's local x | none+maps | budget 1 = 2399460 cpu, 8774 mem
+C19c-local-rename-collides | other's local x | baseline = 015d9fb989a8412589b6fc409e92a503589de489a3727405bc857fbb5735aa74 73 B
+C19c-local-rename-collides | other's local x | baseline | eval 0 = SUCCESS (con integer 26) traces=[]
+C19c-local-rename-collides | other's local x | baseline | budget 0 = 2303460 cpu, 8174 mem
+C19c-local-rename-collides | other's local x | baseline | eval 1 = SUCCESS (con integer 20) traces=[]
+C19c-local-rename-collides | other's local x | baseline | budget 1 = 2303460 cpu, 8174 mem
+C19c-local-rename-collides | other's local x | baseline+maps = 3c8648710267d23304ec82f5890a837bbce5ffed2d530bf77f2777d3f4471512 78 B
+C19c-local-rename-collides | other's local x | baseline+maps | eval 0 = SUCCESS (con integer 26) traces=[]
+C19c-local-rename-collides | other's local x | baseline+maps | budget 0 = 2399460 cpu, 8774 mem
+C19c-local-rename-collides | other's local x | baseline+maps | eval 1 = SUCCESS (con integer 20) traces=[]
+C19c-local-rename-collides | other's local x | baseline+maps | budget 1 = 2399460 cpu, 8774 mem
+C19c-local-rename-collides | other's local x | pv11-safe = 015d9fb989a8412589b6fc409e92a503589de489a3727405bc857fbb5735aa74 73 B
+C19c-local-rename-collides | other's local x | pv11-safe | eval 0 = SUCCESS (con integer 26) traces=[]
+C19c-local-rename-collides | other's local x | pv11-safe | budget 0 = 2303460 cpu, 8174 mem
+C19c-local-rename-collides | other's local x | pv11-safe | eval 1 = SUCCESS (con integer 20) traces=[]
+C19c-local-rename-collides | other's local x | pv11-safe | budget 1 = 2303460 cpu, 8174 mem
+C19c-local-rename-collides | other's local x | pv11-safe+maps = 3c8648710267d23304ec82f5890a837bbce5ffed2d530bf77f2777d3f4471512 78 B
+C19c-local-rename-collides | other's local x | pv11-safe+maps | eval 0 = SUCCESS (con integer 26) traces=[]
+C19c-local-rename-collides | other's local x | pv11-safe+maps | budget 0 = 2399460 cpu, 8774 mem
+C19c-local-rename-collides | other's local x | pv11-safe+maps | eval 1 = SUCCESS (con integer 20) traces=[]
+C19c-local-rename-collides | other's local x | pv11-safe+maps | budget 1 = 2399460 cpu, 8774 mem
+C19c-local-rename-collides | other's local x | pv11-costed = 015d9fb989a8412589b6fc409e92a503589de489a3727405bc857fbb5735aa74 73 B
+C19c-local-rename-collides | other's local x | pv11-costed | eval 0 = SUCCESS (con integer 26) traces=[]
+C19c-local-rename-collides | other's local x | pv11-costed | budget 0 = 2303460 cpu, 8174 mem
+C19c-local-rename-collides | other's local x | pv11-costed | eval 1 = SUCCESS (con integer 20) traces=[]
+C19c-local-rename-collides | other's local x | pv11-costed | budget 1 = 2303460 cpu, 8174 mem
+C19c-local-rename-collides | other's local x | pv11-costed+maps = 3c8648710267d23304ec82f5890a837bbce5ffed2d530bf77f2777d3f4471512 78 B
+C19c-local-rename-collides | other's local x | pv11-costed+maps | eval 0 = SUCCESS (con integer 26) traces=[]
+C19c-local-rename-collides | other's local x | pv11-costed+maps | budget 0 = 2399460 cpu, 8774 mem
+C19c-local-rename-collides | other's local x | pv11-costed+maps | eval 1 = SUCCESS (con integer 20) traces=[]
+C19c-local-rename-collides | other's local x | pv11-costed+maps | budget 1 = 2399460 cpu, 8774 mem
+C20-pool-order | [B, A] | none = c1eb2ebab9e7600d8bd9e65a48f2da9a7c24a268a01d1ac5e865ee529991c43a 45 B
+C20-pool-order | [B, A] | none | eval 0 = SUCCESS (con integer 12) traces=[]
+C20-pool-order | [B, A] | none | budget 0 = 1284468 cpu, 6138 mem
+C20-pool-order | [B, A] | none | eval 1 = SUCCESS (con integer 6) traces=[]
+C20-pool-order | [B, A] | none | budget 1 = 1284468 cpu, 6138 mem
+C20-pool-order | [B, A] | none+maps = c1eb2ebab9e7600d8bd9e65a48f2da9a7c24a268a01d1ac5e865ee529991c43a 45 B
+C20-pool-order | [B, A] | none+maps | eval 0 = SUCCESS (con integer 12) traces=[]
+C20-pool-order | [B, A] | none+maps | budget 0 = 1284468 cpu, 6138 mem
+C20-pool-order | [B, A] | none+maps | eval 1 = SUCCESS (con integer 6) traces=[]
+C20-pool-order | [B, A] | none+maps | budget 1 = 1284468 cpu, 6138 mem
+C20-pool-order | [B, A] | baseline = c1eb2ebab9e7600d8bd9e65a48f2da9a7c24a268a01d1ac5e865ee529991c43a 45 B
+C20-pool-order | [B, A] | baseline | eval 0 = SUCCESS (con integer 12) traces=[]
+C20-pool-order | [B, A] | baseline | budget 0 = 1284468 cpu, 6138 mem
+C20-pool-order | [B, A] | baseline | eval 1 = SUCCESS (con integer 6) traces=[]
+C20-pool-order | [B, A] | baseline | budget 1 = 1284468 cpu, 6138 mem
+C20-pool-order | [B, A] | baseline+maps = c1eb2ebab9e7600d8bd9e65a48f2da9a7c24a268a01d1ac5e865ee529991c43a 45 B
+C20-pool-order | [B, A] | baseline+maps | eval 0 = SUCCESS (con integer 12) traces=[]
+C20-pool-order | [B, A] | baseline+maps | budget 0 = 1284468 cpu, 6138 mem
+C20-pool-order | [B, A] | baseline+maps | eval 1 = SUCCESS (con integer 6) traces=[]
+C20-pool-order | [B, A] | baseline+maps | budget 1 = 1284468 cpu, 6138 mem
+C20-pool-order | [B, A] | pv11-safe = c1eb2ebab9e7600d8bd9e65a48f2da9a7c24a268a01d1ac5e865ee529991c43a 45 B
+C20-pool-order | [B, A] | pv11-safe | eval 0 = SUCCESS (con integer 12) traces=[]
+C20-pool-order | [B, A] | pv11-safe | budget 0 = 1284468 cpu, 6138 mem
+C20-pool-order | [B, A] | pv11-safe | eval 1 = SUCCESS (con integer 6) traces=[]
+C20-pool-order | [B, A] | pv11-safe | budget 1 = 1284468 cpu, 6138 mem
+C20-pool-order | [B, A] | pv11-safe+maps = c1eb2ebab9e7600d8bd9e65a48f2da9a7c24a268a01d1ac5e865ee529991c43a 45 B
+C20-pool-order | [B, A] | pv11-safe+maps | eval 0 = SUCCESS (con integer 12) traces=[]
+C20-pool-order | [B, A] | pv11-safe+maps | budget 0 = 1284468 cpu, 6138 mem
+C20-pool-order | [B, A] | pv11-safe+maps | eval 1 = SUCCESS (con integer 6) traces=[]
+C20-pool-order | [B, A] | pv11-safe+maps | budget 1 = 1284468 cpu, 6138 mem
+C20-pool-order | [B, A] | pv11-costed = c1eb2ebab9e7600d8bd9e65a48f2da9a7c24a268a01d1ac5e865ee529991c43a 45 B
+C20-pool-order | [B, A] | pv11-costed | eval 0 = SUCCESS (con integer 12) traces=[]
+C20-pool-order | [B, A] | pv11-costed | budget 0 = 1284468 cpu, 6138 mem
+C20-pool-order | [B, A] | pv11-costed | eval 1 = SUCCESS (con integer 6) traces=[]
+C20-pool-order | [B, A] | pv11-costed | budget 1 = 1284468 cpu, 6138 mem
+C20-pool-order | [B, A] | pv11-costed+maps = c1eb2ebab9e7600d8bd9e65a48f2da9a7c24a268a01d1ac5e865ee529991c43a 45 B
+C20-pool-order | [B, A] | pv11-costed+maps | eval 0 = SUCCESS (con integer 12) traces=[]
+C20-pool-order | [B, A] | pv11-costed+maps | budget 0 = 1284468 cpu, 6138 mem
+C20-pool-order | [B, A] | pv11-costed+maps | eval 1 = SUCCESS (con integer 6) traces=[]
+C20-pool-order | [B, A] | pv11-costed+maps | budget 1 = 1284468 cpu, 6138 mem
+C20-pool-order | [A, B] | none = REJECTED CompilerException: Undefined variable: B
+C20-pool-order | [A, B] | none+maps = REJECTED CompilerException: Undefined variable: B
+C20-pool-order | [A, B] | baseline = REJECTED CompilerException: Undefined variable: B
+C20-pool-order | [A, B] | baseline+maps = REJECTED CompilerException: Undefined variable: B
+C20-pool-order | [A, B] | pv11-safe = REJECTED CompilerException: Undefined variable: B
+C20-pool-order | [A, B] | pv11-safe+maps = REJECTED CompilerException: Undefined variable: B
+C20-pool-order | [A, B] | pv11-costed = REJECTED CompilerException: Undefined variable: B
+C20-pool-order | [A, B] | pv11-costed+maps = REJECTED CompilerException: Undefined variable: B
+C22-root-as-own-library | root | none = 8ac3cba135828774f70f8c875c405e1d19a9cb318db83639156e4fd8ff136a08 73 B
+C22-root-as-own-library | root | none | eval 0 = SUCCESS (con integer 60) traces=[]
+C22-root-as-own-library | root | none | budget 0 = 1027601 cpu, 4337 mem
+C22-root-as-own-library | root | none | eval 1 = SUCCESS (con integer 54) traces=[]
+C22-root-as-own-library | root | none | budget 1 = 1027601 cpu, 4337 mem
+C22-root-as-own-library | root | none+maps = 8ac3cba135828774f70f8c875c405e1d19a9cb318db83639156e4fd8ff136a08 73 B
+C22-root-as-own-library | root | none+maps | eval 0 = SUCCESS (con integer 60) traces=[]
+C22-root-as-own-library | root | none+maps | budget 0 = 1027601 cpu, 4337 mem
+C22-root-as-own-library | root | none+maps | eval 1 = SUCCESS (con integer 54) traces=[]
+C22-root-as-own-library | root | none+maps | budget 1 = 1027601 cpu, 4337 mem
+C22-root-as-own-library | root | baseline = ac3cd9fd71b96b0ac657285425aec6841ca2fe0a3d16eddf2f1cc3b52bb30dcc 37 B
+C22-root-as-own-library | root | baseline | eval 0 = SUCCESS (con integer 60) traces=[]
+C22-root-as-own-library | root | baseline | budget 0 = 931601 cpu, 3737 mem
+C22-root-as-own-library | root | baseline | eval 1 = SUCCESS (con integer 54) traces=[]
+C22-root-as-own-library | root | baseline | budget 1 = 931601 cpu, 3737 mem
+C22-root-as-own-library | root | baseline+maps = 8ac3cba135828774f70f8c875c405e1d19a9cb318db83639156e4fd8ff136a08 73 B
+C22-root-as-own-library | root | baseline+maps | eval 0 = SUCCESS (con integer 60) traces=[]
+C22-root-as-own-library | root | baseline+maps | budget 0 = 1027601 cpu, 4337 mem
+C22-root-as-own-library | root | baseline+maps | eval 1 = SUCCESS (con integer 54) traces=[]
+C22-root-as-own-library | root | baseline+maps | budget 1 = 1027601 cpu, 4337 mem
+C22-root-as-own-library | root | pv11-safe = ac3cd9fd71b96b0ac657285425aec6841ca2fe0a3d16eddf2f1cc3b52bb30dcc 37 B
+C22-root-as-own-library | root | pv11-safe | eval 0 = SUCCESS (con integer 60) traces=[]
+C22-root-as-own-library | root | pv11-safe | budget 0 = 931601 cpu, 3737 mem
+C22-root-as-own-library | root | pv11-safe | eval 1 = SUCCESS (con integer 54) traces=[]
+C22-root-as-own-library | root | pv11-safe | budget 1 = 931601 cpu, 3737 mem
+C22-root-as-own-library | root | pv11-safe+maps = 8ac3cba135828774f70f8c875c405e1d19a9cb318db83639156e4fd8ff136a08 73 B
+C22-root-as-own-library | root | pv11-safe+maps | eval 0 = SUCCESS (con integer 60) traces=[]
+C22-root-as-own-library | root | pv11-safe+maps | budget 0 = 1027601 cpu, 4337 mem
+C22-root-as-own-library | root | pv11-safe+maps | eval 1 = SUCCESS (con integer 54) traces=[]
+C22-root-as-own-library | root | pv11-safe+maps | budget 1 = 1027601 cpu, 4337 mem
+C22-root-as-own-library | root | pv11-costed = ac3cd9fd71b96b0ac657285425aec6841ca2fe0a3d16eddf2f1cc3b52bb30dcc 37 B
+C22-root-as-own-library | root | pv11-costed | eval 0 = SUCCESS (con integer 60) traces=[]
+C22-root-as-own-library | root | pv11-costed | budget 0 = 931601 cpu, 3737 mem
+C22-root-as-own-library | root | pv11-costed | eval 1 = SUCCESS (con integer 54) traces=[]
+C22-root-as-own-library | root | pv11-costed | budget 1 = 931601 cpu, 3737 mem
+C22-root-as-own-library | root | pv11-costed+maps = 8ac3cba135828774f70f8c875c405e1d19a9cb318db83639156e4fd8ff136a08 73 B
+C22-root-as-own-library | root | pv11-costed+maps | eval 0 = SUCCESS (con integer 60) traces=[]
+C22-root-as-own-library | root | pv11-costed+maps | budget 0 = 1027601 cpu, 4337 mem
+C22-root-as-own-library | root | pv11-costed+maps | eval 1 = SUCCESS (con integer 54) traces=[]
+C22-root-as-own-library | root | pv11-costed+maps | budget 1 = 1027601 cpu, 4337 mem
+C26-list-index-promotion | alpha | none = e9008c537844309a7f4ca3f82cc2633d9cb90c6c0238706623785c8dd98cd1c2 509 B
+C26-list-index-promotion | alpha | none | eval 0 = FAILURE HeadList: expected list, got VCon(Data[]) traces=[]
+C26-list-index-promotion | alpha | none | budget 0 = 1576376 cpu, 8566 mem
+C26-list-index-promotion | alpha | none+maps = e9008c537844309a7f4ca3f82cc2633d9cb90c6c0238706623785c8dd98cd1c2 509 B
+C26-list-index-promotion | alpha | none+maps | eval 0 = FAILURE HeadList: expected list, got VCon(Data[]) traces=[]
+C26-list-index-promotion | alpha | none+maps | budget 0 = 1576376 cpu, 8566 mem
+C26-list-index-promotion | alpha | baseline = 6dd73b47be66d9d89f861f18a71f2dcf781dc216b146d30e17ca87504cbae6bb 143 B
+C26-list-index-promotion | alpha | baseline | eval 0 = FAILURE HeadList: expected list, got VCon(Data[]) traces=[]
+C26-list-index-promotion | alpha | baseline | budget 0 = 1384376 cpu, 7366 mem
+C26-list-index-promotion | alpha | baseline+maps = e9008c537844309a7f4ca3f82cc2633d9cb90c6c0238706623785c8dd98cd1c2 509 B
+C26-list-index-promotion | alpha | baseline+maps | eval 0 = FAILURE HeadList: expected list, got VCon(Data[]) traces=[]
+C26-list-index-promotion | alpha | baseline+maps | budget 0 = 1576376 cpu, 8566 mem
+C26-list-index-promotion | alpha | pv11-safe = 6609b8fe9cccaba297ea388d51ef4ad641e95df6ecf3bb135cc975a9256f7159 121 B
+C26-list-index-promotion | alpha | pv11-safe | eval 0 = FAILURE HeadList: expected list, got VCon(Data[]) traces=[]
+C26-list-index-promotion | alpha | pv11-safe | budget 0 = 1244327 cpu, 6965 mem
+C26-list-index-promotion | alpha | pv11-safe+maps = 77eb73945ba62b1220f9c45cd4eaa0eb9fa257ae106ea9fbfa738ad4e1206844 477 B
+C26-list-index-promotion | alpha | pv11-safe+maps | eval 0 = FAILURE HeadList: expected list, got VCon(Data[]) traces=[]
+C26-list-index-promotion | alpha | pv11-safe+maps | budget 0 = 1388327 cpu, 7865 mem
+C26-list-index-promotion | alpha | pv11-costed = 6609b8fe9cccaba297ea388d51ef4ad641e95df6ecf3bb135cc975a9256f7159 121 B
+C26-list-index-promotion | alpha | pv11-costed | eval 0 = FAILURE HeadList: expected list, got VCon(Data[]) traces=[]
+C26-list-index-promotion | alpha | pv11-costed | budget 0 = 1244327 cpu, 6965 mem
+C26-list-index-promotion | alpha | pv11-costed+maps = d471844a4586b602dbe85c63677d523a5b64565f1d7db5a1750fef9fdbeb03cf 311 B
+C26-list-index-promotion | alpha | pv11-costed+maps | eval 0 = FAILURE HeadList: expected list, got VCon(Data[]) traces=[]
+C26-list-index-promotion | alpha | pv11-costed+maps | budget 0 = 1388327 cpu, 7865 mem
+C26-list-index-promotion | zeta | none = e9008c537844309a7f4ca3f82cc2633d9cb90c6c0238706623785c8dd98cd1c2 509 B
+C26-list-index-promotion | zeta | none | eval 0 = FAILURE HeadList: expected list, got VCon(Data[]) traces=[]
+C26-list-index-promotion | zeta | none | budget 0 = 1576376 cpu, 8566 mem
+C26-list-index-promotion | zeta | none+maps = e9008c537844309a7f4ca3f82cc2633d9cb90c6c0238706623785c8dd98cd1c2 509 B
+C26-list-index-promotion | zeta | none+maps | eval 0 = FAILURE HeadList: expected list, got VCon(Data[]) traces=[]
+C26-list-index-promotion | zeta | none+maps | budget 0 = 1576376 cpu, 8566 mem
+C26-list-index-promotion | zeta | baseline = 6dd73b47be66d9d89f861f18a71f2dcf781dc216b146d30e17ca87504cbae6bb 143 B
+C26-list-index-promotion | zeta | baseline | eval 0 = FAILURE HeadList: expected list, got VCon(Data[]) traces=[]
+C26-list-index-promotion | zeta | baseline | budget 0 = 1384376 cpu, 7366 mem
+C26-list-index-promotion | zeta | baseline+maps = e9008c537844309a7f4ca3f82cc2633d9cb90c6c0238706623785c8dd98cd1c2 509 B
+C26-list-index-promotion | zeta | baseline+maps | eval 0 = FAILURE HeadList: expected list, got VCon(Data[]) traces=[]
+C26-list-index-promotion | zeta | baseline+maps | budget 0 = 1576376 cpu, 8566 mem
+C26-list-index-promotion | zeta | pv11-safe = 6609b8fe9cccaba297ea388d51ef4ad641e95df6ecf3bb135cc975a9256f7159 121 B
+C26-list-index-promotion | zeta | pv11-safe | eval 0 = FAILURE HeadList: expected list, got VCon(Data[]) traces=[]
+C26-list-index-promotion | zeta | pv11-safe | budget 0 = 1244327 cpu, 6965 mem
+C26-list-index-promotion | zeta | pv11-safe+maps = 77eb73945ba62b1220f9c45cd4eaa0eb9fa257ae106ea9fbfa738ad4e1206844 477 B
+C26-list-index-promotion | zeta | pv11-safe+maps | eval 0 = FAILURE HeadList: expected list, got VCon(Data[]) traces=[]
+C26-list-index-promotion | zeta | pv11-safe+maps | budget 0 = 1388327 cpu, 7865 mem
+C26-list-index-promotion | zeta | pv11-costed = 6609b8fe9cccaba297ea388d51ef4ad641e95df6ecf3bb135cc975a9256f7159 121 B
+C26-list-index-promotion | zeta | pv11-costed | eval 0 = FAILURE HeadList: expected list, got VCon(Data[]) traces=[]
+C26-list-index-promotion | zeta | pv11-costed | budget 0 = 1244327 cpu, 6965 mem
+C26-list-index-promotion | zeta | pv11-costed+maps = b378ec829f21afb4e8155d0d8401435fc848a5e8e4c3a0be717d3b245aa3ff96 311 B
+C26-list-index-promotion | zeta | pv11-costed+maps | eval 0 = FAILURE HeadList: expected list, got VCon(Data[]) traces=[]
+C26-list-index-promotion | zeta | pv11-costed+maps | budget 0 = 1388327 cpu, 7865 mem
+C27-intrinsic-name | magnitude | none = 3abbf798952c0b1dbfca1adf933ab3881a05b55064ac0baab932295a2b03a2f9 37 B
+C27-intrinsic-name | magnitude | none | eval 0 = SUCCESS (con integer 5) traces=[]
+C27-intrinsic-name | magnitude | none | budget 0 = 686183 cpu, 3534 mem
+C27-intrinsic-name | magnitude | none | eval 1 = SUCCESS (con integer 2) traces=[]
+C27-intrinsic-name | magnitude | none | budget 1 = 686183 cpu, 3534 mem
+C27-intrinsic-name | magnitude | none+maps = 3abbf798952c0b1dbfca1adf933ab3881a05b55064ac0baab932295a2b03a2f9 37 B
+C27-intrinsic-name | magnitude | none+maps | eval 0 = SUCCESS (con integer 5) traces=[]
+C27-intrinsic-name | magnitude | none+maps | budget 0 = 686183 cpu, 3534 mem
+C27-intrinsic-name | magnitude | none+maps | eval 1 = SUCCESS (con integer 2) traces=[]
+C27-intrinsic-name | magnitude | none+maps | budget 1 = 686183 cpu, 3534 mem
+C27-intrinsic-name | magnitude | baseline = 3abbf798952c0b1dbfca1adf933ab3881a05b55064ac0baab932295a2b03a2f9 37 B
+C27-intrinsic-name | magnitude | baseline | eval 0 = SUCCESS (con integer 5) traces=[]
+C27-intrinsic-name | magnitude | baseline | budget 0 = 686183 cpu, 3534 mem
+C27-intrinsic-name | magnitude | baseline | eval 1 = SUCCESS (con integer 2) traces=[]
+C27-intrinsic-name | magnitude | baseline | budget 1 = 686183 cpu, 3534 mem
+C27-intrinsic-name | magnitude | baseline+maps = 3abbf798952c0b1dbfca1adf933ab3881a05b55064ac0baab932295a2b03a2f9 37 B
+C27-intrinsic-name | magnitude | baseline+maps | eval 0 = SUCCESS (con integer 5) traces=[]
+C27-intrinsic-name | magnitude | baseline+maps | budget 0 = 686183 cpu, 3534 mem
+C27-intrinsic-name | magnitude | baseline+maps | eval 1 = SUCCESS (con integer 2) traces=[]
+C27-intrinsic-name | magnitude | baseline+maps | budget 1 = 686183 cpu, 3534 mem
+C27-intrinsic-name | magnitude | pv11-safe = 24e075a45040e6528d34154c242e6c1afa37d851ce1c45da6cb334cde58f47ee 33 B
+C27-intrinsic-name | magnitude | pv11-safe | eval 0 = SUCCESS (con integer 5) traces=[]
+C27-intrinsic-name | magnitude | pv11-safe | budget 0 = 498134 cpu, 2833 mem
+C27-intrinsic-name | magnitude | pv11-safe | eval 1 = SUCCESS (con integer 2) traces=[]
+C27-intrinsic-name | magnitude | pv11-safe | budget 1 = 498134 cpu, 2833 mem
+C27-intrinsic-name | magnitude | pv11-safe+maps = 24e075a45040e6528d34154c242e6c1afa37d851ce1c45da6cb334cde58f47ee 33 B
+C27-intrinsic-name | magnitude | pv11-safe+maps | eval 0 = SUCCESS (con integer 5) traces=[]
+C27-intrinsic-name | magnitude | pv11-safe+maps | budget 0 = 498134 cpu, 2833 mem
+C27-intrinsic-name | magnitude | pv11-safe+maps | eval 1 = SUCCESS (con integer 2) traces=[]
+C27-intrinsic-name | magnitude | pv11-safe+maps | budget 1 = 498134 cpu, 2833 mem
+C27-intrinsic-name | magnitude | pv11-costed = 24e075a45040e6528d34154c242e6c1afa37d851ce1c45da6cb334cde58f47ee 33 B
+C27-intrinsic-name | magnitude | pv11-costed | eval 0 = SUCCESS (con integer 5) traces=[]
+C27-intrinsic-name | magnitude | pv11-costed | budget 0 = 498134 cpu, 2833 mem
+C27-intrinsic-name | magnitude | pv11-costed | eval 1 = SUCCESS (con integer 2) traces=[]
+C27-intrinsic-name | magnitude | pv11-costed | budget 1 = 498134 cpu, 2833 mem
+C27-intrinsic-name | magnitude | pv11-costed+maps = 24e075a45040e6528d34154c242e6c1afa37d851ce1c45da6cb334cde58f47ee 33 B
+C27-intrinsic-name | magnitude | pv11-costed+maps | eval 0 = SUCCESS (con integer 5) traces=[]
+C27-intrinsic-name | magnitude | pv11-costed+maps | budget 0 = 498134 cpu, 2833 mem
+C27-intrinsic-name | magnitude | pv11-costed+maps | eval 1 = SUCCESS (con integer 2) traces=[]
+C27-intrinsic-name | magnitude | pv11-costed+maps | budget 1 = 498134 cpu, 2833 mem
+C27-intrinsic-name | abs | none = edb3696d25591a350591f4721ceaa191bfd8b4a8a37bd4e72946bfb168adcfd5 52 B
+C27-intrinsic-name | abs | none | eval 0 = SUCCESS (con integer 5) traces=[]
+C27-intrinsic-name | abs | none | budget 0 = 638183 cpu, 3234 mem
+C27-intrinsic-name | abs | none | eval 1 = SUCCESS (con integer 2) traces=[]
+C27-intrinsic-name | abs | none | budget 1 = 638183 cpu, 3234 mem
+C27-intrinsic-name | abs | none+maps = edb3696d25591a350591f4721ceaa191bfd8b4a8a37bd4e72946bfb168adcfd5 52 B
+C27-intrinsic-name | abs | none+maps | eval 0 = SUCCESS (con integer 5) traces=[]
+C27-intrinsic-name | abs | none+maps | budget 0 = 638183 cpu, 3234 mem
+C27-intrinsic-name | abs | none+maps | eval 1 = SUCCESS (con integer 2) traces=[]
+C27-intrinsic-name | abs | none+maps | budget 1 = 638183 cpu, 3234 mem
+C27-intrinsic-name | abs | baseline = fe2933d971063d207d32b3a96bb9d7b82a7f08fe5a775cf8c46b683a1703d9f2 32 B
+C27-intrinsic-name | abs | baseline | eval 0 = SUCCESS (con integer 5) traces=[]
+C27-intrinsic-name | abs | baseline | budget 0 = 590183 cpu, 2934 mem
+C27-intrinsic-name | abs | baseline | eval 1 = SUCCESS (con integer 2) traces=[]
+C27-intrinsic-name | abs | baseline | budget 1 = 590183 cpu, 2934 mem
+C27-intrinsic-name | abs | baseline+maps = edb3696d25591a350591f4721ceaa191bfd8b4a8a37bd4e72946bfb168adcfd5 52 B
+C27-intrinsic-name | abs | baseline+maps | eval 0 = SUCCESS (con integer 5) traces=[]
+C27-intrinsic-name | abs | baseline+maps | budget 0 = 638183 cpu, 3234 mem
+C27-intrinsic-name | abs | baseline+maps | eval 1 = SUCCESS (con integer 2) traces=[]
+C27-intrinsic-name | abs | baseline+maps | budget 1 = 638183 cpu, 3234 mem
+C27-intrinsic-name | abs | pv11-safe = 76dc5a0075c5638a1f2cb8843ac6ac73c7aa86dd700df375d5b398d804c2d0d9 28 B
+C27-intrinsic-name | abs | pv11-safe | eval 0 = SUCCESS (con integer 5) traces=[]
+C27-intrinsic-name | abs | pv11-safe | budget 0 = 402134 cpu, 2233 mem
+C27-intrinsic-name | abs | pv11-safe | eval 1 = SUCCESS (con integer 2) traces=[]
+C27-intrinsic-name | abs | pv11-safe | budget 1 = 402134 cpu, 2233 mem
+C27-intrinsic-name | abs | pv11-safe+maps = e84113fe53d719da9a37ccda8f092590706c734c24e399eb4e31ffc17c72fa3b 44 B
+C27-intrinsic-name | abs | pv11-safe+maps | eval 0 = SUCCESS (con integer 5) traces=[]
+C27-intrinsic-name | abs | pv11-safe+maps | budget 0 = 450134 cpu, 2533 mem
+C27-intrinsic-name | abs | pv11-safe+maps | eval 1 = SUCCESS (con integer 2) traces=[]
+C27-intrinsic-name | abs | pv11-safe+maps | budget 1 = 450134 cpu, 2533 mem
+C27-intrinsic-name | abs | pv11-costed = 76dc5a0075c5638a1f2cb8843ac6ac73c7aa86dd700df375d5b398d804c2d0d9 28 B
+C27-intrinsic-name | abs | pv11-costed | eval 0 = SUCCESS (con integer 5) traces=[]
+C27-intrinsic-name | abs | pv11-costed | budget 0 = 402134 cpu, 2233 mem
+C27-intrinsic-name | abs | pv11-costed | eval 1 = SUCCESS (con integer 2) traces=[]
+C27-intrinsic-name | abs | pv11-costed | budget 1 = 402134 cpu, 2233 mem
+C27-intrinsic-name | abs | pv11-costed+maps = e84113fe53d719da9a37ccda8f092590706c734c24e399eb4e31ffc17c72fa3b 44 B
+C27-intrinsic-name | abs | pv11-costed+maps | eval 0 = SUCCESS (con integer 5) traces=[]
+C27-intrinsic-name | abs | pv11-costed+maps | budget 0 = 450134 cpu, 2533 mem
+C27-intrinsic-name | abs | pv11-costed+maps | eval 1 = SUCCESS (con integer 2) traces=[]
+C27-intrinsic-name | abs | pv11-costed+maps | budget 1 = 450134 cpu, 2533 mem
+cycle-unread-mutual-library | unread | none = REJECTED CompilerException: Unbound variable: q.M.odd
+cycle-unread-mutual-library | unread | none+maps = REJECTED CompilerException: Unbound variable: q.M.odd
+cycle-unread-mutual-library | unread | baseline = REJECTED CompilerException: Unbound variable: q.M.odd
+cycle-unread-mutual-library | unread | baseline+maps = REJECTED CompilerException: Unbound variable: q.M.odd
+cycle-unread-mutual-library | unread | pv11-safe = REJECTED CompilerException: Unbound variable: q.M.odd
+cycle-unread-mutual-library | unread | pv11-safe+maps = REJECTED CompilerException: Unbound variable: q.M.odd
+cycle-unread-mutual-library | unread | pv11-costed = REJECTED CompilerException: Unbound variable: q.M.odd
+cycle-unread-mutual-library | unread | pv11-costed+maps = REJECTED CompilerException: Unbound variable: q.M.odd
+self-recursive-library | sum | none = 93a089c4f02f3b5346e283d766d3f6472ffdc1dd51146a32c1b429ec5cecb7f3 63 B
+self-recursive-library | sum | none | eval 0 = SUCCESS (con integer 15) traces=[]
+self-recursive-library | sum | none | budget 0 = 5080240 cpu, 20964 mem
+self-recursive-library | sum | none | eval 1 = SUCCESS (con integer 3) traces=[]
+self-recursive-library | sum | none | budget 1 = 2529334 cpu, 11046 mem
+self-recursive-library | sum | none+maps = 93a089c4f02f3b5346e283d766d3f6472ffdc1dd51146a32c1b429ec5cecb7f3 63 B
+self-recursive-library | sum | none+maps | eval 0 = SUCCESS (con integer 15) traces=[]
+self-recursive-library | sum | none+maps | budget 0 = 5080240 cpu, 20964 mem
+self-recursive-library | sum | none+maps | eval 1 = SUCCESS (con integer 3) traces=[]
+self-recursive-library | sum | none+maps | budget 1 = 2529334 cpu, 11046 mem
+self-recursive-library | sum | baseline = 93a089c4f02f3b5346e283d766d3f6472ffdc1dd51146a32c1b429ec5cecb7f3 63 B
+self-recursive-library | sum | baseline | eval 0 = SUCCESS (con integer 15) traces=[]
+self-recursive-library | sum | baseline | budget 0 = 5080240 cpu, 20964 mem
+self-recursive-library | sum | baseline | eval 1 = SUCCESS (con integer 3) traces=[]
+self-recursive-library | sum | baseline | budget 1 = 2529334 cpu, 11046 mem
+self-recursive-library | sum | baseline+maps = 93a089c4f02f3b5346e283d766d3f6472ffdc1dd51146a32c1b429ec5cecb7f3 63 B
+self-recursive-library | sum | baseline+maps | eval 0 = SUCCESS (con integer 15) traces=[]
+self-recursive-library | sum | baseline+maps | budget 0 = 5080240 cpu, 20964 mem
+self-recursive-library | sum | baseline+maps | eval 1 = SUCCESS (con integer 3) traces=[]
+self-recursive-library | sum | baseline+maps | budget 1 = 2529334 cpu, 11046 mem
+self-recursive-library | sum | pv11-safe = 8291f3eab42e877cfef2eac56a08149b97f16fda0149ca1074a5a9977e562dea 59 B
+self-recursive-library | sum | pv11-safe | eval 0 = SUCCESS (con integer 15) traces=[]
+self-recursive-library | sum | pv11-safe | budget 0 = 3951946 cpu, 16758 mem
+self-recursive-library | sum | pv11-safe | eval 1 = SUCCESS (con integer 3) traces=[]
+self-recursive-library | sum | pv11-safe | budget 1 = 1965187 cpu, 8943 mem
+self-recursive-library | sum | pv11-safe+maps = 8291f3eab42e877cfef2eac56a08149b97f16fda0149ca1074a5a9977e562dea 59 B
+self-recursive-library | sum | pv11-safe+maps | eval 0 = SUCCESS (con integer 15) traces=[]
+self-recursive-library | sum | pv11-safe+maps | budget 0 = 3951946 cpu, 16758 mem
+self-recursive-library | sum | pv11-safe+maps | eval 1 = SUCCESS (con integer 3) traces=[]
+self-recursive-library | sum | pv11-safe+maps | budget 1 = 1965187 cpu, 8943 mem
+self-recursive-library | sum | pv11-costed = 8291f3eab42e877cfef2eac56a08149b97f16fda0149ca1074a5a9977e562dea 59 B
+self-recursive-library | sum | pv11-costed | eval 0 = SUCCESS (con integer 15) traces=[]
+self-recursive-library | sum | pv11-costed | budget 0 = 3951946 cpu, 16758 mem
+self-recursive-library | sum | pv11-costed | eval 1 = SUCCESS (con integer 3) traces=[]
+self-recursive-library | sum | pv11-costed | budget 1 = 1965187 cpu, 8943 mem
+self-recursive-library | sum | pv11-costed+maps = 8291f3eab42e877cfef2eac56a08149b97f16fda0149ca1074a5a9977e562dea 59 B
+self-recursive-library | sum | pv11-costed+maps | eval 0 = SUCCESS (con integer 15) traces=[]
+self-recursive-library | sum | pv11-costed+maps | budget 0 = 3951946 cpu, 16758 mem
+self-recursive-library | sum | pv11-costed+maps | eval 1 = SUCCESS (con integer 3) traces=[]
+self-recursive-library | sum | pv11-costed+maps | budget 1 = 1965187 cpu, 8943 mem
+self-recursive-library | total | none = 93a089c4f02f3b5346e283d766d3f6472ffdc1dd51146a32c1b429ec5cecb7f3 63 B
+self-recursive-library | total | none | eval 0 = SUCCESS (con integer 15) traces=[]
+self-recursive-library | total | none | budget 0 = 5080240 cpu, 20964 mem
+self-recursive-library | total | none | eval 1 = SUCCESS (con integer 3) traces=[]
+self-recursive-library | total | none | budget 1 = 2529334 cpu, 11046 mem
+self-recursive-library | total | none+maps = 93a089c4f02f3b5346e283d766d3f6472ffdc1dd51146a32c1b429ec5cecb7f3 63 B
+self-recursive-library | total | none+maps | eval 0 = SUCCESS (con integer 15) traces=[]
+self-recursive-library | total | none+maps | budget 0 = 5080240 cpu, 20964 mem
+self-recursive-library | total | none+maps | eval 1 = SUCCESS (con integer 3) traces=[]
+self-recursive-library | total | none+maps | budget 1 = 2529334 cpu, 11046 mem
+self-recursive-library | total | baseline = 93a089c4f02f3b5346e283d766d3f6472ffdc1dd51146a32c1b429ec5cecb7f3 63 B
+self-recursive-library | total | baseline | eval 0 = SUCCESS (con integer 15) traces=[]
+self-recursive-library | total | baseline | budget 0 = 5080240 cpu, 20964 mem
+self-recursive-library | total | baseline | eval 1 = SUCCESS (con integer 3) traces=[]
+self-recursive-library | total | baseline | budget 1 = 2529334 cpu, 11046 mem
+self-recursive-library | total | baseline+maps = 93a089c4f02f3b5346e283d766d3f6472ffdc1dd51146a32c1b429ec5cecb7f3 63 B
+self-recursive-library | total | baseline+maps | eval 0 = SUCCESS (con integer 15) traces=[]
+self-recursive-library | total | baseline+maps | budget 0 = 5080240 cpu, 20964 mem
+self-recursive-library | total | baseline+maps | eval 1 = SUCCESS (con integer 3) traces=[]
+self-recursive-library | total | baseline+maps | budget 1 = 2529334 cpu, 11046 mem
+self-recursive-library | total | pv11-safe = 8291f3eab42e877cfef2eac56a08149b97f16fda0149ca1074a5a9977e562dea 59 B
+self-recursive-library | total | pv11-safe | eval 0 = SUCCESS (con integer 15) traces=[]
+self-recursive-library | total | pv11-safe | budget 0 = 3951946 cpu, 16758 mem
+self-recursive-library | total | pv11-safe | eval 1 = SUCCESS (con integer 3) traces=[]
+self-recursive-library | total | pv11-safe | budget 1 = 1965187 cpu, 8943 mem
+self-recursive-library | total | pv11-safe+maps = 8291f3eab42e877cfef2eac56a08149b97f16fda0149ca1074a5a9977e562dea 59 B
+self-recursive-library | total | pv11-safe+maps | eval 0 = SUCCESS (con integer 15) traces=[]
+self-recursive-library | total | pv11-safe+maps | budget 0 = 3951946 cpu, 16758 mem
+self-recursive-library | total | pv11-safe+maps | eval 1 = SUCCESS (con integer 3) traces=[]
+self-recursive-library | total | pv11-safe+maps | budget 1 = 1965187 cpu, 8943 mem
+self-recursive-library | total | pv11-costed = 8291f3eab42e877cfef2eac56a08149b97f16fda0149ca1074a5a9977e562dea 59 B
+self-recursive-library | total | pv11-costed | eval 0 = SUCCESS (con integer 15) traces=[]
+self-recursive-library | total | pv11-costed | budget 0 = 3951946 cpu, 16758 mem
+self-recursive-library | total | pv11-costed | eval 1 = SUCCESS (con integer 3) traces=[]
+self-recursive-library | total | pv11-costed | budget 1 = 1965187 cpu, 8943 mem
+self-recursive-library | total | pv11-costed+maps = 8291f3eab42e877cfef2eac56a08149b97f16fda0149ca1074a5a9977e562dea 59 B
+self-recursive-library | total | pv11-costed+maps | eval 0 = SUCCESS (con integer 15) traces=[]
+self-recursive-library | total | pv11-costed+maps | budget 0 = 3951946 cpu, 16758 mem
+self-recursive-library | total | pv11-costed+maps | eval 1 = SUCCESS (con integer 3) traces=[]
+self-recursive-library | total | pv11-costed+maps | budget 1 = 1965187 cpu, 8943 mem
+mutually-recursive-helpers | helpers | none = a6479666e99e35b7586509281a491f5619a6c7be091893a4570dd8a812614325 145 B
+mutually-recursive-helpers | helpers | none | eval 0 = SUCCESS (con integer 0) traces=[]
+mutually-recursive-helpers | helpers | none | budget 0 = 4497176 cpu, 20154 mem
+mutually-recursive-helpers | helpers | none | eval 1 = SUCCESS (con integer 1) traces=[]
+mutually-recursive-helpers | helpers | none | budget 1 = 2368406 cpu, 11142 mem
+mutually-recursive-helpers | helpers | none+maps = a6479666e99e35b7586509281a491f5619a6c7be091893a4570dd8a812614325 145 B
+mutually-recursive-helpers | helpers | none+maps | eval 0 = SUCCESS (con integer 0) traces=[]
+mutually-recursive-helpers | helpers | none+maps | budget 0 = 4497176 cpu, 20154 mem
+mutually-recursive-helpers | helpers | none+maps | eval 1 = SUCCESS (con integer 1) traces=[]
+mutually-recursive-helpers | helpers | none+maps | budget 1 = 2368406 cpu, 11142 mem
+mutually-recursive-helpers | helpers | baseline = a6479666e99e35b7586509281a491f5619a6c7be091893a4570dd8a812614325 145 B
+mutually-recursive-helpers | helpers | baseline | eval 0 = SUCCESS (con integer 0) traces=[]
+mutually-recursive-helpers | helpers | baseline | budget 0 = 4497176 cpu, 20154 mem
+mutually-recursive-helpers | helpers | baseline | eval 1 = SUCCESS (con integer 1) traces=[]
+mutually-recursive-helpers | helpers | baseline | budget 1 = 2368406 cpu, 11142 mem
+mutually-recursive-helpers | helpers | baseline+maps = a6479666e99e35b7586509281a491f5619a6c7be091893a4570dd8a812614325 145 B
+mutually-recursive-helpers | helpers | baseline+maps | eval 0 = SUCCESS (con integer 0) traces=[]
+mutually-recursive-helpers | helpers | baseline+maps | budget 0 = 4497176 cpu, 20154 mem
+mutually-recursive-helpers | helpers | baseline+maps | eval 1 = SUCCESS (con integer 1) traces=[]
+mutually-recursive-helpers | helpers | baseline+maps | budget 1 = 2368406 cpu, 11142 mem
+mutually-recursive-helpers | helpers | pv11-safe = d750530bfb9b9a44e4369e890dca9b37e4cfa11422496cc5275fe2e61f609e10 103 B
+mutually-recursive-helpers | helpers | pv11-safe | eval 0 = SUCCESS (con integer 0) traces=[]
+mutually-recursive-helpers | helpers | pv11-safe | budget 0 = 3416882 cpu, 16248 mem
+mutually-recursive-helpers | helpers | pv11-safe | eval 1 = SUCCESS (con integer 1) traces=[]
+mutually-recursive-helpers | helpers | pv11-safe | budget 1 = 1852259 cpu, 9339 mem
+mutually-recursive-helpers | helpers | pv11-safe+maps = 305aa89db34d64ce69f7fc0f6ac53986c4edd96b2ce6477ae7df6656b2c16635 133 B
+mutually-recursive-helpers | helpers | pv11-safe+maps | eval 0 = SUCCESS (con integer 0) traces=[]
+mutually-recursive-helpers | helpers | pv11-safe+maps | budget 0 = 3368882 cpu, 15948 mem
+mutually-recursive-helpers | helpers | pv11-safe+maps | eval 1 = SUCCESS (con integer 1) traces=[]
+mutually-recursive-helpers | helpers | pv11-safe+maps | budget 1 = 1804259 cpu, 9039 mem
+mutually-recursive-helpers | helpers | pv11-costed = d750530bfb9b9a44e4369e890dca9b37e4cfa11422496cc5275fe2e61f609e10 103 B
+mutually-recursive-helpers | helpers | pv11-costed | eval 0 = SUCCESS (con integer 0) traces=[]
+mutually-recursive-helpers | helpers | pv11-costed | budget 0 = 3416882 cpu, 16248 mem
+mutually-recursive-helpers | helpers | pv11-costed | eval 1 = SUCCESS (con integer 1) traces=[]
+mutually-recursive-helpers | helpers | pv11-costed | budget 1 = 1852259 cpu, 9339 mem
+mutually-recursive-helpers | helpers | pv11-costed+maps = 305aa89db34d64ce69f7fc0f6ac53986c4edd96b2ce6477ae7df6656b2c16635 133 B
+mutually-recursive-helpers | helpers | pv11-costed+maps | eval 0 = SUCCESS (con integer 0) traces=[]
+mutually-recursive-helpers | helpers | pv11-costed+maps | budget 0 = 3368882 cpu, 15948 mem
+mutually-recursive-helpers | helpers | pv11-costed+maps | eval 1 = SUCCESS (con integer 1) traces=[]
+mutually-recursive-helpers | helpers | pv11-costed+maps | budget 1 = 1804259 cpu, 9039 mem
+static-initialiser-first-use | zeta in K | none = 9d2f4d4a77f6e4f9ad2399940f651491acf778268c39bc74adf1cff73df3c1e1 113 B
+static-initialiser-first-use | zeta in K | none | eval 0 = SUCCESS (con integer 7) traces=[]
+static-initialiser-first-use | zeta in K | none | budget 0 = 2656172 cpu, 11346 mem
+static-initialiser-first-use | zeta in K | none | eval 1 = SUCCESS (con integer 4) traces=[]
+static-initialiser-first-use | zeta in K | none | budget 1 = 2656172 cpu, 11346 mem
+static-initialiser-first-use | zeta in K | none+maps = 9d2f4d4a77f6e4f9ad2399940f651491acf778268c39bc74adf1cff73df3c1e1 113 B
+static-initialiser-first-use | zeta in K | none+maps | eval 0 = SUCCESS (con integer 7) traces=[]
+static-initialiser-first-use | zeta in K | none+maps | budget 0 = 2656172 cpu, 11346 mem
+static-initialiser-first-use | zeta in K | none+maps | eval 1 = SUCCESS (con integer 4) traces=[]
+static-initialiser-first-use | zeta in K | none+maps | budget 1 = 2656172 cpu, 11346 mem
+static-initialiser-first-use | zeta in K | baseline = 9d2f4d4a77f6e4f9ad2399940f651491acf778268c39bc74adf1cff73df3c1e1 113 B
+static-initialiser-first-use | zeta in K | baseline | eval 0 = SUCCESS (con integer 7) traces=[]
+static-initialiser-first-use | zeta in K | baseline | budget 0 = 2656172 cpu, 11346 mem
+static-initialiser-first-use | zeta in K | baseline | eval 1 = SUCCESS (con integer 4) traces=[]
+static-initialiser-first-use | zeta in K | baseline | budget 1 = 2656172 cpu, 11346 mem
+static-initialiser-first-use | zeta in K | baseline+maps = 9d2f4d4a77f6e4f9ad2399940f651491acf778268c39bc74adf1cff73df3c1e1 113 B
+static-initialiser-first-use | zeta in K | baseline+maps | eval 0 = SUCCESS (con integer 7) traces=[]
+static-initialiser-first-use | zeta in K | baseline+maps | budget 0 = 2656172 cpu, 11346 mem
+static-initialiser-first-use | zeta in K | baseline+maps | eval 1 = SUCCESS (con integer 4) traces=[]
+static-initialiser-first-use | zeta in K | baseline+maps | budget 1 = 2656172 cpu, 11346 mem
+static-initialiser-first-use | zeta in K | pv11-safe = 656f266067db8338ccddc1e6ec54fc71efa04bd3743e2ca2f83dd8af34babc50 89 B
+static-initialiser-first-use | zeta in K | pv11-safe | eval 0 = SUCCESS (con integer 7) traces=[]
+static-initialiser-first-use | zeta in K | pv11-safe | budget 0 = 1527878 cpu, 7140 mem
+static-initialiser-first-use | zeta in K | pv11-safe | eval 1 = SUCCESS (con integer 4) traces=[]
+static-initialiser-first-use | zeta in K | pv11-safe | budget 1 = 1527878 cpu, 7140 mem
+static-initialiser-first-use | zeta in K | pv11-safe+maps = 656f266067db8338ccddc1e6ec54fc71efa04bd3743e2ca2f83dd8af34babc50 89 B
+static-initialiser-first-use | zeta in K | pv11-safe+maps | eval 0 = SUCCESS (con integer 7) traces=[]
+static-initialiser-first-use | zeta in K | pv11-safe+maps | budget 0 = 1527878 cpu, 7140 mem
+static-initialiser-first-use | zeta in K | pv11-safe+maps | eval 1 = SUCCESS (con integer 4) traces=[]
+static-initialiser-first-use | zeta in K | pv11-safe+maps | budget 1 = 1527878 cpu, 7140 mem
+static-initialiser-first-use | zeta in K | pv11-costed = 656f266067db8338ccddc1e6ec54fc71efa04bd3743e2ca2f83dd8af34babc50 89 B
+static-initialiser-first-use | zeta in K | pv11-costed | eval 0 = SUCCESS (con integer 7) traces=[]
+static-initialiser-first-use | zeta in K | pv11-costed | budget 0 = 1527878 cpu, 7140 mem
+static-initialiser-first-use | zeta in K | pv11-costed | eval 1 = SUCCESS (con integer 4) traces=[]
+static-initialiser-first-use | zeta in K | pv11-costed | budget 1 = 1527878 cpu, 7140 mem
+static-initialiser-first-use | zeta in K | pv11-costed+maps = 656f266067db8338ccddc1e6ec54fc71efa04bd3743e2ca2f83dd8af34babc50 89 B
+static-initialiser-first-use | zeta in K | pv11-costed+maps | eval 0 = SUCCESS (con integer 7) traces=[]
+static-initialiser-first-use | zeta in K | pv11-costed+maps | budget 0 = 1527878 cpu, 7140 mem
+static-initialiser-first-use | zeta in K | pv11-costed+maps | eval 1 = SUCCESS (con integer 4) traces=[]
+static-initialiser-first-use | zeta in K | pv11-costed+maps | budget 1 = 1527878 cpu, 7140 mem
+static-initialiser-first-use | renamed: aaa in K, zzz in f | none = 593f08d82f34012f02d3cf702fcc79610c3f0db6b96b557cfdf3471c32753418 113 B
+static-initialiser-first-use | renamed: aaa in K, zzz in f | none | eval 0 = SUCCESS (con integer 7) traces=[]
+static-initialiser-first-use | renamed: aaa in K, zzz in f | none | budget 0 = 2656172 cpu, 11346 mem
+static-initialiser-first-use | renamed: aaa in K, zzz in f | none | eval 1 = SUCCESS (con integer 4) traces=[]
+static-initialiser-first-use | renamed: aaa in K, zzz in f | none | budget 1 = 2656172 cpu, 11346 mem
+static-initialiser-first-use | renamed: aaa in K, zzz in f | none+maps = 593f08d82f34012f02d3cf702fcc79610c3f0db6b96b557cfdf3471c32753418 113 B
+static-initialiser-first-use | renamed: aaa in K, zzz in f | none+maps | eval 0 = SUCCESS (con integer 7) traces=[]
+static-initialiser-first-use | renamed: aaa in K, zzz in f | none+maps | budget 0 = 2656172 cpu, 11346 mem
+static-initialiser-first-use | renamed: aaa in K, zzz in f | none+maps | eval 1 = SUCCESS (con integer 4) traces=[]
+static-initialiser-first-use | renamed: aaa in K, zzz in f | none+maps | budget 1 = 2656172 cpu, 11346 mem
+static-initialiser-first-use | renamed: aaa in K, zzz in f | baseline = 593f08d82f34012f02d3cf702fcc79610c3f0db6b96b557cfdf3471c32753418 113 B
+static-initialiser-first-use | renamed: aaa in K, zzz in f | baseline | eval 0 = SUCCESS (con integer 7) traces=[]
+static-initialiser-first-use | renamed: aaa in K, zzz in f | baseline | budget 0 = 2656172 cpu, 11346 mem
+static-initialiser-first-use | renamed: aaa in K, zzz in f | baseline | eval 1 = SUCCESS (con integer 4) traces=[]
+static-initialiser-first-use | renamed: aaa in K, zzz in f | baseline | budget 1 = 2656172 cpu, 11346 mem
+static-initialiser-first-use | renamed: aaa in K, zzz in f | baseline+maps = 593f08d82f34012f02d3cf702fcc79610c3f0db6b96b557cfdf3471c32753418 113 B
+static-initialiser-first-use | renamed: aaa in K, zzz in f | baseline+maps | eval 0 = SUCCESS (con integer 7) traces=[]
+static-initialiser-first-use | renamed: aaa in K, zzz in f | baseline+maps | budget 0 = 2656172 cpu, 11346 mem
+static-initialiser-first-use | renamed: aaa in K, zzz in f | baseline+maps | eval 1 = SUCCESS (con integer 4) traces=[]
+static-initialiser-first-use | renamed: aaa in K, zzz in f | baseline+maps | budget 1 = 2656172 cpu, 11346 mem
+static-initialiser-first-use | renamed: aaa in K, zzz in f | pv11-safe = 0d58c99f19c8b3be1b2e4ba027f9919c18e235979ea8218b0943aebb5c1800fc 89 B
+static-initialiser-first-use | renamed: aaa in K, zzz in f | pv11-safe | eval 0 = SUCCESS (con integer 7) traces=[]
+static-initialiser-first-use | renamed: aaa in K, zzz in f | pv11-safe | budget 0 = 1527878 cpu, 7140 mem
+static-initialiser-first-use | renamed: aaa in K, zzz in f | pv11-safe | eval 1 = SUCCESS (con integer 4) traces=[]
+static-initialiser-first-use | renamed: aaa in K, zzz in f | pv11-safe | budget 1 = 1527878 cpu, 7140 mem
+static-initialiser-first-use | renamed: aaa in K, zzz in f | pv11-safe+maps = 0d58c99f19c8b3be1b2e4ba027f9919c18e235979ea8218b0943aebb5c1800fc 89 B
+static-initialiser-first-use | renamed: aaa in K, zzz in f | pv11-safe+maps | eval 0 = SUCCESS (con integer 7) traces=[]
+static-initialiser-first-use | renamed: aaa in K, zzz in f | pv11-safe+maps | budget 0 = 1527878 cpu, 7140 mem
+static-initialiser-first-use | renamed: aaa in K, zzz in f | pv11-safe+maps | eval 1 = SUCCESS (con integer 4) traces=[]
+static-initialiser-first-use | renamed: aaa in K, zzz in f | pv11-safe+maps | budget 1 = 1527878 cpu, 7140 mem
+static-initialiser-first-use | renamed: aaa in K, zzz in f | pv11-costed = 0d58c99f19c8b3be1b2e4ba027f9919c18e235979ea8218b0943aebb5c1800fc 89 B
+static-initialiser-first-use | renamed: aaa in K, zzz in f | pv11-costed | eval 0 = SUCCESS (con integer 7) traces=[]
+static-initialiser-first-use | renamed: aaa in K, zzz in f | pv11-costed | budget 0 = 1527878 cpu, 7140 mem
+static-initialiser-first-use | renamed: aaa in K, zzz in f | pv11-costed | eval 1 = SUCCESS (con integer 4) traces=[]
+static-initialiser-first-use | renamed: aaa in K, zzz in f | pv11-costed | budget 1 = 1527878 cpu, 7140 mem
+static-initialiser-first-use | renamed: aaa in K, zzz in f | pv11-costed+maps = 0d58c99f19c8b3be1b2e4ba027f9919c18e235979ea8218b0943aebb5c1800fc 89 B
+static-initialiser-first-use | renamed: aaa in K, zzz in f | pv11-costed+maps | eval 0 = SUCCESS (con integer 7) traces=[]
+static-initialiser-first-use | renamed: aaa in K, zzz in f | pv11-costed+maps | budget 0 = 1527878 cpu, 7140 mem
+static-initialiser-first-use | renamed: aaa in K, zzz in f | pv11-costed+maps | eval 1 = SUCCESS (con integer 4) traces=[]
+static-initialiser-first-use | renamed: aaa in K, zzz in f | pv11-costed+maps | budget 1 = 1527878 cpu, 7140 mem
+negative-constant-in-one-twin | twins | none = d4f49c029a049604b7d23aeb7920d37bc1172a09d9f446b0e1190c2d40a2581b 114 B
+negative-constant-in-one-twin | twins | none | eval 0 = SUCCESS (con integer 15) traces=[]
+negative-constant-in-one-twin | twins | none | budget 0 = 2763125 cpu, 11448 mem
+negative-constant-in-one-twin | twins | none | eval 1 = SUCCESS (con integer 6) traces=[]
+negative-constant-in-one-twin | twins | none | budget 1 = 2763125 cpu, 11448 mem
+negative-constant-in-one-twin | twins | none+maps = d4f49c029a049604b7d23aeb7920d37bc1172a09d9f446b0e1190c2d40a2581b 114 B
+negative-constant-in-one-twin | twins | none+maps | eval 0 = SUCCESS (con integer 15) traces=[]
+negative-constant-in-one-twin | twins | none+maps | budget 0 = 2763125 cpu, 11448 mem
+negative-constant-in-one-twin | twins | none+maps | eval 1 = SUCCESS (con integer 6) traces=[]
+negative-constant-in-one-twin | twins | none+maps | budget 1 = 2763125 cpu, 11448 mem
+negative-constant-in-one-twin | twins | baseline = d4f49c029a049604b7d23aeb7920d37bc1172a09d9f446b0e1190c2d40a2581b 114 B
+negative-constant-in-one-twin | twins | baseline | eval 0 = SUCCESS (con integer 15) traces=[]
+negative-constant-in-one-twin | twins | baseline | budget 0 = 2763125 cpu, 11448 mem
+negative-constant-in-one-twin | twins | baseline | eval 1 = SUCCESS (con integer 6) traces=[]
+negative-constant-in-one-twin | twins | baseline | budget 1 = 2763125 cpu, 11448 mem
+negative-constant-in-one-twin | twins | baseline+maps = d4f49c029a049604b7d23aeb7920d37bc1172a09d9f446b0e1190c2d40a2581b 114 B
+negative-constant-in-one-twin | twins | baseline+maps | eval 0 = SUCCESS (con integer 15) traces=[]
+negative-constant-in-one-twin | twins | baseline+maps | budget 0 = 2763125 cpu, 11448 mem
+negative-constant-in-one-twin | twins | baseline+maps | eval 1 = SUCCESS (con integer 6) traces=[]
+negative-constant-in-one-twin | twins | baseline+maps | budget 1 = 2763125 cpu, 11448 mem
+negative-constant-in-one-twin | twins | pv11-safe = 08cad3817b280270e7ca79a988cd8d2765232aeb20a494f3123675f3214b1226 90 B
+negative-constant-in-one-twin | twins | pv11-safe | eval 0 = SUCCESS (con integer 15) traces=[]
+negative-constant-in-one-twin | twins | pv11-safe | budget 0 = 1634831 cpu, 7242 mem
+negative-constant-in-one-twin | twins | pv11-safe | eval 1 = SUCCESS (con integer 6) traces=[]
+negative-constant-in-one-twin | twins | pv11-safe | budget 1 = 1634831 cpu, 7242 mem
+negative-constant-in-one-twin | twins | pv11-safe+maps = 08cad3817b280270e7ca79a988cd8d2765232aeb20a494f3123675f3214b1226 90 B
+negative-constant-in-one-twin | twins | pv11-safe+maps | eval 0 = SUCCESS (con integer 15) traces=[]
+negative-constant-in-one-twin | twins | pv11-safe+maps | budget 0 = 1634831 cpu, 7242 mem
+negative-constant-in-one-twin | twins | pv11-safe+maps | eval 1 = SUCCESS (con integer 6) traces=[]
+negative-constant-in-one-twin | twins | pv11-safe+maps | budget 1 = 1634831 cpu, 7242 mem
+negative-constant-in-one-twin | twins | pv11-costed = 08cad3817b280270e7ca79a988cd8d2765232aeb20a494f3123675f3214b1226 90 B
+negative-constant-in-one-twin | twins | pv11-costed | eval 0 = SUCCESS (con integer 15) traces=[]
+negative-constant-in-one-twin | twins | pv11-costed | budget 0 = 1634831 cpu, 7242 mem
+negative-constant-in-one-twin | twins | pv11-costed | eval 1 = SUCCESS (con integer 6) traces=[]
+negative-constant-in-one-twin | twins | pv11-costed | budget 1 = 1634831 cpu, 7242 mem
+negative-constant-in-one-twin | twins | pv11-costed+maps = 08cad3817b280270e7ca79a988cd8d2765232aeb20a494f3123675f3214b1226 90 B
+negative-constant-in-one-twin | twins | pv11-costed+maps | eval 0 = SUCCESS (con integer 15) traces=[]
+negative-constant-in-one-twin | twins | pv11-costed+maps | budget 0 = 1634831 cpu, 7242 mem
+negative-constant-in-one-twin | twins | pv11-costed+maps | eval 1 = SUCCESS (con integer 6) traces=[]
+negative-constant-in-one-twin | twins | pv11-costed+maps | budget 1 = 1634831 cpu, 7242 mem
+negative-constant-in-one-twin | beta returns ONE | none = 098c104981ee884db0c4c39291d7ed1a3a9381c46ae15c9cacf7cd84122cce59 114 B
+negative-constant-in-one-twin | beta returns ONE | none | eval 0 = SUCCESS (con integer 15) traces=[]
+negative-constant-in-one-twin | beta returns ONE | none | budget 0 = 2763125 cpu, 11448 mem
+negative-constant-in-one-twin | beta returns ONE | none | eval 1 = SUCCESS (con integer 6) traces=[]
+negative-constant-in-one-twin | beta returns ONE | none | budget 1 = 2763125 cpu, 11448 mem
+negative-constant-in-one-twin | beta returns ONE | none+maps = 098c104981ee884db0c4c39291d7ed1a3a9381c46ae15c9cacf7cd84122cce59 114 B
+negative-constant-in-one-twin | beta returns ONE | none+maps | eval 0 = SUCCESS (con integer 15) traces=[]
+negative-constant-in-one-twin | beta returns ONE | none+maps | budget 0 = 2763125 cpu, 11448 mem
+negative-constant-in-one-twin | beta returns ONE | none+maps | eval 1 = SUCCESS (con integer 6) traces=[]
+negative-constant-in-one-twin | beta returns ONE | none+maps | budget 1 = 2763125 cpu, 11448 mem
+negative-constant-in-one-twin | beta returns ONE | baseline = 098c104981ee884db0c4c39291d7ed1a3a9381c46ae15c9cacf7cd84122cce59 114 B
+negative-constant-in-one-twin | beta returns ONE | baseline | eval 0 = SUCCESS (con integer 15) traces=[]
+negative-constant-in-one-twin | beta returns ONE | baseline | budget 0 = 2763125 cpu, 11448 mem
+negative-constant-in-one-twin | beta returns ONE | baseline | eval 1 = SUCCESS (con integer 6) traces=[]
+negative-constant-in-one-twin | beta returns ONE | baseline | budget 1 = 2763125 cpu, 11448 mem
+negative-constant-in-one-twin | beta returns ONE | baseline+maps = 098c104981ee884db0c4c39291d7ed1a3a9381c46ae15c9cacf7cd84122cce59 114 B
+negative-constant-in-one-twin | beta returns ONE | baseline+maps | eval 0 = SUCCESS (con integer 15) traces=[]
+negative-constant-in-one-twin | beta returns ONE | baseline+maps | budget 0 = 2763125 cpu, 11448 mem
+negative-constant-in-one-twin | beta returns ONE | baseline+maps | eval 1 = SUCCESS (con integer 6) traces=[]
+negative-constant-in-one-twin | beta returns ONE | baseline+maps | budget 1 = 2763125 cpu, 11448 mem
+negative-constant-in-one-twin | beta returns ONE | pv11-safe = c3d44fd2c53654a1dc96b3c0a80882856d18bd644dfe08faa9971993f5be8a64 90 B
+negative-constant-in-one-twin | beta returns ONE | pv11-safe | eval 0 = SUCCESS (con integer 15) traces=[]
+negative-constant-in-one-twin | beta returns ONE | pv11-safe | budget 0 = 1634831 cpu, 7242 mem
+negative-constant-in-one-twin | beta returns ONE | pv11-safe | eval 1 = SUCCESS (con integer 6) traces=[]
+negative-constant-in-one-twin | beta returns ONE | pv11-safe | budget 1 = 1634831 cpu, 7242 mem
+negative-constant-in-one-twin | beta returns ONE | pv11-safe+maps = c3d44fd2c53654a1dc96b3c0a80882856d18bd644dfe08faa9971993f5be8a64 90 B
+negative-constant-in-one-twin | beta returns ONE | pv11-safe+maps | eval 0 = SUCCESS (con integer 15) traces=[]
+negative-constant-in-one-twin | beta returns ONE | pv11-safe+maps | budget 0 = 1634831 cpu, 7242 mem
+negative-constant-in-one-twin | beta returns ONE | pv11-safe+maps | eval 1 = SUCCESS (con integer 6) traces=[]
+negative-constant-in-one-twin | beta returns ONE | pv11-safe+maps | budget 1 = 1634831 cpu, 7242 mem
+negative-constant-in-one-twin | beta returns ONE | pv11-costed = c3d44fd2c53654a1dc96b3c0a80882856d18bd644dfe08faa9971993f5be8a64 90 B
+negative-constant-in-one-twin | beta returns ONE | pv11-costed | eval 0 = SUCCESS (con integer 15) traces=[]
+negative-constant-in-one-twin | beta returns ONE | pv11-costed | budget 0 = 1634831 cpu, 7242 mem
+negative-constant-in-one-twin | beta returns ONE | pv11-costed | eval 1 = SUCCESS (con integer 6) traces=[]
+negative-constant-in-one-twin | beta returns ONE | pv11-costed | budget 1 = 1634831 cpu, 7242 mem
+negative-constant-in-one-twin | beta returns ONE | pv11-costed+maps = c3d44fd2c53654a1dc96b3c0a80882856d18bd644dfe08faa9971993f5be8a64 90 B
+negative-constant-in-one-twin | beta returns ONE | pv11-costed+maps | eval 0 = SUCCESS (con integer 15) traces=[]
+negative-constant-in-one-twin | beta returns ONE | pv11-costed+maps | budget 0 = 1634831 cpu, 7242 mem
+negative-constant-in-one-twin | beta returns ONE | pv11-costed+maps | eval 1 = SUCCESS (con integer 6) traces=[]
+negative-constant-in-one-twin | beta returns ONE | pv11-costed+maps | budget 1 = 1634831 cpu, 7242 mem
+negative-unread-body-at-none | unread * 2 | none = c25cda9584c16ece17584a66de855a87c8b28b5e727c28e7f29f5417793b2fde 32 B
+negative-unread-body-at-none | unread * 2 | none | eval 0 = SUCCESS (con integer 6) traces=[]
+negative-unread-body-at-none | unread * 2 | none | budget 0 = 570052 cpu, 2934 mem
+negative-unread-body-at-none | unread * 2 | none | eval 1 = SUCCESS (con integer 3) traces=[]
+negative-unread-body-at-none | unread * 2 | none | budget 1 = 570052 cpu, 2934 mem
+negative-unread-body-at-none | unread * 2 | none+maps = c25cda9584c16ece17584a66de855a87c8b28b5e727c28e7f29f5417793b2fde 32 B
+negative-unread-body-at-none | unread * 2 | none+maps | eval 0 = SUCCESS (con integer 6) traces=[]
+negative-unread-body-at-none | unread * 2 | none+maps | budget 0 = 570052 cpu, 2934 mem
+negative-unread-body-at-none | unread * 2 | none+maps | eval 1 = SUCCESS (con integer 3) traces=[]
+negative-unread-body-at-none | unread * 2 | none+maps | budget 1 = 570052 cpu, 2934 mem
+negative-unread-body-at-none | unread * 2 | baseline = 6db543348d6b48931761da328b88a48ddb70e2afceb6bca8c562b0f3a61abeb7 25 B
+negative-unread-body-at-none | unread * 2 | baseline | eval 0 = SUCCESS (con integer 6) traces=[]
+negative-unread-body-at-none | unread * 2 | baseline | budget 0 = 522052 cpu, 2634 mem
+negative-unread-body-at-none | unread * 2 | baseline | eval 1 = SUCCESS (con integer 3) traces=[]
+negative-unread-body-at-none | unread * 2 | baseline | budget 1 = 522052 cpu, 2634 mem
+negative-unread-body-at-none | unread * 2 | baseline+maps = c25cda9584c16ece17584a66de855a87c8b28b5e727c28e7f29f5417793b2fde 32 B
+negative-unread-body-at-none | unread * 2 | baseline+maps | eval 0 = SUCCESS (con integer 6) traces=[]
+negative-unread-body-at-none | unread * 2 | baseline+maps | budget 0 = 570052 cpu, 2934 mem
+negative-unread-body-at-none | unread * 2 | baseline+maps | eval 1 = SUCCESS (con integer 3) traces=[]
+negative-unread-body-at-none | unread * 2 | baseline+maps | budget 1 = 570052 cpu, 2934 mem
+negative-unread-body-at-none | unread * 2 | pv11-safe = 6db543348d6b48931761da328b88a48ddb70e2afceb6bca8c562b0f3a61abeb7 25 B
+negative-unread-body-at-none | unread * 2 | pv11-safe | eval 0 = SUCCESS (con integer 6) traces=[]
+negative-unread-body-at-none | unread * 2 | pv11-safe | budget 0 = 522052 cpu, 2634 mem
+negative-unread-body-at-none | unread * 2 | pv11-safe | eval 1 = SUCCESS (con integer 3) traces=[]
+negative-unread-body-at-none | unread * 2 | pv11-safe | budget 1 = 522052 cpu, 2634 mem
+negative-unread-body-at-none | unread * 2 | pv11-safe+maps = c25cda9584c16ece17584a66de855a87c8b28b5e727c28e7f29f5417793b2fde 32 B
+negative-unread-body-at-none | unread * 2 | pv11-safe+maps | eval 0 = SUCCESS (con integer 6) traces=[]
+negative-unread-body-at-none | unread * 2 | pv11-safe+maps | budget 0 = 570052 cpu, 2934 mem
+negative-unread-body-at-none | unread * 2 | pv11-safe+maps | eval 1 = SUCCESS (con integer 3) traces=[]
+negative-unread-body-at-none | unread * 2 | pv11-safe+maps | budget 1 = 570052 cpu, 2934 mem
+negative-unread-body-at-none | unread * 2 | pv11-costed = 6db543348d6b48931761da328b88a48ddb70e2afceb6bca8c562b0f3a61abeb7 25 B
+negative-unread-body-at-none | unread * 2 | pv11-costed | eval 0 = SUCCESS (con integer 6) traces=[]
+negative-unread-body-at-none | unread * 2 | pv11-costed | budget 0 = 522052 cpu, 2634 mem
+negative-unread-body-at-none | unread * 2 | pv11-costed | eval 1 = SUCCESS (con integer 3) traces=[]
+negative-unread-body-at-none | unread * 2 | pv11-costed | budget 1 = 522052 cpu, 2634 mem
+negative-unread-body-at-none | unread * 2 | pv11-costed+maps = c25cda9584c16ece17584a66de855a87c8b28b5e727c28e7f29f5417793b2fde 32 B
+negative-unread-body-at-none | unread * 2 | pv11-costed+maps | eval 0 = SUCCESS (con integer 6) traces=[]
+negative-unread-body-at-none | unread * 2 | pv11-costed+maps | budget 0 = 570052 cpu, 2934 mem
+negative-unread-body-at-none | unread * 2 | pv11-costed+maps | eval 1 = SUCCESS (con integer 3) traces=[]
+negative-unread-body-at-none | unread * 2 | pv11-costed+maps | budget 1 = 570052 cpu, 2934 mem
+negative-unread-body-at-none | unread * 3 | none = c7c610f853781ce10a4700a2710c706294ee68dacfa82a28e1da5a8bd9de71a7 32 B
+negative-unread-body-at-none | unread * 3 | none | eval 0 = SUCCESS (con integer 6) traces=[]
+negative-unread-body-at-none | unread * 3 | none | budget 0 = 570052 cpu, 2934 mem
+negative-unread-body-at-none | unread * 3 | none | eval 1 = SUCCESS (con integer 3) traces=[]
+negative-unread-body-at-none | unread * 3 | none | budget 1 = 570052 cpu, 2934 mem
+negative-unread-body-at-none | unread * 3 | none+maps = c7c610f853781ce10a4700a2710c706294ee68dacfa82a28e1da5a8bd9de71a7 32 B
+negative-unread-body-at-none | unread * 3 | none+maps | eval 0 = SUCCESS (con integer 6) traces=[]
+negative-unread-body-at-none | unread * 3 | none+maps | budget 0 = 570052 cpu, 2934 mem
+negative-unread-body-at-none | unread * 3 | none+maps | eval 1 = SUCCESS (con integer 3) traces=[]
+negative-unread-body-at-none | unread * 3 | none+maps | budget 1 = 570052 cpu, 2934 mem
+negative-unread-body-at-none | unread * 3 | baseline = 6db543348d6b48931761da328b88a48ddb70e2afceb6bca8c562b0f3a61abeb7 25 B
+negative-unread-body-at-none | unread * 3 | baseline | eval 0 = SUCCESS (con integer 6) traces=[]
+negative-unread-body-at-none | unread * 3 | baseline | budget 0 = 522052 cpu, 2634 mem
+negative-unread-body-at-none | unread * 3 | baseline | eval 1 = SUCCESS (con integer 3) traces=[]
+negative-unread-body-at-none | unread * 3 | baseline | budget 1 = 522052 cpu, 2634 mem
+negative-unread-body-at-none | unread * 3 | baseline+maps = c7c610f853781ce10a4700a2710c706294ee68dacfa82a28e1da5a8bd9de71a7 32 B
+negative-unread-body-at-none | unread * 3 | baseline+maps | eval 0 = SUCCESS (con integer 6) traces=[]
+negative-unread-body-at-none | unread * 3 | baseline+maps | budget 0 = 570052 cpu, 2934 mem
+negative-unread-body-at-none | unread * 3 | baseline+maps | eval 1 = SUCCESS (con integer 3) traces=[]
+negative-unread-body-at-none | unread * 3 | baseline+maps | budget 1 = 570052 cpu, 2934 mem
+negative-unread-body-at-none | unread * 3 | pv11-safe = 6db543348d6b48931761da328b88a48ddb70e2afceb6bca8c562b0f3a61abeb7 25 B
+negative-unread-body-at-none | unread * 3 | pv11-safe | eval 0 = SUCCESS (con integer 6) traces=[]
+negative-unread-body-at-none | unread * 3 | pv11-safe | budget 0 = 522052 cpu, 2634 mem
+negative-unread-body-at-none | unread * 3 | pv11-safe | eval 1 = SUCCESS (con integer 3) traces=[]
+negative-unread-body-at-none | unread * 3 | pv11-safe | budget 1 = 522052 cpu, 2634 mem
+negative-unread-body-at-none | unread * 3 | pv11-safe+maps = c7c610f853781ce10a4700a2710c706294ee68dacfa82a28e1da5a8bd9de71a7 32 B
+negative-unread-body-at-none | unread * 3 | pv11-safe+maps | eval 0 = SUCCESS (con integer 6) traces=[]
+negative-unread-body-at-none | unread * 3 | pv11-safe+maps | budget 0 = 570052 cpu, 2934 mem
+negative-unread-body-at-none | unread * 3 | pv11-safe+maps | eval 1 = SUCCESS (con integer 3) traces=[]
+negative-unread-body-at-none | unread * 3 | pv11-safe+maps | budget 1 = 570052 cpu, 2934 mem
+negative-unread-body-at-none | unread * 3 | pv11-costed = 6db543348d6b48931761da328b88a48ddb70e2afceb6bca8c562b0f3a61abeb7 25 B
+negative-unread-body-at-none | unread * 3 | pv11-costed | eval 0 = SUCCESS (con integer 6) traces=[]
+negative-unread-body-at-none | unread * 3 | pv11-costed | budget 0 = 522052 cpu, 2634 mem
+negative-unread-body-at-none | unread * 3 | pv11-costed | eval 1 = SUCCESS (con integer 3) traces=[]
+negative-unread-body-at-none | unread * 3 | pv11-costed | budget 1 = 522052 cpu, 2634 mem
+negative-unread-body-at-none | unread * 3 | pv11-costed+maps = c7c610f853781ce10a4700a2710c706294ee68dacfa82a28e1da5a8bd9de71a7 32 B
+negative-unread-body-at-none | unread * 3 | pv11-costed+maps | eval 0 = SUCCESS (con integer 6) traces=[]
+negative-unread-body-at-none | unread * 3 | pv11-costed+maps | budget 0 = 570052 cpu, 2934 mem
+negative-unread-body-at-none | unread * 3 | pv11-costed+maps | eval 1 = SUCCESS (con integer 3) traces=[]
+negative-unread-body-at-none | unread * 3 | pv11-costed+maps | budget 1 = 570052 cpu, 2934 mem
