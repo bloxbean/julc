@@ -1,6 +1,6 @@
 package org.julclang.compiler.codegen;
 
-import org.julclang.compiler.pir.PirHelpers;
+import org.julclang.compiler.pir.PirSubstitution;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.resolve.LibraryMethodRegistry.LibraryMethod;
@@ -33,7 +33,7 @@ import java.util.function.Consumer;
  * validator's {@code import} declarations and of the library sources a caller passed. Neither has any meaning in Java,
  * yet each changed the script's bytes and so its hash.
  * <p>
- * The order is now a function of the methods alone. Among the methods whose dependencies are already bound, the next
+ * The order is a function of the methods and of where the program first uses them. Among the methods whose dependencies are already bound, the next
  * one bound is the one with the smallest <em>content key</em>, and the qualified name decides only between methods
  * whose keys are equal. A method's content key is a digest of its body in which:
  * <ul>
@@ -49,7 +49,8 @@ import java.util.function.Consumer;
  * Methods in a recursive group key each other's calls with a fixed token.
  * <p>
  * Methods whose keys are equal are bound in the order the program first uses them ({@link FirstUseRanks}, ADR-078),
- * not by their names: the method with the lower first-use rank is taken first.
+ * not by their names: the method with the lower first-use rank is taken first. So the order depends on the methods and
+ * on the program's roots (its static initialisers, entry points and helpers), not on the methods alone.
  */
 final class LibraryBindingOrder {
 
@@ -79,19 +80,10 @@ final class LibraryBindingOrder {
         var byName = new LinkedHashMap<String, LibraryMethod>();
         for (var method : methods) byName.put(method.qualifiedName(), method);
 
-        var dependencies = new LinkedHashMap<String, Set<String>>();
-        for (var method : byName.values()) {
-            var uses = new LinkedHashSet<String>();
-            for (var other : byName.keySet()) {
-                if (!other.equals(method.qualifiedName()) && PirHelpers.containsVarRef(method.body(), other)) {
-                    uses.add(other);
-                }
-            }
-            dependencies.put(method.qualifiedName(), uses);
-        }
-
+        // One graph schedules the content keys, D1b's walk and the order below (ADR-078 r8).
+        var dependencies = dependencies(byName);
         var keys = contentKeys(byName, dependencies);
-        var ranks = FirstUseRanks.of(roots, byName, keys, observer);
+        var ranks = FirstUseRanks.of(roots, byName, keys, dependencies, observer);
         Comparator<String> canonical = Comparator.<String, String>comparing(keys::get)
                 .thenComparingInt(ranks::get).thenComparing(Comparator.naturalOrder());
 
@@ -136,6 +128,29 @@ final class LibraryBindingOrder {
     }
 
     /**
+     * The library methods each method calls: the names free in its body that name another library method, resolved
+     * lexically, so that a local or a closed inner binding of the same spelling is not a call (ADR-078 r8).
+     */
+    static Map<String, Set<String>> dependencies(Map<String, LibraryMethod> byName) {
+        var dependencies = new LinkedHashMap<String, Set<String>>();
+        for (var method : byName.values()) {
+            var uses = new LinkedHashSet<String>();
+            for (String name : PirSubstitution.collectFreeVarNames(method.body())) {
+                if (!name.equals(method.qualifiedName()) && byName.containsKey(name)) uses.add(name);
+            }
+            dependencies.put(method.qualifiedName(), uses);
+        }
+        return dependencies;
+    }
+
+    /** The content key of each of {@code methods}, by qualified name: for tests of ADR-078's lemmas. */
+    static Map<String, String> contentKeys(Collection<LibraryMethod> methods) {
+        var byName = new LinkedHashMap<String, LibraryMethod>();
+        for (var method : methods) byName.put(method.qualifiedName(), method);
+        return contentKeys(byName, dependencies(byName));
+    }
+
+    /**
      * The content key of every method. A method's key is computed after the keys of the methods it calls, so that
      * each call can be keyed by its target; a call that cannot be, inside a recursive group, is keyed by a token.
      */
@@ -173,10 +188,39 @@ final class LibraryBindingOrder {
         record Unbind(int count) implements Step {}
     }
 
+    /**
+     * The names bound around the term being described, innermost last: each name's de Bruijn index is found in constant
+     * time, so a deep or wide body is keyed in linear time.
+     */
+    private static final class Scope {
+        private final List<String> names = new ArrayList<>();
+        private final Map<String, ArrayDeque<Integer>> positions = new HashMap<>();
+
+        void addAll(List<String> bound) {
+            for (String name : bound) {
+                positions.computeIfAbsent(name, n -> new ArrayDeque<>()).push(names.size());
+                names.add(name);
+            }
+        }
+
+        void removeLast() {
+            String name = names.removeLast();
+            var stack = positions.get(name);
+            stack.pop();
+            if (stack.isEmpty()) positions.remove(name);
+        }
+
+        /** The de Bruijn index of the innermost binding of {@code name}, or -1 if it is not bound here. */
+        int index(String name) {
+            var stack = positions.get(name);
+            return stack == null ? -1 : names.size() - 1 - stack.peek();
+        }
+    }
+
     /** The digest of {@code method}'s body as {@link LibraryBindingOrder} describes it, walked without recursion. */
     private static String key(LibraryMethod method, Map<String, String> keys, Set<String> libraryMethods) {
         var text = new StringBuilder();
-        var scope = new ArrayList<String>();
+        var scope = new Scope();
         var pending = new ArrayDeque<Step>();
         pending.push(new Step.Visit(method.body()));
         while (!pending.isEmpty()) {
@@ -197,7 +241,7 @@ final class LibraryBindingOrder {
      * {@link #children}: the one child order of this class, which {@link FirstUseRanks}'s walk uses too (ADR-078).
      */
     private static void describe(PirTerm term, LibraryMethod method, Map<String, String> keys, Set<String> libraryMethods,
-                                 List<String> scope, ArrayDeque<Step> pending, StringBuilder text) {
+                                 Scope scope, ArrayDeque<Step> pending, StringBuilder text) {
         switch (term) {
             case PirTerm.Var variable -> text.append(variable(variable.name(), method, keys, libraryMethods, scope))
                     .append(type(variable.type()));
@@ -295,9 +339,9 @@ final class LibraryBindingOrder {
     }
 
     private static String variable(String name, LibraryMethod method, Map<String, String> keys, Set<String> libraryMethods,
-                                   List<String> scope) {
-        int index = scope.lastIndexOf(name);
-        if (index >= 0) return "(v " + (scope.size() - 1 - index) + ")";
+                                   Scope scope) {
+        int index = scope.index(name);
+        if (index >= 0) return "(v " + index + ")";
         if (name.equals(method.qualifiedName())) return "(self)";
         if (libraryMethods.contains(name)) {
             String key = keys.get(name);

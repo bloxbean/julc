@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 
 /**
@@ -110,6 +111,46 @@ public final class ValidatorAssembly {
         }
     }
 
+    /**
+     * ADR-078 D5's test hook: what one compilation on this thread assembles. It is told every method binding as the
+     * frontend's {@code methodBound} callback is told it, with the handler it belongs to, and every choice between
+     * library methods with equal content keys. Production compilations never set it.
+     */
+    public interface AssemblyObserver {
+        /** A method binding: the handler's purpose tag ({@code -1} outside auto-dispatch) and the binder. */
+        void bound(int handler, String binder);
+
+        /** A choice between ready library methods with equal content keys: their first-use ranks and the one bound. */
+        default void chose(String key, Map<String, Integer> contenders, String winner) {
+        }
+    }
+
+    private static final ThreadLocal<AssemblyObserver> OBSERVER = new ThreadLocal<>();
+    private static final ThreadLocal<Integer> HANDLER = ThreadLocal.withInitial(() -> -1);
+
+    /** Runs {@code compilation} on this thread with {@code observer} told what its assembly binds (ADR-078 D5). */
+    public static <T> T observing(AssemblyObserver observer, Supplier<T> compilation) {
+        OBSERVER.set(observer);
+        try {
+            return compilation.get();
+        } finally {
+            OBSERVER.remove();
+            HANDLER.remove();
+        }
+    }
+
+    /** {@code frontend}, its method bindings also reported to the observer, if one is set. */
+    private static Frontend observed(Frontend frontend) {
+        var observer = OBSERVER.get();
+        if (observer == null) return frontend;
+        var methodBound = frontend.methodBound();
+        return new Frontend(frontend.positions(), frontend.provenance(), frontend.paramBound(), frontend.finalCheck(),
+                frontend.staticBound(), (name, binding) -> {
+                    observer.bound(HANDLER.get(), name);
+                    if (methodBound != null) methodBound.accept(name, binding);
+                }, frontend.programBound());
+    }
+
     /** A compiled program: the result, and what the backend returned for it. */
     public record Assembled(CompileResult result, PirBackend.Result lowered) {
     }
@@ -166,7 +207,8 @@ public final class ValidatorAssembly {
 
     /** Assembles a validator and lowers it. */
     public static Assembled validator(Validator validator, TypeRegistry types, CompilationContext context,
-                                      Frontend frontend, boolean captureDetails) {
+                                      Frontend given, boolean captureDetails) {
+        var frontend = observed(given);
         PirTerm wrapped = frontend.bindProgram(wrap(validator, types, context, frontend));
         wrapped = bindParams(validator.params(), wrapped, frontend);
         frontend.finalCheck().accept(wrapped);
@@ -199,9 +241,11 @@ public final class ValidatorAssembly {
         if (validator.autoDispatch()) {
             // Wrap helper methods around each handler (dependency-ordered)
             for (var entry : validator.entries()) {
+                HANDLER.set(entry.tag());
                 handlers.put(entry.tag(), bindStatics(validator.statics(),
                         wrapMethodBindings(validator.helpers(), entry.function(), frontend), frontend));
             }
+            HANDLER.remove();
         } else {
             body = bindStatics(validator.statics(),
                     wrapMethodBindings(validator.helpers(), validator.entries().getFirst().function(), frontend), frontend);
@@ -215,7 +259,11 @@ public final class ValidatorAssembly {
         var sortedLibMethods = topoSortLibraryMethods(validator.libraries(),
                 new FirstUseRanks.Roots(staticValues(validator.statics()), entries, validator.helpers()));
         if (validator.autoDispatch()) {
-            handlers.replaceAll((tag, handler) -> bindLibraries(sortedLibMethods, handler, frontend));
+            handlers.replaceAll((tag, handler) -> {
+                HANDLER.set(tag);
+                return bindLibraries(sortedLibMethods, handler, frontend);
+            });
+            HANDLER.remove();
         } else {
             body = bindLibraries(sortedLibMethods, body, frontend);
         }
@@ -317,7 +365,8 @@ public final class ValidatorAssembly {
     // --- compileMethod ---
 
     /** Assembles a {@code compileMethod} target: a lambda over Data that decodes its arguments and calls the method. */
-    public static CompileResult method(MethodProgram program, CompilationContext context, Frontend frontend) {
+    public static CompileResult method(MethodProgram program, CompilationContext context, Frontend given) {
+        var frontend = observed(given);
         // 11. Build body: Data-accepting lambda that calls target method by Var reference
         // Build application: Var("method") applied to decoded args
         PirTerm application = new PirTerm.Var(program.binderName(), program.type());
@@ -432,7 +481,17 @@ public final class ValidatorAssembly {
      * content keys by first use from {@code roots} (ADR-078). The first item is bound innermost, the last outermost.
      */
     private static List<LibraryMethod> topoSortLibraryMethods(Collection<LibraryMethod> methods, FirstUseRanks.Roots roots) {
-        return LibraryBindingOrder.innermostFirst(methods, roots, null);
+        var observer = OBSERVER.get();
+        return LibraryBindingOrder.innermostFirst(methods, roots, observer == null ? null : new FirstUseRanks.Observer() {
+            @Override
+            public void selected(FirstUseRanks.Selection selection) {
+            }
+
+            @Override
+            public void chose(FirstUseRanks.TieChoice choice) {
+                observer.chose(choice.key(), choice.contenders(), choice.winner());
+            }
+        });
     }
 
     private static List<PirTerm> staticValues(List<StaticField> statics) {

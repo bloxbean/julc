@@ -1,6 +1,5 @@
 package org.julclang.compiler.codegen;
 
-import org.julclang.compiler.pir.PirSubstitution;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.resolve.LibraryMethodRegistry.LibraryMethod;
 
@@ -10,7 +9,6 @@ import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.PriorityQueue;
@@ -105,12 +103,13 @@ final class FirstUseRanks {
     /**
      * The rank of each library method, by qualified name.
      *
-     * @param methods  the library methods, by qualified name
-     * @param keys     their content keys
-     * @param observer told each selection, in rank order, or null
+     * @param methods      the library methods, by qualified name
+     * @param keys         their content keys
+     * @param dependencies the library methods each one calls (free in its body), itself excluded
+     * @param observer     told each selection, in rank order, or null
      */
     static Map<String, Integer> of(Roots roots, Map<String, LibraryMethod> methods, Map<String, String> keys,
-                                   Observer observer) {
+                                   Map<String, Set<String>> dependencies, Observer observer) {
         var walk = new Walk(roots.helpers(), methods, observer);
         // D1a: the static initialisers see only library methods; the entry points see the helpers too.
         for (var value : roots.statics()) walk.walk(value, true);
@@ -119,7 +118,7 @@ final class FirstUseRanks {
         for (var helper : roots.helpers()) {
             if (!walk.helperRanks.containsKey(helper.name())) walk.rankHelper(helper.name(), Rule.UNREAD_HELPER);
         }
-        unread(walk, methods, keys);
+        unread(walk, methods, keys, dependencies);
         return walk.libraryRanks;
     }
 
@@ -127,16 +126,9 @@ final class FirstUseRanks {
      * D1b: the library methods no walk reached, by content key, each walked as it is ranked. A method calls another
      * when the other's name is free in its body (resolved lexically, as the walk resolves it), itself excluded.
      */
-    private static void unread(Walk walk, Map<String, LibraryMethod> methods, Map<String, String> keys) {
+    private static void unread(Walk walk, Map<String, LibraryMethod> methods, Map<String, String> keys,
+                               Map<String, Set<String>> dependencies) {
         if (walk.libraryRanks.size() == methods.size()) return;
-        var dependencies = new HashMap<String, Set<String>>();
-        for (var entry : methods.entrySet()) {
-            var calls = new LinkedHashSet<String>();
-            for (String name : PirSubstitution.collectFreeVarNames(entry.getValue().body())) {
-                if (!name.equals(entry.getKey()) && methods.containsKey(name)) calls.add(name);
-            }
-            dependencies.put(entry.getKey(), calls);
-        }
         Comparator<String> canonical = Comparator.<String, String>comparing(keys::get).thenComparing(Comparator.naturalOrder());
         // Each unranked method's count of unranked library callers; a method is a candidate when it has none.
         var callers = new HashMap<String, Integer>();
