@@ -12,6 +12,8 @@ every change. JuLC is a research project: do not treat a result as proof that a 
 
 - Node.js 22.3.0 or later, or a browser with WebAssembly GC and exception references (tested in Chromium
   156.0.8078.4).
+- **Node.js security releases:** `engines` (`>=22.3.0`) is the lowest version that works, not a recommendation. Run a
+  supported Node.js release line, updated to its latest security release.
 - TypeScript 5.0 or later for the declarations.
 - **Node.js 22:** the engines use WebAssembly exception references, which Node 22 enables only with
   `--experimental-wasm-exnref`. The client checks for them with `WebAssembly.validate` before it starts its first

@@ -58,6 +58,8 @@ returns new copies of them, for example for `@julclang/wasm-client`'s own `creat
   `--experimental-wasm-exnref`: the client checks for them before it starts its first worker and, when they are
   missing, sets that flag with `v8.setFlagsFromString`. The flag is process-wide. Node 24 needs nothing. The engine
   also loads inside your own `worker_threads` worker.
+- **Node.js security releases:** `engines` (`>=22.3.0`) is the lowest version that works, not a recommendation. Run a
+  supported Node.js release line, updated to its latest security release.
 - **Content Security Policy:** `script-src 'self' 'wasm-unsafe-eval'`, on the page and on the responses of the worker
   scripts, the runtime and the launcher (a worker script has its own policy). No `'unsafe-eval'` is needed.
 - **Origins:** in a browser the worker loads the engine's files only from its own origin, which must not be opaque.
