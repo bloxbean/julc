@@ -61,6 +61,7 @@ public final class JavacCompilation {
     record MethodAttempt(String binder, PirType type, PirTerm term, String construct) {
     }
 
+    private final ValidatorAssembly.AssemblyObserver observer;
     private final JavacProgram program;
     private final JavacFacts facts;
     private final CompilationContext context;
@@ -68,7 +69,9 @@ public final class JavacCompilation {
     private final Lowering lowering;
     private final JavacLibraries libraries;
 
-    private JavacCompilation(JavacProgram program, JavacFacts facts, CompilationContext context, StdlibLookup stdlib) {
+    private JavacCompilation(JavacProgram program, JavacFacts facts, CompilationContext context, StdlibLookup stdlib,
+                             ValidatorAssembly.AssemblyObserver observer) {
+        this.observer = observer;
         this.program = program;
         this.facts = facts;
         this.context = context;
@@ -110,15 +113,27 @@ public final class JavacCompilation {
     /** {@link #validator(JavacFrontend.Unit, List, StdlibLookup, CompilationContext, boolean)}, with what {@code request} asks. */
     public static Compiled validator(JavacFrontend.Unit root, List<JavacFrontend.Unit> pool, StdlibLookup stdlib,
                                      CompilationContext context, Request request) {
+        return validator(root, pool, stdlib, context, request, null);
+    }
+
+    /** {@link #validator(JavacFrontend.Unit, List, StdlibLookup, CompilationContext, Request)}, observed (ADR-078 D5's tests). */
+    static Compiled validator(JavacFrontend.Unit root, List<JavacFrontend.Unit> pool, StdlibLookup stdlib,
+                              CompilationContext context, Request request, ValidatorAssembly.AssemblyObserver observer) {
         var program = attributed(root, pool, context);
-        return program.read(facts -> new JavacCompilation(program, facts, context, stdlib).validator(request));
+        return program.read(facts -> new JavacCompilation(program, facts, context, stdlib, observer).validator(request));
     }
 
     /** Compiles the static method {@code methodName} of the first class of {@code root} ({@code compileMethod}). */
     public static CompileResult method(JavacFrontend.Unit root, List<JavacFrontend.Unit> pool, String methodName,
                                        StdlibLookup stdlib, CompilationContext context) {
+        return method(root, pool, methodName, stdlib, context, null);
+    }
+
+    /** {@link #method(JavacFrontend.Unit, List, String, StdlibLookup, CompilationContext)}, observed (ADR-078 D5's tests). */
+    static CompileResult method(JavacFrontend.Unit root, List<JavacFrontend.Unit> pool, String methodName,
+                                StdlibLookup stdlib, CompilationContext context, ValidatorAssembly.AssemblyObserver observer) {
         var program = attributed(root, pool, context);
-        return program.read(facts -> new JavacCompilation(program, facts, context, stdlib).method(methodName));
+        return program.read(facts -> new JavacCompilation(program, facts, context, stdlib, observer).method(methodName));
     }
 
     private static JavacProgram attributed(JavacFrontend.Unit root, List<JavacFrontend.Unit> pool,
@@ -138,7 +153,7 @@ public final class JavacCompilation {
     static List<MethodAttempt> attempt(JavacFrontend.Unit root, List<JavacFrontend.Unit> pool, String methodName,
                                        StdlibLookup stdlib, CompilationContext context) {
         var program = attributed(root, pool, context);
-        return program.read(facts -> new JavacCompilation(program, facts, context, stdlib).attempt(methodName));
+        return program.read(facts -> new JavacCompilation(program, facts, context, stdlib, null).attempt(methodName));
     }
 
     private List<MethodAttempt> attempt(String methodName) {
@@ -302,8 +317,11 @@ public final class JavacCompilation {
                         }
                     },
                     (field, binding) -> terms.assembled(binding, field.name(), elements.get(field.name())),
-                    (name, binding) -> terms.assembled(binding, name, methodElements.getOrDefault(name, libraries.binders().get(name))),
-                    terms::bindShapeChecks);
+                    (handler, name, binding) -> {
+                        terms.assembled(binding, name, methodElements.getOrDefault(name, libraries.binders().get(name)));
+                        if (observer != null) observer.bound(handler, name, binding);
+                    },
+                    terms::bindShapeChecks, observer);
         }
     }
 
@@ -377,7 +395,7 @@ public final class JavacCompilation {
         try {
             var program = attributed(root, pool, context);
             program.read(facts -> {
-                var compilation = new JavacCompilation(program, facts, context, null);
+                var compilation = new JavacCompilation(program, facts, context, null, null);
                 var unit = program.roots().getFirst();
                 var validator = compilation.discovery.validatorClassOrNull(unit);
                 var compiled = validator != null ? SubsetRules.Compiled.VALIDATOR : SubsetRules.Compiled.METHOD;

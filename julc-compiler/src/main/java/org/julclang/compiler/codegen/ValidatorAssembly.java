@@ -26,7 +26,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
-import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 
 /**
@@ -84,71 +83,59 @@ public final class ValidatorAssembly {
                                 List<ParamField> params) {
     }
 
-    /**
-     * What the frontend that lowered a program adds to its assembly.
-     *
-     * @param positions   the PIR term to source location map, which the assembly adds the wrapper's failures to
-     * @param provenance  debug provenance for the backend, or null
-     * @param paramBound  told each {@code @Param}'s binding as it is built, or null
-     * @param finalCheck  run on the assembled term, before the backend
-     * @param staticBound told each static field's binding as it is built, one per copy, or null
-     * @param methodBound told each method's binding by its binder name, a library method's included, one per copy, or null
-     * @param programBound what binds around the whole program, inside its {@code @Param}s, or null
-     */
-    public record Frontend(Map<PirTerm, SourceLocation> positions, PirDebugProvenance provenance,
-                           BiConsumer<ParamField, PirTerm> paramBound, Consumer<PirTerm> finalCheck,
-                           BiConsumer<StaticField, PirTerm> staticBound,
-                           BiConsumer<String, PirTerm> methodBound, UnaryOperator<PirTerm> programBound) {
-
-        public Frontend(Map<PirTerm, SourceLocation> positions, PirDebugProvenance provenance,
-                        BiConsumer<ParamField, PirTerm> paramBound, Consumer<PirTerm> finalCheck,
-                        BiConsumer<StaticField, PirTerm> staticBound, BiConsumer<String, PirTerm> methodBound) {
-            this(positions, provenance, paramBound, finalCheck, staticBound, methodBound, null);
-        }
-
-        PirTerm bindProgram(PirTerm program) {
-            return programBound == null ? program : programBound.apply(program);
-        }
+    /** Told each method binding the assembly builds: the handler it belongs to, the binder and the term that binds it. */
+    @FunctionalInterface
+    public interface MethodBound {
+        /**
+         * @param handler the handler's purpose tag under auto-dispatch, {@code -1} otherwise
+         * @param binder  the method's binder name, a library method's included
+         * @param binding the term that binds it
+         */
+        void accept(int handler, String binder, PirTerm binding);
     }
 
     /**
-     * ADR-078 D5's test hook: what one compilation on this thread assembles. It is told every method binding as the
-     * frontend's {@code methodBound} callback is told it, with the handler it belongs to, and every choice between
-     * library methods with equal content keys. Production compilations never set it.
+     * What a frontend may observe of an assembly for ADR-078 D5's tests: each method binding, which the frontend reports
+     * from its own {@link MethodBound} callback, and each choice between ready library methods with equal content keys.
+     * Production compilations pass none.
      */
     public interface AssemblyObserver {
-        /** A method binding: the handler's purpose tag ({@code -1} outside auto-dispatch) and the binder. */
-        void bound(int handler, String binder);
+        /** A method binding, as the frontend's {@link MethodBound} callback received it. */
+        default void bound(int handler, String binder, PirTerm binding) {
+        }
 
         /** A choice between ready library methods with equal content keys: their first-use ranks and the one bound. */
         default void chose(String key, Map<String, Integer> contenders, String winner) {
         }
     }
 
-    private static final ThreadLocal<AssemblyObserver> OBSERVER = new ThreadLocal<>();
-    private static final ThreadLocal<Integer> HANDLER = ThreadLocal.withInitial(() -> -1);
+    /**
+     * What the frontend that lowered a program adds to its assembly.
+     *
+     * @param positions    the PIR term to source location map, which the assembly adds the wrapper's failures to
+     * @param provenance   debug provenance for the backend, or null
+     * @param paramBound   told each {@code @Param}'s binding as it is built, or null
+     * @param finalCheck   run on the assembled term, before the backend
+     * @param staticBound  told each static field's binding as it is built, one per copy, or null
+     * @param methodBound  told each method's binding, with its handler and binder name, a library method's included, one
+     *                     per copy, or null
+     * @param programBound what binds around the whole program, inside its {@code @Param}s, or null
+     * @param observer     told each choice between library methods with equal content keys (ADR-078 D5), or null
+     */
+    public record Frontend(Map<PirTerm, SourceLocation> positions, PirDebugProvenance provenance,
+                           BiConsumer<ParamField, PirTerm> paramBound, Consumer<PirTerm> finalCheck,
+                           BiConsumer<StaticField, PirTerm> staticBound,
+                           MethodBound methodBound, UnaryOperator<PirTerm> programBound, AssemblyObserver observer) {
 
-    /** Runs {@code compilation} on this thread with {@code observer} told what its assembly binds (ADR-078 D5). */
-    public static <T> T observing(AssemblyObserver observer, Supplier<T> compilation) {
-        OBSERVER.set(observer);
-        try {
-            return compilation.get();
-        } finally {
-            OBSERVER.remove();
-            HANDLER.remove();
+        public Frontend(Map<PirTerm, SourceLocation> positions, PirDebugProvenance provenance,
+                        BiConsumer<ParamField, PirTerm> paramBound, Consumer<PirTerm> finalCheck,
+                        BiConsumer<StaticField, PirTerm> staticBound, MethodBound methodBound) {
+            this(positions, provenance, paramBound, finalCheck, staticBound, methodBound, null, null);
         }
-    }
 
-    /** {@code frontend}, its method bindings also reported to the observer, if one is set. */
-    private static Frontend observed(Frontend frontend) {
-        var observer = OBSERVER.get();
-        if (observer == null) return frontend;
-        var methodBound = frontend.methodBound();
-        return new Frontend(frontend.positions(), frontend.provenance(), frontend.paramBound(), frontend.finalCheck(),
-                frontend.staticBound(), (name, binding) -> {
-                    observer.bound(HANDLER.get(), name);
-                    if (methodBound != null) methodBound.accept(name, binding);
-                }, frontend.programBound());
+        PirTerm bindProgram(PirTerm program) {
+            return programBound == null ? program : programBound.apply(program);
+        }
     }
 
     /** A compiled program: the result, and what the backend returned for it. */
@@ -207,8 +194,7 @@ public final class ValidatorAssembly {
 
     /** Assembles a validator and lowers it. */
     public static Assembled validator(Validator validator, TypeRegistry types, CompilationContext context,
-                                      Frontend given, boolean captureDetails) {
-        var frontend = observed(given);
+                                      Frontend frontend, boolean captureDetails) {
         PirTerm wrapped = frontend.bindProgram(wrap(validator, types, context, frontend));
         wrapped = bindParams(validator.params(), wrapped, frontend);
         frontend.finalCheck().accept(wrapped);
@@ -241,14 +227,12 @@ public final class ValidatorAssembly {
         if (validator.autoDispatch()) {
             // Wrap helper methods around each handler (dependency-ordered)
             for (var entry : validator.entries()) {
-                HANDLER.set(entry.tag());
                 handlers.put(entry.tag(), bindStatics(validator.statics(),
-                        wrapMethodBindings(validator.helpers(), entry.function(), frontend), frontend));
+                        wrapMethodBindings(validator.helpers(), entry.function(), frontend, entry.tag()), frontend));
             }
-            HANDLER.remove();
         } else {
             body = bindStatics(validator.statics(),
-                    wrapMethodBindings(validator.helpers(), validator.entries().getFirst().function(), frontend), frontend);
+                    wrapMethodBindings(validator.helpers(), validator.entries().getFirst().function(), frontend, -1), frontend);
         }
 
         // 14. Wrap library methods as Let bindings (topologically sorted: dependencies outermost; equal content keys
@@ -257,15 +241,11 @@ public final class ValidatorAssembly {
                 ? validator.entries().stream().sorted(Comparator.comparingInt(Entry::tag)).map(Entry::function).toList()
                 : List.of(validator.entries().getFirst().function());
         var sortedLibMethods = topoSortLibraryMethods(validator.libraries(),
-                new FirstUseRanks.Roots(staticValues(validator.statics()), entries, validator.helpers()));
+                new FirstUseRanks.Roots(staticValues(validator.statics()), entries, validator.helpers()), frontend.observer());
         if (validator.autoDispatch()) {
-            handlers.replaceAll((tag, handler) -> {
-                HANDLER.set(tag);
-                return bindLibraries(sortedLibMethods, handler, frontend);
-            });
-            HANDLER.remove();
+            handlers.replaceAll((tag, handler) -> bindLibraries(sortedLibMethods, handler, frontend, tag));
         } else {
-            body = bindLibraries(sortedLibMethods, body, frontend);
+            body = bindLibraries(sortedLibMethods, body, frontend, -1);
         }
 
         // 15. Resolve typed transaction-time roots and wrap the entrypoint for on-chain.
@@ -330,7 +310,7 @@ public final class ValidatorAssembly {
         return body;
     }
 
-    private static PirTerm bindLibraries(List<LibraryMethod> sorted, PirTerm body, Frontend frontend) {
+    private static PirTerm bindLibraries(List<LibraryMethod> sorted, PirTerm body, Frontend frontend, int handler) {
         for (var libMethod : sorted) {
             if (containsVarRef(libMethod.body(), libMethod.qualifiedName())) {
                 body = new PirTerm.LetRec(
@@ -339,7 +319,7 @@ public final class ValidatorAssembly {
             } else {
                 body = new PirTerm.Let(libMethod.qualifiedName(), libMethod.body(), body);
             }
-            if (frontend.methodBound() != null) frontend.methodBound().accept(libMethod.qualifiedName(), body);
+            if (frontend.methodBound() != null) frontend.methodBound().accept(handler, libMethod.qualifiedName(), body);
         }
         return body;
     }
@@ -365,8 +345,7 @@ public final class ValidatorAssembly {
     // --- compileMethod ---
 
     /** Assembles a {@code compileMethod} target: a lambda over Data that decodes its arguments and calls the method. */
-    public static CompileResult method(MethodProgram program, CompilationContext context, Frontend given) {
-        var frontend = observed(given);
+    public static CompileResult method(MethodProgram program, CompilationContext context, Frontend frontend) {
         // 11. Build body: Data-accepting lambda that calls target method by Var reference
         // Build application: Var("method") applied to decoded args
         PirTerm application = new PirTerm.Var(program.binderName(), program.type());
@@ -388,13 +367,13 @@ public final class ValidatorAssembly {
         }
 
         // 12. Wrap ALL methods as Let/LetRec bindings (target + helpers, dependency-ordered)
-        body = wrapMethodBindings(program.methods(), body, frontend);
+        body = wrapMethodBindings(program.methods(), body, frontend, -1);
         // 14. Wrap static field initializers
         body = bindStatics(program.statics(), body, frontend);
         // 15. Wrap library methods as Let bindings (equal content keys by first use from the target, ADR-078)
         body = bindLibraries(topoSortLibraryMethods(program.libraries(), new FirstUseRanks.Roots(
                 staticValues(program.statics()), List.of(new PirTerm.Var(program.binderName(), program.type())),
-                program.methods())), body, frontend);
+                program.methods()), frontend.observer()), body, frontend, -1);
         // 16. Wrap with outer @Param lambdas
         body = bindParams(program.params(), frontend.bindProgram(body), frontend);
 
@@ -433,7 +412,7 @@ public final class ValidatorAssembly {
      * Wrap class/validator methods as Let/LetRec bindings in dependency order.
      * Uses Tarjan's SCC to handle forward references and mutual recursion.
      */
-    private static PirTerm wrapMethodBindings(List<Method> methods, PirTerm body, Frontend frontend) {
+    private static PirTerm wrapMethodBindings(List<Method> methods, PirTerm body, Frontend frontend, int handler) {
         if (methods.isEmpty()) return body;
 
         var bindings = new ArrayList<MethodDependencyResolver.NamedBinding>();
@@ -468,7 +447,7 @@ public final class ValidatorAssembly {
                         "Mutual recursion with more than 2 methods is not supported: " + names);
             }
             if (frontend.methodBound() != null) {
-                for (var b : group.bindings()) frontend.methodBound().accept(b.name(), body);
+                for (var b : group.bindings()) frontend.methodBound().accept(handler, b.name(), body);
             }
         }
 
@@ -480,8 +459,8 @@ public final class ValidatorAssembly {
      * themselves, not by the order they were found in (issue #328, {@link LibraryBindingOrder}); methods with equal
      * content keys by first use from {@code roots} (ADR-078). The first item is bound innermost, the last outermost.
      */
-    private static List<LibraryMethod> topoSortLibraryMethods(Collection<LibraryMethod> methods, FirstUseRanks.Roots roots) {
-        var observer = OBSERVER.get();
+    private static List<LibraryMethod> topoSortLibraryMethods(Collection<LibraryMethod> methods, FirstUseRanks.Roots roots,
+                                                              AssemblyObserver observer) {
         return LibraryBindingOrder.innermostFirst(methods, roots, observer == null ? null : new FirstUseRanks.Observer() {
             @Override
             public void selected(FirstUseRanks.Selection selection) {
