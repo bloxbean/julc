@@ -19,11 +19,15 @@ from Maven.
 # JOUST worktree joust-julc-pre21 at 5522cafc (branch chore/julc-0.1.0-pre21); nothing was written there.
 # 1. The toolchain module's test class path, by an init script that writes sourceSets.test.runtimeClasspath:
 ./gradlew --offline --no-daemon -q -I cp.init.gradle :julc-state-toolchain:printTestCp
-# 2. Compile the scratch programs against it (package org.julclang.state.toolchain, to reach the test's helpers):
-javac -d classes -cp "$(cat cp.txt)" Adr078Diag.java Adr078Probe.java
+# 2. Compile the scratch programs against it (Adr078Diag is in package org.julclang.state.toolchain, to reach the
+#    test's helpers; it calls probe.Adr078Census, so compile them together; the probe files are independent):
+javac -d classes -cp "$(cat cp.txt)" Adr078Diag.java Adr078Census.java Adr078ExamplesCensus.java Adr078Probe.java \
+      R2Probes.java R3Probes.java R4Probes.java C1Probe.java
 # 3. Run from julc-state-toolchain/ (the test reads ../examples/dsl):
 java -cp "classes:$(cat cp.txt)" org.julclang.state.toolchain.Adr078Diag out Crowdfund.jsc   # or ALL
 java -cp "classes:$(cat cp.txt)" probe.Adr078Probe probe-out
+java -cp "classes:$(cat cp.txt)" probe.Adr078ExamplesCensus ../julc-examples/src/main/java   # julc-examples@49614db8
+# Census flags: -Dadr078.locals=true adds the locals-rename variant; -Dadr078.pir=true writes the PIR.
 # 4. Name-stripped comparison (FLAT keeps no names, so this compares what reaches the bytes):
 sed -E 's/\(lam [^ ()]+/(lam _/g' X-base.uplc | tr ' ' '\n' > a; (same for X-renamed) > b; diff a b
 ```
