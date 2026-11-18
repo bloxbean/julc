@@ -230,7 +230,7 @@ test('a failure after the first package stops the job; re-running it skips the c
     assert.match(first.text, /npm publish failed for @julclang\/julc-vm-wasm@0\.1\.0-pre22; nothing more is published/);
     assert.deepEqual(registry.publishes, [`${CLIENT}@${VERSION}`, `${VM}@${VERSION}`]);
     assert.equal(first.outputs.published, 'false');
-    assert.equal(registry.packages.get(FULL), undefined, 'the full engine was never attempted');
+    assert.equal(registry.packages.get(FULL).versions[VERSION], undefined, 'the full engine was never attempted');
 
     // "Re-run failed jobs": the same job on the same files.
     registry.failPublish.clear();
@@ -282,7 +282,6 @@ test('dry runs publish nothing: a candidate of a prerelease uses its prerelease\
     assert.equal(real.status, 1, show(real));
     assert.match(real.text, /release candidate of a prerelease, which is never published/);
     assert.deepEqual(registry.publishes, []);
-    assert.equal(registry.packages.size, 0);
   } finally { await registry.close(); }
 });
 
@@ -590,6 +589,32 @@ test('an incomplete registry answer with HTTP 200 stops publication and verifica
       registry.overrides.set(VM, body);
       const verified = await verify(registry, rel, ['--work', scratch('verify-work')]);
       assert.equal(verified.status, 1, label + '\n' + show(verified));
+    } finally { await registry.close(); }
+  }
+});
+
+test('a 404 for one of the three packages is never "unpublished": asked again briefly, then the job fails (R23-C31)', async () => {
+  // A final version exists, so 0.1.0-pre22 belongs on preview: a 404 must never make it "no final yet", on latest.
+  for (const firstGood of [0, 1]) {
+    const label = firstGood ? 'a 404 after a valid read' : 'a 404 at the first read';
+    const registry = await startRegistry({provenanceOnPublish: identity(VERSION)});
+    try {
+      const rel = release(VERSION);
+      registry.seed(CLIENT, '0.0.1', release('0.0.1').bytes(CLIENT), {provenance: identity('0.0.1')});
+      let reads = 0;
+      registry.overrides.set(CLIENT, () => ++reads > firstGood ? {status: 404, body: '{"error":"not found"}'} : null);
+      const result = await publish(registry, rel);
+      assert.equal(result.status, 1, label + '\n' + show(result));
+      assert.match(result.text, /HTTP 404 for a bootstrapped package/, label);
+      assert.ok(reads >= 3, `${label}: asked again (${reads} reads)`);
+      assert.equal(result.outputs.published, 'false', label);
+      if (firstGood) {
+        // Published with the tag of the one valid read, then the 404 stops the job instead of passing as published.
+        assert.deepEqual(registry.publishes, [`${CLIENT}@${VERSION}`], label);
+        assert.deepEqual(registry.packages.get(CLIENT)['dist-tags'], {latest: '0.0.1', preview: VERSION}, label);
+      } else {
+        assert.deepEqual(registry.publishes, [], label);
+      }
     } finally { await registry.close(); }
   }
 });

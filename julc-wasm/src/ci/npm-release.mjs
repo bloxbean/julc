@@ -146,11 +146,10 @@ export function candidateTags(version, tag) {
  * that package, so no dist-tag ever moves backwards (a recovery of version N after N+1, a maintenance release, or a
  * package of N+1 published before the others). A prerelease channel (`preview`, `beta`, `next`) is also skipped unless
  * the version is ahead of `latest`: a channel is what comes after `latest`. Chosen per package, from the registry as
- * it is at publication time; the workflow publishes one version at a time (one concurrency group for every npm
- * publication).
+ * it is at publication time (`document`, the one validated read npm-publish also checks the version against,
+ * R23-C31); the workflow publishes one version at a time (one concurrency group for every npm publication).
  */
-export async function packageTag(registry, name, version) {
-  const document = await packument(registry, name);
+export function packageTag(document, name, version) {
   const tags = document?.['dist-tags'] ?? {};
   const higher = [];
   for (const candidate of candidateTags(version, d8Tag(version, document))) {
@@ -357,11 +356,21 @@ export function validatePackument(document, name) {
   return document;
 }
 
-/** The registry's full metadata for a package, validated, or null when the registry does not know it (404). */
+/**
+ * The registry's full metadata for a package, validated, or null when the registry does not know it (404). The three
+ * packages of this release are bootstrapped (D8a), so for them a 404 is never "unpublished": it is asked again briefly,
+ * then fails the job (R23-C31).
+ */
 export async function packument(registry, name) {
-  const response = await fetch(normaliseRegistry(registry) + escapedName(name), {
-    headers: {accept: 'application/json'}, cache: 'no-store'});
-  if (response.status === 404) return null;
+  let response;
+  for (let attempt = 1; ; attempt++) {
+    response = await fetch(normaliseRegistry(registry) + escapedName(name), {
+      headers: {accept: 'application/json'}, cache: 'no-store'});
+    if (response.status !== 404) break;
+    if (!PACKAGES.includes(name)) return null;
+    if (attempt === 3) fail(`GET ${name} from ${normaliseRegistry(registry)}: HTTP 404 for a bootstrapped package`);
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
   // Exactly 200: anything else (a 206 partial answer, a 304, a 5xx) is not a document to decide on.
   if (response.status !== 200) fail(`GET ${name} from ${normaliseRegistry(registry)}: HTTP ${response.status}`);
   let document;
@@ -383,13 +392,25 @@ export function statementOf(bundle) {
   return JSON.parse(Buffer.from(envelope.payload, 'base64').toString('utf8'));
 }
 
-/** The registry's provenance bundle for a version, read from its metadata (`dist.attestations`); null if it has none. */
-export async function registryProvenance(dist) {
+/**
+ * The registry's provenance bundle for a version, read from its metadata (`dist.attestations`); null if it has none.
+ * Read only from the configured registry's origin, with no redirect, and only from exactly HTTP 200 (R23-C32).
+ */
+export async function registryProvenance(dist, registry) {
   const attestations = dist?.attestations;
   if (!attestations?.url || attestations.provenance?.predicateType !== SLSA_PROVENANCE_V1) return null;
-  const response = await fetch(attestations.url, {headers: {accept: 'application/json'}, cache: 'no-store'});
+  const origin = new URL(normaliseRegistry(registry)).origin;
+  let url;
+  try { url = new URL(attestations.url); } catch { fail(`the attestations URL ${attestations.url} is not a URL`); }
+  if (url.origin !== origin) fail(`the attestations URL ${attestations.url} is not on the registry ${origin}`);
+  let response;
+  try {
+    response = await fetch(url, {headers: {accept: 'application/json'}, cache: 'no-store', redirect: 'error'});
+  } catch (error) {
+    fail(`GET ${attestations.url}: ${error.cause?.message ?? error.message} (a redirect is refused)`);
+  }
   if (response.status === 404) return null;
-  if (!response.ok) fail(`GET ${attestations.url}: HTTP ${response.status}`);
+  if (response.status !== 200) fail(`GET ${attestations.url}: HTTP ${response.status}`);
   let document;
   try { document = await response.json(); } catch { fail(`GET ${attestations.url}: the answer is not JSON`); }
   if (!isObject(document) || !Array.isArray(document.attestations)) {

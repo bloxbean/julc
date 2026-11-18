@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import {existsSync, readFileSync, realpathSync} from 'node:fs';
+import http from 'node:http';
 import {createRequire} from 'node:module';
 import path from 'node:path';
 import test from 'node:test';
@@ -9,7 +10,7 @@ import {fileURLToPath} from 'node:url';
 import {
   BETA_TAG, CANDIDATE_TAG, LATEST_TAG, PACKAGES, PREVIEW_TAG, candidateTags, d8Tag, hasFinalVersion, tagProblems,
   certificateIdentity, certificateProblems, compareVersions, distTag, finalVersionOf, isLoopbackRegistry,
-  isPrereleaseCandidate, parseDigests, validatePackument, versionKind, parseSums, releaseIdentity, signingCertificate, statementOf,
+  isPrereleaseCandidate, parseDigests, registryProvenance, validatePackument, versionKind, parseSums, releaseIdentity, signingCertificate, statementOf,
   statementProblems, tarballName, verifiedProvenance,
 } from '../../ci/npm-release.mjs';
 
@@ -95,7 +96,7 @@ test('D8 per package: -preN on latest until the package has a final version, the
   assert.throws(() => d8Tag('0.2.0-pre1-rc1', doc('0.1.0')), /release candidate of a prerelease/);
 });
 
-test('a registry document is validated before use; anything incomplete fails, only a 404 means unpublished', () => {
+test('a registry document is validated before use; anything incomplete fails', () => {
   const name = '@julclang/wasm-client';
   const good = {name, 'dist-tags': {latest: '0.1.0-pre21', bootstrap: '0.0.0-oidc-bootstrap.0'},
     versions: {'0.1.0-pre21': {name, version: '0.1.0-pre21'}, '0.0.0-oidc-bootstrap.0': {name, version: '0.0.0-oidc-bootstrap.0'}}};
@@ -303,4 +304,42 @@ test('the signing certificate is the one Sigstore verification uses, and ambiguo
   // null counts as absent, as in the deserializer.
   assert.deepEqual(signingCertificate(shaped({publicKey: null, x509CertificateChain: null, certificate: {rawBytes: raw}})),
     Buffer.from(raw, 'base64'));
+});
+
+test('the provenance bundle is read only from the registry\'s origin, with no redirect, and only from HTTP 200 (R23-C32)', async () => {
+  const SLSA = 'https://slsa.dev/provenance/v1';
+  const bundle = {mediaType: 'bundle'};
+  const listen = async handler => {
+    const requests = [];
+    const server = http.createServer((req, res) => { requests.push(req.url); handler(req, res); });
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    return {requests, url: `http://127.0.0.1:${server.address().port}/`,
+      close: () => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); })};
+  };
+  const json = (res, status, body) => { res.writeHead(status, {'content-type': 'application/json'}); res.end(JSON.stringify(body)); };
+  const foreign = await listen((req, res) => json(res, 200, {attestations: [{predicateType: SLSA, bundle}]}));
+  const registry = await listen((req, res) => {
+    if (req.url.endsWith('/good')) return json(res, 200, {attestations: [{predicateType: SLSA, bundle}]});
+    if (req.url.endsWith('/missing')) return json(res, 404, {error: 'not found'});
+    if (req.url.endsWith('/partial')) return json(res, 206, {attestations: [{predicateType: SLSA, bundle}]});
+    if (req.url.endsWith('/away')) { res.writeHead(302, {location: foreign.url + 'good'}); return res.end(); }
+    if (req.url.endsWith('/here')) { res.writeHead(302, {location: registry.url + 'good'}); return res.end(); }
+    json(res, 500, {});
+  });
+  const dist = url => ({attestations: {url, provenance: {predicateType: SLSA}}});
+  try {
+    assert.deepEqual(await registryProvenance(dist(registry.url + 'good'), registry.url), bundle);
+    assert.equal(await registryProvenance(dist(registry.url + 'missing'), registry.url), null);
+    await assert.rejects(registryProvenance(dist(foreign.url + 'good'), registry.url), /is not on the registry/);
+    await assert.rejects(registryProvenance(dist('not a url'), registry.url), /is not a URL/);
+    await assert.rejects(registryProvenance(dist(registry.url + 'away'), registry.url), /a redirect is refused/);
+    await assert.rejects(registryProvenance(dist(registry.url + 'here'), registry.url), /a redirect is refused/,
+      'a redirect within the registry is refused too');
+    await assert.rejects(registryProvenance(dist(registry.url + 'partial'), registry.url), /HTTP 206/);
+    // The default registry's origin, checked before any request (npmjs answers its attestations URL itself: HTTP
+    // 200 with no redirect, checked on @julclang/wasm-client@0.1.0-pre21).
+    await assert.rejects(registryProvenance(dist('http://registry.npmjs.org/-/npm/v1/attestations/x@1.0.0'), undefined),
+      /is not on the registry https:\/\/registry\.npmjs\.org/);
+    assert.deepEqual(foreign.requests, [], 'the foreign origin is never asked');
+  } finally { await registry.close(); await foreign.close(); }
 });

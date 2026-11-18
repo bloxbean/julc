@@ -17,7 +17,8 @@ import path from 'node:path';
 import {parseArgs} from 'node:util';
 import {
   ReleaseError, distTag, finalVersionOf, isLoopbackRegistry, isPrereleaseCandidate, localTarballs, normaliseRegistry,
-  packageTag, parseDigests, registryProvenance, registryVersion, releaseIdentity, statementOf, statementProblems,
+  packageTag, packument, parseDigests, registryProvenance, registryVersion, releaseIdentity, statementOf,
+  statementProblems,
 } from './npm-release.mjs';
 
 const {values: options} = parseArgs({options: {
@@ -37,8 +38,7 @@ const summary = line => { if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(pr
  * Whether the registry's `name@version` is exactly this tarball with provenance from this workflow at the release
  * tag: 'absent', 'match', or a list of what differs.
  */
-async function registryState(registry, tarball, version, identity) {
-  const meta = await registryVersion(registry, tarball.name, version);
+async function registryState(meta, registry, tarball, version, identity) {
   if (!meta) return {state: 'absent'};
   const problems = [];
   if (meta.dist?.integrity !== tarball.integrity) {
@@ -47,7 +47,7 @@ async function registryState(registry, tarball, version, identity) {
   if (meta.dist?.shasum !== undefined && meta.dist.shasum !== tarball.shasum) {
     problems.push(`registry shasum ${meta.dist.shasum}, the release's tarball is ${tarball.shasum}`);
   }
-  const bundle = await registryProvenance(meta.dist);
+  const bundle = await registryProvenance(meta.dist, registry);
   if (!bundle) {
     problems.push('no provenance attestation (published by hand, or by another workflow without provenance)');
     return {state: 'differs', problems, missingProvenance: true};
@@ -118,7 +118,8 @@ async function main() {
     const deadline = Date.now() + timeout;
     const interval = Math.min(5000, Math.max(100, timeout / 20));
     for (;;) {
-      const result = await registryState(registry, tarball, version, identity);
+      const result = await registryState(await registryVersion(registry, tarball.name, version), registry, tarball,
+        version, identity);
       if (result.state === 'match') return result;
       if (result.state === 'differs') {
         const onlyMissingProvenance = result.missingProvenance && result.problems.length === 1;
@@ -134,7 +135,9 @@ async function main() {
   const selected = {};
   for (const tarball of tarballs) {
     const label = `${tarball.name}@${version}`;
-    const before = await registryState(registry, tarball, version, identity);
+    // One validated read decides both whether the version is there and, if not, its tag (R23-C31).
+    const document = await packument(registry, tarball.name);
+    const before = await registryState(document?.versions[version] ?? null, registry, tarball, version, identity);
     if (before.state === 'match') {
       console.log(`skip ${label}: already on the registry, the same tarball, with provenance from ${identity.workflow} at ${identity.ref}`);
       summary(`- ${label}: already published, identical, with this workflow's provenance (skipped)`);
@@ -145,7 +148,7 @@ async function main() {
         + `provenance; nothing more is published (I11):\n  - ${before.problems.join('\n  - ')}`);
     }
     // No dist-tag ever moves backwards: this package's tag, chosen from the registry as it is now (D8).
-    const chosen = await packageTag(registry, tarball.name, tagVersion);
+    const chosen = packageTag(document, tarball.name, tagVersion);
     if (chosen.reason) console.log(`${chosen.reason}: publishing as ${chosen.tag}`);
     const run = npmPublish(npm, tarball, chosen.tag, {dryRun: mode === 'dry-run', provenance, registry});
     if (mode === 'dry-run') {

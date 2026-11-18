@@ -5,7 +5,9 @@
 //   bundle is not signed: the publish job reads the statement only, and the signature is npm-verify's to check);
 // - a version that exists but is hidden until a publication of it is attempted (registry lag), which then answers
 //   npm's "cannot publish over the previously published versions";
-// - a publication that fails with HTTP 500.
+// - a publication that fails with HTTP 500;
+// - the three packages bootstrapped, as on npmjs (D8a): a placeholder version on `latest` (`bootstrap: false` for
+//   none), which later publications move `latest` past.
 // Every publication attempt is logged.
 import {createHash} from 'node:crypto';
 import http from 'node:http';
@@ -33,7 +35,10 @@ export function provenanceDocument(name, version, bytes, {repository, workflow, 
   }}]};
 }
 
-export async function startRegistry({provenanceOnPublish = null} = {}) {
+export const BOOTSTRAP = '0.0.0-oidc-bootstrap.0';
+const PACKAGES = ['@julclang/wasm-client', '@julclang/julc-vm-wasm', '@julclang/julc-wasm'];
+
+export async function startRegistry({provenanceOnPublish = null, bootstrap = true} = {}) {
   // What npm attaches to a publication: settable between publications (each release's own workflow run).
   const settings = {provenanceOnPublish};
   const packages = new Map();
@@ -41,6 +46,7 @@ export async function startRegistry({provenanceOnPublish = null} = {}) {
   const hidden = new Set();
   const failPublish = new Set();
   // A package's document answered with this raw body (HTTP 200), or {status, body}, instead: a broken registry answer.
+  // A function is asked on each read, and answers such a value, or null for the registry's own answer.
   const overrides = new Map();
   const publishes = [];
   let url;
@@ -64,7 +70,7 @@ export async function startRegistry({provenanceOnPublish = null} = {}) {
         provenance: {predicateType: SLSA}}} : {}),
     }};
     if (provenance) attestations.set(key, provenanceDocument(name, version, bytes, provenance));
-    pkg['dist-tags'][tag] = version;
+    if (tag) pkg['dist-tags'][tag] = version;
     pkg['dist-tags'].latest ??= version;
   };
 
@@ -88,9 +94,9 @@ export async function startRegistry({provenanceOnPublish = null} = {}) {
         res.writeHead(200, {'content-type': 'application/octet-stream'});
         return res.end(bytes);
       }
-      if (req.method === 'GET' && overrides.has(route)) {
-        const override = overrides.get(route);
-        const {status = 200, body} = typeof override === 'string' ? {body: override} : override;
+      const answer = typeof overrides.get(route) === 'function' ? overrides.get(route)() : overrides.get(route);
+      if (req.method === 'GET' && answer != null) {
+        const {status = 200, body} = typeof answer === 'string' ? {body: answer} : answer;
         res.writeHead(status, {'content-type': 'application/json'});
         return res.end(body);
       }
@@ -130,13 +136,15 @@ export async function startRegistry({provenanceOnPublish = null} = {}) {
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   url = `http://127.0.0.1:${server.address().port}/`;
+  if (bootstrap) for (const name of PACKAGES) store(name, BOOTSTRAP, Buffer.from(`placeholder ${name}`), 'latest');
   return {
     url, packages, publishes, failPublish, overrides,
     get provenanceOnPublish() { return settings.provenanceOnPublish; },
     set provenanceOnPublish(value) { settings.provenanceOnPublish = value; },
     /** A version already on the registry, for example from an earlier attempt or published by hand. */
+    // A hidden version moves no dist-tag: the registry answers its document as it was before (registry lag).
     seed: (name, version, bytes, {tag = 'latest', provenance = null, hide = false} = {}) => {
-      store(name, version, bytes, tag, {provenance});
+      store(name, version, bytes, hide ? null : tag, {provenance});
       if (hide) hidden.add(`${name}@${version}`);
     },
     close: () => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }),
