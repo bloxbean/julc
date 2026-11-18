@@ -56,6 +56,11 @@ Dist-tags (D8), per package, from the registry when it is published. The tag nam
 | a snapshot, or any other form | refused | |
 
 `preview`, `beta` and `next` are channels ahead of `latest`: a version takes one only when it is ahead of `latest`.
+A channel exists only after its first version, and a final release does not reset it, so afterwards it can name a
+version older than `latest` (`npm-verify` notes it). **Within one `X.Y.Z` semver orders `beta < pre < rc`**: a beta
+series belongs to a new `X.Y.Z` (`0.1.0-beta1` after `0.1.0-pre21` goes to `release-0.1`, never `beta`), and a first
+final backfilled below a `-preN` on `latest` (`0.1.0` after `0.2.0-pre1`) goes to `release-0.1`. Users should pin
+prereleases exactly: `^0.1.0-pre21` also matches a later `0.1.0-rcN`.
 So until JuLC's first final release, `npm install @julclang/julc-wasm` gets the newest `-preN`; after it, the newest
 final release. **No dist-tag ever moves backwards.** Each package's tag is the first of D8's tag,
 `release-<major>.<minor>` (for example `release-0.1`) and `release-<version>` (for example `release-0.1.8`) that does
@@ -207,6 +212,15 @@ gh api repos/bloxbean/julc/actions/runs/<run id>/artifacts?name=npm-packages --j
 ```
 `false <date>` means available until that date. Nothing, or `true`, means they are gone: that version can no longer be
 published to npm (a dispatch fails with "the npm files of v<version> are no longer available"); release the next one.
+After expiry, "Re-run failed jobs" fails in its download step with the download action's own generic error, not this
+message: run the check above. If some packages of the version were published before the window closed (the client,
+say) and the rest can no longer be, deprecate the published ones by hand (`npm deprecate @julclang/<name>@<version>
+"incomplete release; use <next>"`, with 2FA) and release the next version.
+
+A version already on npm stays checkable after its artifact expired, since its attestation lives in GitHub's
+attestation store: `npm pack @julclang/<name>@<version>` and then `gh attestation verify <the .tgz> --repo
+bloxbean/julc --signer-workflow bloxbean/julc/.github/workflows/native-image-release.yml --source-ref
+refs/tags/v<version>`, plus `npm audit signatures` in a project that installs it.
 
 - **Within the original run** (any job failed, before any full re-run): use **"Re-run failed jobs"**. It keeps the run's
   artifacts and the `wasm` job's digest outputs. `github-release` finds the release, keeps assets already attached
@@ -217,21 +231,39 @@ published to npm (a dispatch fails with "the npm files of v<version> are no long
   reach the original attempt. Finish the release by hand from the original run's artifacts (kept 14 days; the bytes
   are the ones its digests and checksum files name), never replacing a completed asset, then dispatch on the tag for
   npm (which reads the run's `npm-packages` artifact, not the release):
+  `gh run download` puts each artifact in its own directory (`dist/release-wasm/…`, `dist/release-cli-…/…`), so
+  attach the files found under them:
   ```
   gh run download <original run id> --repo bloxbean/julc --pattern 'release-*' --dir dist
   gh api repos/bloxbean/julc/releases/tags/v<version> --jq '.assets[] | "\(.id) \(.name) \(.state)"'
   gh api -X DELETE repos/bloxbean/julc/releases/assets/<id of each asset in state starter>
-  gh release upload v<version> dist/<each missing file> --repo bloxbean/julc      # never --clobber
+  find dist -type f                                          # the files; attach those the release lacks:
+  gh release upload v<version> <each missing file, as listed by find> --repo bloxbean/julc      # never --clobber
   ```
-  Then check every asset against the original run's bytes, as the workflow's final check does (each line must say
-  `ok`, and the release must not be a draft):
+  Then check the release against the original run's files, as the workflow's final check does. This prints `ok` for
+  each file and fails (non-zero) on a draft, a duplicate file name, a missing or differing asset, or a release asset
+  the artifacts do not have:
   ```
-  gh api repos/bloxbean/julc/releases/tags/v<version> --jq '.draft'      # false
-  for f in dist/*; do
-    n=$(basename "$f")
-    d=$(gh api repos/bloxbean/julc/releases/tags/v<version> --jq ".assets[] | select(.name == \"$n\") | \"\(.state) \(.digest)\"")
-    [ "$d" = "uploaded sha256:$(sha256sum "$f" | cut -d' ' -f1)" ] && echo "ok $n" || echo "DIFFERENT $n: $d"
-  done
+  (
+    set -euo pipefail
+    version=<version>
+    work=$(mktemp -d)
+    gh api "repos/bloxbean/julc/releases/tags/v${version}" > "$work/release.json"
+    [ "$(jq -r .draft "$work/release.json")" = false ] || { echo "v${version}'s release is a draft"; exit 1; }
+    jq -r '.assets[] | "\(.name) \(.state) \(.digest)"' "$work/release.json" | sort > "$work/release.txt"
+    find dist -type f | while read -r f; do echo "$(basename "$f") $(sha256sum "$f" | cut -d' ' -f1)"; done \
+      | sort > "$work/files.txt"
+    dupes=$(cut -d' ' -f1 "$work/files.txt" | uniq -d)
+    [ -z "$dupes" ] || { echo "file names found twice under dist: $dupes"; exit 1; }
+    failed=0
+    while read -r name sha; do
+      line=$(awk -v n="$name" '$1 == n' "$work/release.txt")
+      if [ "$line" = "$name uploaded sha256:$sha" ]; then echo "ok $name"; else echo "DIFFERENT $name: ${line:-missing}"; failed=1; fi
+    done < "$work/files.txt"
+    extra=$(comm -23 <(cut -d' ' -f1 "$work/release.txt") <(cut -d' ' -f1 "$work/files.txt"))
+    [ -z "$extra" ] || { echo "release assets the artifacts do not have: $extra"; failed=1; }
+    exit "$failed"
+  )
   ```
   The npm jobs also require the release's engine archives to equal the attested ones in `npm-packages`, so a wrong
   archive is refused there.
@@ -261,6 +293,9 @@ published to npm (a dispatch fails with "the npm files of v<version> are no long
   waits, the newer waiting job **cancels** the older waiting one. That run shows `npm-publish` as cancelled (and
   `npm-verify` skipped); its release is complete and published, so finish it by dispatching the workflow on its tag
   within 14 days (it waits for the group like any other).
+- **A stale channel** (for example `next` naming `0.2.0-rc1` after `0.2.0` is out): optionally move it by hand, with
+  2FA and publications quiesced ("Dist-tags by hand"): `npm dist-tag add @julclang/<name>@<final> next` for each of
+  the three packages; the trusted publisher has no dist-tag permission.
 - **Recovering an older version after a newer one is out** publishes it on the first tag that does not move backwards
   (above) and leaves `latest` on the newer version; `npm-verify` checks that each tag the run chose still names that
   version or a later one.

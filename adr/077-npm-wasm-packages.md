@@ -815,6 +815,17 @@ prerelease part, as written (case-sensitive, `N` from 1):
    `latest` is the named exception.
 6. **A package's first version** becomes `latest` whatever `--tag` says (npm's behaviour, seen by JOUST and on
    Verdaccio); JuLC's packages already have `latest`, so this no longer applies to them.
+7. **What users see** (r23, R23-F1/C6; the package READMEs say the same):
+   - A channel exists only after its first version: `@preview`, `@beta` and `@next` fail to install until then.
+   - Channels are not reset by a final release, so after one a channel can name a version older than `latest`;
+     `npm-verify` notes it. The maintainer may move it by hand (`npm dist-tag add <name>@<final> <channel>`, with 2FA
+     and publications quiesced, rule 5).
+   - Rule 5 can put a version on a fallback tag: a first final backfilled below a `-preN` on `latest` (`0.1.0` after
+     `0.2.0-pre1` goes to `release-0.1`), or a beta of the same `X.Y.Z` after a `-preN` (within one `X.Y.Z` semver
+     orders `beta < pre < rc`, so `0.1.0-beta1` after `0.1.0-pre21` goes to `release-0.1`, never `beta`). A beta
+     series therefore belongs to a new `X.Y.Z`.
+   - Prereleases should be pinned exactly: a caret range such as `^0.1.0-pre21` also matches a later `0.1.0-rcN`
+     (and `0.1.0-pre22`), checked with npm's own `semver`.
 
 The reasons are npm's resolution rules:
 - `npm install <name>` without a tag or range installs the `latest` tag; `npm install <name>@<tag>` another tag.
@@ -1318,8 +1329,12 @@ provenance; only the first real publication does (M4).
   `new URL(…, import.meta.url)`. Mitigated by building fixture applications in CI, in development and production modes,
   from the packed tarballs (M1, M3).
 - **API churn under version 0** (D7). Mitigated by listing every change in the release notes.
-- **Version ordering.** Semver sorts `pre100` below `pre20` (D8). Releases up to `pre99` sort correctly. Open question
-  8 records the choice to make before then.
+- **Version ordering** (corrected in r23). Semver compares `preN`, `betaN` and `rcN` as text: `pre10 < pre9` and
+  `pre100 < pre99`; and `pre.N` starts with the identifier `pre`, which sorts below `preN` as text, so
+  `0.1.0-pre.100 < 0.1.0-pre100 < 0.1.0-pre99`.
+  The versions on npm start at `pre21`, so every two-digit `preN` from there sorts correctly among them; `pre100`
+  would sort below all of them and go to a fallback tag (D8 rule 5). Open question 8 records the choice to make
+  before then.
 - **The npm publication window** (r23). The npm files are a run artifact, kept 14 days, not release assets. A version
   whose publication fails and is not recovered within 14 days of its tag's run can never be published to npm; the next
   version is released instead. The runbook shows how to check an artifact's expiry.
@@ -1654,6 +1669,9 @@ choosing the recommendation recorded with each.
    - **Decided** (maintainer, 2026-11-16, r3): decide before `pre90`.
    - r23: the same text ordering holds for `betaN` and `rcN`, and under D8 rule 5 it becomes behaviour: a `pre100`
      (or `rc10`) would go to a fallback tag, not `latest`, `preview` or `next`.
+   - r23: a dotted `pre.N` sorts below every `preN` of the same `X.Y.Z` (`0.1.0-pre.100 < 0.1.0-pre100 < 0.1.0-pre99`:
+     its first identifier, `pre`, sorts below `preN` as text). So a move to `pre.N` must start on a higher `X.Y.Z` (for example
+     `0.2.0-pre.1`), never inside `0.1.0`. r23 keeps refusing dotted forms (D8's table) until that decision.
 9. **Schema checks for inputs without a blueprint.** Should `vm.applyParams` accept the parameter schemas in the
    request, so that a staged application (a partial result, then the rest) keeps being checked?
    - **Decided** (maintainer, 2026-11-16, r3): later, if asked for.
@@ -1978,3 +1996,15 @@ choosing the recommendation recorded with each.
     prerelease); a snapshot or any other form is refused, in the script and in `npm-gates`. The tag names are
     constants. Channels are taken only ahead of `latest`, and no tag moves backwards. `npm-verify` checks each
     package's own rule.
+  - **Review round 1 of r23** (Codex R23-C1 to C6, Fable R23-F1 to F4), amending r23 before it merged:
+    - R23-C1: the recovery run lookup checks every API answer (runs, each run's jobs, artifacts), refuses an
+      incomplete or over-1,000-run history, and tells an unreadable history from an expired artifact.
+    - R23-C2: recovery downloads the one live `npm-packages` artifact it inspected, by artifact id; a run with
+      several live ones is refused. Every npm job checks I1 within the set (each engine tarball's `engine/` files equal
+      its archive's), so with the archives equal to the published release's, the five files are one build's.
+    - R23-C3: `npm-gates` classifies with the publisher's own function (`npm-gate.mjs`), within npm's semver limits
+      (256 characters, safe integers, no leading zeros, no build metadata).
+    - R23-C4, R23-F2: the version-ordering risk and open question 8 are corrected (`pre.N` must start on a higher
+      `X.Y.Z`).
+    - R23-C5, R23-F3, R23-F4, R23-F1, R23-C6: the runbook's manual check walks `gh run download`'s nested layout and
+      fails on any difference; D8 rule 7; the READMEs; recovery after expiry; `npm-verify` notes a stale channel.
