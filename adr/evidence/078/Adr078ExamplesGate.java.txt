@@ -1,0 +1,100 @@
+package gate;
+
+import org.julclang.compiler.*;
+import org.julclang.core.flat.UplcFlatEncoder;
+import org.julclang.core.source.SourceMapSerializer;
+import org.julclang.stdlib.StdlibRegistry;
+
+import java.nio.file.*;
+import java.security.MessageDigest;
+import java.util.*;
+import java.util.regex.Pattern;
+import java.util.stream.Stream;
+
+/**
+ * ADR-078 gate, julc-examples half: every validator of a julc-examples source tree compiled in release mode (pv11-safe,
+ * source maps off: FLAT digest and size) and with source maps on (FLAT digest, and the complete DFS index -> location
+ * map as SourceMapSerializer JSON, written to outDir). Run on the pre21 and the M1a class path; diff the outputs.
+ * Args: srcRoot outDir.
+ */
+public class Adr078ExamplesGate {
+    public static void main(String[] a) throws Exception {
+        Path out = Path.of(a[1]);
+        Files.createDirectories(out);
+        List<Path> files;
+        try (Stream<Path> s = Files.walk(Path.of(a[0]))) { files = s.filter(p -> p.toString().endsWith(".java")).sorted().toList(); }
+        Map<String, LibrarySource> cp = LibrarySourceResolver.scanClasspathSources(Adr078ExamplesGate.class.getClassLoader(), p -> {});
+        Map<String, LibrarySource> pool = new LinkedHashMap<>(cp);
+        var validators = new ArrayList<Path>();
+        var ann = Pattern.compile("@(Spending|Minting|Multi|Withdraw|Voting|Proposing|Certifying)Validator\\b");
+        for (Path f : files) {
+            String t = Files.readString(f);
+            var l = LibrarySourceResolver.librarySource(t);
+            if (l != null) pool.put(l.fqcn(), l);
+            if (ann.matcher(t).find()) validators.add(f);
+        }
+        System.out.println("# classpath libraries: " + cp.size() + ", pool: " + pool.size() + ", validator files: " + validators.size());
+        int ok = 0, skipped = 0;
+        for (Path f : validators) {
+            String t = Files.readString(f);
+            var pkg = Pattern.compile("(?m)^package\\s+([\\w.]+);").matcher(t);
+            var cls = Pattern.compile("@\\w*Validator[^\\n]*\\n(?:\\s*@[^\\n]*\\n)*\\s*(?:public\\s+|final\\s+)*class\\s+(\\w+)").matcher(t);
+            String fqcn = (pkg.find() ? pkg.group(1) + "." : "") + (cls.find() ? cls.group(1) : "?");
+            String rel = Path.of(a[0]).relativize(f).toString();
+            var libs = LibrarySourceResolver.resolveLibrarySources(t, pool).stream().map(LibrarySource::source).toList();
+            try {
+                var release = compile(t, libs, false, cp, pool);
+                var maps = compile(t, libs, true, cp, pool);
+                byte[] rb = UplcFlatEncoder.encodeProgram(release.program());
+                byte[] mb = UplcFlatEncoder.encodeProgram(maps.program());
+                var indexed = new TreeMap<>(maps.sourceMap().toIndexed(maps.program().term()));
+                String json = SourceMapSerializer.toJson(indexed, fqcn);
+                Files.writeString(out.resolve(rel.replace('/', '_') + ".sourcemap.json"), json);
+                System.out.println(rel + " | release " + sha(rb) + " " + rb.length + " B | maps " + sha(mb) + " " + mb.length
+                        + " B | map " + sha(json.getBytes()) + " " + indexed.size() + " entries");
+                ok++;
+            } catch (Throwable e) {
+                skipped++;
+                System.out.println(rel + " | SKIPPED " + e.getClass().getSimpleName() + ": " + String.valueOf(e.getMessage()).lines().findFirst().orElse(""));
+            }
+        }
+        System.out.println("# compiled " + ok + ", skipped " + skipped);
+        if (Integer.getInteger("adr078.timingRounds", 0) > 0) timing(validators, pool, cp);
+    }
+
+    /** Compile time: every validator in release mode, the given number of rounds; the median round is reported. */
+    static void timing(List<Path> validators, Map<String, LibrarySource> pool, Map<String, LibrarySource> cp) throws Exception {
+        var sources = new ArrayList<String[]>();
+        for (Path f : validators) sources.add(new String[]{Files.readString(f)});
+        var rounds = new ArrayList<Long>();
+        for (int round = 0; round < Integer.getInteger("adr078.timingRounds"); round++) {
+            long start = System.nanoTime();
+            for (var s : sources) {
+                try {
+                    var libs = LibrarySourceResolver.resolveLibrarySources(s[0], pool).stream().map(LibrarySource::source).toList();
+                    compile(s[0], libs, false, cp, pool);
+                } catch (Throwable e) {
+                    // the three baseline exclusions
+                }
+            }
+            rounds.add((System.nanoTime() - start) / 1_000_000);
+        }
+        System.out.println("# timing rounds (ms): " + rounds);
+        var sorted = new ArrayList<>(rounds.subList(2, rounds.size()));
+        Collections.sort(sorted);
+        System.out.println("# median of rounds 3.. (ms): " + sorted.get(sorted.size() / 2));
+    }
+
+    static CompileResult compile(String source, List<String> libs, boolean maps, Map<String, LibrarySource> cp, Map<String, LibrarySource> pool) {
+        var opts = OptimizationConfiguration.apply(new CompilerOptions().setTarget(CompilerTarget.PLUTUS_V3_PV11).setSourceMapEnabled(maps),
+                OptimizationLevel.DEFAULT_PROFILE_ID, null);
+        opts.setJarLibrarySources(LibrarySourceResolver.jarSourceTexts(pool, cp));
+        var r = new JulcCompiler(StdlibRegistry.defaultRegistry(), opts).compileWithDetails(source, libs);
+        if (r.hasErrors()) throw new IllegalStateException(r.diagnostics().toString());
+        return r;
+    }
+
+    static String sha(byte[] b) throws Exception {
+        return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(b));
+    }
+}

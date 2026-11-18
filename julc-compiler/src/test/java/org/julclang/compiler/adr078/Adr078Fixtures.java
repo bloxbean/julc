@@ -279,7 +279,7 @@ public final class Adr078Fixtures {
         String c26 = library("q", "R", "    public static BigInteger %1$s(JulcList<BigInteger> xs, BigInteger k) { return xs.get(0).add(xs.get(1)).add(k); }\n"
                 + "    public static BigInteger beta(JulcList<BigInteger> xs, BigInteger k) { return xs.get(0).add(xs.get(1)).add(k); }\n"
                 + "    public static <U> BigInteger f(PlutusData d, BigInteger k) { return %1$s((JulcList<BigInteger>) (Object) d, k); }\n");
-        fixtures.add(new Fixture("C26-list-index-promotion", "RECORDED", List.of(
+        fixtures.add(new Fixture("C26-list-index-promotion", "DIFFERENT_IN_SOME_MODE", List.of(
                 new Variant("alpha", c26.formatted("alpha"), "f", List.of(c26.formatted("alpha"))),
                 new Variant("zeta", c26.formatted("zeta"), "f", List.of(c26.formatted("zeta"))))));
 

@@ -92,3 +92,12 @@ exit measures them on the implementation.
 
 The two census measurements are separate (C34): (a) the order filtered to binder names in the default-profile UPLC
 changes for 5/67; (b) the full simulated order changes for 17/67. Both are simulations compared as label sequences.
+
+## M1a (implementation)
+
+| File | What |
+|---|---|
+| `m1a-results.md` | The M1a results: in-repo oracles and Blaster unchanged, D5's results, the julc-examples gate (pass), compile time, and what was not done. |
+| `m1a-pre21-recording.md` | How the committed pre21 expectations of the D5 tests (`julc-compiler/src/test/resources/adr078/`) were produced. |
+| `Adr078ExamplesGate.java.txt` | The julc-examples gate runner: release FLAT and source-map-on FLAT plus the complete `DFS index → SourceLocation` map per validator; `-Dadr078.timingRounds=N` adds the compile-time rounds. |
+| `m1a-gate-julc-examples-pre21.txt`, `m1a-gate-julc-examples-m1a.txt` | The gate's output on pre21 and on M1a (`../julc-examples@49614db8`). They are identical for all 43 programs. |
