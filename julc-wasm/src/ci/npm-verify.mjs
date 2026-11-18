@@ -1,14 +1,16 @@
 // ADR-077 D8a: the npm-verify job of native-image-release.yml. Holds no credentials. Checks what the registry serves for
-// a published version against the release's tarballs (which the workflow verified against their attestation first):
+// a published version against the release's tarballs, from the npm-packages artifact of the run that built them
+// (which the workflow verified against their attestation first):
 // - the registry's integrity, and the tarball `npm pack name@version` downloads, equal the release's (I1, I11);
-// - the dist-tag D8 gives the version names it, or a later version (a recovery run for an older release), and so does
-//   each tag npm-publish chose for a package it published in this run (--published-tags);
+// - D8's rule for each package: a final version is named by latest, a prerelease by one of the tags it may get, or a
+//   later version; and each tag npm-publish chose for a package it published in this run (--published-tags) names
+//   this version or a later one;
 // - the three exact versions install with --ignore-scripts (I7) and lock to the release's integrity;
 // - `npm audit signatures` verifies them, and each carries a provenance attestation, among the bundles it verified,
 //   whose statement names the tarball's SHA-512 and whose signing certificate names this repository, this workflow
 //   file and the release tag (I12). `npm audit signatures` alone would pass a version without an attestation.
 //
-//   node npm-verify.mjs --dir <release assets> --version <version> --work <empty directory>
+//   node npm-verify.mjs --dir <npm files> --version <version> --work <empty directory>
 //        [--digest <file>=<sha256>]... [--registry <url>] [--npm <npm command>]
 //        [--published-tags <JSON>]   npm-publish's `tags` output: each newly published package's chosen dist-tag
 //        [--no-provenance]   only against a loopback registry, for the local tests: no audit, no provenance
@@ -17,8 +19,8 @@ import {appendFileSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {parseArgs} from 'node:util';
 import {
-  ReleaseError, candidateTags, certificateProblems, compareVersions, distTag, isLoopbackRegistry, localTarballs,
-  normaliseRegistry, packument, parseDigests, releaseIdentity, statementOf, statementProblems, verifiedProvenance,
+  ReleaseError, certificateProblems, compareVersions, distTag, isLoopbackRegistry, localTarballs,
+  normaliseRegistry, packument, parseDigests, releaseIdentity, statementOf, statementProblems, tagProblems, verifiedProvenance,
 } from './npm-release.mjs';
 
 const {values: options} = parseArgs({options: {
@@ -51,7 +53,7 @@ async function main() {
   if (!provenance && !isLoopbackRegistry(options.registry)) {
     throw new ReleaseError('--no-provenance is only for a loopback test registry: every real version carries provenance (I12)');
   }
-  const tag = distTag(version);
+  distTag(version);
   const identity = releaseIdentity(version);
   let publishedTags = {};
   try {
@@ -85,17 +87,9 @@ async function main() {
     if (!readFileSync(path.join(packed, path.basename(filename))).equals(tarball.bytes)) {
       problems.push(`${label}: the tarball the registry serves differs from the release's ${path.basename(tarball.file)}`);
     }
-    // D8's tag names this version, or a later one (then this version went to the fallback tag, or was superseded
-    // after its publication); never an earlier one, which would mean the tag moved backwards or was never set.
-    const tagged = document['dist-tags']?.[tag];
-    if (tagged === undefined || compareVersions(tagged, version) < 0) {
-      problems.push(`${label}: dist-tag ${tag} names ${tagged ?? 'nothing'}, expected ${version} (D8)`);
-    } else if (tagged !== version) {
-      const [, minor, own] = candidateTags(version, tag);
-      const tags = document['dist-tags'];
-      console.log(`note ${label}: dist-tag ${tag} names the later ${tagged}; ${minor} names ${tags[minor] ?? 'nothing'}`
-        + (tags[own] ? `, ${own} names ${tags[own]}` : ''));
-    }
+    // D8 (per package): a final version is named by latest or a later one; a prerelease by one of its tags or a later
+    // version. Never by nothing: that would mean a tag moved backwards or was never set.
+    for (const problem of tagProblems(version, document)) problems.push(`${label}: ${problem}`);
     // The tag npm-publish chose for a package it published in this run (D8 or a fallback) names this version or a
     // later one: it was set, and nothing moved it backwards since. A package skipped as already published has no
     // entry: its tag was chosen by an earlier run, so only D8's rule above applies.
@@ -109,7 +103,7 @@ async function main() {
     }
     const tags = JSON.stringify(document['dist-tags']);
     console.log(`ok ${label}: registry tarball equals the release's (${tarball.integrity}); dist-tags ${tags}`);
-    summary(`- ${label}: registry tarball equals the release asset; dist-tags \`${tags}\``);
+    summary(`- ${label}: registry tarball equals the release's (the attested npm file); dist-tags \`${tags}\``);
   }
 
   // Installed as a user installs them, then audited.

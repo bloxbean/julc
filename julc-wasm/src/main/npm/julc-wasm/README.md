@@ -10,6 +10,17 @@ smaller [`@julclang/julc-vm-wasm`](https://www.npmjs.com/package/@julclang/julc-
 **Experimental.** The JavaScript API is version 0 and may change in any release before 1.0; the release notes list
 every change. JuLC is a research project: do not treat a result as proof that a contract is safe to deploy.
 
+## Versions
+
+The npm version is the JuLC release version. Dist-tags:
+
+| Install | Gets |
+|---|---|
+| `npm install @julclang/julc-wasm` | `latest`: the newest final release (until JuLC's first final release, the newest `-preN`) |
+| `npm install @julclang/julc-wasm@preview` | the newest `-preN` prerelease after a final release |
+| `npm install @julclang/julc-wasm@beta` | the newest `-betaN` |
+| `npm install @julclang/julc-wasm@next` | the newest release candidate of a final release (`X.Y.Z-rcN`) |
+
 ## Use
 
 ```js

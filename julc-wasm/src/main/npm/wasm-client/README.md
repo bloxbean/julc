@@ -8,6 +8,19 @@ its own exact version.
 **Experimental.** The JavaScript API is version 0 and may change in any release before 1.0; the release notes list
 every change. JuLC is a research project: do not treat a result as proof that a contract is safe to deploy.
 
+## Versions
+
+The npm version is the JuLC release version. Dist-tags:
+
+| Install | Gets |
+|---|---|
+| `npm install @julclang/wasm-client` | `latest`: the newest final release (until JuLC's first final release, the newest `-preN`) |
+| `npm install @julclang/wasm-client@preview` | the newest `-preN` prerelease after a final release |
+| `npm install @julclang/wasm-client@beta` | the newest `-betaN` |
+| `npm install @julclang/wasm-client@next` | the newest release candidate of a final release (`X.Y.Z-rcN`) |
+
+An application usually installs an engine package, which depends on the client of its own version.
+
 ## Requirements
 
 - Node.js 22.3.0 or later, or a browser with WebAssembly GC and exception references (tested in Chromium

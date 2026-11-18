@@ -59,30 +59,70 @@ export function compareVersions(a, b) {
   return 0;
 }
 
-const prereleaseText = version => parseVersion(version).prerelease.join('.');
-/** A release candidate: an `rc` identifier part, as in 0.1.0-pre21-rc2 or 1.0.0-rc.1. */
-export const isReleaseCandidate = version => /(?:^|[-.])rc\d*(?:$|[-.])/i.test(prereleaseText(version));
-const isSnapshot = version => /snapshot/i.test(String(version));
+// D8's table (r23). The tag names are these constants; each appears nowhere else.
+/** A final version, and a -preN while its package has no final version on the registry. */
+export const LATEST_TAG = 'latest';
+/** A -preN once its package has a final version on the registry. */
+export const PREVIEW_TAG = 'preview';
+/** A -betaN. */
+export const BETA_TAG = 'beta';
+/** A release candidate of a final version, X.Y.Z-rcN. */
+export const CANDIDATE_TAG = 'next';
 
 /**
- * The dist-tag a release version is published with (D8), or a refusal:
- * - a snapshot, or a release candidate (-rc), is never published;
- * - a -beta version goes to `beta`;
- * - before 1.0, any other prerelease (-preN) goes to `latest`;
- * - a version with no prerelease part goes to `latest`.
- * From 1.0 on, D8's table is to be revisited, so a 1.x prerelease other than -beta has no tag and is refused.
+ * The form of a release version, by its whole prerelease part (identifiers as written, case-sensitive):
+ * - 'final': none (0.1.0, 1.0.0);
+ * - 'pre': preN (0.1.0-pre22);
+ * - 'beta': betaN (0.2.0-beta1);
+ * - 'rc': rcN, a release candidate of a final version (0.1.0-rc1, 1.0.0-rc2);
+ * - 'pre-rc': preN-rcN, a release candidate of a prerelease (0.1.0-pre22-rc1), never published: semver orders it
+ *   above preN, so ranges would choose it over the release.
+ * A snapshot, and any other form (-rc.1, -RC1, -beta1-rc1, -alpha1, -pre.22, -preview1, ...), is refused.
+ */
+export function versionKind(version) {
+  if (/snapshot/i.test(String(version))) fail(`${version} is a snapshot build, which is never published to npm (ADR-077 D8)`);
+  const text = parseVersion(version).prerelease.join('.');
+  if (!text) return 'final';
+  if (/^pre[1-9]\d*$/.test(text)) return 'pre';
+  if (/^beta[1-9]\d*$/.test(text)) return 'beta';
+  if (/^rc[1-9]\d*$/.test(text)) return 'rc';
+  if (/^pre[1-9]\d*-rc[1-9]\d*$/.test(text)) return 'pre-rc';
+  fail(`${version}: ADR-077 D8 publishes only X.Y.Z, X.Y.Z-preN, X.Y.Z-betaN and X.Y.Z-rcN (N from 1); `
+    + `not "-${text}"`);
+}
+
+/** A release candidate of a prerelease (X.Y.Z-preN-rcN): dry-run only. */
+export const isPrereleaseCandidate = version => versionKind(version) === 'pre-rc';
+
+/**
+ * The tag D8's table gives a version before looking at the registry, or a refusal: final and -preN `latest` (a -preN
+ * may become `preview`: see d8Tag), -betaN `beta`, X.Y.Z-rcN `next`. A release candidate of a prerelease, a snapshot,
+ * and any other form are refused.
  */
 export function distTag(version) {
-  if (isSnapshot(version)) fail(`${version} is a snapshot build, which is never published to npm (ADR-077 D8)`);
-  const {major, prerelease} = parseVersion(version);
-  if (isReleaseCandidate(version)) {
-    fail(`${version} is a release candidate, which is never published to npm: semver orders it above its final `
-      + 'release, so ranges would choose it (ADR-077 D8)');
+  const kind = versionKind(version);
+  if (kind === 'pre-rc') {
+    fail(`${version} is a release candidate of a prerelease, which is never published to npm: semver orders it above `
+      + `${finalVersionOf(version)}, so ranges would choose it (ADR-077 D8)`);
   }
-  if (!prerelease.length) return 'latest';
-  if (/(?:^|[-.])beta/i.test(prerelease.join('.'))) return 'beta';
-  if (major === 0) return 'latest';
-  fail(`${version}: ADR-077 D8 gives no dist-tag for a prerelease from 1.0 on; revisit its table first`);
+  return {final: LATEST_TAG, pre: LATEST_TAG, beta: BETA_TAG, rc: CANDIDATE_TAG}[kind];
+}
+
+/** Whether a package's registry document has a final (no-prerelease) version. */
+export function hasFinalVersion(document) {
+  return Object.keys(document?.versions ?? {}).some(version => {
+    try { return parseVersion(version).prerelease.length === 0; } catch { return false; }
+  });
+}
+
+/**
+ * D8's tag for one package's version, given its registry document at publication time: a -preN goes to `latest` only
+ * while the package has no final version; once it has one, to `preview`. Anything else as distTag.
+ */
+export function d8Tag(version, document) {
+  const tag = distTag(version);
+  if (versionKind(version) === 'pre' && hasFinalVersion(document)) return PREVIEW_TAG;
+  return tag;
 }
 
 /**
@@ -97,14 +137,22 @@ export function candidateTags(version, tag) {
 /**
  * The tag one package's version is published with: the first candidate that does not already name a higher version of
  * that package, so no dist-tag ever moves backwards (a recovery of version N after N+1, a maintenance release, or a
- * package of N+1 published before the others). Chosen per package, from the registry as it is at publication time;
- * the workflow publishes one version at a time (one concurrency group for every npm publication).
+ * package of N+1 published before the others). A prerelease channel (`preview`, `beta`, `next`) is also skipped unless
+ * the version is ahead of `latest`: a channel is what comes after `latest`. Chosen per package, from the registry as
+ * it is at publication time; the workflow publishes one version at a time (one concurrency group for every npm
+ * publication).
  */
-export async function packageTag(registry, name, version, tag) {
-  const tags = (await packument(registry, name))?.['dist-tags'] ?? {};
+export async function packageTag(registry, name, version) {
+  const document = await packument(registry, name);
+  const tags = document?.['dist-tags'] ?? {};
   const higher = [];
-  for (const candidate of candidateTags(version, tag)) {
+  for (const candidate of candidateTags(version, d8Tag(version, document))) {
     const holder = tags[candidate];
+    const channel = [PREVIEW_TAG, BETA_TAG, CANDIDATE_TAG].includes(candidate);
+    if (channel && tags[LATEST_TAG] !== undefined && compareVersions(tags[LATEST_TAG], version) >= 0) {
+      higher.push(`${LATEST_TAG} is ${tags[LATEST_TAG]}, not behind it (for ${candidate})`);
+      continue;
+    }
     if (holder === undefined || compareVersions(holder, version) <= 0) {
       return {tag: candidate, reason: higher.length ? `${name}: ${higher.join(', ')}, higher than ${version}` : null};
     }
@@ -113,14 +161,34 @@ export async function packageTag(registry, name, version, tag) {
   fail(`${name}: ${higher.join(', ')}: every tag D8 allows names a higher version`);
 }
 
-/** A release candidate's final version: 0.1.0-pre21-rc2 gives 0.1.0-pre21, 1.0.0-rc.1 gives 1.0.0. */
-export function finalVersionOf(version) {
-  const {major, minor, patch, prerelease} = parseVersion(version);
-  const text = prerelease.join('.').replace(/(?:^|[-.])rc\d*(?:[-.].*)?$/i, '');
-  return `${major}.${minor}.${patch}${text ? '-' + text : ''}`;
+/**
+ * What is wrong with one package's dist-tags for a published version (npm-verify): a final version is named by
+ * `latest` or a later version; a prerelease by one of the tags it may have been published with (D8's tag, `latest` or
+ * `preview` for a -preN, `release-<major>.<minor>`, `release-<version>`), or a later version.
+ */
+export function tagProblems(version, document) {
+  const tags = document?.['dist-tags'] ?? {};
+  const atOrAbove = tag => tags[tag] !== undefined && compareVersions(tags[tag], version) >= 0;
+  const kind = versionKind(version);
+  if (kind === 'final') {
+    return atOrAbove(LATEST_TAG) ? []
+      : [`dist-tag ${LATEST_TAG} names ${tags[LATEST_TAG] ?? 'nothing'}, expected ${version} or later`];
+  }
+  const base = distTag(version);
+  const candidates = [...new Set([...(kind === 'pre' ? [LATEST_TAG, PREVIEW_TAG] : [base]),
+    ...candidateTags(version, base).slice(1)])];
+  return candidates.some(atOrAbove) ? []
+    : [`none of the dist-tags ${candidates.join(', ')} names ${version} or later (${JSON.stringify(tags)})`];
 }
 
-// --- Local files: the release's tarballs, their checksum file and the wasm job's digests (D8a, I1, I11) ---
+/** A release candidate of a prerelease's own version: 0.1.0-pre21-rc2 gives 0.1.0-pre21. */
+export function finalVersionOf(version) {
+  const {major, minor, patch, prerelease} = parseVersion(version);
+  return `${major}.${minor}.${patch}-${prerelease.join('.').replace(/-rc[1-9]\d*$/, '')}`;
+}
+
+// --- Local files: the release's tarballs (the npm-packages artifact), their checksum file and the wasm job's digests
+// (D8a, I1, I11) ---
 
 export const sha256Hex = bytes => createHash('sha256').update(bytes).digest('hex');
 export const sha512Hex = bytes => createHash('sha512').update(bytes).digest('hex');

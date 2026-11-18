@@ -1,10 +1,10 @@
 // ADR-077 D8a: the npm-publish job of native-image-release.yml. Publishes the three tarballs the wasm job packed, as the
-// GitHub release holds them (the workflow verifies them against their attestation first), in dependency order, with
-// npm trusted publishing and provenance. Never publishes a version twice: a version already on npm is skipped only
-// when it is this tarball, with provenance from this workflow at this tag (I11); anything else stops the job before
-// the next package.
+// npm-packages artifact of the run that built them holds them (the workflow verifies them against their attestation
+// first), in dependency order, with npm trusted publishing and provenance. Never publishes a version twice: a version
+// already on npm is skipped only when it is this tarball, with provenance from this workflow at this tag (I11);
+// anything else stops the job before the next package.
 //
-//   node npm-publish.mjs --dir <release assets> --version <version> --mode publish|dry-run
+//   node npm-publish.mjs --dir <npm files> --version <version> --mode publish|dry-run
 //        [--digest <file>=<sha256>]...   the wasm job's digest outputs (a normal run; none on dispatch)
 //        [--registry <url>] [--npm <npm command>] [--visibility-timeout <seconds>]
 //        [--no-provenance]               only against a loopback registry, for the local tests
@@ -16,7 +16,7 @@ import {appendFileSync} from 'node:fs';
 import path from 'node:path';
 import {parseArgs} from 'node:util';
 import {
-  ReleaseError, distTag, finalVersionOf, isLoopbackRegistry, isReleaseCandidate, localTarballs, normaliseRegistry,
+  ReleaseError, distTag, finalVersionOf, isLoopbackRegistry, isPrereleaseCandidate, localTarballs, normaliseRegistry,
   packageTag, parseDigests, registryProvenance, registryVersion, releaseIdentity, statementOf, statementProblems,
 } from './npm-release.mjs';
 
@@ -90,21 +90,25 @@ async function main() {
   const timeout = Number(options['visibility-timeout'] ?? 300) * 1000;
   const identity = releaseIdentity(version);
 
-  let tag;
+  // Refusals (a snapshot, a release candidate of a prerelease in publish mode, a form D8 has no rule for) come first.
+  // A release candidate of a prerelease dry-runs with the tags of the prerelease it is a candidate for.
+  let tagVersion = version;
   if (mode === 'publish') {
-    tag = distTag(version);
-  } else if (isReleaseCandidate(version)) {
-    tag = distTag(finalVersionOf(version));
-    console.log(`${version} is a release candidate: never published (D8). Dry run with its final release's tag, ${tag}.`);
+    distTag(version);
+  } else if (isPrereleaseCandidate(version)) {
+    tagVersion = finalVersionOf(version);
+    distTag(tagVersion);
+    console.log(`${version} is a release candidate of a prerelease: never published (D8). Dry run with the tags `
+      + `${tagVersion} would get.`);
   } else {
-    tag = distTag(version);
+    distTag(version);
   }
   const tarballs = localTarballs(dir, version, parseDigests(options.digest ?? []));
   for (const tarball of tarballs) {
     console.log(`${tarball.name}@${version}: sha256 ${tarball.sha256}, ${tarball.integrity}, ${tarball.bytes.length} bytes`);
   }
-  console.log(`dist-tag ${tag}; registry ${registry ?? '(npm default)'}; mode ${mode}${provenance ? '' : '; no provenance (local test)'}`);
-  summary(`### npm ${mode === 'publish' ? 'publication' : 'dry run'} of ${version} (dist-tag \`${tag}\`)\n`);
+  console.log(`registry ${registry ?? '(npm default)'}; mode ${mode}${provenance ? '' : '; no provenance (local test)'}`);
+  summary(`### npm ${mode === 'publish' ? 'publication' : 'dry run'} of ${version}\n`);
 
   /** Waits until the registry shows the version, then requires it to be this tarball with this workflow's provenance.
    *  The registry can lag behind a publication, so a version not shown yet, or shown without its attestation yet, is
@@ -141,8 +145,8 @@ async function main() {
         + `provenance; nothing more is published (I11):\n  - ${before.problems.join('\n  - ')}`);
     }
     // No dist-tag ever moves backwards: this package's tag, chosen from the registry as it is now (D8).
-    const chosen = await packageTag(registry, tarball.name, version, tag);
-    if (chosen.reason) console.log(`${chosen.reason}: publishing as ${chosen.tag}, leaving ${tag} where it is`);
+    const chosen = await packageTag(registry, tarball.name, tagVersion);
+    if (chosen.reason) console.log(`${chosen.reason}: publishing as ${chosen.tag}`);
     const run = npmPublish(npm, tarball, chosen.tag, {dryRun: mode === 'dry-run', provenance, registry});
     if (mode === 'dry-run') {
       if (!run.ok) throw new ReleaseError(`npm publish --dry-run failed for ${label}`);
