@@ -113,13 +113,13 @@ read when the job starts, not fixed in the tag's workflow.
 
 ## One-time setup, before the first real publication
 
-Steps 1 to 3 can be done any time; steps 4 and 5 only when the first real release is ready, because of the 2-day
-expiry.
+Steps 1 to 3 can be done any time, in this order; steps 4 and 5 only when the first real release is ready, because
+of the 2-day expiry.
 
-1. **Rehearse** (see "Rehearsal" below): a release candidate of a prerelease (`X.Y.Z-preN-rcN`) with
-   `github_release = true`.
-2. **Publish a placeholder of each name, by hand, with 2FA** (a package must exist before a trusted publisher can be
-   configured on its settings page). As JOUST did, for each of the three names:
+1. **Publish a placeholder of each name, by hand, with 2FA**, before the rehearsal: a package must exist before a
+   trusted publisher can be configured on its settings page, and the jobs, dry runs included, refuse a 404 for any
+   of the three (R23-C31). A fresh test registry (Verdaccio) needs the same placeholders first. As JOUST did, for
+   each of the three names:
    ```
    mkdir placeholder && cd placeholder
    cat > package.json <<'EOF'
@@ -130,9 +130,11 @@ expiry.
    ```
    npm makes a package's first version `latest` whatever `--tag` says, so the placeholder is briefly `latest` until
    the first real version replaces it.
-3. **Refuse tokens.** On each package's Settings page, choose "Require two-factor authentication and disallow
+2. **Refuse tokens.** On each package's Settings page, choose "Require two-factor authentication and disallow
    tokens", right after publishing its placeholder if npm allows it before a trusted publisher exists, otherwise in
    step 4.
+3. **Rehearse** (see "Rehearsal" below): a release candidate of a prerelease (`X.Y.Z-preN-rcN`) with
+   `github_release = true`.
 4. **Configure the trusted publishers, immediately before the first real release** (it expires after 2 days unused).
    On each package's Settings page, "Trusted publishing", GitHub Actions:
    - Organization or user: `bloxbean`
@@ -221,6 +223,7 @@ Find your case first; the explanations follow.
 | A GitHub release is incomplete, and "Re-run failed jobs" in the original run is no longer possible (a whole-workflow re-run was made, or 14 days passed) | Abandon the version: do not patch the release, do not dispatch npm for it; deprecate any npm package of it; release the next version |
 | Dispatch: "No run of native-image-release.yml for the push of v… was found" | The tag's release run is needed: check the tag and its push run |
 | Dispatch: "No run for the push of v… has a successful attestation yet" | "Re-run failed jobs" in the tag's push run, then dispatch again |
+| Dispatch: "The GitHub release of v… was never completed" | "Re-run failed jobs" in that run if no whole-workflow re-run was made and it is within 14 days; otherwise abandon the version (below) |
 | Dispatch: "Several runs for the push of v… attested npm files" | Stop: a maintainer decides which build is the release |
 | Dispatch: "Cannot read the run history" | Dispatch again later (a GitHub API problem; nothing was chosen) |
 | Dispatch: "no longer available", or a re-run's download step fails after 14 days | The version cannot reach npm: deprecate any package of it already published, and release the next version |
@@ -241,6 +244,17 @@ longer be re-run, or the run's artifacts expired after 14 days), **the version i
 is, do not dispatch npm for it, deprecate any npm package of it already published (none should be: the original run
 publishes npm only after its `github-release` succeeded), and release the next version. The build jobs' release
 check is what keeps "Re-run failed jobs" from rebuilding anything.
+
+**Abandoning a version on npm** (a package owner, with 2FA and publications quiesced, "Dist-tags by hand"): for each
+of the three packages that has the exact version, `npm deprecate @julclang/<name>@<version> "abandoned; use <next>"`.
+Then read back each package's tags (`npm view @julclang/<name> dist-tags`): a tag other than `latest` (`preview`,
+`beta`, `next`, `release-*`) that names the abandoned version goes back to its previous holder (`npm dist-tag add
+@julclang/<name>@<previous> <tag>`) or is removed (`npm dist-tag rm @julclang/<name> <tag>`); `latest` is moved only
+if it names the abandoned version. An authentication failure on the second or third package can leave the first
+published, so check all three.
+Editing the abandoned GitHub release's title and notes is allowed and recommended: say it is abandoned and point to
+the next version (never change its assets). "Abandoned" covers the GitHub release and npm only: the version's Maven
+artifacts (published by `release.yml` and `publish-central.yml`) remain valid.
 
 **The recovery window is 14 days from the tag's run**: npm is published only from that run's `npm-packages`
 artifact. To tell whether a version's npm files are still available:
@@ -278,11 +292,14 @@ refs/tags/v<version>`, plus `npm audit signatures` in a project that installs it
   exchange" fails in the log): nothing was published. Fix the trusted publisher (repository, workflow file name,
   environment `release-staging`, direct publishing allowed, not expired) and use "Re-run failed jobs".
 - **After a refused full re-run, or once the original run can no longer be re-run**, within 14 days of the tag's run,
-  and only for a complete release (the original run's `github-release` succeeded): dispatch the workflow **on the
-  tag**:
+  and only for a complete release (the original run's `github-release` succeeded; the dispatch refuses any other):
+  dispatch the workflow **on the tag**:
   ```
   gh workflow run native-image-release.yml --repo bloxbean/julc --ref v<version>
   ```
+  A dispatch publishes only when the tag's push run's `github-release` succeeded, in any attempt (it checked that
+  the release has all 14 files; `npm-run.sh` enforces this, R23-F10), and when the release attaches the same two
+  engine archives.
   Anyone with write access to the repository can dispatch. The controls are the exact-ref checks in `npm-gates` and
   `npm-publish` (the ref must be exactly the release tag, matching `gradle.properties` at it), and that a `v*` tag
   is normally created only through the tag ruleset and `tag-release.yml`'s release-owner authorisation, with

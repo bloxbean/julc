@@ -907,7 +907,9 @@ nor their checksum file (r19 to r22 did).
     release action created a final release as a draft and published it only after uploading, so a failed upload left
     a draft that the read-only build-once check could not see and that recovery could not download. That action is
     no longer used. The release keeps `prerelease` as before, and `make_latest=legacy`.
-  - It refuses an existing draft for the tag, or more than one release for it.
+  - It refuses an existing draft for the tag, or more than one release for it. It advises deleting a draft only for
+    a well-formed record (a positive id, `draft` JSON `true`); any other record stops it without advice to change
+    anything (R23-C37).
   - It attaches each file at most once. For each existing asset, by release id, using GitHub's asset `state`:
     - a completed asset (`uploaded`) with the same name and different bytes stops the job, and nothing is replaced;
     - a failed upload's placeholder (`starter`, which GitHub documents an HTTP 502 can leave behind, and which is safe
@@ -936,9 +938,12 @@ nor their checksum file (r19 to r22 did).
     "Re-run failed jobs" in the original run, where `github-release` attaches the missing files from that run's own
     `release-*` artifacts under the create-once rules above. A release is never completed or patched by hand. If
     that re-run is impossible (a whole-workflow re-run was made, or the artifacts expired after 14 days), the version
-    is abandoned: the release stays as it is, npm is not dispatched for it, any npm package of it already published
-    is deprecated (none should be: a normal run publishes npm only after `github-release` succeeded), and the next
-    version is released. The build jobs' release check is what keeps "Re-run failed jobs" from rebuilding.
+    is abandoned: the release's assets stay as they are (its title and notes may say it is abandoned and name the
+    next version), npm is not dispatched for it (a dispatch refuses it, R23-F10), any npm package of it already
+    published is deprecated and any non-`latest` dist-tag naming it is moved back or removed (none should exist: a
+    normal run publishes npm only after `github-release` succeeded), and the next version is released. Abandonment
+    covers the GitHub release and npm only; the version's Maven artifacts remain valid. The build jobs' release
+    check is what keeps "Re-run failed jobs" from rebuilding.
   - A complete release whose `update-homebrew` did not run (a whole-workflow re-run after `github-release`
     succeeded) has its Homebrew formulas updated by hand, since that job does not run on a dispatch.
 - **Recovery never rebuilds.** It has two paths, chosen by the state:
@@ -970,18 +975,22 @@ nor their checksum file (r19 to r22 did).
   - It runs only `npm-publish` (or `npm-dry-run`) and `npm-verify`, on the `npm-packages` artifact of the tag's push
     run (r23), after verifying it against its attestation and the release's archives. That run is the run of this
     workflow with event `push`, head branch `v<version>` and head commit the tag's commit, whose `attest` job succeeded
-    in any attempt. Exactly one must exist (a release is built once, so a second run stops before `attest`), with
+    in any attempt, and whose `github-release` job succeeded in any attempt, so only a complete release reaches npm
+    (R23-F10). Exactly one must exist (a release is built once, so a second run stops before `attest`), with
     exactly one live `npm-packages` artifact, which is downloaded by its id. The outcomes are told apart (R23-C10):
     - no push run for the tag: an error naming that;
     - runs, but none with a successful `attest` (failed, queued or not run): "no successful attestation yet", to
       be fixed by "Re-run failed jobs" in the push run, then dispatching again;
+    - an attested run whose `github-release` never succeeded: "The GitHub release of v<version> was never
+      completed", to be fixed by "Re-run failed jobs" in that run, or the version is abandoned;
     - several attested runs, or several live artifacts: a maintainer decides;
     - the artifact expired or was deleted after a successful `attest`: the npm files of `v<version>` are no longer
       available (artifacts are kept 14 days), and the version can no longer be published to npm;
     - any API answer unreadable, or any list (runs, jobs, artifacts) incomplete or inconsistent (a page that is not
       an object with a numeric `total_count`, the same on every page, and an array; more than 1,000 results; distinct
       ids other than the reported total; duplicate or malformed rows; a job whose `conclusion` is missing, or null
-      once it completed): "Cannot read the run history", nothing chosen and nothing called expired (R23-C30).
+      once it completed; an `attest` or `github-release` job whose status or conclusion GitHub does not document):
+      "Cannot read the run history", nothing chosen and nothing called expired (R23-C30, R23-C41).
 
     The npm jobs hold `actions: read` to find the run and download its artifact.
   - The entry lives in the same `native-image-release.yml`, because npm's trusted publisher validates the workflow
@@ -2024,9 +2033,8 @@ choosing the recommendation recorded with each.
     npm. `npm-dry-run`, `npm-publish` and `npm-verify` take the artifact from their own run, or, on a dispatch, from
     the tag's push run (exactly one with a successful `attest`), verify it against the attestation and require the
     published release to attach the same engine archives. After 14 days a version not yet on npm can no longer be
-    published. The `release-*` artifacts are kept 14 days too, for completing a release by hand (from review round
-    5, only through "Re-run failed jobs"). The npm jobs hold
-    `actions: read`. D8a's source of record, recovery and verification, I11, M4's exit, Verification and Risks are
+    published. The `release-*` artifacts are kept 14 days too, for "Re-run failed jobs" in `github-release`. The npm
+    jobs hold `actions: read`. D8a's source of record, recovery and verification, I11, M4's exit, Verification and Risks are
     updated.
   - **D8's table:** final → `latest`; `-preN` → `latest` while the package has no final version on the registry, then
     `preview` (any major: the 1.x `-preN` refusal is lifted); `-betaN` → `beta`; `X.Y.Z-rcN` → `next` (published:
@@ -2113,3 +2121,21 @@ choosing the recommendation recorded with each.
       `wasm` stops); the draft sentence says which check a draft stops.
     - R23-F9: the release check's message says a build job cannot be re-run once the release exists, to re-run a
       failed job instead, and that the version may have to be abandoned.
+  - **Review round 6 of r23** (Codex R23-C35 to C42; Fable approved 216501c3, with F10 and F11):
+    - R23-C35: `gradle.properties`' `npm_publish` comment says `X.Y.Z-rcN` is published (to `next`) and only
+      `X.Y.Z-preN-rcN` dry-runs.
+    - R23-C36: the release check requires at least one page, each a JSON array; an empty answer (HTTP 204, an empty
+      body) refuses to build, while `[]` still means no release.
+    - R23-C37: `github-release` advises deleting a draft only for a well-formed record (a positive id, `draft` JSON
+      `true`); any other record stops it with "preserve the published release and its tag; investigate".
+    - R23-C38, R23-F11: the runbook's abandonment deprecates every published exact version of the three packages,
+      moves back or removes any non-`latest` tag naming it, and may edit the release's title and notes (not its
+      assets); abandonment does not touch the version's Maven artifacts.
+    - R23-C39: the placeholders are published before the rehearsal, since every npm job refuses a 404 for the three
+      packages; the trusted publishers stay just before the first real release.
+    - R23-C40, R23-F10: a dispatch publishes only when the tag's push run's `github-release` succeeded (`npm-run.sh`),
+      so only a complete release reaches npm; the runbook says so beside the dispatch command.
+    - R23-C41: an `attest` or `github-release` job with an undocumented status or conclusion (an empty string
+      included) is unreadable history.
+    - R23-C42: the recovery test is split into recovery before a whole-workflow re-run and abandonment after one;
+      the r23 summary no longer mentions completing a release by hand.
