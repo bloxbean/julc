@@ -799,7 +799,9 @@ prerelease part, as written (case-sensitive, `N` from 1):
 4. **Channels are ahead of `latest`.** `preview`, `beta` and `next` are taken only by a version ahead of `latest`.
 5. **No dist-tag ever moves backwards** (r19, M4-F1; per package and with a third candidate from r20, M4-C10/C11).
    For each package, immediately before publishing it, the job reads the registry's document for it (validated:
-   only a 404 means "not published"; any other status, or an incomplete 200 answer, fails the job, r23) and
+   once per package, and that one read decides both whether the version is there and its tag; a 404 means "not
+   published" for no package of this release, which are all bootstrapped: it is asked again briefly, then fails the
+   job; any other status, or an incomplete 200 answer, fails it too, r23, R23-C31) and
    publishes to the first of these that does not already name a higher version of that package:
    - the table's tag (a channel only if the version is also ahead of `latest`, rule 4);
    - `release-<major>.<minor>` (for example `release-0.1`);
@@ -866,7 +868,8 @@ that do not run the Gradle build get write access or credentials (`native-image-
   own files (the archives and their checksum file, the CLI and playground zips, the static playground, the shadow
   jars), as before npm. r8 to r22 attached the npm files to the release for good; r23 drops them, so the npm
   publication of a version must happen within the artifact's 14 days. Once npm holds a version, npm is the durable
-  record. The release's other artifacts (`release-*`) are kept 14 days too, for completing a release by hand.
+  record. The release's other artifacts (`release-*`) are kept 14 days too, for "Re-run failed jobs" in
+  `github-release` (the only recovery of an incomplete release; r23 review round 5).
 
 **A new `attest` job** (r8) makes the durable anchor.
 - It has no build. It downloads the `npm-packages` artifact, and holds only `id-token: write` and
@@ -889,8 +892,9 @@ that do not run the Gradle build get write access or credentials (`native-image-
     the artifact came from (this run on a tag push, the looked-up run on a dispatch; any attempt, so "Re-run failed
     jobs" still works). Files of two attempts or builds, each attested on its own, can never be mixed. It also requires the published GitHub release
     to attach the same two engine archives (r23), so npm never gets a version whose archives are not public (I1).
-  - Every job that verifies an attestation also holds `attestations: read`. From r20 the build-once check in `wasm`
-    only looks for a release, and `wasm` holds `contents: read` alone.
+  - Every job that verifies an attestation also holds `attestations: read`. From r20 the build-once check only
+    looks for a release (in `wasm` until r23, in every build job from r23), and those jobs hold `contents: read`
+    alone.
   - `attest` runs only when `github_release` is `true`: with no release, there is nothing to anchor.
 - `github-release` runs only after `attest` succeeds, so a release never exists without its attestation. `attest` is
   added to its existing prerequisites, which stay as they are: `needs: [validate, native-image, wasm,
@@ -911,7 +915,8 @@ nor their checksum file (r19 to r22 did).
   - If the repository ever enables immutable releases, uploading to a published release is refused; the workflow
     says so.
   - A release is public, possibly marked Latest, while its assets upload: the accepted cost of never using drafts. A
-    GitHub release or draft is never created for the tag by hand, since it would stop the build-once check (r21).
+    GitHub release or draft is never created for the tag by hand (r21): a published one stops every build job's
+    release check, and a draft, which that read-only check cannot see, stops `github-release` (R23-C24, R23-C34).
   - After the upload, it checks that exactly one release exists for the tag, that it is published, and that every
     file is attached as `uploaded` with this run's SHA-256 (r19).
 - **A release is built once.**
@@ -927,22 +932,22 @@ nor their checksum file (r19 to r22 did).
   - `github-release` requires the 14-file inventory (4 CLI zips, 4 playground zips, 2 shadow jars, the 2 engine
     archives, the static playground, the archives' `SHA256SUMS`) before creating or changing the release, and after
     uploading requires the release's assets to be exactly those files (R23-C16).
-  - Completing a release by hand first checks that the run is `native-image-release.yml`'s push run of the tag at
-    the tag's commit, downloads its ten `release-*` artifacts by id (refusing a name uploaded twice, a missing one,
-    a non-positive id or an `expired` that is not `false`), requires the 14-file inventory, and checks every
-    completed release asset against those files, before any delete or upload (R23-C13, R23-C20).
-  - After a refused whole-workflow re-run, a release whose upload failed is completed by hand from the original run's
-    artifacts (`adr/evidence/077-m4/RUNBOOK.md`), then published to npm by a dispatch (r21, M4-F13):
-    - each attached asset is checked against those artifacts by `state` and SHA-256 `digest`;
-    - the Homebrew formulas are updated by hand, since `update-homebrew` does not run on this path or on a dispatch;
-    - the artifacts are kept for 14 days (7 before r23); after that an incomplete release cannot be completed with its
-      original bytes, nor its npm packages published, and the version is spent.
+  - **An incomplete release has one recovery** (r23 review round 5, replacing r21's completion by hand, M4-F13):
+    "Re-run failed jobs" in the original run, where `github-release` attaches the missing files from that run's own
+    `release-*` artifacts under the create-once rules above. A release is never completed or patched by hand. If
+    that re-run is impossible (a whole-workflow re-run was made, or the artifacts expired after 14 days), the version
+    is abandoned: the release stays as it is, npm is not dispatched for it, any npm package of it already published
+    is deprecated (none should be: a normal run publishes npm only after `github-release` succeeded), and the next
+    version is released. The build jobs' release check is what keeps "Re-run failed jobs" from rebuilding.
+  - A complete release whose `update-homebrew` did not run (a whole-workflow re-run after `github-release`
+    succeeded) has its Homebrew formulas updated by hand, since that job does not run on a dispatch.
 - **Recovery never rebuilds.** It has two paths, chosen by the state:
   - **Within the original attempt,** before any full re-run, "re-run failed jobs" recovers. It keeps that attempt's
     assets, artifacts and job outputs.
   - **After a refused full re-run, or once the original attempt can no longer be re-run,** only the manual
-    `workflow_dispatch` entry recovers. After the early stop in the build jobs, "re-run failed jobs" would hit the same stop,
-    and the downstream jobs would lack their artifacts.
+    `workflow_dispatch` entry recovers, and only the npm publication of a complete release (the original run's
+    `github-release` succeeded); an incomplete release is abandoned (above). After the early stop in the build jobs,
+    "re-run failed jobs" would hit the same stop, and the downstream jobs would lack their artifacts.
 - **The `workflow_dispatch` entry's contract:**
   - It is dispatched on the tag itself: its execution ref must be exactly `refs/tags/v<version>`. A run on a branch,
     or whose ref does not match the version, is refused: by `npm-gates`, after its pinned checkout and Node set-up,
@@ -973,8 +978,10 @@ nor their checksum file (r19 to r22 did).
     - several attested runs, or several live artifacts: a maintainer decides;
     - the artifact expired or was deleted after a successful `attest`: the npm files of `v<version>` are no longer
       available (artifacts are kept 14 days), and the version can no longer be published to npm;
-    - any API answer unreadable, or a run list incomplete or inconsistent (more than 1,000 runs, fewer distinct
-      runs than the reported total, duplicate or malformed rows): "Cannot read the run history", nothing chosen.
+    - any API answer unreadable, or any list (runs, jobs, artifacts) incomplete or inconsistent (a page that is not
+      an object with a numeric `total_count`, the same on every page, and an array; more than 1,000 results; distinct
+      ids other than the reported total; duplicate or malformed rows; a job whose `conclusion` is missing, or null
+      once it completed): "Cannot read the run history", nothing chosen and nothing called expired (R23-C30).
 
     The npm jobs hold `actions: read` to find the run and download its artifact.
   - The entry lives in the same `native-image-release.yml`, because npm's trusted publisher validates the workflow
@@ -1051,7 +1058,8 @@ identity. It verifies the npm files exactly as `npm-publish` does.
   - if it is present with the same tarball integrity (`dist.integrity` equals the tarball's SHA-512) and with a
     provenance attestation from this workflow, the job skips it.
     - Here the attestation is read from the registry's metadata: its predicate's repository, workflow and ref. Its
-      signature is verified later, by `npm-verify`.
+      signature is verified later, by `npm-verify`. It is read only from the configured registry's origin, with no
+      redirect followed, and only from an HTTP 200 answer (a 404 means none; R23-C32).
   - if it is present with different contents, or without that provenance (for example, published by hand), the job
     fails and publishes nothing more.
 - If a publish fails with "cannot publish over the previously published version", the registry was slow to show the
@@ -1502,8 +1510,8 @@ provenance; only the first real publication does (M4).
   - The recovery sequences, against a test repository:
     1. Attempt 1 releases and attests bytes A, then fails in `npm-publish`. "Re-run failed jobs" in attempt 1
        publishes A.
-    2. Attempt 1 fails the same way. A whole-workflow re-run stops in `wasm` before building, so no bytes B ever
-       exist. The `workflow_dispatch` entry on the tag then publishes A.
+    2. Attempt 1 fails the same way. A whole-workflow re-run stops in every build job before building, so no bytes
+       B ever exist. The `workflow_dispatch` entry on the tag then publishes A (its release is complete).
   - Dispatch negatives:
     - a dispatch from a branch is refused;
     - a tag that does not match the version is refused;
@@ -2016,7 +2024,8 @@ choosing the recommendation recorded with each.
     npm. `npm-dry-run`, `npm-publish` and `npm-verify` take the artifact from their own run, or, on a dispatch, from
     the tag's push run (exactly one with a successful `attest`), verify it against the attestation and require the
     published release to attach the same engine archives. After 14 days a version not yet on npm can no longer be
-    published. The `release-*` artifacts are kept 14 days too, for completing a release by hand. The npm jobs hold
+    published. The `release-*` artifacts are kept 14 days too, for completing a release by hand (from review round
+    5, only through "Re-run failed jobs"). The npm jobs hold
     `actions: read`. D8a's source of record, recovery and verification, I11, M4's exit, Verification and Risks are
     updated.
   - **D8's table:** final → `latest`; `-preN` → `latest` while the package has no final version on the registry, then
@@ -2080,3 +2089,27 @@ choosing the recommendation recorded with each.
     - R23-C24, R23-F8: the read-only check and the draft refusal are described apart; the rehearsal runs the
       manual completion's preparation once, and a build test ties the runbook's artifact and file lists to the
       workflow.
+  - **Review round 5 of r23** (Fable approved with F9; Codex R23-C26 to C34). Maintainer decision: completing a
+    GitHub release by hand is removed.
+    - R23-C26, R23-C27, R23-C28 (the manual completion's preparation script): resolved by removing it, with its
+      final check, its tests and its rehearsal item (round 4's R23-C20 and the runbook half of R23-F8 go with it).
+      An incomplete release's one recovery is "Re-run failed jobs" in the original run; when that is impossible
+      (a whole-workflow re-run, or the artifacts expired) the version is abandoned: the release is not patched,
+      npm is not dispatched for it, any npm package of it is deprecated, and the next version is released (D8a).
+      The build jobs' release check stays: it keeps "Re-run failed jobs" from rebuilding.
+    - R23-C29: the release check requires every page to be an array and every release to carry a non-empty
+      string `tag_name`; a malformed answer refuses to build instead of reading as "no release".
+    - R23-C30: the recovery lookup reads runs, jobs and artifacts the same way: every page an object with one
+      numeric `total_count` and an array, distinct ids exactly that total, each once; a job's `conclusion` present,
+      null only before it completed. Anything else is unreadable history, so expiry is decided only on a completely
+      read artifact list.
+    - R23-C31: `npm-publish` reads each package's document once, for both the version's presence and its tag, and
+      a 404 for one of the three (bootstrapped) packages is asked again briefly, then fails the job.
+    - R23-C32: the provenance bundle is read only from the registry's origin, with no redirect, from exactly HTTP
+      200.
+    - R23-C33: the build test compares each release-* and npm-packages upload step's `path` entries with what the
+      artifact must hold, and their files with `github-release`'s inventory.
+    - R23-C34: the rehearsal's criterion is that no build job builds (`native-image-playground` is skipped when
+      `wasm` stops); the draft sentence says which check a draft stops.
+    - R23-F9: the release check's message says a build job cannot be re-run once the release exists, to re-run a
+      failed job instead, and that the version may have to be abandoned.
