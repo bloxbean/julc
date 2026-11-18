@@ -386,6 +386,41 @@ Main code is frozen at `6c68f45a`; this round changes test sources, evidence and
   - The `adr078` fixture tests: 19 and 1, green.
   - `./gradlew build` on the exact head.
 
+## Changes after Codex's fifth M1a review (C35–C41)
+
+Main code stays frozen at `6c68f45a`; test sources, evidence and docs only.
+
+- **C36 (P1).** Both oracles now use one rule, `afterAnExhaustion` in D5 and the same branch in the comparator, for
+  any evaluation that exhausts the transaction limit on either side.
+  - Each side's evidence is its transaction-limit outcome, or its higher-limit retry where the transaction limit
+    exhausted.
+  - Where both terminate, results and complete traces must be equal.
+  - Where an exhaustion persists, the case is inconclusive only if what it traced is a prefix of the other side's
+    complete traces (both exhausted: either way round). Otherwise it is a mismatch.
+
+  Controls, in `theHigherLimitDecidesAnExhaustion` and in the comparator, for both directions:
+  - a success tracing `["A"]` against an exhaustion having traced `["B"]` is a mismatch;
+  - `["AB"]` against `["A"]` is a mismatch;
+  - prefix-compatible traces are inconclusive;
+  - transaction-limit traces `[]` and `["start"]` with agreeing retries (`["start","done"]`, the same term) pass.
+
+  The comparator's bounded category is now "both exhaust at both limits with the same traces". On the archived
+  outputs it is still 112, with 0 unaccepted, 0 budget-only and 0 inconclusive.
+- **C37.** `Adr078Fixtures.evaluations` recovers a returned function from the higher-limit replay when obtaining it
+  exhausted, so both sides make the `applied` records. Re-recorded on pre21, `pre21-fixtures.txt` is unchanged (no
+  fixture exhausts the transaction limit).
+- **C38.** After an exhaustion decided at the higher limit, the completed evaluations' budgets go into the I6b report.
+- **C39.** The runner requires `sourceMap: true` or `false`, and anything else is a harness error. In the controls,
+  "yes" and a missing line had been compiled as maps off and are now harness errors. Every corpus manifest records a
+  literal value.
+- **C40.** The comparator requires JSON integers (`type(v) is int`) for vectors and budgets. A `true` vector or budget
+  fails.
+- **C41.** The identity floor counts compilations, once each after all their branches match: 32 multi-handler
+  compilations, floor 32.
+- **C35.** `m1a-pre21-recording.md`'s notes now give the 1,152 evaluations, the higher-limit rule, the exact
+  diagnostic checks and the two-way id check.
+- **ADR r11** states the refined I6a exhaustion rule (C30, C36, C37).
+
 ## M3 (JOUST's half of the gate)
 
 M3 passed on `4bac295d` (`m3-joust-gate.txt`):

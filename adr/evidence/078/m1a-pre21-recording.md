@@ -42,7 +42,16 @@ The header lines were then prepended. `pre21-debug.txt` is in `julc-tools/src/te
 
 - **Rejection text.** In the Gradle test JVM, `julc.verifyBinderNamespace` is set, so an unread mutually recursive
   library pair is rejected by the I13 binder check ("has no binder in scope"). Outside it, the rejection comes later,
-  from the backend ("Unbound variable"). The recording was made outside it. The tests therefore compare *whether* a
-  variant is rejected, not the rejection's wording.
-- **No limit-free evaluation.** The recordings evaluate under a transaction's maximum budget (`REPLAY_LIMIT`). A replay
-  that exhausts it would be reported as inconclusive. None did: 512 evaluations were compared, 0 inconclusive.
+  from the backend ("Unbound variable"). The recording was made outside it, and also holds each rejected variant's
+  exact diagnostic with the check off and on. `rejectionsSayWhatPre21Said` sets the property each way and compares
+  those diagnostics exactly; the other tests compare *whether* a variant is rejected.
+- **Evaluations.** The recordings evaluate under a transaction's maximum budget (`REPLAY_LIMIT`) and, for every
+  evaluation, again at `HIGH_LIMIT`. The tests compare 1,152 evaluations (296 returned functions applied, 32 with
+  traces), and check that the evaluation ids made equal the recorded ones, both ways. An evaluation that exhausts the
+  transaction limit on either side is decided by the higher-limit replays (`afterAnExhaustion`): where both terminate,
+  results and complete traces must be equal; where an exhaustion persists, the case is inconclusive only if its traces
+  are a prefix of the other side's, and otherwise a mismatch. A returned function whose evaluation exhausted is
+  recovered from the replay and applied (C37). No fixture evaluation exhausts the transaction limit (C12's tight limit
+  apart), so none is inconclusive.
+- **Re-recorded after C37.** `Adr078Fixtures.main` run again on the pre21 class path after C37 gives the committed
+  `pre21-fixtures.txt`, header lines apart.

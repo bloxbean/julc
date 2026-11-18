@@ -285,6 +285,14 @@ A single failure blocks pre22. Attributing a failure to a known limit diagnoses 
   - Budgets are reported separately.
   - A case that exhausts the budget on one side only is replayed at a higher limit. If it still exhausts, it is
     reported as inconclusive.
+  - **Refined in r11 (Codex M1a C30, C36, C37):**
+    - Any case that exhausts the transaction limit, on either side or both, is decided by its higher-limit replays.
+      A transaction-limit exhaustion's partial traces are superseded by the replay.
+    - Where both replays terminate, results and complete traces must be equal.
+    - Where an exhaustion persists, the case is inconclusive only if what it traced is a prefix of the other side's
+      complete traces (or, both exhausted, one is a prefix of the other). Otherwise the traces already disagree, and
+      it is a mismatch.
+    - A returned function whose evaluation exhausted is recovered from the replay and applied.
 
 **Unit tests:**
 - Lemmas 1–4 on random DAGs.
@@ -470,3 +478,8 @@ JOUST's D12 is an M3 deliverable.
     `ValidatorAssembly.Frontend` signature change as an accepted P2 deviation, with a release-note API line (C33).
   - **M3:** complete on `6c68f45a`.
   - The decision is unchanged.
+- **r11 (2026-11-19).** After Codex's fifth M1a review (C36–C41).
+  - **The I6a oracle's exhaustion rule** is refined: the higher-limit replays decide, and an exhaustion is inconclusive
+    only when its traces are prefix-compatible with the other side's (C36). A returned function is recovered from the
+    replay (C37).
+  - Test and evidence changes only; the decision is unchanged.

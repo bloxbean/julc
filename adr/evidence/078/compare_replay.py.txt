@@ -10,9 +10,11 @@ transaction-limit evaluations for each compileMethod case with the default looku
 64 lowercase hex digits.
 
 Accepted, and reported apart: budget-only differences (I6b), of transaction-limit and of matched higher-limit
-evaluations; bounded comparisons (both sides exhausted the transaction limit; their higher-limit retries are
-compared, semantics and budget); and, per ADR-078's I6a rule, inconclusive cases (one side exhausted the transaction
-limit, and an exhaustion persists at the higher limit). Where the higher limit resolves a one-sided exhaustion to
+evaluations; bounded comparisons (both sides exhaust at both limits with the same traces); and, per ADR-078's I6a
+rule, inconclusive cases (an exhaustion persists at the higher limit, and what it traced is a prefix of the other
+side's traces). Where the transaction limit exhausted, the higher-limit retry is each side's evidence: where both
+terminate, results and complete traces must be equal; traces that are not prefix-compatible are a mismatch (C36).
+Vectors and budgets must be JSON integers, not booleans (C40). Where the higher limit resolves a one-sided exhaustion to
 the same result, the two completed evaluations' budgets are reported as budget-only (C34). Everything else that
 differs is unaccepted.
 Usage: compare_replay.py corpus a.jsonl b.jsonl
@@ -54,11 +56,11 @@ def validate(path, number, r):
     if extra: fail(f"{path}:{number}: {kind}/{state} record has unknown fields {sorted(extra)}")
     if kind == "eval":
         if r["limit"] not in ("transaction", "high"): fail(f"{path}:{number}: unknown limit {r['limit']!r}")
-        if not isinstance(r["vector"], int): fail(f"{path}:{number}: vector is not an integer")
+        if type(r["vector"]) is not int: fail(f"{path}:{number}: vector is not an integer")
         if "traces" in r and not (isinstance(r["traces"], list) and all(isinstance(t, str) for t in r["traces"])):
             fail(f"{path}:{number}: traces is not a list of strings")
         for field in ("cpu", "mem"):
-            if field in r and not isinstance(r[field], int): fail(f"{path}:{number}: {field} is not an integer")
+            if field in r and type(r[field]) is not int: fail(f"{path}:{number}: {field} is not an integer")
     for field in DIGESTS:
         if field in r and not (isinstance(r[field], str) and HEX.fullmatch(r[field])):
             fail(f"{path}:{number}: {field} is not a SHA-256 digest: {r[field]!r}")
@@ -154,30 +156,35 @@ for rid in sorted(set(a) | set(b)):
     else:
         ex, ey = x["outcome"] == "exhausted", y["outcome"] == "exhausted"
         hid = rid[:4] + ("high",)
-        if ex and ey:
-            counts["evaluations bounded (both exhausted the transaction limit)"] += 1
-            if semantic(x) != semantic(y): failures.append(("bounded evaluation differs", rid, x, y))
-            hx, hy = a[hid], b[hid]
-            hex_, hey = hx["outcome"] == "exhausted", hy["outcome"] == "exhausted"
-            if hex_ != hey:
-                # An exhaustion that persists at the higher limit on one side: inconclusive (I6a, as the fixture oracle).
-                counts["evaluations inconclusive"] += 1
-                inconclusive.append(rid)
-            elif semantic(hx) != semantic(hy): failures.append(("higher-limit retry differs", hid, hx, hy))
-            elif budget(hx) != budget(hy): budget_only.append((hid, budget(hx), budget(hy)))
-            if budget(x) != budget(y): budget_only.append((rid, budget(x), budget(y)))
-        elif ex or ey:
+        if ex or ey:
+            # Each side's evidence is its transaction-limit outcome, or its higher-limit retry where the transaction
+            # limit exhausted; a transaction-limit exhaustion's partial traces are superseded by the retry (C36).
             hx = a[hid] if ex else x
             hy = b[hid] if ey else y
-            if hx["outcome"] == "exhausted" or hy["outcome"] == "exhausted":
-                counts["evaluations inconclusive"] += 1
-                inconclusive.append(rid)
-            elif semantic(hx) != semantic(hy):
-                failures.append(("evaluation differs at the higher limit", rid, hx, hy))
+            fx, fy = hx["outcome"] == "exhausted", hy["outcome"] == "exhausted"
+            if not fx and not fy:
+                if semantic(hx) != semantic(hy):
+                    failures.append(("evaluation differs at the higher limit", rid, hx, hy))
+                else:
+                    counts["evaluations demonstrated " + hx["outcome"] + " (after an exhaustion)"] += 1
+                    # One side ran out of the transaction budget and the other did not: always a budget difference
+                    # (C34); both did: the retries' budgets are compared.
+                    if ex != ey or budget(hx) != budget(hy): budget_only.append((rid, budget(hx), budget(hy)))
+            elif fx and fy and ex and ey and semantic(hx) == semantic(hy):
+                # Bounded: both exhaust at both limits, with the same traces; the retries' budgets are reported.
+                counts["evaluations bounded (both exhausted at both limits, same traces)"] += 1
+                if budget(hx) != budget(hy): budget_only.append((hid, budget(hx), budget(hy)))
             else:
-                counts["evaluations demonstrated " + hx["outcome"] + " (after a one-sided exhaustion)"] += 1
-                # One side ran out of the transaction budget and the other did not: a budget difference, always (C34).
-                budget_only.append((rid, budget(hx), budget(hy)))
+                # An exhaustion persists: inconclusive only if what it traced is a prefix of the other side's traces
+                # (complete, or, both exhausted, either way round); otherwise the traces already disagree (C36).
+                tx, ty = hx["traces"], hy["traces"]
+                prefix = lambda p, q: q[:len(p)] == p
+                consistent = (prefix(tx, ty) or prefix(ty, tx)) if fx and fy else prefix(tx, ty) if fx else prefix(ty, tx)
+                if consistent:
+                    counts["evaluations inconclusive"] += 1
+                    inconclusive.append(rid)
+                else:
+                    failures.append(("traces disagree before an exhaustion", rid, hx, hy))
         else:
             counts["evaluations demonstrated " + x["outcome"]] += 1
             if semantic(x) != semantic(y): failures.append(("evaluation differs", rid, x, y))
@@ -189,5 +196,5 @@ print("unaccepted differences:", len(failures))
 for f in failures[:20]: print("  ", f)
 print("budget-only differences (I6b):", len(budget_only))
 for d in budget_only[:20]: print("  ", d)
-print("inconclusive (one-sided exhaustion that persists at the higher limit):", len(inconclusive))
+print("inconclusive (an exhaustion that persists at the higher limit):", len(inconclusive))
 sys.exit(1 if failures else 0)

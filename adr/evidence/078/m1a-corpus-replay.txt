@@ -1,5 +1,5 @@
 # ADR-078 M1a: ADR-075's corpus replay, corrected after Codex's third M1a review (C20, C21, C23, C24, C27, C28) and
-# fourth (C29, C30, C31, C34).
+# fourth (C29, C30, C31, C34) and fifth (C36, C39, C40).
 # 2026-11-19. pre21: the 0.1.0-pre21 Maven artifacts (julc-tools + julc-vm-java class path). Head: this branch's
 # julc-compiler test runtime class path, built from the working tree that became the final head (round 3: the observer
 # carried in the Frontend record, F9/C26; the LibraryBindingOrder Javadoc, C28).
@@ -9,9 +9,9 @@
 # entry point dispatched, always with the recorded library list, even an empty one (C23). Preparation (options,
 # sources, staging files for path entry points) and result adaptation are outside the compiler call's exception
 # boundary, so a failure there is a harness error, never a rejection (C21). Preparation also rejects, as a harness
-# error, an entry point it does not dispatch, a lookup other than the default registry or none, and a cost profile
-# without its parameter hash (C31; no manifest of the corpus does any of these, so the outputs below, written by the
-# round-3 runner, are what this runner writes). The run log starts with the SHA-256 of the compiler class files it
+# error, an entry point it does not dispatch, a lookup other than the default registry or none, a cost profile
+# without its parameter hash (C31), and a sourceMap that is not literally true or false (C39). No manifest of the
+# corpus does any of these, so the outputs below, written by the round-3 runner, are what this runner writes. The run log starts with the SHA-256 of the compiler class files it
 # loaded (C28). One JSON record per line.
 # Comparator: compare_replay.py.txt. Validates every record against its kind and outcome; rejects unknown kinds and
 # fields, orphan or missing higher-limit retries, and any harness error, even one both sides share (C20, C21); pins the
@@ -20,12 +20,15 @@
 # Round 4: it reads the corpus and requires each side's records to be exactly those the corpus calls for, and every
 # digest to be 64 hex digits (C29); a one-sided exhaustion the higher limit resolves is reported as budget-only (C34);
 # where both sides exhaust, a higher-limit exhaustion on one side only is inconclusive, as in the fixture oracle (C30).
+# Round 5: where the transaction limit exhausted, the retry is each side's evidence; where an exhaustion persists, the
+# case is inconclusive only if its traces are a prefix of the other side's, and otherwise a mismatch (C36); vectors
+# and budgets must be JSON integers, not booleans (C40).
 
 Commands (class paths as in m1a-pre21-recording.md; both runs sequential, with the same -Dadr078.tmp directory, since a
 compilePath diagnostic carries the staged file's path):
   java -Xmx6g -Dadr078.tmp=<tmp> -cp "<runner>:<pre21 class path>" replay.Adr078Replay <corpus> r5-pre21.jsonl
   java -Xmx6g -Dadr078.tmp=<tmp> -cp "<runner>:<julc-compiler test class path>" replay.Adr078Replay <corpus> r7-head.jsonl
-  python3 compare_replay.py.txt <corpus> r5-pre21.jsonl r7-head.jsonl   (round 4: re-run on these archived outputs)
+  python3 compare_replay.py.txt <corpus> r5-pre21.jsonl r7-head.jsonl   (rounds 4 and 5: re-run on these archived outputs)
 
 Compiler class files loaded (SHA-256, from the run logs):
   pre21 (julc-compiler-0.1.0-pre21.jar)
@@ -52,8 +55,8 @@ Counts (from the manifests and records):
     harness errors                                   0
   evaluations (compileMethod, default lookup, 7 vectors, transaction limit)   266,441
     demonstrated ok 98,422; demonstrated fail 167,907
-    bounded (both sides exhausted the transaction limit) 112: each has one higher-limit retry per side, and the
-      retries' outcomes, traces and budgets are identical (all 112 still exhaust there)
+    bounded 112: both sides exhaust at the transaction and the higher limit, with the same traces at the higher
+      limit and the same budgets
 
 Comparison:
   unaccepted differences          0

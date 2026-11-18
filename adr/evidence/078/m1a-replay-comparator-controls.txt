@@ -1,17 +1,20 @@
-# ADR-078 M1a: the replay comparator's negative controls, after Codex's fourth M1a review (C29, C30, C31, C34).
-# 2026-11-19. compare_replay_controls.py.txt edits a copy of the head's archived replay output (r7-head.jsonl), or both
-# archived outputs ("both sides"), and runs compare_replay.py.txt with the corpus against pre21's output (r5-pre21.jsonl).
-# Exit 1: any unaccepted difference; a schema or digest error; a record the corpus calls for missing, or one it does
-# not call for (C29, checked on each side, so deleting the same records from both sides fails too); a harness error,
-# even one both sides share; a missing or orphan higher-limit retry; a change in the pinned exclusions.
-# Exit 0, reported: budget-only differences, including every one-sided exhaustion the higher limit resolves (C34),
-# and inconclusive cases (an exhaustion that persists at the higher limit on one side, ADR-078 I6a).
+# ADR-078 M1a: the replay comparator's and runner's negative controls, after Codex's fourth and fifth M1a reviews
+# (C29, C30, C31, C34; C36, C39, C40). 2026-11-19. compare_replay_controls.py.txt edits a copy of the head's archived
+# replay output (r7-head.jsonl), or both archived outputs ("both sides"), and runs compare_replay.py.txt with the
+# corpus against pre21's output (r5-pre21.jsonl).
+# Exit 1: any unaccepted difference; a schema or digest error, a boolean where an integer belongs (C40); a record the
+# corpus calls for missing, or one it does not call for (C29, checked on each side); a harness error, even one both
+# sides share; a missing or orphan higher-limit retry; a change in the pinned exclusions; traces that disagree before
+# an exhaustion (C36).
+# Exit 0, reported: budget-only differences, including every one-sided exhaustion the higher limit resolves (C34);
+# inconclusive cases (an exhaustion persists at the higher limit, and what it traced is a prefix of the other side's
+# traces, ADR-078 I6a as refined in r11); transaction-limit traces that differ where the retries agree (C36's reverse).
 
 # Each control edits the head's output, or both outputs ("both sides"), and compares against pre21's with the corpus.
-baseline: the archived outputs, unedited: exit 0; ['unaccepted differences: 0', 'budget-only differences (I6b): 0', 'inconclusive (one-sided exhaustion that persists at the higher limit): 0']
-a changed result digest: exit 1; ['unaccepted differences: 1', 'budget-only differences (I6b): 0', 'inconclusive (one-sided exhaustion that persists at the higher limit): 0', "('evaluation differs', ('00131a41e259748168f04280bab8ef60dbb77802e34945f0c10cc50bf1e7f4fc', 'BASELINE', 'eval', 0, 'transaction'), {'case': '00131a41e"]
-a changed trace list: exit 1; ['unaccepted differences: 1', 'budget-only differences (I6b): 0', 'inconclusive (one-sided exhaustion that persists at the higher limit): 0', "('evaluation differs', ('00131a41e259748168f04280bab8ef60dbb77802e34945f0c10cc50bf1e7f4fc', 'BASELINE', 'eval', 0, 'transaction'), {'case': '00131a41e"]
-a changed FLAT digest: exit 1; ['unaccepted differences: 1', 'budget-only differences (I6b): 0', 'inconclusive (one-sided exhaustion that persists at the higher limit): 0', "('compilation differs', ('00020fc31c083d2054f89216f9c3a37b9b04e48707862f943e7251066e507d94', 'BASELINE', 'compile', '', ''), {'case': '00020fc31c083d2"]
+baseline: the archived outputs, unedited: exit 0; ['unaccepted differences: 0', 'budget-only differences (I6b): 0', 'inconclusive (an exhaustion that persists at the higher limit): 0']
+a changed result digest: exit 1; ['unaccepted differences: 1', 'budget-only differences (I6b): 0', 'inconclusive (an exhaustion that persists at the higher limit): 0', "('evaluation differs', ('00131a41e259748168f04280bab8ef60dbb77802e34945f0c10cc50bf1e7f4fc', 'BASELINE', 'eval', 0, 'transaction'), {'case': '00131a41e"]
+a changed trace list: exit 1; ['unaccepted differences: 1', 'budget-only differences (I6b): 0', 'inconclusive (an exhaustion that persists at the higher limit): 0', "('evaluation differs', ('00131a41e259748168f04280bab8ef60dbb77802e34945f0c10cc50bf1e7f4fc', 'BASELINE', 'eval', 0, 'transaction'), {'case': '00131a41e"]
+a changed FLAT digest: exit 1; ['unaccepted differences: 1', 'budget-only differences (I6b): 0', 'inconclusive (an exhaustion that persists at the higher limit): 0', "('compilation differs', ('00020fc31c083d2054f89216f9c3a37b9b04e48707862f943e7251066e507d94', 'BASELINE', 'compile', '', ''), {'case': '00020fc31c083d2"]
 a record missing: exit 1; ["ctl-b.jsonl: 1 record(s) the corpus calls for are missing, e.g. ('00131a41e259748168f04280bab8ef60dbb77802e34945f0c10cc50bf1e7f4fc', 'BASELINE', 'eval', 0, 'transaction')"]
 a missing higher-limit record: exit 1; ["ctl-b.jsonl: exhausted evaluation ('02418a2d9c879e4f2f3b75f9f7f432f3898e6a32fb822a79c4a4f6b26cae4514', 'BASELINE', 'eval', 2, 'transaction') has no higher-limit retry"]
 an orphan higher-limit retry: exit 1; ["ctl-b.jsonl: orphan higher-limit retry ('00131a41e259748168f04280bab8ef60dbb77802e34945f0c10cc50bf1e7f4fc', 'BASELINE', 'eval', 0, 'high')"]
@@ -29,14 +32,21 @@ C29, both sides: a rejection without its message digest: exit 1; ["ctl-a.jsonl:3
 C29, both sides: an evaluation the corpus does not call for (vector 7): exit 1; ["ctl-a.jsonl: 1 record(s) the corpus does not call for, e.g. ('00131a41e259748168f04280bab8ef60dbb77802e34945f0c10cc50bf1e7f4fc', 'BASELINE', 'eval', 7, 'transaction')"]
 C29, both sides: a manifest entry that is not the corpus's: exit 1; ["ctl-a.jsonl: manifest record of 00131a41e259748168f04280bab8ef60dbb77802e34945f0c10cc50bf1e7f4fc is not the corpus's: {'case': '00131a41e259748168f04280bab8ef60dbb77802e34945f0c10cc50bf1e7f4fc', 'kind': 'manifest', 'status': 'eligible', 'entry': 'compile', 'lookup': 'default'}"]
 C21, both sides: the same harness error: exit 1; ["ctl-a.jsonl: 1 harness error(s), e.g. ('00020fc31c083d2054f89216f9c3a37b9b04e48707862f943e7251066e507d94', 'BASELINE', 'compile', '', '')"]
-a transaction-limit budget-only change: exit 0; ['unaccepted differences: 0', 'budget-only differences (I6b): 1', 'inconclusive (one-sided exhaustion that persists at the higher limit): 0', "(('00131a41e259748168f04280bab8ef60dbb77802e34945f0c10cc50bf1e7f4fc', 'BASELINE', 'eval', 0, 'transaction'), (64100, 500), (64101, 500))"]
-a higher-limit CPU change: exit 0; ['unaccepted differences: 0', 'budget-only differences (I6b): 1', 'inconclusive (one-sided exhaustion that persists at the higher limit): 0', "(('02418a2d9c879e4f2f3b75f9f7f432f3898e6a32fb822a79c4a4f6b26cae4514', 'BASELINE', 'eval', 2, 'high'), (340118150437, 1400000028), (340118150438, 14000"]
-a one-sided exhaustion that persists at the higher limit: exit 0; ['unaccepted differences: 0', 'budget-only differences (I6b): 0', 'inconclusive (one-sided exhaustion that persists at the higher limit): 1']
-C34: a one-sided exhaustion the higher limit resolves to the same result: exit 0; ['unaccepted differences: 0', 'budget-only differences (I6b): 1', 'inconclusive (one-sided exhaustion that persists at the higher limit): 0', "(('00131a41e259748168f04280bab8ef60dbb77802e34945f0c10cc50bf1e7f4fc', 'BASELINE', 'eval', 0, 'transaction'), (64100, 500), (64100, 500))"]
-a one-sided exhaustion the higher limit resolves to another result: exit 1; ['unaccepted differences: 1', 'budget-only differences (I6b): 0', 'inconclusive (one-sided exhaustion that persists at the higher limit): 0', "('evaluation differs at the higher limit', ('00131a41e259748168f04280bab8ef60dbb77802e34945f0c10cc50bf1e7f4fc', 'BASELINE', 'eval', 0, 'transaction'),"]
-C30, both exhaust: pre21 succeeds at the higher limit, the head fails: exit 1; ['unaccepted differences: 1', 'budget-only differences (I6b): 0', 'inconclusive (one-sided exhaustion that persists at the higher limit): 0', "('higher-limit retry differs', ('00131a41e259748168f04280bab8ef60dbb77802e34945f0c10cc50bf1e7f4fc', 'BASELINE', 'eval', 0, 'high'), {'case': '00131a41"]
-C30, both exhaust: both succeed alike at the higher limit: exit 0; ['unaccepted differences: 0', 'budget-only differences (I6b): 0', 'inconclusive (one-sided exhaustion that persists at the higher limit): 0']
-C30, both exhaust: pre21 succeeds at the higher limit, the head still exhausts: exit 0; ['unaccepted differences: 0', 'budget-only differences (I6b): 0', 'inconclusive (one-sided exhaustion that persists at the higher limit): 1']
+a transaction-limit budget-only change: exit 0; ['unaccepted differences: 0', 'budget-only differences (I6b): 1', 'inconclusive (an exhaustion that persists at the higher limit): 0', "(('00131a41e259748168f04280bab8ef60dbb77802e34945f0c10cc50bf1e7f4fc', 'BASELINE', 'eval', 0, 'transaction'), (64100, 500), (64101, 500))"]
+a higher-limit CPU change: exit 0; ['unaccepted differences: 0', 'budget-only differences (I6b): 1', 'inconclusive (an exhaustion that persists at the higher limit): 0', "(('02418a2d9c879e4f2f3b75f9f7f432f3898e6a32fb822a79c4a4f6b26cae4514', 'BASELINE', 'eval', 2, 'high'), (340118150437, 1400000028), (340118150438, 14000"]
+a one-sided exhaustion that persists at the higher limit: exit 0; ['unaccepted differences: 0', 'budget-only differences (I6b): 0', 'inconclusive (an exhaustion that persists at the higher limit): 1']
+C34: a one-sided exhaustion the higher limit resolves to the same result: exit 0; ['unaccepted differences: 0', 'budget-only differences (I6b): 1', 'inconclusive (an exhaustion that persists at the higher limit): 0', "(('00131a41e259748168f04280bab8ef60dbb77802e34945f0c10cc50bf1e7f4fc', 'BASELINE', 'eval', 0, 'transaction'), (64100, 500), (64100, 500))"]
+a one-sided exhaustion the higher limit resolves to another result: exit 1; ['unaccepted differences: 1', 'budget-only differences (I6b): 0', 'inconclusive (an exhaustion that persists at the higher limit): 0', "('evaluation differs at the higher limit', ('00131a41e259748168f04280bab8ef60dbb77802e34945f0c10cc50bf1e7f4fc', 'BASELINE', 'eval', 0, 'transaction'),"]
+C30, both exhaust: pre21 succeeds at the higher limit, the head fails: exit 1; ['unaccepted differences: 1', 'budget-only differences (I6b): 0', 'inconclusive (an exhaustion that persists at the higher limit): 0', "('evaluation differs at the higher limit', ('00131a41e259748168f04280bab8ef60dbb77802e34945f0c10cc50bf1e7f4fc', 'BASELINE', 'eval', 0, 'transaction'),"]
+C30, both exhaust: both succeed alike at the higher limit: exit 0; ['unaccepted differences: 0', 'budget-only differences (I6b): 0', 'inconclusive (an exhaustion that persists at the higher limit): 0']
+C30, both exhaust: pre21 succeeds at the higher limit, the head still exhausts: exit 0; ['unaccepted differences: 0', 'budget-only differences (I6b): 0', 'inconclusive (an exhaustion that persists at the higher limit): 1']
+C36, both exhaust: pre21 succeeds at the higher limit tracing ["A"], the head still exhausts having traced ["B"]: exit 1; ['unaccepted differences: 1', 'budget-only differences (I6b): 0', 'inconclusive (an exhaustion that persists at the higher limit): 0', "('traces disagree before an exhaustion', ('00131a41e259748168f04280bab8ef60dbb77802e34945f0c10cc50bf1e7f4fc', 'BASELINE', 'eval', 0, 'transaction'), {"]
+C36, both exhaust: the head still exhausts having traced ["A"], a prefix of pre21's ["A","B"]: exit 0; ['unaccepted differences: 0', 'budget-only differences (I6b): 0', 'inconclusive (an exhaustion that persists at the higher limit): 1']
+C36, both exhaust at both limits: ["A","B"] against ["A"]: exit 0; ['unaccepted differences: 0', 'budget-only differences (I6b): 0', 'inconclusive (an exhaustion that persists at the higher limit): 1']
+C36, both exhaust at both limits: ["AB"] against ["A"]: exit 1; ['unaccepted differences: 1', 'budget-only differences (I6b): 0', 'inconclusive (an exhaustion that persists at the higher limit): 0', "('traces disagree before an exhaustion', ('00131a41e259748168f04280bab8ef60dbb77802e34945f0c10cc50bf1e7f4fc', 'BASELINE', 'eval', 0, 'transaction'), {"]
+C36, the reverse: transaction-limit traces [] against ["start"], both retries succeed alike with ["start","done"]: exit 0; ['unaccepted differences: 0', 'budget-only differences (I6b): 0', 'inconclusive (an exhaustion that persists at the higher limit): 0']
+C40, both sides: a vector written as true: exit 1; ['ctl-a.jsonl:8: vector is not an integer']
+C40, both sides: a budget written as true: exit 1; ['ctl-a.jsonl:7: mem is not an integer']
 
 C21: a path-staging failure. Adr078Replay with -Dadr078.tmp set to a regular file, on three corpus manifests (two
 compilePath, one compileMethod):
@@ -72,6 +82,24 @@ runner (r9) and this round's (r10):
   None of the corpus's 20,352 eligible manifests fails these checks (entry one of the eight dispatched entry points;
   lookup "default:org.julclang.stdlib.StdlibRegistry" or "none"; compileMethod with a method; every costProfile an id
   and a hash), so the archived outputs stand as the runner's output.
+
+
+C39: the runner requires a literal true or false for sourceMap. Three copies of corpus case b5e0ef89…, run with the
+round-4 runner (r10) and this round's (r11):
+  runner r10:
+    {"case":"c39-0-unchanged","level":"PV11_SAFE","kind":"compile","status":"ok","flat":"07dc973181a9c1220e1b1116ab6fc5ca6e5c7ee81eb88acefe126ce08412a4f6"}
+    {"case":"c39-1-sourceMap-yes","level":"PV11_SAFE","kind":"compile","status":"ok","flat":"89f0da7a4dfbdc26f20158744ec431a5f1e7dc4613fc85885b1a5a0cf0390968"}
+    {"case":"c39-2-sourceMap-missing","level":"PV11_SAFE","kind":"compile","status":"ok","flat":"89f0da7a4dfbdc26f20158744ec431a5f1e7dc4613fc85885b1a5a0cf0390968"}
+  runner r11:
+    {"case":"c39-0-unchanged","level":"PV11_SAFE","kind":"compile","status":"ok","flat":"07dc973181a9c1220e1b1116ab6fc5ca6e5c7ee81eb88acefe126ce08412a4f6"}
+    {"case":"c39-1-sourceMap-yes","level":"PV11_SAFE","kind":"compile","status":"harness-error","error":"java.lang.IllegalStateException: sourceMap yes is not true or false"}
+    {"case":"c39-2-sourceMap-missing","level":"PV11_SAFE","kind":"compile","status":"harness-error","error":"java.lang.IllegalStateException: sourceMap null is not true or false"}
+  The round-4 runner compiled "sourceMap: yes" and a missing sourceMap as source maps off. This round's records each
+  as a harness error, and the comparator then fails:
+  c39/r11.jsonl: 2 harness error(s), e.g. ('c39-1-sourceMap-yes', 'PV11_SAFE', 'compile', '', '')
+  exit 1
+  Every corpus manifest records "sourceMap: true" (2,237) or "sourceMap: false" (18,170), so the archived outputs
+  stand.
 
 The tmp directory is part of the input: a compilePath diagnostic carries the staged file's path. A head run with
 another -Dadr078.tmp gave exactly one unaccepted difference, the one compilePath rejection whose message names the

@@ -148,7 +148,11 @@ public class Adr078Replay {
                     }
                     options.setOptimizationCostProfile(profile);
                 }
-                options.setSourceMapEnabled(Boolean.parseBoolean(field(fields, "sourceMap")));
+                String sourceMap = field(fields, "sourceMap");
+                if (!"true".equals(sourceMap) && !"false".equals(sourceMap)) {
+                    throw new IllegalStateException("sourceMap " + sourceMap + " is not true or false"); // C39
+                }
+                options.setSourceMapEnabled(sourceMap.equals("true"));
                 String disabled = field(fields, "disabledRules");
                 if (disabled != null) for (String rule : disabled.split(",")) options.disableOptimizationRule(rule.trim());
                 StdlibLookup lookup = lookupId.equals(DEFAULT_LOOKUP) ? StdlibRegistry.defaultRegistry() : null;

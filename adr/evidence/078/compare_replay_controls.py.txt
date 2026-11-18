@@ -86,12 +86,13 @@ head_only('C34: a one-sided exhaustion the higher limit resolves to the same res
 def one_sided_other_result(out):
     one_sided('ok', 0)(out); r = json.loads(out[-1]); r['result'] = '0' * 64; out[-1] = dump(r)
 head_only('a one-sided exhaustion the higher limit resolves to another result', one_sided_other_result)
-def bounded(pre21_high, head_high):
-    """Both sides exhaust the transaction limit for one evaluation; the higher-limit retries are as given."""
+def bounded(pre21_high, head_high, pre21_traces=(), head_traces=()):
+    """Both sides exhaust the transaction limit for one evaluation, having traced as given; the retries are as given."""
     def m(out, side):
         i = idx(lambda r: r['kind'] == 'eval' and r['limit'] == 'transaction' and r['outcome'] == 'ok'); r = recs[i]
         base = {k: r[k] for k in ('case', 'level', 'kind', 'vector')}
-        out[i] = dump({**base, 'limit': 'transaction', 'outcome': 'exhausted', 'traces': [], 'cpu': 10000000001, 'mem': 500})
+        traces = list(pre21_traces if side == 'a' else head_traces)
+        out[i] = dump({**base, 'limit': 'transaction', 'outcome': 'exhausted', 'traces': traces, 'cpu': 10000000001, 'mem': 500})
         h = pre21_high if side == 'a' else head_high
         out.append(dump({**base, 'limit': 'high', **h}))
     a, b = list(pre), list(head); m(a, 'a'); m(b, 'b'); return compare(a, b)
@@ -101,3 +102,13 @@ ex_high = {'outcome': 'exhausted', 'traces': [], 'cpu': 1000000000001, 'mem': 50
 show('C30, both exhaust: pre21 succeeds at the higher limit, the head fails', *bounded(ok_high, fail_high))
 show('C30, both exhaust: both succeed alike at the higher limit', *bounded(ok_high, ok_high))
 show('C30, both exhaust: pre21 succeeds at the higher limit, the head still exhausts', *bounded(ok_high, ex_high))
+show('C36, both exhaust: pre21 succeeds at the higher limit tracing ["A"], the head still exhausts having traced ["B"]',
+     *bounded({**ok_high, 'traces': ['A']}, {**ex_high, 'traces': ['B']}))
+show('C36, both exhaust: the head still exhausts having traced ["A"], a prefix of pre21\'s ["A","B"]',
+     *bounded({**ok_high, 'traces': ['A', 'B']}, {**ex_high, 'traces': ['A']}))
+show('C36, both exhaust at both limits: ["A","B"] against ["A"]', *bounded({**ex_high, 'traces': ['A', 'B']}, {**ex_high, 'traces': ['A']}))
+show('C36, both exhaust at both limits: ["AB"] against ["A"]', *bounded({**ex_high, 'traces': ['AB']}, {**ex_high, 'traces': ['A']}))
+show('C36, the reverse: transaction-limit traces [] against ["start"], both retries succeed alike with ["start","done"]',
+     *bounded({**ok_high, 'traces': ['start', 'done']}, {**ok_high, 'traces': ['start', 'done']}, [], ['start']))
+both('C40, both sides: a vector written as true', setf(lambda r: r['kind'] == 'eval' and r['vector'] == 1, 'vector', True))
+both('C40, both sides: a budget written as true', setf(ok_eval, 'mem', True))
