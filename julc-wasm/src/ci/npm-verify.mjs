@@ -19,7 +19,7 @@ import {appendFileSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {parseArgs} from 'node:util';
 import {
-  ReleaseError, certificateProblems, compareVersions, distTag, isLoopbackRegistry, localTarballs,
+  BETA_TAG, CANDIDATE_TAG, LATEST_TAG, PREVIEW_TAG, ReleaseError, certificateProblems, compareVersions, distTag, isLoopbackRegistry, localTarballs,
   normaliseRegistry, packument, parseDigests, releaseIdentity, statementOf, statementProblems, tagProblems, verifiedProvenance,
 } from './npm-release.mjs';
 
@@ -90,6 +90,14 @@ async function main() {
     // D8 (per package): a final version is named by latest or a later one; a prerelease by one of its tags or a later
     // version. Never by nothing: that would mean a tag moved backwards or was never set.
     for (const problem of tagProblems(version, document)) problems.push(`${label}: ${problem}`);
+    // Channels are not reset by a final release: say so when one names a version behind latest.
+    for (const channel of [PREVIEW_TAG, BETA_TAG, CANDIDATE_TAG]) {
+      const [holder, latest] = [document['dist-tags']?.[channel], document['dist-tags']?.[LATEST_TAG]];
+      if (holder !== undefined && latest !== undefined && compareVersions(holder, latest) < 0) {
+        console.log(`note ${tarball.name}: dist-tag ${channel} names ${holder}, behind ${LATEST_TAG} ${latest}`);
+        summary(`- note: ${tarball.name}'s \`${channel}\` names ${holder}, behind \`${LATEST_TAG}\` ${latest}`);
+      }
+    }
     // The tag npm-publish chose for a package it published in this run (D8 or a fallback) names this version or a
     // later one: it was set, and nothing moved it backwards since. A package skipped as already published has no
     // entry: its tag was chosen by an earlier run, so only D8's rule above applies.

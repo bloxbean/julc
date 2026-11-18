@@ -2,7 +2,8 @@
 // no dependencies: those jobs check out only this directory and install nothing from it.
 import {execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
-import {existsSync, readFileSync} from 'node:fs';
+import {existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
 import path from 'node:path';
 
 /** The three packages, in publication order: the client first, as both engines depend on it (D8a). */
@@ -30,10 +31,16 @@ const fail = message => { throw new ReleaseError(message); };
 const IDENTIFIER = '(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)';
 const SEMVER = new RegExp(`^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-(${IDENTIFIER}(?:\\.${IDENTIFIER})*))?$`);
 
-/** A strict semantic version without build metadata, as npm accepts it for publication. */
+/**
+ * A strict semantic version without build metadata, within npm's limits (its semver package: at most 256 characters,
+ * each number a safe integer, no leading zeros).
+ */
 export function parseVersion(version) {
-  const match = SEMVER.exec(String(version));
+  const text = String(version);
+  const match = text.length <= 256 ? SEMVER.exec(text) : null;
   if (!match) fail(`not a semantic version: ${JSON.stringify(version)}`);
+  const numbers = [match[1], match[2], match[3], ...(match[4] ?? '').split('.').filter(part => /^\d+$/.test(part))];
+  if (numbers.some(number => !Number.isSafeInteger(Number(number)))) fail(`not a semantic version: ${JSON.stringify(version)}`);
   return {major: Number(match[1]), minor: Number(match[2]), patch: Number(match[3]),
     prerelease: match[4] ? match[4].split('.') : []};
 }
@@ -253,7 +260,7 @@ export function localTarballs(dir, version, digests = new Map()) {
     const sha256 = sha256Hex(readFileSync(file));
     if (sha256 !== sums.get(archive)) fail(`${archive}: SHA-256 ${sha256}, but ${sumsName(version)} says ${sums.get(archive)}`);
   }
-  return PACKAGES.map(name => {
+  const tarballs = PACKAGES.map(name => {
     const file = path.join(dir, tarballName(name, version));
     if (!existsSync(file)) fail(`missing ${tarballName(name, version)} in ${dir}`);
     const bytes = readFileSync(file);
@@ -272,6 +279,41 @@ export function localTarballs(dir, version, digests = new Map()) {
     }
     return {name, file, bytes, sha256, sha512: sha512Hex(bytes), integrity: integrityOf(bytes), shasum: shasumOf(bytes)};
   });
+  for (const [engine, archive] of [[PACKAGES[1], archiveNames(version)[0]], [PACKAGES[2], archiveNames(version)[1]]]) {
+    engineIdentity(path.join(dir, tarballName(engine, version)), path.join(dir, archive), engine);
+  }
+  return tarballs;
+}
+
+/**
+ * I1 within one set of npm files: an engine tarball's engine/ launcher, module and engine.json are the matching
+ * archive's, byte for byte. With the archives also equal to the published release's (npm-files.sh), the tarballs
+ * provably carry the engines that are public, so files of two builds can never be mixed.
+ */
+export function engineIdentity(tarball, archive, name) {
+  const work = mkdtempSync(path.join(tmpdir(), 'julc-npm-identity-'));
+  try {
+    const packed = path.join(work, 'packed');
+    const released = path.join(work, 'released');
+    for (const [file, into] of [[tarball, packed], [archive, released]]) {
+      mkdirSync(into, {recursive: true});
+      execFileSync('tar', ['-xzf', file, '-C', into]);
+    }
+    const read = file => existsSync(file) ? readFileSync(file) : fail(`${name}: no ${path.relative(work, file)}`);
+    const manifestBytes = read(path.join(packed, 'package', 'engine', 'engine.json'));
+    let launcher;
+    try { ({launcher} = JSON.parse(manifestBytes.toString('utf8'))); } catch { launcher = undefined; }
+    if (typeof launcher !== 'string' || !/^[a-z]+(-[a-z]+)*-[0-9a-f]{12}\.js$/.test(launcher)) {
+      fail(`${name}: engine/engine.json names no plain launcher`);
+    }
+    for (const file of ['engine.json', launcher, launcher + '.wasm']) {
+      if (!read(path.join(packed, 'package', 'engine', file)).equals(read(path.join(released, file)))) {
+        fail(`${name}: engine/${file} differs from ${path.basename(archive)}'s (I1): the files are not one build's`);
+      }
+    }
+  } finally {
+    rmSync(work, {recursive: true, force: true});
+  }
 }
 
 // --- The registry ---

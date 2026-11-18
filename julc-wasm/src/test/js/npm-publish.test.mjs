@@ -7,7 +7,7 @@
 //   JULC_TEST_NPM=<npm command> selects the npm CLI (default: npm on PATH).
 import assert from 'node:assert/strict';
 import {spawn, spawnSync} from 'node:child_process';
-import {mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync} from 'node:fs';
+import {cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -53,26 +53,42 @@ function npmEnv(registry, work) {
 
 /** The three packages of a release, packed by npm as the wasm job packs them, with the checksum file. `salt` changes
  *  the bytes of a package without changing its name or version. */
-function release(version, {salt = {}} = {}) {
+function release(version, {salt = {}, build = 'A'} = {}) {
   const dir = scratch(`release-${version}`);
   const env = npmEnv('http://127.0.0.1:1/', dir);
+  // The engines of one build: the engine packages' engine/ files and the archives' are the same bytes (I1).
+  const engines = {};
+  for (const [name, variant] of [[VM, 'vm'], [FULL, 'full']]) {
+    const launcher = `julc-${variant}-${createHash('sha256').update(variant + build).digest('hex').slice(0, 12)}.js`;
+    const bundle = path.join(dir, 'bundle', variant);
+    mkdirSync(bundle, {recursive: true});
+    writeFileSync(path.join(bundle, 'engine.json'), JSON.stringify({launcher, variant, julcVersion: version}) + '\n');
+    writeFileSync(path.join(bundle, launcher), `// launcher ${variant} ${version} ${build}\n`);
+    writeFileSync(path.join(bundle, launcher + '.wasm'), `wasm ${variant} ${version} ${build}\n`);
+    engines[name] = bundle;
+  }
   for (const name of [CLIENT, VM, FULL]) {
     const source = path.join(dir, 'src', name.split('/')[1]);
     mkdirSync(source, {recursive: true});
     const pkg = {name, version, type: 'module', license: 'MIT', repository: {type: 'git', url: 'git+https://github.com/bloxbean/julc.git', directory: 'julc-wasm'},
-      files: ['index.js'],
+      files: name === CLIENT ? ['index.js'] : ['index.js', 'engine/'],
       ...(name === CLIENT ? {} : {dependencies: {[CLIENT]: version}})};
     writeFileSync(path.join(source, 'package.json'), JSON.stringify(pkg, null, 2) + '\n');
     writeFileSync(path.join(source, 'index.js'), `export const name = ${JSON.stringify(name)};\n// ${salt[name] ?? ''}\n`);
+    if (engines[name]) cpSync(engines[name], path.join(source, 'engine'), {recursive: true});
     const pack = spawnSync(NPM, ['pack', '--ignore-scripts', '--pack-destination', dir], {cwd: source, env, encoding: 'utf8'});
     assert.equal(pack.status, 0, pack.stderr);
   }
   const archives = [`julc-vm-wasm-${version}.tar.gz`, `julc-wasm-${version}.tar.gz`];
-  for (const archive of archives) writeFileSync(path.join(dir, archive), `archive ${archive}\n`);
+  for (const [archive, name] of [[archives[0], VM], [archives[1], FULL]]) {
+    const tar = spawnSync('tar', ['czf', path.join(dir, archive), '-C', engines[name], '.'], {encoding: 'utf8'});
+    assert.equal(tar.status, 0, tar.stderr);
+  }
   const files = [...[CLIENT, VM, FULL].map(name => tarballName(name, version)), ...archives];
-  writeFileSync(path.join(dir, `julc-npm-${version}-SHA256SUMS.txt`),
+  const writeSums = () => writeFileSync(path.join(dir, `julc-npm-${version}-SHA256SUMS.txt`),
     files.map(file => `${sha256(readFileSync(path.join(dir, file)))}  ${file}\n`).join(''));
-  return {dir, version, bytes: name => readFileSync(path.join(dir, tarballName(name, version))),
+  writeSums();
+  return {dir, version, bytes: name => readFileSync(path.join(dir, tarballName(name, version))), writeSums,
     digests: () => files.map(file => `--digest=${file}=${sha256(readFileSync(path.join(dir, file)))}`)};
 }
 
@@ -442,6 +458,7 @@ test('npm-verify checks the tag npm-publish chose for each package it published 
 });
 
 /** Publishes a version on the registry and verifies it with the tags the run chose; returns the client's tags. */
+let lastVerifyText = '';
 const publishStep = registry => async (version, expected) => {
   registry.provenanceOnPublish = identity(version);
   const rel = release(version);
@@ -450,6 +467,7 @@ const publishStep = registry => async (version, expected) => {
   assert.deepEqual(JSON.parse(result.outputs.tags), {[CLIENT]: expected, [VM]: expected, [FULL]: expected}, version);
   const verified = await verify(registry, rel, ['--work', scratch('verify-work'), '--published-tags', result.outputs.tags]);
   assert.equal(verified.status, 0, version + '\n' + show(verified));
+  lastVerifyText = verified.text;
   return tagsOf(registry)[CLIENT];
 };
 
@@ -469,6 +487,8 @@ test('D8: -preN on latest until a final version exists, then on preview; finals 
       {latest: '0.1.0', preview: '0.2.0-pre2', 'release-0.1': '0.1.0-pre23', 'release-0.2': '0.2.0-pre10'});
     assert.deepEqual(await step('0.2.0', 'latest'),
       {latest: '0.2.0', preview: '0.2.0-pre2', 'release-0.1': '0.1.0-pre23', 'release-0.2': '0.2.0-pre10'});
+    assert.match(lastVerifyText, /note @julclang\/wasm-client: dist-tag preview names 0\.2\.0-pre2, behind latest 0\.2\.0/,
+      'a channel behind latest after a final release is noted');
     // A final below latest (a maintenance release) goes to its fallback.
     assert.equal((await step('0.1.1', 'release-0.1'))['release-0.1'], '0.1.1');
   } finally { await registry.close(); }
@@ -495,6 +515,19 @@ test('D8: -betaN on beta, X.Y.Z-rcN on next, for any major; neither moves back, 
   } finally { await registry.close(); }
 });
 
+test('D8: a first final below a -preN on latest goes to a fallback; a same-core beta after a -preN too', async () => {
+  const registry = await startRegistry();
+  const step = publishStep(registry);
+  try {
+    assert.deepEqual(await step('0.2.0-pre1', 'latest'), {latest: '0.2.0-pre1'}, 'no final yet');
+    // A backfilled first final: 0.1.0 < 0.2.0-pre1, so latest does not move back.
+    assert.deepEqual(await step('0.1.0', 'release-0.1'), {latest: '0.2.0-pre1', 'release-0.1': '0.1.0'});
+    // Within one X.Y.Z the order is beta < pre < rc: 0.2.0-beta1 is behind latest (0.2.0-pre1), so not beta.
+    assert.deepEqual(await step('0.2.0-beta1', 'release-0.2'),
+      {latest: '0.2.0-pre1', 'release-0.1': '0.1.0', 'release-0.2': '0.2.0-beta1'});
+  } finally { await registry.close(); }
+});
+
 test('npm-verify: a final version must be on latest or behind a later one; a prerelease on one of its tags', async () => {
   const registry = await startRegistry({provenanceOnPublish: identity('0.2.0')});
   try {
@@ -505,6 +538,21 @@ test('npm-verify: a final version must be on latest or behind a later one; a pre
     const result = await verify(registry, rel, ['--work', scratch('verify-work')]);
     assert.equal(result.status, 1, show(result));
     assert.match(result.text, /julc-vm-wasm@0\.2\.0: dist-tag latest names 0\.1\.0, expected 0\.2\.0 or later/);
+  } finally { await registry.close(); }
+});
+
+test('npm files of two builds are refused: an engine tarball must carry its archive\'s engine (I1, R23-C2)', async () => {
+  const registry = await startRegistry({provenanceOnPublish: identity(VERSION)});
+  try {
+    const a = release(VERSION);
+    const b = release(VERSION, {build: 'B'});
+    // A's tarballs with B's VM archive, under a checksum file over exactly these bytes.
+    writeFileSync(path.join(a.dir, `julc-vm-wasm-${VERSION}.tar.gz`), readFileSync(path.join(b.dir, `julc-vm-wasm-${VERSION}.tar.gz`)));
+    a.writeSums();
+    const result = await publish(registry, a);
+    assert.equal(result.status, 1, show(result));
+    assert.match(result.text, /@julclang\/julc-vm-wasm: engine\/engine\.json differs from julc-vm-wasm-0\.1\.0-pre22\.tar\.gz's \(I1\)/);
+    assert.deepEqual(registry.publishes, []);
   } finally { await registry.close(); }
 });
 

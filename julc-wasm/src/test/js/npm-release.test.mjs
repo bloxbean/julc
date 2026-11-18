@@ -15,6 +15,13 @@ import {
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
+test('the longest and largest versions npm allows still parse', () => {
+  assert.equal(versionKind('9007199254740991.0.0'), 'final');
+  const pre = `0.1.0-pre${'1'.repeat(256 - '0.1.0-pre'.length)}`;
+  assert.equal(pre.length, 256);
+  assert.equal(versionKind(pre), 'pre');
+});
+
 test('the tag names are the constants D8 names', () => {
   assert.deepEqual([LATEST_TAG, PREVIEW_TAG, BETA_TAG, CANDIDATE_TAG], ['latest', 'preview', 'beta', 'next']);
 });
@@ -56,7 +63,9 @@ test('snapshots, ambiguous forms and malformed versions are refused', () => {
     assert.throws(() => distTag(version), /publishes only X\.Y\.Z, X\.Y\.Z-preN, X\.Y\.Z-betaN and X\.Y\.Z-rcN/, version);
     assert.throws(() => isPrereleaseCandidate(version), /publishes only/, version);
   }
-  for (const version of ['v0.1.0', '0.1', '0.1.0-', '01.0.0', '0.1.0+build', '', ' 0.1.0', '0.1.0-pre..1']) {
+  // npm's semver limits: 256 characters, safe integers, no leading zeros, no build metadata.
+  for (const version of ['v0.1.0', '0.1', '0.1.0-', '01.0.0', '0.01.0', '0.1.0+build', '0.1.0-pre1+x', '', ' 0.1.0',
+    '0.1.0-pre..1', '9007199254740992.0.0', '0.1.9007199254740993', `0.1.0-pre${'1'.repeat(250)}`]) {
     assert.throws(() => distTag(version), /not a semantic version/, JSON.stringify(version));
   }
 });
