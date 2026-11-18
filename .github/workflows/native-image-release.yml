@@ -709,7 +709,7 @@ jobs:
           exit 1
         fi
         gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
-          --jq ".[] | select(.tag_name == \"v${VERSION}\") | [.id, .draft] | @tsv" > "$RUNNER_TEMP/releases.tsv"
+          --jq ".[] | select(.tag_name == \"v${VERSION}\") | [(.id | tojson), (.draft | tojson)] | @tsv" > "$RUNNER_TEMP/releases.tsv"
         count=$(wc -l < "$RUNNER_TEMP/releases.tsv" | tr -d ' ')
         if [[ "$count" -gt 1 ]]; then
           echo "::error::${count} releases (drafts included) have tag v${VERSION}; resolve that by hand first." >&2
@@ -717,9 +717,14 @@ jobs:
         fi
         if [[ "$count" == 1 ]]; then
           IFS=$'\t' read -r id draft < "$RUNNER_TEMP/releases.tsv"
-          if [[ "$draft" != false ]]; then
+          if [[ "$id" =~ ^[1-9][0-9]*$ && "$draft" == true ]]; then
             echo "::error::Release ${id} for v${VERSION} is a draft, which this workflow never makes: it was made" \
               "by hand. Delete it, never publish it, then re-run this job (ADR-077 D8a)." >&2
+            exit 1
+          fi
+          if [[ ! "$id" =~ ^[1-9][0-9]*$ || "$draft" != false ]]; then
+            echo "::error::The release record for v${VERSION} is malformed (id '${id}', draft '${draft}'). Stop:" \
+              "preserve the published release and its tag, change nothing, and investigate (ADR-077 D8a)." >&2
             exit 1
           fi
           echo "Release ${id} for v${VERSION} exists."
@@ -784,7 +789,7 @@ jobs:
       run: |
         set -euo pipefail
         gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
-          --jq ".[] | select(.tag_name == \"v${VERSION}\") | [.id, .draft] | @tsv" > "$RUNNER_TEMP/releases.tsv"
+          --jq ".[] | select(.tag_name == \"v${VERSION}\") | [(.id | tojson), (.draft | tojson)] | @tsv" > "$RUNNER_TEMP/releases.tsv"
         if [[ "$(wc -l < "$RUNNER_TEMP/releases.tsv" | tr -d ' ')" != 1 ]]; then
           echo "::error::Expected exactly one release for v${VERSION}:" >&2
           cat "$RUNNER_TEMP/releases.tsv" >&2

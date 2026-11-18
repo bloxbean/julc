@@ -339,6 +339,7 @@ def build_once(tmp):
     # R23-C29: a malformed answer is not "no release"; an empty one is.
     malformed = 'release list is malformed'
     case('an empty release list (no release of any tag)', [], True, 'building', pages=[[]])
+    case('an empty answer (HTTP 204, an empty body: no page at all, R23-C36)', [], False, malformed, pages=[])
     case('a release without a tag_name ([{}])', [], False, malformed, pages=[[{}]])
     case('a release whose tag_name is not a string', [], False, malformed, pages=[[{'id': 1, 'tag_name': 7}]])
     case('a release whose tag_name is empty', [], False, malformed, pages=[[{'id': 1, 'tag_name': ''}]])
@@ -363,8 +364,10 @@ def releases_of(state):
 
 
 def create_once(tmp):
-    def case(label, local, releases, expect_ok, expect_text, expect_deleted=(), expect_uploads=None):
+    def case(label, local, releases, expect_ok, expect_text, expect_deleted=(), expect_uploads=None, pages=None):
         state = github(tmp, releases)
+        if pages is not None:
+            json.dump({'pages': {'releases': pages}}, open(os.path.join(state, 'faults.json'), 'w'))
         result, _ = create_step(tmp, state, local)
         deleted_file = os.path.join(state, 'deleted')
         deleted = open(deleted_file).read().split() if os.path.exists(deleted_file) else []
@@ -400,6 +403,12 @@ def create_once(tmp):
          expect_deleted=[6], expect_uploads=[])
     case('a draft with the tag (this workflow never makes one): refused', full, [rel([], draft=True)], False,
          'is a draft')
+    # R23-C37: "delete it" only for a well-formed draft record; anything else stops without advice to change it.
+    stop = 'Stop: preserve the published release and its tag'
+    for label, record in [('a null draft flag', {'id': 7, 'draft': None}), ('a draft flag that is a string',
+                          {'id': 7, 'draft': 'true'}), ('no id', {'draft': True}), ('id 0', {'id': 0, 'draft': False})]:
+        case(f'a malformed release record ({label}): stop, change nothing', full, [], False, stop, expect_uploads=[],
+             pages=[[{'tag_name': f'v{V}', 'assets': [], **record}]])
     case('two releases (a draft too) with the tag', full, [rel([], i=7), rel([], draft=True, i=8)], False, '2 releases')
     case('another tag\'s release is not this one', full,
          [{'id': 3, 'tag': f'v{V}0', 'draft': False, 'assets': [asset(5, name, 'A')]}], True, 'Created release')
@@ -414,45 +423,56 @@ def create_once(tmp):
 
 
 def failed_upload_recovery(tmp):
-    """M4-C9: an upload fails (HTTP 502), a whole-workflow re-run is refused, and the release is still finished from the
-    original bytes by "Re-run failed jobs" in the original run (the only recovery of an incomplete release; there is no
-    completion by hand, r23 review round 5). Then the npm side (a dispatch) checks its npm files against their
-    attestation and the finished release's archives."""
+    """M4-C9: an upload fails (HTTP 502) and leaves a published, incomplete release. The one recovery is "Re-run failed
+    jobs" in the original run, before any whole-workflow re-run: github-release finishes the release from the original
+    bytes, and then the npm side checks its npm files against their attestation and the finished release's archives.
+    After a whole-workflow re-run (refused in every build job) the release cannot be finished, so the version is
+    abandoned: npm is refused (here, and by npm-run.sh's github-release check, R23-F10). There is no completion by hand
+    (r23 review round 5)."""
     npm = {f: f'bytes of {f}' for f in FILES + [SUMS]}
     data = {**inventory(), FILES[3]: npm[FILES[3]], FILES[4]: npm[FILES[4]]}
     attested = [statement(npm)]
-    for recovery in ['re-run failed jobs']:
+    def failed_upload():
         state = github(tmp, [], attested)
         result, _ = create_step(tmp, state, data, fail_upload=FILES[3])
         partial = releases_of(state)[0]
-        check(f'C9 ({recovery}): the upload fails and leaves a published release with a starter placeholder',
-              result.returncode != 0 and not partial['draft']
-              and any(a['state'] == 'starter' and a['name'] == FILES[3] for a in partial['assets']),
-              result.stdout + result.stderr + repr(partial))
-        work = tempfile.mkdtemp(dir=tmp)
-        rerun = release_guard(state, work)
-        check(f'C9 ({recovery}): a whole-workflow re-run stops in every build job, building nothing',
-              rerun.returncode != 0 and 'already has a GitHub release' in rerun.stderr, rerun.stdout + rerun.stderr)
-        files_dir = npm_dir(tmp, npm)
-        early = npm_files(state, files_dir)
-        check(f'C9 ({recovery}): before the release is finished, npm is refused (an archive is not public)',
-              early.returncode != 0 and 'does not attach' in early.stderr, early.stdout + early.stderr)
-        again, _ = create_step(tmp, state, data)
-        check('C9 (re-run failed jobs): github-release deletes the placeholder and attaches the original bytes',
-              again.returncode == 0, again.stdout + again.stderr)
-        final_dir = tempfile.mkdtemp(dir=tmp)
-        os.makedirs(os.path.join(final_dir, 'dist'))
-        for f, content in data.items():
-            open(os.path.join(final_dir, 'dist', f), 'w').write(content)
-        final = run(step('github-release', "Verify the release's assets"),
-                    {'FAKE_GH': state, 'FAKE_TOKEN': 'write', 'VERSION': V, 'GITHUB_REPOSITORY': 'bloxbean/julc',
-                     'RUNNER_TEMP': final_dir}, final_dir)
-        check(f'C9 ({recovery}): the release is complete with the original bytes, and no npm file', final.returncode == 0
-              and not any(a['name'].startswith('julclang-') or a['name'] == SUMS for a in releases_of(state)[0]['assets']),
-              final.stdout + final.stderr)
-        later = npm_files(state, files_dir)
-        check(f'C9 ({recovery}): the npm jobs (a dispatch) verify the six npm files and the public archives',
-              later.returncode == 0, later.stdout + later.stderr)
+        return state, result.returncode != 0 and not partial['draft'] and any(
+            a['state'] == 'starter' and a['name'] == FILES[3] for a in partial['assets']), result.stdout + result.stderr
+    files_dir = npm_dir(tmp, npm)
+
+    # Recovery before a full re-run.
+    state, ok, detail = failed_upload()
+    check('C9 (recovery): the upload fails and leaves a published release with a starter placeholder', ok, detail)
+    early = npm_files(state, files_dir)
+    check('C9 (recovery): before the release is finished, npm is refused (an archive is not public)',
+          early.returncode != 0 and 'does not attach' in early.stderr, early.stdout + early.stderr)
+    again, _ = create_step(tmp, state, data)
+    check('C9 (recovery): "Re-run failed jobs" in github-release deletes the placeholder and attaches the original bytes',
+          again.returncode == 0, again.stdout + again.stderr)
+    final_dir = tempfile.mkdtemp(dir=tmp)
+    os.makedirs(os.path.join(final_dir, 'dist'))
+    for f, content in data.items():
+        open(os.path.join(final_dir, 'dist', f), 'w').write(content)
+    final = run(step('github-release', "Verify the release's assets"),
+                {'FAKE_GH': state, 'FAKE_TOKEN': 'write', 'VERSION': V, 'GITHUB_REPOSITORY': 'bloxbean/julc',
+                 'RUNNER_TEMP': final_dir}, final_dir)
+    check('C9 (recovery): the release is complete with the original bytes, and no npm file', final.returncode == 0
+          and not any(a['name'].startswith('julclang-') or a['name'] == SUMS for a in releases_of(state)[0]['assets']),
+          final.stdout + final.stderr)
+    later = npm_files(state, files_dir)
+    check('C9 (recovery): the npm jobs verify the six npm files and the public archives', later.returncode == 0,
+          later.stdout + later.stderr)
+
+    # Abandonment after a full re-run.
+    state, ok, detail = failed_upload()
+    check('C9 (abandonment): the upload fails and leaves a published release with a starter placeholder', ok, detail)
+    rerun = release_guard(state, tempfile.mkdtemp(dir=tmp))
+    check('C9 (abandonment): a whole-workflow re-run stops in every build job, building and attaching nothing',
+          rerun.returncode != 0 and 'already has a GitHub release' in rerun.stderr
+          and any(a['state'] == 'starter' for a in releases_of(state)[0]['assets']), rerun.stdout + rerun.stderr)
+    refused = npm_files(state, files_dir)
+    check('C9 (abandonment): the incomplete release never reaches npm', refused.returncode != 0
+          and 'does not attach' in refused.stderr, refused.stdout + refused.stderr)
 
 
 def npm_dir(tmp, files):
@@ -476,8 +496,10 @@ def npm_run_lookup(tmp):
                                                  'status': 'queued' if conclusion is None else 'completed',
                                                  'conclusion': conclusion, 'run_attempt': attempt}
     live = [{'id': 900, 'name': 'npm-packages', 'expired': False}]
-    def run_(i, jobs, artifacts=live, sha_=TAG_SHA, branch=f'v{V}', event='push'):
-        return {'id': i, 'event': event, 'head_sha': sha_, 'head_branch': branch, 'jobs': jobs, 'artifacts': artifacts}
+    def run_(i, jobs, artifacts=live, sha_=TAG_SHA, branch=f'v{V}', event='push', release='success'):
+        released = [{'id': 99, 'name': 'Create GitHub release', 'status': 'completed', 'conclusion': release}]
+        return {'id': i, 'event': event, 'head_sha': sha_, 'head_branch': branch, 'artifacts': artifacts,
+                'jobs': jobs + (released if release else [])}
     def case(label, runs, expect=None, expect_text='', faults=None):
         state = github(tmp, [])
         json.dump(runs, open(os.path.join(state, 'runs.json'), 'w'))
@@ -570,6 +592,20 @@ def npm_run_lookup(tmp):
     case('an artifact page that is not an object', [run_(53, [attest('success')])],
          expect_text='Cannot read the run history needed to recover v0.1.0-pre22\'s npm publication (the artifacts of run 53)',
          faults={'pages': {'artifacts': [live]}})
+    # R23-F10: only a complete release (its github-release succeeded) reaches npm.
+    never = 'was never completed (run {}\'s github-release did not succeed)'
+    case('github-release failed (an incomplete release)', [run_(55, [attest('success')], release='failure')],
+         expect_text=never.format(55))
+    case('github-release never ran', [run_(56, [attest('success')], release=None)], expect_text=never.format(56))
+    case('github-release failed in attempt 1, succeeded in attempt 2 ("Re-run failed jobs")',
+         [run_(57, [attest('success'), {'id': 98, 'name': 'Create GitHub release', 'status': 'completed',
+                                         'conclusion': 'failure'}])], expect=(57, 900))
+    # R23-C41: the deciding jobs' status and conclusion must be ones GitHub documents.
+    case('an attest job whose conclusion is an empty string', [run_(58, [attest('')])], expect_text=malformed)
+    case('an attest job with an unknown status', [run_(59, [{**attest(None), 'status': 'paused'}])],
+         expect_text=malformed)
+    case('a github-release job with an unknown conclusion', [run_(60, [attest('success')], release='succeeded')],
+         expect_text=malformed)
     case('a run page whose workflow_runs is null', [run_(54, [attest('success')])], expect_text=malformed,
          faults={'pages': {'runs': [{'total_count': 0, 'workflow_runs': None}]}})
     case('a valid candidate and a row with no branch', [run_(39, [attest('success')]),

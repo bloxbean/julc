@@ -12,16 +12,19 @@ set -euo pipefail
 version=$1
 : "${GITHUB_REPOSITORY:?}"
 err=$(mktemp)
-# Every page must be an array and every release must carry a non-empty string tag_name: a malformed answer is not "no
-# release" (R23-C29). An empty array is a valid answer: no release yet.
-if ! releases=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
-    --jq "if type != \"array\" then \"INVALID\" else .[] | if (.tag_name | type) == \"string\" and .tag_name != \"\"
-      then select(.tag_name == \"v${version}\") | \"RELEASE \\(.id)\" else \"INVALID\" end end" 2> "$err"); then
+# Every page must be a JSON array (each one marked PAGE) and every release must carry a non-empty string tag_name: a
+# malformed answer, or an empty one (HTTP 204, an empty body), is not "no release" (R23-C29, R23-C36). An empty array
+# is a valid answer: no release yet.
+if ! answer=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+    --jq "if type != \"array\" then \"INVALID\" else \"PAGE\", (.[] | if (.tag_name | type) == \"string\"
+      and .tag_name != \"\" then select(.tag_name == \"v${version}\") | \"RELEASE \\(.id)\" else \"INVALID\" end) end" \
+    2> "$err"); then
   cat "$err" >&2
   echo "::error::Could not read the GitHub releases; refusing to build without knowing." >&2
   exit 1
 fi
-if [[ -n "$releases" ]] && grep -qv '^RELEASE ' <<< "$releases"; then
+releases=$(grep -v '^PAGE$' <<< "$answer" || true)
+if ! grep -q '^PAGE$' <<< "$answer" || { [[ -n "$releases" ]] && grep -qv '^RELEASE ' <<< "$releases"; }; then
   echo "::error::The GitHub release list is malformed; refusing to build without knowing." >&2
   exit 1
 fi

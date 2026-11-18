@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # ADR-077 D8a: the npm files a recovery dispatch on a release tag publishes: the one npm-packages artifact of the run of
 # native-image-release.yml for the tag's push (event push, head branch v<version>, head commit the tag's commit) whose
-# attest job succeeded, in any attempt. Exactly one such run must exist (a release is built once, so a second run stops
+# attest job succeeded, in any attempt; its github-release must have succeeded too (a complete release). Exactly one
+# such run must exist (a release is built once, so a second run stops
 # before attest), and it must have exactly one npm-packages artifact that has not expired (artifacts are kept 14
 # days). Every API answer is checked: a history that cannot be read completely stops recovery, rather than choosing
 # among what could be read, or calling it expired.
@@ -57,14 +58,24 @@ if [[ -z "$runs" ]]; then
   exit 1
 fi
 attested=()
+released=()
 for run in $runs; do
-  # A job's conclusion must be present: a string once it completed, null only while it has not.
+  # A job's conclusion must be present: a string once it completed, null only while it has not. The attest and
+  # github-release jobs, which decide the choice, must also have a status and conclusion GitHub documents (R23-C41).
   jobs=$(collection "the jobs of run ${run}" "${api}/runs/${run}/jobs?filter=all&per_page=100" jobs \
-    'if valid_id and (.name | type) == "string" and (.status | type) == "string" and has("conclusion")
+    'def deciding: .name == "Attest the npm tarballs and engine archives" or .name == "Create GitHub release";
+      def known: (.status | IN("queued", "in_progress", "completed", "waiting", "requested", "pending"))
+        and (.conclusion == null or (.conclusion | IN("success", "failure", "neutral", "cancelled", "skipped",
+          "timed_out", "action_required", "stale", "startup_failure")));
+      if valid_id and (.name | type) == "string" and (.status | type) == "string" and has("conclusion")
       and (if .status == "completed" then (.conclusion | type) == "string" else .conclusion == null end)
-      then (if .name == "Attest the npm tarballs and engine archives" and .conclusion == "success"
-        then "ATTESTED \(.id)" else "OTHER \(.id)" end) else "INVALID" end')
+      and (if deciding then known else true end)
+      then (if .conclusion != "success" then "OTHER \(.id)"
+        elif .name == "Attest the npm tarballs and engine archives" then "ATTESTED \(.id)"
+        elif .name == "Create GitHub release" then "RELEASED \(.id)" else "OTHER \(.id)" end)
+      else "INVALID" end')
   if grep -q '^ATTESTED ' <<< "$jobs"; then attested+=("$run"); fi
+  if grep -q '^RELEASED ' <<< "$jobs"; then released+=("$run"); fi
 done
 if [[ ${#attested[@]} -eq 0 ]]; then
   echo "::error::No run for the push of v${version} has a successful attestation yet (runs: ${runs//$'\n'/, }). Check" \
@@ -77,6 +88,13 @@ if [[ ${#attested[@]} -gt 1 ]]; then
   exit 1
 fi
 run=${attested[0]}
+# Only a complete release reaches npm (R23-F10): the run's github-release succeeded, in any attempt, which checked that
+# the release has its whole inventory.
+if [[ " ${released[*]-} " != *" ${run} "* ]]; then
+  echo "::error::The GitHub release of v${version} was never completed (run ${run}'s github-release did not succeed):" \
+    "re-run that run's failed jobs, or abandon the version." >&2
+  exit 1
+fi
 # An expired that is null or missing is not expiry: it is an unreadable answer. Expiry is decided only on a completely
 # read list.
 rows=$(collection "the artifacts of run ${run}" "${api}/runs/${run}/artifacts?name=npm-packages&per_page=100" artifacts \
