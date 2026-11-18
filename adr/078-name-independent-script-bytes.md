@@ -118,8 +118,9 @@ is not a call). Since r8 this one lexical graph also schedules the content keys 
 
 - Among ready library methods with equal content keys, JuLC chooses the lower first-use rank. For otherwise unreached
   methods a qualified-name fallback remains (D1b).
-- Programs without equal-key methods are byte-identical to pre21's. That holds for every program the javac frontend
-  builds from Java sources (the corpus replay and the julc-examples gate).
+- Programs without equal-key methods are byte-identical to pre21's. This is claimed for programs the javac frontend
+  builds from Java sources: their PIR has no closed binding spelled like a library method. The corpus replay and the
+  julc-examples gate found no difference.
 - **Exception (r9, Codex C22): custom registries and other frontends.** A library body built through a custom registry
   or another frontend can hold a closed binding spelled like another library method, for example a materialised
   `let q.M.b = λy.y in q.M.b`. pre21's spelling search read that as a call, and could key the method with group tokens
