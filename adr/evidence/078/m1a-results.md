@@ -128,23 +128,26 @@ On pre21 that is 12 programs, 408 breakpoint stops, 408 locals snapshots (314 lo
 
 ## ADR-075's corpus replay (I6a; required for M1a's exit, ADR-078 r7)
 
+The runner and comparator were corrected after Codex's second review (C12, C13). The results, commands and counts are
+in `m1a-corpus-replay.txt`.
+
 | | |
 |---|---|
-| Corpus | The ADR-074 corpus that ADR-075 used: `/Users/satya/work/bloxbean/julc-327-base/build/corpus327`, 20,407 recorded cases |
-| Harness | ADR-075's `EvalDiffReplayTest`, as a standalone runner (`Adr078Replay.java.txt`) so that the same code runs on the pre21 artifacts and on this build. It also compiles validator cases (`compile`, `compileWithDetails`) and records the FLAT digest of every compiled program. |
-| pre21 command | `java -cp "rep21:<pre21 class path>" replay.Adr078Replay <corpus> replay-pre21.txt` |
-| M1a command | `java -cp "repm1a:<julc-compiler test class path>" replay.Adr078Replay <corpus> replay-m1a.txt` |
-| Comparison | `compare_replay.py.txt` |
+| Corpus | The ADR-074 corpus that ADR-075 used: `/Users/satya/work/bloxbean/julc-327-base/build/corpus327`, 20,407 manifests |
+| Runner | `Adr078Replay.java.txt`. It decodes sources with `CorpusFiles.text`, restores the recorded options (target, level, cost profile, source maps, disabled rules), dispatches the recorded entry point, and writes one JSON record per line. |
+| Comparator | `compare_replay.py.txt`. It is strict (JSON, no duplicates), exits 1 on any unaccepted difference, and reports budget-only differences. |
 
-**Result** (`m1a-corpus-replay.txt`): the two outputs are byte-identical, 317,286 lines each with the same SHA-256.
-- All 44,475 compiled programs, across 18,452 cases and their recorded levels, have identical FLAT.
-- All 266,441 evaluations have identical outcomes, traces and budgets: 98,422 ok, 167,907 fail, 112 exhausted. These
-  are ADR-075's own counts.
-- No evaluation exhausts on one side only.
+**Results.**
+- **Coverage.** 20,352 manifests were replayed; 55 were skipped (JavaLibraryProvider entries and custom lookups).
+  That gives 54,691 case × level compilations: 47,593 compiled and 7,098 rejected, with no harness errors. There are
+  266,441 evaluations, of which 112 exhaust the budget.
+- **Comparison.** The pre21 and M1a outputs are byte-identical: 0 unaccepted differences, 0 budget-only differences,
+  0 inconclusive.
+- **Comparator controls.** The comparator's negative controls behave as they should
+  (`m1a-replay-comparator-controls.txt`).
 
-So the recorded corpus holds no program whose equal-key tie order changes under M1a. This replay ran after the
-refactor that made `describe` share `children` (M1A-F5). The identical FLAT shows that the refactor left every content
-key, and so every binding order, unchanged.
+This shows identical outputs. It does not show that the binding orders inside these programs are identical, and it is
+not used to infer them (C19).
 
 ## Changes after the first M1a review (Fable M1A-F1–F6)
 
@@ -219,12 +222,61 @@ key, and so every binding order, unchanged.
   - On M1a: 41/41 per program and mode. On pre21: 1–24 of 41.
 - **C9.** The Javadoc states the ready-method order and where a name decides; `FIRST_USE` covers D1b's walked callees.
 
-## Re-run on the final main code
+## Changes after Codex's second M1a review (C10–C19) and Fable's (F7, F8)
 
-| Check | Result |
-|---|---|
-| Corpus replay (`ba7a638c`) | Output byte-identical to pre21's (SHA-256 `669953bf…` on both sides) |
-| julc-examples gate | Release FLAT, maps-on FLAT and complete source maps identical for all 43 programs |
+- **C10 (code).** One lexical dependency graph (free references, self excluded) now schedules the content keys, D1b
+  and Kahn's algorithm (`LibraryBindingOrder.dependencies`).
+  - **Tests:** Codex's custom-registry shape (a closed inner `let q.M.b` inside `q.M.a`, with `b` calling `a`) now
+    orders `a` outside `b` with no cycle (`aClosedInnerBindingSpelledLikeAMethodIsNotACall`). Codex's Lemma 3 case is
+    a test (`anUnreadAlphaEqualPairIsAdjacentWhenALocalSpellsAnotherMethod`). The genuine-cycle fixture stays rejected,
+    with its diagnostics pinned.
+  - **Bytes:** C10 changed no bytes. The corrected corpus replay is byte-identical to pre21's, and the julc-examples
+    gate (release FLAT, maps-on FLAT, complete source maps) is identical for all 43 programs.
+  - **Docs:** ADR r8 states the compatibility note for custom registries and other frontends, and restates Lemma 3.
+- **C11.** `aStaticInitialiserFirstUseIsBoundOutermost` asserts the emitted outermost twin for the static fixtures,
+  through both entry points. Replacing `staticValues(...)` with `List.of()` in `validator()`, or in `method()`, now
+  fails it.
+- **C12, C13.** The corrected replay and comparator, above.
+- **C14.** Traces are written as a JSON string array. `theTraceEncodingIsUnambiguous` is the negative control:
+  `["a","b"]` against the single trace `a", "b`.
+- **C15.** Returned functions are also replayed at the higher limit. The I6a report separates demonstrated mismatches
+  (0) from inconclusive cases (0).
+- **C16.** A `REVERSED` rewrite now reverses the base's qualified-name order exactly: one package, class and method
+  names descending against the base's comparator order. The generator checks it for every pair of methods.
+- **C17.** `ValidatorAssembly.observing(...)` is a test hook. It wraps the frontend's `methodBound` callback and
+  reports every binding with its handler. `everyBindingReachesTheMethodBoundCallback` asserts that the callback
+  receives exactly the method binders of the emitted PIR, in every fixture and mode, both handlers of the
+  multi-purpose fixtures included. Suppressing the callback for one library method now fails it.
+- **C18.**
+  - The random-DAG Lemma 3/4 assertions use the actual content keys (`LibraryBindingOrder.contentKeys`), and Lemma 4
+    uses the actual dependency paths.
+  - `aCompiledArtifactsEqualKeyChoicesTakeTheLowestRank` collects the equal-key choices of compiled artifacts through
+    the hook.
+- **C19.** The `LibraryBindingOrder` Javadoc says the order depends on the program's roots, and
+  `m1a-pre21-recording.md` is updated. The content key's variable lookup is now constant-time per reference (a name
+  → positions map), so the linear-time claim covers the key as well as the walk.
+- **F7.** Superseded by C10: there is now a single graph, documented at `LibraryBindingOrder.dependencies`.
+- **F8.** The debugger suites that are green on the head:
+
+  | Module | Suites |
+  |---|---|
+  | `julc-tools` (ran on the head) | `SourceDebugServiceTest` (16), `LibraryTieDebugOracleTest` (3), `JavacDebugMetadataTest` |
+  | `julc-playground` | `SourceDebugControllerTest` |
+  | `julc-compiler` | `SourceMapCompilerTest`, `SourceMapEvalTest`, `DebugCompileResultTest`, `DeepDebugMetadataWalkTest`, `JavacContractAndDebugTest` |
+  | `julc-vm-java` | `SteppingEvaluationTest` (6), `SourceMapVmTest` (14), `JavaVmTracingTest` (10), `BuiltinTraceIntegrationTest` (9) |
+  | `julc-vm-truffle` | `JulcDebuggerTest` (14), `TruffleDebuggerTest` (15), `TruffleBuiltinTraceTest` (7) |
+
+  The two VM modules do not depend on `julc-compiler`. Gradle kept their test results up to date (green, from the
+  first full build at `21805157`), so they did not re-run.
+
+## M3 (JOUST's half of the gate)
+
+M3 passed on `4bac295d` (`m3-joust-gate.txt`):
+- 67 contracts × 10 edits, `renameAll` included; the renamed-file check; the Pledges swap; a package move;
+- Crowdfund `28e115b5…` and Tips `80648854…` kept;
+- source-map mode 67/67 identical.
+
+C10 changed main code afterwards, so M3 is to be re-run on the final head.
 
 ## Not done in M1a
 

@@ -1,0 +1,7 @@
+a changed result digest: exit 1; ['unaccepted differences: 1', 'budget-only differences (I6b): 0']
+a changed trace list: exit 1; ['unaccepted differences: 1', 'budget-only differences (I6b): 0']
+a changed FLAT digest: exit 1; ['unaccepted differences: 1', 'budget-only differences (I6b): 0']
+a record missing: exit 1; ['unaccepted differences: 1', 'budget-only differences (I6b): 0']
+a malformed line: exit 1; ['ctl.jsonl:6: malformed record: Expecting value: line 1 column 2 (char 1)']
+a duplicate record: exit 1; ["ctl.jsonl:7: duplicate record ('00131a41e259748168f04280bab8ef60dbb77802e34945f0c10cc50bf1e7f4fc', 'BASELINE', 'compile', '', '')"]
+a budget-only change: exit 0; ['unaccepted differences: 0', 'budget-only differences (I6b): 1']

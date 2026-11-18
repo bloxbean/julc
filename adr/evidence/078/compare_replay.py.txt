@@ -1,43 +1,80 @@
-import re, sys
-def load(p):
-    d = {}
-    for line in open(p):
-        line = line.rstrip('\n')
-        parts = line.split(' ', 3)
-        if len(parts) >= 3 and (parts[2] == 'flat' or re.fullmatch(r'v\d', parts[2])):
-            d[(parts[0], parts[1], parts[2])] = parts[3] if len(parts) > 3 else ''
-        else:
-            k = tuple(line.split(' ')[:2]); d[k + ('status',)] = ' '.join(line.split(' ')[2:])
-    return d
+"""ADR-078 M1a: compares two Adr078Replay outputs (JSON lines). Exits 1 on any unaccepted difference.
+
+Accepted: budget-only differences (I6b), reported; and an evaluation that exhausts the transaction limit on one side
+only, if its replay at the higher limit gives the other side's outcome (or exhausts there too: inconclusive). Rejected:
+a malformed or duplicate record, a record on one side only, and any other difference (compile status, FLAT digest,
+outcome, result, failure reason, traces).
+Usage: compare_replay.py a.jsonl b.jsonl
+"""
+import json, sys
+from collections import Counter
+
+SEMANTIC = ("outcome", "result", "reason", "traces")
+
+def load(path):
+    records = {}
+    for number, line in enumerate(open(path, encoding="utf-8"), 1):
+        try:
+            r = json.loads(line)
+        except json.JSONDecodeError as e:
+            sys.exit(f"{path}:{number}: malformed record: {e}")
+        if not isinstance(r, dict) or "case" not in r or "kind" not in r:
+            sys.exit(f"{path}:{number}: malformed record")
+        if "traces" in r and not (isinstance(r["traces"], list) and all(isinstance(t, str) for t in r["traces"])):
+            sys.exit(f"{path}:{number}: traces is not a list of strings")
+        rid = (r["case"], r.get("level", ""), r["kind"], r.get("vector", ""), r.get("limit", ""))
+        if rid in records:
+            sys.exit(f"{path}:{number}: duplicate record {rid}")
+        records[rid] = r
+    return records
+
+def semantic(r):
+    return {k: r.get(k) for k in SEMANTIC}
+
 a, b = load(sys.argv[1]), load(sys.argv[2])
-keys = set(a) | set(b)
-only = [k for k in keys if (k in a) != (k in b)]
-flat_same = flat_diff = 0; ev_same = ev_diff = 0; budget_diff = 0; one_sided = []; status_diff = []
-changed_flat_cases = set(); outcome_diffs = []; budget_examples = []
-strip = lambda s: re.sub(r' cpu=\d+ mem=\d+', '', s)
-for k in keys:
-    if k not in a or k not in b: continue
-    x, y = a[k], b[k]
-    if k[2] == 'flat':
-        if x == y: flat_same += 1
-        else: flat_diff += 1; changed_flat_cases.add(k[0])
-    elif k[2] == 'status':
-        if x != y: status_diff.append((k, x, y))
-    else:
-        ex, ey = x.startswith('exhausted'), y.startswith('exhausted')
-        if ex != ey: one_sided.append(k); continue
-        if strip(x) == strip(y): ev_same += 1
-        else: ev_diff += 1; outcome_diffs.append((k, x, y))
-        if x != y and strip(x) == strip(y):
-            budget_diff += 1
-            if len(budget_examples) < 10: budget_examples.append((k, x[:80], y[:80]))
-print("ids only on one side:", len(only))
-print("compile status differences:", len(status_diff), status_diff[:5])
-print("FLAT: same", flat_same, "different", flat_diff, "in", len(changed_flat_cases), "cases")
-print("evaluations: same outcome", ev_same, "different outcome", ev_diff)
-print("evaluations exhausted on one side only:", len(one_sided))
-print("evaluations whose budget changed (same outcome):", budget_diff)
-for e in budget_examples: print("  budget", e)
-for e in outcome_diffs[:10]: print("  OUTCOME", e)
-open(sys.argv[3], 'w').write('\n'.join(sorted(changed_flat_cases)) + '\n')
-open(sys.argv[4], 'w').write('\n'.join(sorted({k[0] for k in one_sided})) + '\n')
+failures, budget_only, inconclusive = [], [], []
+counts = Counter()
+for rid in sorted(set(a) | set(b)):
+    if rid not in a or rid not in b:
+        # A high-limit replay exists only where that side exhausted; it is compared below.
+        if rid[4] == "high":
+            continue
+        failures.append(("on one side only", rid))
+        continue
+    x, y = a[rid], b[rid]
+    kind = rid[2]
+    if kind == "manifest":
+        counts["manifest " + x["status"]] += 1
+        if x != y: failures.append(("manifest differs", rid, x, y))
+    elif kind in ("compile", "levels"):
+        counts["compile " + x["status"]] += 1
+        if x != y: failures.append(("compilation differs", rid, x, y))
+    elif kind == "eval" and rid[4] == "transaction":
+        counts["evaluation " + x["outcome"]] += 1
+        ex, ey = x["outcome"] == "exhausted", y["outcome"] == "exhausted"
+        if ex != ey:
+            hid = rid[:4] + ("high",)
+            hx = a.get(hid, x) if ex else x
+            hy = b.get(hid, y) if ey else y
+            if hx["outcome"] == "exhausted" and hy["outcome"] == "exhausted":
+                inconclusive.append(rid)
+            elif hx["outcome"] == "exhausted" or hy["outcome"] == "exhausted":
+                failures.append(("one side terminates even at the higher limit", rid, hx, hy))
+            elif semantic(hx) != semantic(hy):
+                failures.append(("evaluation differs at the higher limit", rid, hx, hy))
+            continue
+        if semantic(x) != semantic(y):
+            failures.append(("evaluation differs", rid, x, y))
+        elif (x.get("cpu"), x.get("mem")) != (y.get("cpu"), y.get("mem")):
+            budget_only.append((rid, (x.get("cpu"), x.get("mem")), (y.get("cpu"), y.get("mem"))))
+    elif kind == "eval":
+        if semantic(x) != semantic(y): failures.append(("high-limit evaluation differs", rid, x, y))
+
+print("records:", len(a), "and", len(b))
+for k in sorted(counts): print(f"  {k}: {counts[k]}")
+print("unaccepted differences:", len(failures))
+for f in failures[:20]: print("  ", f)
+print("budget-only differences (I6b):", len(budget_only))
+for d in budget_only[:20]: print("  ", d)
+print("inconclusive (exhausted at the higher limit on both sides after a one-sided exhaustion):", len(inconclusive))
+sys.exit(1 if failures else 0)

@@ -1,0 +1,210 @@
+ADR-078 M3: JOUST's half of the gate, run against a local JuLC build
+Run 2026-11-18/19 (UTC 2026-11-18T18:41Z), JDK Liberica 25.0.4 (~/.sdkman/candidates/java/25.0.4.fx-librca).
+
+== Inputs
+JuLC:  /Users/satya/work/bloxbean/julc-078 at 4bac295d (clean, not edited)
+JOUST: scratch worktree /Users/satya/work/bloxbean/joust-adr078-m3, detached at 5522cafc (joust-julc-pre21's head);
+       one uncommitted edit: gradle/libs.versions.toml julc = "0.1.0-pre22-adr078-4bac295d-SNAPSHOT"
+
+== 1. Publish JuLC to mavenLocal under a distinct version
+cd julc-078 && JAVA_HOME=... ./gradlew publishToMavenLocal -Pversion=0.1.0-pre22-adr078-SNAPSHOT --offline --no-daemon   -> exit 0
+build.gradle appends the 8-char commit to a -SNAPSHOT version: published as 0.1.0-pre22-adr078-4bac295d-SNAPSHOT
+(21 org.julclang modules written under that version, compiler and Gradle plugin marker included).
+Nothing was published as 0.1.0-pre21: no ~/.m2/repository/org/julclang/*/0.1.0-pre21 directory exists.
+julc-compiler-0.1.0-pre22-adr078-4bac295d-SNAPSHOT.jar sha256 91c6e8fda18ee75f6bee47af3d3cb33c66d8ee8bc9687fea95cb80ebbcab3325
+
+== 2. Resolved compiler
+./gradlew --offline --no-daemon :julc-state-toolchain:dependencyInsight --dependency org.julclang:julc-compiler --configuration testRuntimeClasspath
+> Task :julc-state-toolchain:dependencyInsight
+org.julclang:julc-compiler:0.1.0-pre22-adr078-4bac295d-SNAPSHOT
+  Variant runtimeElements:
+    | Attribute Name                 | Provided     | Requested    |
+    |--------------------------------|--------------|--------------|
+    | org.gradle.status              | integration  |              |
+    | org.gradle.category            | library      | library      |
+    | org.gradle.dependency.bundling | external     | external     |
+    | org.gradle.jvm.version         | 25           | 25           |
+    | org.gradle.libraryelements     | jar          | jar          |
+    | org.gradle.usage               | java-runtime | java-runtime |
+    | org.gradle.jvm.environment     |              | standard-jvm |
+
+org.julclang:julc-compiler:0.1.0-pre22-adr078-4bac295d-SNAPSHOT
++--- testRuntimeClasspath
++--- org.julclang:julc-annotation-processor:0.1.0-pre22-adr078-4bac295d-SNAPSHOT
+JulcVersion.VERSION (julc-state-toolchain/build/generated/sources/julc-version/.../JulcVersion.java): 0.1.0-pre22-adr078-4bac295d-SNAPSHOT
+
+== 3. The gate
+./gradlew --offline --no-daemon :julc-state-toolchain:test --tests 'org.julclang.state.toolchain.JscV2HashStabilityTest' --rerun-tasks
+JscV2HashStabilityTest > aRealChange_movesTheScriptHash() PASSED
+JscV2HashStabilityTest > reorderingFns_leavesPledgesHash() PASSED
+JscV2HashStabilityTest > libraryLayoutAndCommentEdits_leaveTheImportersHash() PASSED
+JscV2HashStabilityTest > behaviourNeutralEdits_leaveEveryScriptHash() PASSED
+JscV2HashStabilityTest > aPackageMove_isAnAbiChange_andKeepsTheHash() PASSED
+BUILD SUCCESSFUL in 12m 10s
+<testsuite name="org.julclang.state.toolchain.JscV2HashStabilityTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-11-18T18:41:59.348Z" hostname="MacBook-Pro-3.local" time="651.079">
+
+RESULT: PASS. 5 tests, 0 failures, 0 errors, 0 skipped. The [hash] table has 67 rows (40 applied hashes, 27
+parameterized contracts as unapplied:<sha256>). behaviourNeutralEdits_leaveEveryScriptHash passed: for every one of
+the 67 contracts, each of the 10 edits of edits() (renameAll included) and the renamed-file build kept the hash.
+Pledges with its two fns swapped: unchanged. Crowdfund 28e115b5... and Tips 80648854... keep their hashes under
+renameAll (they are the two that moved on pre21: Crowdfund 28e115b5 -> f338eb56). A package move keeps the hash.
+
+-- Test stdout (JscV2HashStabilityTest system-out):
+[hash] Pledges with its two fns swapped: unchanged
+[hash] Shop keeps 2e5d1f0e317790235c03b73c5c66d1f6bf880e8da844f0eba477adc7 under 7 layout and comment edits of fees.jsc
+[hash] Armory       5bf3ca7abd487a42b2224a30320b1bcc8f51348034b7c15eca381046 10,341 B
+[hash] Bank         7ae1b56586788c0006fde200b673c04521bee3029aa350c4f350ca7e 6,427 B
+[hash] Bounds       55ec12eaa45f9e6e4444c1f731e7d7cb3d53a4096246150a508e0c33 8,195 B
+[hash] Branches     6e9ccb988a16f941f497f21ef14de460d9eb6000681f04496515b923 4,990 B
+[hash] Coins        02d54405aca92a90f1bcfc969999bc0cf87a127d9df9327ca93b173b 12,435 B
+[hash] Council      unapplied:5663d81d02468a72d0abae326e560c91e7507caddfca0886a48abe4d45354149 8,184 B
+[hash] Counter2     5de2e73fb4674a846230cb548335f0e095c3997043fcedfc7fc9c4ed 4,316 B
+[hash] CounterV1    195bdc833ed910e23733055533408cf9db2f585536d2a7fb62e43286 4,322 B
+[hash] CounterV2    unapplied:61ec210a406496d4dbadbfc70b527317fd5a98770beec6448d324fa6a00c34f6 5,309 B
+[hash] Crowdfund    28e115b5545d5dcd3aaccebbe5e40273a4fb927cc76420bfdecfd3eb 6,284 B
+[hash] Desk         unapplied:d2b08d773db0d0ed09418574d3ee5cfd8f91c6b5139145dc0a62a287e68aa285 10,655 B
+[hash] Dex          8f21b51d48be327f61aa0da8dc12d21541d79a16dad99f118043f9c3 10,992 B
+[hash] Escrow       2abdb8f28b7adcd4eef497e0c34e7e62ebe6fb89d722abf0c57fc763 4,609 B
+[hash] Ferry        33d0bc9f3b5be8dae9408740c7ba41d243685b5978824bf957e64f87 7,213 B
+[hash] Guarded      81cc70c3f72dcb5412db191c528f4c24c21c52fad2881ede5a732035 5,185 B
+[hash] Guardrail    unapplied:e09d163b980ef9a2610814b486d755d5392fbe0a0550d458b1c6464ab70cc83c 5,701 B
+[hash] Guards       13b1c6f9f1e5ac98ffc8521c9444c25f3e94438b2f158aec1559e1b7 3,320 B
+[hash] Guild        46c70b6f5e54565583af16568307d42c6ace2543a1a1225ea9167fb2 9,493 B
+[hash] Inbox        576d7b638a88d779a43ec5642efda756ea106ca08952ef9a78e61bfc 12,342 B
+[hash] Jar          b0bfc4b96f3b74e0c4fd2378a9f2cd7763c232be53407b30ab1c287c 7,457 B
+[hash] Keys         ce6d4eea972f98a6211e3f3a40a1ebf4e126946f5b6281216461ec50 11,349 B
+[hash] Kiosk        unapplied:8c9379603028162423af812e1d7a24a8c7b5cdac4765f83b627b917ecc81dde9 4,927 B
+[hash] Ledger       5bcf6f44928c62f6e2d4f328585ba6d3c619548fab99913f5e6efa10 12,053 B
+[hash] Locker       0228d0e782d0fa1536ba7b6dcc1e54b554be409c4d21c8b9b0c0bd5c 12,453 B
+[hash] MapInbox     unapplied:135e7e8da22719041c2d34489d3ef5c3f2beec91692579145c0114d2e97c86ec 12,302 B
+[hash] MapVotes     unapplied:f74850e2a3c38348116d7f8b93339fed270151e0b8f97f9639f96e027f7ab4c3 11,828 B
+[hash] Market       7e115b290f00164454b5a75ed24d5545447a60a0384b25c06acafb6d 11,965 B
+[hash] Members      unapplied:ef9746d8295ce73f93f790c64936e365444733ab663d8082d190893f5ab42eb7 8,655 B
+[hash] Mix          unapplied:4c87c8ea8b73e1883f8401923e16f292c645a2dc817a9a70083f4943753af848 13,143 B
+[hash] Mixed        unapplied:dac67cb848f0bfcc3865ba42284ee8407fc923ed30571eac731e5caca19f01c8 12,623 B
+[hash] Oracle       0f8e4df345a1cc9a3b7f0164ffb756f69af52f21aa3f6af87458ea6a 4,395 B
+[hash] OwnedIntents unapplied:37b9a3b5ddbfb6e9a66754e32c1592bfc99aba61ee9e68e3ddd0d4f7a2054859 11,137 B
+[hash] Pledges      1d0d140046d3320547c25117eaf53ab00c2ab5f63b51d9e2f25ec884 6,559 B
+[hash] Points       165cbe921d8794bc309bfd600970e35b47282bb8c711c59fe9c9ebc7 9,808 B
+[hash] Pool         4984426152571b5ddda9f80dadcc860bfa53cb3b1bdeb256cea0291d 7,794 B
+[hash] Pot          143c2a4b73e0318e5a431bf6c16ff6b3c6b9d9387eb7ce087cf4bb70 7,501 B
+[hash] Ratio        7537d972bf7675d5881040ec9cb29d74b3148dea1087e7bae565c29f 2,617 B
+[hash] Registry     15bfb7c3a552a3f84d9f622ddc3b2b618cce0c074515840f64e41cf7 12,355 B
+[hash] RelayV1      unapplied:1a1201f85311966fcf51e927c38db75841f443524e7168422c8c1be39a004ef9 9,659 B
+[hash] RelayV2      unapplied:ab1292ef23e03394e9a0fff4c8a4f6cb415c67110bfc3ebc3a9cf0b241077b03 8,709 B
+[hash] Safes        9ba1c5ea99ebfa4432963eb408c3d330ca8f24925901c5f48f7f1e42 12,570 B
+[hash] Shelf        ae75f624bc2c260e424aaed14128d428e2d980cdbd9e31455dfce68b 10,581 B
+[hash] Shop         2e5d1f0e317790235c03b73c5c66d1f6bf880e8da844f0eba477adc7 5,987 B
+[hash] StakedCounterV1 unapplied:73c6562db9fb42602fe8a48afb857972d7fb36dede7bc5eff299a4ed4460c618 10,177 B
+[hash] StakedCounterV2 unapplied:59ee547d983024fc52a7d9eed9756c0d4b49dd20fad0c294f438d41c8a2e7186 11,425 B
+[hash] StakedDesk   unapplied:161eeb64e3d448d45c00c2c2b11b13f3a21339a49b5214db30369bd0174fcb60 12,895 B
+[hash] StakedQueue  unapplied:f3a853a2d32752644c93ed99e60de0a0f9084aa5285f854dec152fc86cc739a2 12,569 B
+[hash] StakedVault  unapplied:2d1ec2feb9e54ee18b1c39a74b644fc69cce37c3e8bccac51da70e27ad4d69e2 10,868 B
+[hash] Stall        unapplied:a2b40920c15cb69c58494da26c42efa27746d74fff17cf2567a2769407d76583 7,817 B
+[hash] Stash        unapplied:edb60b9c79afca75c8f233dbda7c0883a50b2a84865f17657c712621be9e17c3 3,048 B
+[hash] StashReader  unapplied:6c290537f83ebd50b04df5bd479e8bd972c594bf7636bef57ce368771cffbd56 3,277 B
+[hash] StdBytes     85fa33c049cc473e4809a2ce8b1924d834671a1d6f2ad03f040448de 6,202 B
+[hash] StdMath      90d4d89a95af15efa674fa4a1ae7339261716ae9f478971ad84def60 6,495 B
+[hash] Steward      unapplied:ce913e22eb6eae577063808c22009ff41bbd04edc65a1456da2827c60cdbb537 12,216 B
+[hash] Studio       f41f86ca0edda56453b3af314f281309304a8cb3f990ff9afa12baa5 7,431 B
+[hash] TallyV1      8ac7e60186864b086999134de1bbb68e90d06b75abd68eeece925ed8 6,632 B
+[hash] TallyV2      unapplied:5ef77c676b6fc5ac0e537677877b6169845c730ecf39e2cbae7575cebefadd29 6,451 B
+[hash] Tipper       unapplied:c80a089a253c16595d26db4b8db0aed58135efd46fd057de84b1fcb0fb20cc3d 10,380 B
+[hash] Tips         80648854787e520baaa2823210905cbea8dfae819db11ad79f1abf18 9,454 B
+[hash] Token        191e890708c6e32624d2dbb646de5588b58ecf792b04b85eeb6a0f5a 9,795 B
+[hash] Treasury     unapplied:3a5f4089f23ba5ce37a4b0a51bec4a14299a3f95a0449d4502566e10c660033b 7,779 B
+[hash] Twin         440d0d51b55c8284e1ba95ed4b149fc2ce65312f54b3ddcb1b20eec4 5,006 B
+[hash] TwinReader   unapplied:c8aeab41fa5410bed58164c1bc37e6b1888dc0bd367e1dd5cc258a6ad7e0aecf 4,666 B
+[hash] Vault        c3d6838b0215c999c88c252f36690c1d36a5777d5f2495060fdb0da7 4,933 B
+[hash] Vectors      02a8b85924578c4d6cbb11fab336db6375b390830ca0e507e1ea138e 6,185 B
+[hash] Vouch        unapplied:975cfc9f1dac07358c8211ef46d601e5d7fbe27317a08200a3336a26fc84eb68 5,437 B
+[hash] Wards        0d1d875116d77d64d7633754d6a5c251946fe309528f4374f3ec11de 11,627 B
+[hash] Counter2 in org.julclang.state.examples.dsl: 5de2e73fb4674a846230cb548335f0e095c3997043fcedfc7fc9c4ed
+[hash] Counter2 in org.julclang.state.examples.moved: 5de2e73fb4674a846230cb548335f0e095c3997043fcedfc7fc9c4ed
+[hash] Counter2 in org.other.pkg: 5de2e73fb4674a846230cb548335f0e095c3997043fcedfc7fc9c4ed
+[hash] Counter2 in com.acme.app: 5de2e73fb4674a846230cb548335f0e095c3997043fcedfc7fc9c4ed
+
+
+== 4. Maps-on run (reported, not gated)
+Adr078Diag.java.txt compiled with one added line after its OptimizationConfiguration.apply(...):
+    opts.setSourceMapEnabled(true);   // ADR-078 M3: the maps-on run
+with Adr078Census.java.txt, against the toolchain module's test runtime class path (an init script's printTestCp),
+and run from julc-state-toolchain/: java ... org.julclang.state.toolchain.Adr078Diag <out> ALL
+It compiles each example as committed and after renameAll with JOUST's Toolchain (release hash, maps off), then
+recompiles the generated validator with JulcCompiler.compileContractWithDetails at the default profile with source
+maps on (the maps-on FLAT hash). 134 compiles, no failures.
+
+programs compiled (base and renameAll): 67
+maps-on FLAT hash (compileContractWithDetails, default profile, setSourceMapEnabled(true)) identical base vs renameAll: 67/67
+maps-on FLAT differs: 0 []
+release hash (toolchain, maps off; '(parameterized)' for unapplied contracts) differs base vs renameAll: 0 []
+census: M1A order name-independent 67/67; D1A-ONLY 67/67
+
+program          maps-on base       maps-on renamed          B base B renamed  release hash (base)
+Armory           5af435339e775366   5af435339e775366   same   45594     45594  5bf3ca7abd487a42
+Bank             0447b9523a5030a0   0447b9523a5030a0   same   26502     26502  7ae1b56586788c00
+Bounds           e0984e4dcf09d355   e0984e4dcf09d355   same   43474     43474  55ec12eaa45f9e6e
+Branches         e2d8f29bc43ecf68   e2d8f29bc43ecf68   same   25638     25638  6e9ccb988a16f941
+Coins            fc413edea05a8a7a   fc413edea05a8a7a   same   42952     42952  02d54405aca92a90
+Council          afa510e5d3a3960d   afa510e5d3a3960d   same   32875     32875  (parameterized)
+Counter2         de326ad6598ac087   de326ad6598ac087   same   22752     22752  5de2e73fb4674a84
+CounterV1        e052e0e968124e09   e052e0e968124e09   same   22871     22871  195bdc833ed910e2
+CounterV2        0d595e005d8f1858   0d595e005d8f1858   same   25316     25316  (parameterized)
+Crowdfund        7b539215177fe705   7b539215177fe705   same   29026     29026  28e115b5545d5dcd
+Desk             37504a80d1e0a0ab   37504a80d1e0a0ab   same   40649     40649  (parameterized)
+Dex              17654172b5b50f9c   17654172b5b50f9c   same   41818     41818  8f21b51d48be327f
+Escrow           1b74e6199581769c   1b74e6199581769c   same   23850     23850  2abdb8f28b7adcd4
+Ferry            73cd26181c00c998   73cd26181c00c998   same   28959     28959  33d0bc9f3b5be8da
+Guarded          f123c6df23460a59   f123c6df23460a59   same   24821     24821  81cc70c3f72dcb54
+Guardrail        cf8084c1009f98a4   cf8084c1009f98a4   same   41697     41697  (parameterized)
+Guards           34948f66601811b0   34948f66601811b0   same   22116     22116  13b1c6f9f1e5ac98
+Guild            2b6421a1345c5db6   2b6421a1345c5db6   same   33075     33075  46c70b6f5e545655
+Inbox            986048a1050eeb60   986048a1050eeb60   same   46341     46341  576d7b638a88d779
+Jar              d28afc97df99158e   d28afc97df99158e   same   28723     28723  b0bfc4b96f3b74e0
+Keys             a79f9cca5cc45cb3   a79f9cca5cc45cb3   same   39733     39733  ce6d4eea972f98a6
+Kiosk            8243b2d412b82baa   8243b2d412b82baa   same   24730     24730  (parameterized)
+Ledger           e5b474264d8cd23c   e5b474264d8cd23c   same   51399     51399  5bcf6f44928c62f6
+Locker           cd66109a59aff419   cd66109a59aff419   same   55905     55905  0228d0e782d0fa15
+MapInbox         e5e3920e34d63571   e5e3920e34d63571   same   54298     54298  (parameterized)
+MapVotes         5c5acd35bf4964ba   5c5acd35bf4964ba   same  108668    108668  (parameterized)
+Market           e19f9feedb8502dc   e19f9feedb8502dc   same   42523     42523  7e115b290f001644
+Members          57864dc0c436951d   57864dc0c436951d   same   32597     32597  (parameterized)
+Mix              b720835c42661967   b720835c42661967   same   57936     57936  (parameterized)
+Mixed            71cfa2fc8354e356   71cfa2fc8354e356   same   93905     93905  (parameterized)
+Oracle           4a9bad1f97d5ac1f   4a9bad1f97d5ac1f   same   22879     22879  0f8e4df345a1cc9a
+OwnedIntents     c519ca9177e5d2cf   c519ca9177e5d2cf   same   82484     82484  (parameterized)
+Pledges          46c9572257317118   46c9572257317118   same   28664     28664  1d0d140046d33205
+Points           c3752cfbb10a5f0d   c3752cfbb10a5f0d   same   44356     44356  165cbe921d8794bc
+Pool             e3eea054e8b5e5b7   e3eea054e8b5e5b7   same   29446     29446  4984426152571b5d
+Pot              6bc2c8c40a999eac   6bc2c8c40a999eac   same   33128     33128  143c2a4b73e0318e
+Ratio            6923e0bf87e0cf8b   6923e0bf87e0cf8b   same   21676     21676  7537d972bf7675d5
+Registry         e06efab36a31618b   e06efab36a31618b   same   38592     38592  15bfb7c3a552a3f8
+RelayV1          8f5a0436aae58e1f   8f5a0436aae58e1f   same   62125     62125  (parameterized)
+RelayV2          965d13288a618d26   965d13288a618d26   same   33053     33053  (parameterized)
+Safes            60b52e31e3ff956c   60b52e31e3ff956c   same   56722     56722  9ba1c5ea99ebfa44
+Shelf            8e2f71ea33ebc851   8e2f71ea33ebc851   same   49516     49516  ae75f624bc2c260e
+Shop             b64e1c722382086f   b64e1c722382086f   same   26885     26885  2e5d1f0e31779023
+StakedCounterV1  dd382bca76e2bd9d   dd382bca76e2bd9d   same   74140     74140  (parameterized)
+StakedCounterV2  8dc4ea506b4fdef5   8dc4ea506b4fdef5   same  118426    118426  (parameterized)
+StakedDesk       813f088f64709cc9   813f088f64709cc9   same  124604    124604  (parameterized)
+StakedQueue      7dc723cc6f7a471a   7dc723cc6f7a471a   same   80988     80988  (parameterized)
+StakedVault      2857bf7329c1aa33   2857bf7329c1aa33   same  111412    111412  (parameterized)
+Stall            e966d32cf45de35e   e966d32cf45de35e   same   34538     34538  (parameterized)
+Stash            cb6b4d8250c0190e   cb6b4d8250c0190e   same   24688     24688  (parameterized)
+StashReader      f5cde2267c24fb09   f5cde2267c24fb09   same   26011     26011  (parameterized)
+StdBytes         a6d8ae59fa1248d0   a6d8ae59fa1248d0   same   27830     27830  85fa33c049cc473e
+StdMath          e3a4f01f65bac71c   e3a4f01f65bac71c   same   28620     28620  90d4d89a95af15ef
+Steward          763d51ad24f3914d   763d51ad24f3914d   same   97869     97869  (parameterized)
+Studio           436bc929376e7559   436bc929376e7559   same   28499     28499  f41f86ca0edda564
+TallyV1          0d44e8bdf1106d63   0d44e8bdf1106d63   same   28762     28762  8ac7e60186864b08
+TallyV2          d3efbf8108982fda   d3efbf8108982fda   same   31870     31870  (parameterized)
+Tipper           44e79f8bdeabd808   44e79f8bdeabd808   same   47019     47019  (parameterized)
+Tips             021a85c4e9d88069   021a85c4e9d88069   same   40722     40722  80648854787e520b
+Token            a5be44a828cd808d   a5be44a828cd808d   same   44349     44349  191e890708c6e326
+Treasury         1ec5db4660286eb7   1ec5db4660286eb7   same   31783     31783  (parameterized)
+Twin             646f780b768e6b99   646f780b768e6b99   same   24286     24286  440d0d51b55c8284
+TwinReader       2578b02f35875c28   2578b02f35875c28   same   24073     24073  (parameterized)
+Vault            1eda3bf6f833f04b   1eda3bf6f833f04b   same   24040     24040  c3d6838b0215c999
+Vectors          914f536f750b4473   914f536f750b4473   same   26571     26571  02a8b85924578c4d
+Vouch            fe1ebf458e902c57   fe1ebf458e902c57   same   25476     25476  (parameterized)
+Wards            24f085c46264ce3e   24f085c46264ce3e   same   40756     40756  0d1d875116d77d64

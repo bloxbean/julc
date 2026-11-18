@@ -1,18 +1,39 @@
-# ADR-078 M1a: ADR-075's corpus replay, pre21 (08b021ce, Maven 0.1.0-pre21) vs M1a (this branch), 2026-11-19.
-# Corpus: the ADR-074 corpus, julc-327-base/build/corpus327 (20,407 cases). Runner: Adr078Replay.java.txt; comparison: compare_replay.py.txt.
-# Outputs (317,286 lines each) are byte-identical: sha256 669953bffced8a48b293378d32b5ef8b82745d5064406e1962b5e50a9abcd272 on both sides.
+# ADR-078 M1a: ADR-075's corpus replay, corrected after Codex's second M1a review (C12, C13). 2026-11-19.
+# pre21: the 0.1.0-pre21 Maven artifacts (julc-tools + julc-vm-java class path). M1a: this branch, main code with r8's
+# single lexical dependency graph (C10), compiled from the working tree that became the final head.
+# Corpus: the ADR-074 corpus ADR-075 used, julc-327-base/build/corpus327: 20,407 manifests.
+# Runner: Adr078Replay.java.txt (sources decoded with CorpusFiles.text; recorded target, level, cost profile, source
+# maps and disabledRules restored; the recorded entry point dispatched; one JSON record per line). Both runs used the
+# same -Dadr078.tmp directory, sequentially, since compilePath diagnostics carry the file path.
+# Comparator: compare_replay.py.txt (strict JSON; exits 1 on any unaccepted difference; budget-only differences reported).
 
-ids only on one side: 0
-compile status differences: 0 []
-FLAT: same 44475 different 0 in 0 cases
-evaluations: same outcome 266441 different outcome 0
-evaluations exhausted on one side only: 0
-evaluations whose budget changed (same outcome): 0
+Commands (class paths as in m1a-pre21-recording.md):
+  java -Xmx6g -Dadr078.tmp=<tmp> -cp "<runner>:<pre21 class path>" replay.Adr078Replay <corpus> r3-pre21.jsonl
+  java -Xmx6g -Dadr078.tmp=<tmp> -cp "<runner>:<julc-compiler test class path>" replay.Adr078Replay <corpus> r3-m1a.jsonl
+  python3 compare_replay.py.txt r3-pre21.jsonl r3-m1a.jsonl
 
-pre21 evaluation outcomes (M1a identical):
-    112   exhausted
- 167907   fail
-  98422   ok
-cases replayed: 18452 (compileMethod and validator cases with the default lookup)
-case x level compilations that threw (identically on both sides): 6344
-wall time (4 threads): pre21 55.50 s, M1a 56.64 s
+Output: both files 341,651 records, byte-identical (sha256 e04953cd026364434b3a519407e49c268501cfba51653be1457347250356eb84).
+
+Counts (from the manifests and records):
+  manifests                                     20,407
+    skipped (JavaLibraryProvider entry: 49; custom lookup: 6)    55
+    replayed (every other entry point; default and none lookups) 20,352
+  case x level compilations                     54,691
+    compiled (FLAT digest recorded)             47,593
+    rejected by the compiler (threw)             7,098
+    harness or VM initialisation errors              0
+  evaluations (compileMethod, default lookup, 12,077 cases, 7 vectors, transaction limit)   266,441
+    ok 98,422; fail 167,907; exhausted 112 (all 112 exhaust at the higher limit too, on both sides)
+
+Comparison:
+  unaccepted differences          0
+  budget-only differences (I6b)   0
+  inconclusive                    0
+
+The comparator's negative controls (m1a-replay-comparator-controls.txt): a changed result digest, trace list, FLAT
+digest or a missing record each exit 1; a malformed ([TRACE]-style) or duplicate line is rejected; a budget-only change
+is reported and exits 0.
+
+C10: the M1a run above is with r8's single lexical dependency graph. Before it (the r7 code, spelling-search graph for
+Kahn and the keys), the replay was also identical to pre21 but for one compilePath diagnostic that carried the
+tmp-directory path (the two runs then used different tmp directories). So C10 changed no bytes on this corpus.

@@ -3,11 +3,15 @@ package replay;
 import org.julclang.compiler.CompileResult;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.CompilerTargetRegistry;
+import org.julclang.compiler.DebugCompileResult;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.OptimizationLevel;
+import org.julclang.compiler.pir.StdlibLookup;
+import org.julclang.compiler.schema.ContractCompileResult;
 import org.julclang.core.PlutusData;
+import org.julclang.core.Program;
+import org.julclang.core.corpus.CorpusFiles;
 import org.julclang.core.flat.UplcFlatEncoder;
-import org.julclang.core.text.UplcPrinter;
 import org.julclang.stdlib.StdlibRegistry;
 import org.julclang.vm.EvalResult;
 import org.julclang.vm.ExBudget;
@@ -15,6 +19,7 @@ import org.julclang.vm.JulcVm;
 import org.julclang.vm.OptimizationCostProfiles;
 
 import java.math.BigInteger;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
@@ -22,15 +27,17 @@ import java.util.*;
 import java.util.concurrent.*;
 
 /**
- * ADR-078 M1a: ADR-075's evaluation differential (adr/evidence/075/EvalDiffReplayTest.java.txt) as a standalone runner,
- * so the same code runs on the pre21 artifacts and on the M1a build. On the ADR-074 corpus (20,407 recorded cases):
- * every compileMethod case with the default lookup is compiled at each recorded level and evaluated on ADR-075's
- * seven argument vectors under a transaction's limit (system property adr078.cpu/adr078.mem to raise it); every
- * validator case (compile, compileWithDetails) with the default lookup is compiled and its FLAT digest recorded.
- * Args: corpusRoot outFile [onlyKeysFile].
+ * ADR-078 M1a: ADR-075's evaluation differential over the ADR-074 corpus, as a standalone runner that runs on the
+ * pre21 artifacts and on the M1a build (adr/evidence/078/m1a-corpus-replay.md). Every manifest is read: its sources
+ * decoded with CorpusFiles.text, its recorded options restored (target, level, cost profile, source maps, disabled
+ * rules) and its recorded entry point dispatched, as ADR-074's fingerprint replay does. Every compiled program's FLAT
+ * digest is recorded; every compileMethod program with the default lookup is evaluated on ADR-075's seven argument
+ * vectors at a transaction's limit, and again at a higher limit where it exhausts. One JSON record per line.
+ * Args: corpusRoot outFile.
  */
 public class Adr078Replay {
-    static final ExBudget LIMIT = new ExBudget(Long.getLong("adr078.cpu", 10_000_000_000L), Long.getLong("adr078.mem", 14_000_000L));
+    static final ExBudget LIMIT = new ExBudget(10_000_000_000L, 14_000_000L);
+    static final ExBudget HIGH = new ExBudget(1_000_000_000_000L, 1_400_000_000L);
 
     static final List<List<PlutusData>> VECTORS = List.of(
             List.of(),
@@ -50,78 +57,222 @@ public class Adr078Replay {
 
     public static void main(String[] a) throws Exception {
         Path root = Path.of(a[0]);
-        Set<String> only = a.length > 2 ? new HashSet<>(Files.readAllLines(Path.of(a[2]))) : null;
         var cases = new ArrayList<Path>();
         try (var dirs = Files.list(root.resolve("cases"))) { dirs.sorted().forEach(cases::add); }
-        var lines = new ConcurrentHashMap<String, String>();
+        var records = new ConcurrentHashMap<String, String>();
         try (var pool = Executors.newFixedThreadPool(4)) {
             var futures = new ArrayList<Future<?>>();
-            for (Path dir : cases) {
-                if (only != null && !only.contains(dir.getFileName().toString())) continue;
-                futures.add(pool.submit(() -> run(root, dir, lines)));
-            }
+            for (Path dir : cases) futures.add(pool.submit(() -> run(root, dir, records)));
             for (var f : futures) f.get();
         }
         var text = new StringBuilder();
-        new TreeMap<>(lines).forEach((k, v) -> text.append(k).append(' ').append(v).append('\n'));
+        new TreeMap<>(records).forEach((id, record) -> text.append(record).append('\n'));
         Files.writeString(Path.of(a[1]), text.toString());
+        System.out.println("manifests: " + cases.size() + ", records: " + records.size());
     }
 
-    private static void run(Path root, Path dir, ConcurrentHashMap<String, String> lines) {
+    private static void put(Map<String, String> records, Map<String, Object> record) {
+        String id = record.get("case") + "|" + record.getOrDefault("level", "") + "|" + record.get("kind") + "|"
+                + record.getOrDefault("vector", "") + "|" + record.getOrDefault("limit", "");
+        if (records.putIfAbsent(id, json(record)) != null) throw new IllegalStateException("duplicate record " + id);
+    }
+
+    private static void run(Path root, Path dir, Map<String, String> records) {
         String key = dir.getFileName().toString();
+        List<String[]> fields;
         try {
-            var fields = new TreeMap<String, List<String>>();
-            for (String line : Files.readString(dir.resolve("case.txt")).split("\n")) {
+            fields = new ArrayList<>();
+            for (String line : CorpusFiles.text(Files.readAllBytes(dir.resolve("case.txt"))).split("\n")) {
                 int colon = line.indexOf(": ");
-                if (colon > 0) fields.computeIfAbsent(line.substring(0, colon), k -> new ArrayList<>()).add(line.substring(colon + 2));
-            }
-            String entry = first(fields, "entry");
-            String lookup = first(fields, "lookup");
-            boolean method = "compileMethod".equals(entry);
-            boolean validator = "compile".equals(entry) || "compileWithDetails".equals(entry);
-            if (!(method || validator) || lookup == null || !lookup.startsWith("default:")) return;
-            var libraries = new ArrayList<String>();
-            for (String library : fields.getOrDefault("library", List.of())) libraries.add(source(root, library.split(" ")[0]));
-            String main = source(root, first(fields, "source").split(" ")[0]);
-            try (var files = Files.list(dir)) {
-                for (String marker : files.map(p -> p.getFileName().toString()).filter(n -> n.startsWith("level-")).sorted().toList()) {
-                    String level = marker.substring("level-".length());
-                    var options = new CompilerOptions();
-                    options.setTarget(CompilerTargetRegistry.targetForProfileId(first(fields, "target")));
-                    options.setOptimizationLevel(OptimizationLevel.valueOf(level));
-                    options.setSourceMapEnabled("true".equals(first(fields, "sourceMap")));
-                    String cost = first(fields, "costProfile");
-                    if (cost != null) options.setOptimizationCostProfile(OptimizationCostProfiles.forId(cost.split(" ")[0]));
-                    String id = key + " " + level;
-                    try {
-                        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), options);
-                        CompileResult result = method ? compiler.compileMethod(main, first(fields, "method"), libraries)
-                                : compiler.compile(main, libraries);
-                        if (result.hasErrors() || result.program() == null) { lines.put(id, "errors"); continue; }
-                        lines.put(id + " flat", sha(UplcFlatEncoder.encodeProgram(result.program())));
-                        if (!method) continue;
-                        for (int v = 0; v < VECTORS.size(); v++) {
-                            lines.put(id + " v" + v, describe(VM.get().evaluateWithArgs(result.program(), VECTORS.get(v), LIMIT)));
-                        }
-                    } catch (Throwable e) {
-                        lines.put(id, "threw " + e.getClass().getSimpleName());
-                    }
-                }
+                if (colon > 0) fields.add(new String[]{line.substring(0, colon), line.substring(colon + 2)});
             }
         } catch (Exception e) {
-            lines.put(key, "unreadable " + e);
+            put(records, record("case", key, "kind", "manifest", "status", "harness-error", "error", e.toString()));
+            return;
+        }
+        String entry = field(fields, "entry"), lookupId = field(fields, "lookup"), method = field(fields, "method");
+        if (entry.equals("JavaLibraryProvider") || lookupId.startsWith("custom:")) {
+            put(records, record("case", key, "kind", "manifest", "status", "skipped", "entry", entry, "lookup", lookupId.split(":")[0]));
+            return;
+        }
+        put(records, record("case", key, "kind", "manifest", "status", "eligible", "entry", entry, "lookup", lookupId.split(":")[0]));
+        String[] main = field(fields, "source") == null ? null : field(fields, "source").split(" ", 2);
+        var libraries = new ArrayList<String[]>();
+        for (var f : fields) if (f[0].equals("library")) libraries.add(f[1].split(" ", 2));
+        var levels = new ArrayList<String>();
+        try (var files = Files.list(dir)) {
+            files.map(p -> p.getFileName().toString()).filter(n -> n.startsWith("level-")).sorted().forEach(n -> levels.add(n.substring(6)));
+        } catch (Exception e) {
+            put(records, record("case", key, "kind", "levels", "status", "harness-error", "error", e.toString()));
+            return;
+        }
+        for (String level : levels) {
+            CompilerOptions options;
+            String mainText;
+            List<String> libraryTexts = new ArrayList<>();
+            JulcCompiler compiler;
+            try {
+                options = new CompilerOptions();
+                options.setTarget(CompilerTargetRegistry.targetForProfileId(field(fields, "target")));
+                options.setOptimizationLevel(OptimizationLevel.valueOf(level));
+                String cost = field(fields, "costProfile");
+                if (cost != null) options.setOptimizationCostProfile(OptimizationCostProfiles.forId(cost.split(" ")[0]));
+                options.setSourceMapEnabled(Boolean.parseBoolean(field(fields, "sourceMap")));
+                String disabled = field(fields, "disabledRules");
+                if (disabled != null) for (String rule : disabled.split(",")) options.disableOptimizationRule(rule.trim());
+                StdlibLookup lookup = lookupId.startsWith("default:") ? StdlibRegistry.defaultRegistry() : null;
+                compiler = new JulcCompiler(lookup, options);
+                mainText = main == null ? null : source(root, main[0]);
+                for (var library : libraries) libraryTexts.add(source(root, library[0]));
+            } catch (Throwable e) {
+                put(records, record("case", key, "level", level, "kind", "compile", "status", "harness-error", "error", e.toString()));
+                continue;
+            }
+            CompileResult result;
+            try {
+                result = compileResult(run(key + "-" + level, compiler, entry, method, main, mainText, libraries, libraryTexts));
+            } catch (Throwable e) {
+                put(records, record("case", key, "level", level, "kind", "compile", "status", "threw",
+                        "error", e.getClass().getName() + " " + sha(String.valueOf(e.getMessage()).getBytes(StandardCharsets.UTF_8))));
+                continue;
+            }
+            if (result.hasErrors() || result.program() == null) {
+                put(records, record("case", key, "level", level, "kind", "compile", "status", "errors",
+                        "diagnostics", sha(String.valueOf(result.diagnostics()).getBytes(StandardCharsets.UTF_8))));
+                continue;
+            }
+            put(records, record("case", key, "level", level, "kind", "compile", "status", "ok",
+                    "flat", sha(UplcFlatEncoder.encodeProgram(result.program()))));
+            if (!"compileMethod".equals(entry) || !lookupId.startsWith("default:")) continue;
+            for (int v = 0; v < VECTORS.size(); v++) {
+                try {
+                    var outcome = VM.get().evaluateWithArgs(result.program(), VECTORS.get(v), LIMIT);
+                    put(records, evaluation(key, level, v, "transaction", outcome));
+                    if (outcome instanceof EvalResult.BudgetExhausted) {
+                        put(records, evaluation(key, level, v, "high", VM.get().evaluateWithArgs(result.program(), VECTORS.get(v), HIGH)));
+                    }
+                } catch (Throwable e) {
+                    put(records, record("case", key, "level", level, "kind", "eval", "vector", v, "limit", "transaction",
+                            "outcome", "harness-error", "error", e.toString()));
+                }
+            }
         }
     }
 
-    private static String describe(EvalResult outcome) {
+    private static Map<String, Object> evaluation(String key, String level, int vector, String limit, EvalResult outcome) {
+        var record = record("case", key, "level", level, "kind", "eval", "vector", vector, "limit", limit);
+        switch (outcome) {
+            case EvalResult.Success s -> {
+                record.put("outcome", "ok");
+                record.put("result", sha(UplcFlatEncoder.encodeProgram(Program.plutusV3(s.resultTerm()))));
+                record.put("traces", s.traces());
+                record.put("cpu", s.consumed().cpuSteps());
+                record.put("mem", s.consumed().memoryUnits());
+            }
+            case EvalResult.Failure f -> {
+                record.put("outcome", "fail");
+                record.put("reason", sha(String.valueOf(f.error()).getBytes(StandardCharsets.UTF_8)));
+                record.put("traces", f.traces());
+                record.put("cpu", f.consumed().cpuSteps());
+                record.put("mem", f.consumed().memoryUnits());
+            }
+            case EvalResult.BudgetExhausted b -> {
+                record.put("outcome", "exhausted");
+                record.put("traces", b.traces());
+                record.put("cpu", b.consumed().cpuSteps());
+                record.put("mem", b.consumed().memoryUnits());
+            }
+        }
+        return record;
+    }
+
+    private static CompileResult compileResult(Object outcome) {
         return switch (outcome) {
-            case EvalResult.Success s -> "ok cpu=" + s.consumed().cpuSteps() + " mem=" + s.consumed().memoryUnits() + " traces=" + s.traces()
-                    + " result=" + s.resultTerm().getClass().getSimpleName() + ":" + sha(UplcPrinter.print(s.resultTerm()).getBytes());
-            case EvalResult.Failure f -> "fail cpu=" + f.consumed().cpuSteps() + " mem=" + f.consumed().memoryUnits() + " traces=" + f.traces()
-                    + " reason=" + sha(String.valueOf(f.error()).getBytes());
-            case EvalResult.BudgetExhausted b -> "exhausted cpu=" + b.consumed().cpuSteps() + " mem=" + b.consumed().memoryUnits()
-                    + " traces=" + b.traces();
+            case CompileResult r -> r;
+            case ContractCompileResult c -> c.compileResult();
+            case DebugCompileResult d -> d.compileResult();
+            default -> throw new IllegalStateException("unexpected result " + outcome.getClass());
         };
+    }
+
+    private static Object run(String id, JulcCompiler compiler, String entry, String method, String[] main, String mainText,
+                              List<String[]> libraries, List<String> libraryTexts) throws Exception {
+        return switch (entry) {
+            case "compile" -> libraryTexts.isEmpty() ? compiler.compile(mainText) : compiler.compile(mainText, libraryTexts);
+            case "compileWithDetails" -> compiler.compileWithDetails(mainText, libraryTexts);
+            case "compileMethod" -> compiler.compileMethod(mainText, method, libraryTexts);
+            case "compileContract" -> compiler.compileContract(mainText, libraryTexts);
+            case "compileContractWithDetails" -> compiler.compileContractWithDetails(mainText, libraryTexts);
+            case "compileForDebug" -> compiler.compileForDebug(mainText, libraryTexts);
+            case "compilePath", "compileContractPath" -> {
+                Path tmp = Path.of(System.getProperty("adr078.tmp", System.getProperty("java.io.tmpdir")), "replay078", id);
+                Files.createDirectories(tmp);
+                Path mainFile = tmp.resolve(main.length > 1 ? main[1] : "Main.java");
+                Files.createDirectories(mainFile.getParent());
+                Files.writeString(mainFile, mainText);
+                var libraryFiles = new ArrayList<Path>();
+                for (int i = 0; i < libraries.size(); i++) {
+                    Path file = tmp.resolve(libraries.get(i).length > 1 ? libraries.get(i)[1] : "Lib" + i + ".java");
+                    Files.createDirectories(file.getParent());
+                    Files.writeString(file, libraryTexts.get(i));
+                    libraryFiles.add(file);
+                }
+                yield entry.equals("compilePath") ? compiler.compile(mainFile, libraryFiles) : compiler.compileContract(mainFile, libraryFiles);
+            }
+            default -> throw new IllegalStateException("unknown entry " + entry);
+        };
+    }
+
+    private static Map<String, Object> record(Object... pairs) {
+        var record = new LinkedHashMap<String, Object>();
+        for (int i = 0; i < pairs.length; i += 2) record.put((String) pairs[i], pairs[i + 1]);
+        return record;
+    }
+
+    /** A JSON object of strings, numbers and string lists, keys in insertion order. */
+    static String json(Map<String, Object> record) {
+        var text = new StringBuilder("{");
+        boolean first = true;
+        for (var entry : record.entrySet()) {
+            if (!first) text.append(',');
+            first = false;
+            text.append(quote(entry.getKey())).append(':');
+            Object value = entry.getValue();
+            if (value instanceof Number) text.append(value);
+            else if (value instanceof List<?> list) {
+                text.append('[');
+                for (int i = 0; i < list.size(); i++) text.append(i == 0 ? "" : ",").append(quote(String.valueOf(list.get(i))));
+                text.append(']');
+            } else text.append(quote(String.valueOf(value)));
+        }
+        return text.append('}').toString();
+    }
+
+    static String quote(String s) {
+        var text = new StringBuilder("\"");
+        for (char c : s.toCharArray()) {
+            switch (c) {
+                case '"' -> text.append("\\\"");
+                case '\\' -> text.append("\\\\");
+                case '\n' -> text.append("\\n");
+                case '\r' -> text.append("\\r");
+                case '\t' -> text.append("\\t");
+                default -> {
+                    if (c < 0x20) text.append(String.format("\\u%04x", (int) c));
+                    else text.append(c);
+                }
+            }
+        }
+        return text.append('"').toString();
+    }
+
+    private static String field(List<String[]> fields, String name) {
+        for (var f : fields) if (f[0].equals(name)) return f[1];
+        return null;
+    }
+
+    private static String source(Path root, String digest) throws Exception {
+        return CorpusFiles.text(Files.readAllBytes(root.resolve("sources").resolve(digest + ".java")));
     }
 
     private static String sha(byte[] bytes) {
@@ -130,14 +281,5 @@ public class Adr078Replay {
         } catch (java.security.NoSuchAlgorithmException e) {
             throw new IllegalStateException(e);
         }
-    }
-
-    private static String first(TreeMap<String, List<String>> fields, String name) {
-        var values = fields.get(name);
-        return values == null ? null : values.getFirst();
-    }
-
-    private static String source(Path root, String digest) throws Exception {
-        return Files.readString(root.resolve("sources").resolve(digest + ".java"));
     }
 }

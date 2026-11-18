@@ -103,3 +103,5 @@ changes for 5/67; (b) the full simulated order changes for 17/67. Both are simul
 | `m1a-gate-julc-examples-pre21.txt`, `m1a-gate-julc-examples-m1a.txt` | The gate's output on pre21 and on M1a (`../julc-examples@49614db8`). They are identical for all 43 programs. |
 | `m1a-corpus-replay.txt`, `Adr078Replay.java.txt`, `compare_replay.py.txt` | ADR-075's corpus replay, run on pre21 and on M1a: the two outputs are identical (44,475 FLAT digests and 266,441 evaluations). |
 | `pre21-classpath.build.gradle.txt` | A two-dependency Gradle build that resolves the pre21 class path (`julc-tools` and `julc-vm-java` at `0.1.0-pre21`), so it can be rebuilt without JOUST. |
+| `m3-joust-gate.txt` | M3, JOUST's half of the gate, run by the coordinator on `4bac295d`: passed (67 contracts × 10 edits, `renameAll` included; maps-on 67/67 identical). |
+| `m1a-replay-comparator-controls.txt` | Negative controls of the corrected replay comparator (C12): changed result, trace, FLAT, a missing record, and a malformed or duplicate line all fail; a budget-only change is reported and passes. |

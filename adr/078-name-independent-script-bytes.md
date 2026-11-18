@@ -96,7 +96,8 @@ are walked next, once each, in the order the assembly receives them, which is de
 unchanged.
 
 **D1b. Unread library methods.** On the library call graph without self-edges, where a method calls another when
-the other's name is free in its body, resolved lexically (r7; a local spelled like a method is not a call):
+the other's name is free in its body, resolved lexically (r7; a local or a closed inner binding spelled like a method
+is not a call). Since r8 this one lexical graph also schedules the content keys and orders Kahn's algorithm:
 - **The step:** repeatedly, among the unranked methods that no unranked library method calls, rank the one with the
   smallest content key and walk it.
 - **The fallback:** if several share that key, **the qualified name decides**.
@@ -128,9 +129,12 @@ describe the assembled PIR; the gate covers the final bytes.
 2. **Independence of what is not reached.** What D1a and D1a′ reach is ordered independently of what they do not
    reach. A reached method calls only reached methods.
 3. **Transposition.** Swapping two adjacent bindings with α-equal values, which nothing reads, gives an α-equal
-   assembled program. Blocks follow by composition. Under D1b, such twins lie in one run of equal-key methods. A
-   member of that run that is not identical to them can be bound between them (r7). Two identical values that nothing
-   reads still swap without effect wherever they are.
+   assembled program. Blocks follow by composition. Two identical values that nothing reads swap without effect wherever
+   they are.
+   - With the one lexical graph (r8), an unread α-equal pair with the same callees becomes ready together. Kahn binds
+     them with nothing between them but methods of the same key.
+   - r7 claimed this under the spelling graph, and that was false. Codex's case was a = λq.M.c.q.M.c, b = λx.x,
+     c = λx.0 with no roots: the parameter spelled `q.M.c` made a wait for c. Withdrawn in r8.
 4. **Equal keys are not identical, and not always adjacent.** Twins can call different twins, and a dependent of one
    twin can be bound between them.
 
@@ -359,6 +363,11 @@ JOUST's D12 is an M3 deliverable.
     - `./gradlew build` is green.
 - **M3. JOUST with the local M1a build.**
   - It runs the gate's JOUST half.
+  - **Status:** passed on `4bac295d` (`adr/evidence/078/m3-joust-gate.txt`).
+    - 67 contracts × 10 edits, `renameAll` included; the renamed-file check; the Pledges swap; a package move.
+    - Crowdfund keeps `28e115b5…` and Tips keeps `80648854…`.
+    - Source-map mode is 67/67 identical, Steward included.
+    - r8 changed main code (the one lexical graph), so M3 is re-run on the final head.
   - Its deliverables: JOUST's pins and docs, and D12 citing the known limits.
   - When it completes, it opens F-ID.
 - **M1b and M2 (future).** Their own ADR, shipped together.
@@ -405,3 +414,13 @@ JOUST's D12 is an M3 deliverable.
     `LibraryBindingOrder.children`, which the content key now shares.
   - **D5:** the JOUST fixture is M3's gate. JuLC carries JuLC-only stand-ins, including compiled validators.
   - **M1a exit:** ADR-075's corpus replay is required.
+- **r8 (2026-11-19).** After Codex's second M1a review (C10–C19) and Fable's (F7, F8). No decision changes.
+  - **One lexical dependency graph** (free references, self excluded) now schedules the content keys, D1b and Kahn's
+    algorithm. r7's claim that no Java program could tell the spelling search apart was false for custom registries.
+    `JavaLibraryProvider` can materialise a closed `let q.M.b = λy.y in q.M.b` inside another method, and the spelling
+    search then made a false cycle (`Unbound variable: q.M.a`).
+  - **Compatibility:** for the javac frontend's programs nothing changes. The corrected corpus replay and the
+    julc-examples gate are identical to pre21's. A program built through a custom registry or another frontend whose
+    library bodies hold such a binding may order differently, or now compile where it was rejected.
+  - **Lemma 3** restated.
+  - **M3:** status recorded.
