@@ -1,0 +1,37 @@
+package probe2;
+
+import org.julclang.clientlib.JulcScriptAdapter;
+import org.julclang.compiler.*;
+import org.julclang.stdlib.StdlibRegistry;
+import java.util.*;
+
+/** Codex C1 reproduction attempt: a datum holding two records of the same simple name and fields, one renamed. */
+public class C1Probe {
+    static String src(String second) {
+        return """
+            package v;
+            import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.ledger.*;
+            import org.julclang.stdlib.annotation.*;
+            @SpendingValidator
+            class Probe {
+                record Point(BigInteger x) {}
+                static class Inner { record %s(BigInteger x) {} }
+                record Datum(Point a, Inner.%s b) {}
+                @Entrypoint
+                static boolean validate(Datum datum, PlutusData redeemer, ScriptContext ctx) {
+                    return datum.a().x().compareTo(datum.b().x()) < 0;
+                }
+            }
+            """.formatted(second, second);
+    }
+    public static void main(String[] a) throws Exception {
+        var opts = OptimizationConfiguration.apply(new CompilerOptions().setTarget(CompilerTarget.PLUTUS_V3_PV11), OptimizationLevel.DEFAULT_PROFILE_ID, null);
+        for (String n : List.of("Point", "Pt")) {
+            var r = new JulcCompiler(StdlibRegistry.defaultRegistry(), opts).compileWithDetails(src(n), List.of());
+            if (r.hasErrors()) { System.out.println(n + " " + r.diagnostics()); continue; }
+            System.out.println("C1 second record named " + n + ": " + JulcScriptAdapter.scriptHash(r.program()) + " " + r.scriptSizeBytes() + " B");
+        }
+    }
+}

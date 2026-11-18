@@ -21,10 +21,15 @@ public class Adr078Diag {
     }
 
     static void one(Path out, String file) throws Exception {
+        oneInner(out, file);
+    }
+
+    static void oneInner(Path out, String file) throws Exception {
         String src = Files.readString(JscV2HashStabilityTest.DSL.resolve(file));
         Map<String, String> variants = new LinkedHashMap<>();
         variants.put("base", src);
         variants.put("renamed", JscV2HashStabilityTest.rename(src, JscV2HashStabilityTest.renameAll(src)));
+        var seqs = new ArrayList<List<String>>();
         for (var v : variants.entrySet()) {
             String tag = file.replace(".jsc", "") + "-" + v.getKey();
             Files.writeString(out.resolve(tag + ".jsc"), v.getValue());
@@ -60,7 +65,24 @@ public class Adr078Diag {
             String h = JulcScriptAdapter.scriptHash(res.program());
             System.out.println(tag + " details-compile hash " + h + " (toolchain " + c.scriptHash() + ") size " + res.scriptSizeBytes());
             Files.writeString(out.resolve(tag + ".uplc"), res.uplcFormatted());
-            if (res.pirTerm() != null) Files.writeString(out.resolve(tag + ".pir"), res.pirPretty());
+            if (Boolean.getBoolean("adr078.pir")) Files.writeString(out.resolve(tag + ".pir"), res.pirPretty());
+            var census = probe.Adr078Census.of(res.pirTerm(), c.packageName() + "." + c.validatorName());
+            seqs.add(probe.Adr078Census.FULL_SEQ.get());
+            System.out.println("T2 " + tag + " residual=" + probe.Adr078Census.T2_RESIDUAL.get() + " changesOrder=" + probe.Adr078Census.FULL_CHANGES_ORDER.get());
+            System.out.print(probe.Adr078Census.T2_DETAIL.get());
+            System.out.println("CENSUS " + tag + " library=" + census.library() + " reachable=" + census.reachable()
+                    + " equalKeyGroups=" + census.equalKeyGroups() + " reachableTieGroups=" + census.reachableTieGroups()
+                    + " m1aChangesOrder=" + census.m1aChangesOrder() + " m1aChangesReachableOrder=" + census.m1aChangesReachableOrder() + " residualUnreachableGroups=" + census.residualGroups());
+            if (!census.detail().isEmpty()) System.out.print(census.detail());
+            String uplc = res.uplcFormatted();
+            var survivors = census.unreachable().stream().filter(n -> uplc.contains("(lam " + n.replace('.', '_') + " ")).toList();
+            System.out.println("DEAD-SURVIVING " + tag + " " + survivors.size() + " " + survivors);
+            var present = new java.util.HashSet<String>();
+            for (var n : probe.Adr078Census.OLD_ORDER.get()) if (uplc.contains("(lam " + n.replace('.', '_') + " ")) present.add(n);
+            boolean defaultChanges = !probe.Adr078Census.OLD_ORDER.get().stream().filter(present::contains).toList()
+                    .equals(probe.Adr078Census.FULL_ORDER.get().stream().filter(present::contains).toList());
+            System.out.println("DEFAULT-LEVEL-ORDER-CHANGE " + tag + " " + defaultChanges);
         }
+        System.out.println("M1A " + file + " order name-independent (base vs renamed, key@rank, T and T2): " + seqs.get(0).equals(seqs.get(1)));
     }
 }

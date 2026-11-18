@@ -30,7 +30,9 @@ public class Adr078Probe {
         String h = JulcScriptAdapter.scriptHash(res.program());
         Files.writeString(out.resolve(tag + ".uplc"), res.uplcFormatted());
         Files.writeString(out.resolve(tag + ".java.txt"), validator + "\n// ---- libraries\n" + String.join("\n", libs));
-        System.out.println(tag + " " + h + " " + res.scriptSizeBytes() + " B");
+        var census = Adr078Census.of(res.pirTerm(), "v.Probe");
+        System.out.println(tag + " " + h + " " + res.scriptSizeBytes() + " B; M1a key@rank order " + census.m1aKeyRankSequence()
+                + " T2 " + Adr078Census.FULL_SEQ.get() + " reachableTieGroups=" + census.reachableTieGroups() + " m1aChangesReachableOrder=" + census.m1aChangesReachableOrder());
         return h;
     }
 

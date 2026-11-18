@@ -49,3 +49,17 @@ sed -E 's/\(lam [^ ()]+/(lam _/g' X-base.uplc | tr ' ' '\n' > a; (same for X-ren
   - **Case 3.** Swapping two validator helper methods changes the hash.
   - **Case 3b.** Swapping two validator helpers that each check a shape changes both the helpers' order and the ids.
   - **Control.** Renaming the validator's helpers while keeping their order changes nothing.
+
+## r2 additions (after review round 1)
+
+| File | What |
+|---|---|
+| `Adr078Census.java.txt` | From a compiled program's PIR, recovers the library bindings and their ADR-075 content keys (by reflection on `LibraryBindingOrder`), computes D1's ranks (`T`, then D1b for unreachable methods), and simulates Kahn's order with pre21's comparator and with M1a's. It flags D1b ties between bodies that are not α-equal (the residual), and equal-key groups. |
+| `Adr078ExamplesCensus.java.txt` | Runs the census over a source tree of validators (julc-examples). |
+| `m1a-census-joust.txt` | The census over the 67 JOUST examples. The summary is at the end: M1a's order is the same before and after `renameAll` for 67/67; there are no residual ties; 5/67 change the order of the binders present in the default-profile UPLC; 17/67 change the full order (`NONE`, source maps); 12/67 keep unreachable library bindings after the default optimizer. |
+| `m1a-census-julc-examples.txt` | The census over `../julc-examples` (43 validators compiled, 3 skipped): no ties, no change. |
+| `m1a-case1-probe.txt` | The JuLC-only two-identical-bodies probe. M1a's `key@rank` order is the same for both names. |
+| `C1Probe.java.txt`, `c1-probe-results.txt` | Reproduces Codex C1. A datum holding two records with the same simple name and fields is 276 B; renaming one gives 318 B. |
+
+The census simulates M1a on pre21's captured PIR (after the PIR passes, before UPLC). Its counts are estimates. M1a's
+exit measures them on the implementation.
