@@ -70,3 +70,11 @@ exit measures them on the implementation.
 |---|---|
 | `R2Probes.java.txt`, `r2-probes.txt` | Codex round-2 findings run against pre21 at the default profile, `NONE` and source maps. **C11** (an unread helper reads one twin): identical at the default profile, different at `NONE` and with source maps. **C13** (a cross-class recursive type group, class `A` renamed to `Z`): different in all three modes. **C14** (one overload-family member renamed): 88 → 96 B. **C15**: a mutually recursive library pair is rejected ("Unbound variable") whether reachable or not, and a self-recursive method compiles. **C12**, my reconstruction from the review summary: identical 998 B and 30,764,348 CPU for both twin names, so Codex's numbers are not reproduced (the mechanism is accepted). |
 | `m1a-census-joust.txt` (regenerated) | Every figure is labelled as a simulation (C16). Adds `D1A-ONLY` (base vs renamed with unread ties by name: 67/67 equal on JOUST) and the corrected maximum: 283 library methods (Safes). D1a′ (r3) is not simulated. |
+
+## r4 additions (after review round 3)
+
+| File | What |
+|---|---|
+| `C12.java.txt` | Codex's exact C12 program, adopted as a D5 fixture. On pre21: `alpha` gives 1,010 B and 31,073,556 CPU and succeeds; `zeta` gives 1,012 B and 31,201,556 CPU and exhausts the budget under `ExBudget(31_150_000, 110_000)`. |
+| `R3Probes.java.txt`, `r3-probes.txt` | Round-3 findings run against pre21. **C12:** reproduced exactly. **C19:** α-equal twins with different local spellings; renaming the method changes FLAT with source maps (`471fb25d` → `18ed8feb`, 45 B); with O10 disabled, or at `NONE`, nothing changes. Local renames alone also change bytes. **C19c:** a reached library method's local, renamed to collide with another method's local, gives 33 → 73 B at the default profile. **C20:** pool `[B, A]` compiles and `[A, B]` is rejected ("Undefined variable: B"). |
+| `m1a-census-*.txt` (regenerated) | Labelled as label-sequence comparisons (C23). Adds `anyNameTie` and `spellingTie`: every JOUST program, and 31 of 43 julc-examples programs, has a D1b name tie; 19 JOUST programs (all `AddressAdapter.payment` / `AddressLib.paymentCredential`) and no julc-examples program have one whose values differ as written. |

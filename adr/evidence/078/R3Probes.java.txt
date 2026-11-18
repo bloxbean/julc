@@ -1,0 +1,115 @@
+package probe4;
+
+import org.julclang.compiler.*;
+import org.julclang.core.PlutusData;
+import org.julclang.core.flat.UplcFlatEncoder;
+import org.julclang.stdlib.StdlibRegistry;
+import org.julclang.vm.*;
+
+import java.security.MessageDigest;
+import java.util.*;
+import java.util.function.Consumer;
+
+/** ADR-078 r4: reproductions of Codex round-3 findings (C12 exact, C19, C20) against JuLC 0.1.0-pre21. */
+public class R3Probes {
+    static String lib(String cls, String body) {
+        return "package q;\nimport java.math.BigInteger;\nimport org.julclang.core.types.JulcList;\nimport org.julclang.core.types.JulcArray;\n"
+                + "import org.julclang.stdlib.annotation.OnchainLibrary;\n@OnchainLibrary\npublic class " + cls + " {\n" + body + "}\n";
+    }
+
+    static CompilerOptions opts(String profile, boolean sourceMap, Consumer<CompilerOptions> more) {
+        var o = OptimizationConfiguration.apply(new CompilerOptions().setTarget(CompilerTarget.PLUTUS_V3_PV11).setSourceMapEnabled(sourceMap), profile, null);
+        if (more != null) more.accept(o);
+        return o;
+    }
+
+    static String flat(CompileResult r) throws Exception {
+        byte[] bytes = UplcFlatEncoder.encodeProgram(r.program());
+        return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)).substring(0, 16) + " " + bytes.length + " B";
+    }
+
+    static String method(String target, String m, List<String> libs, CompilerOptions o) {
+        try {
+            var r = new JulcCompiler(StdlibRegistry.defaultRegistry(), o).compileMethod(target, m, libs);
+            if (r.hasErrors()) return "ERROR " + r.diagnostics();
+            return flat(r);
+        } catch (Exception e) {
+            return "REJECTED " + e.getClass().getSimpleName() + ": " + String.valueOf(e.getMessage()).lines().findFirst().orElse("");
+        }
+    }
+
+    public static void main(String[] args) throws Exception {
+        // C12, Codex's exact program.
+        var c = new StringBuilder("    public static long c(long n, JulcList<BigInteger> xs) {\n        long v0 = alpha(n);\n");
+        for (int i = 1; i <= 121; i++) c.append("        long v").append(i).append(" = v").append(i - 1).append(" + 1;\n");
+        c.append("        return v121 + 0");
+        for (int i = 0; i < 12; i++) c.append(" + xs.head().longValue()");
+        c.append(";\n    }\n");
+        String library = lib("L", "    public static long alpha(long x) { return x; }\n    public static long beta(long y) { return y; }\n" + c);
+        String target = "package v;\nimport java.math.BigInteger;\nimport org.julclang.core.types.JulcList;\nimport q.L;\nclass T {\n"
+                + "    static long f(long n) { return L.c(n, JulcList.of(BigInteger.ONE)) + L.beta(n); }\n}\n";
+        var vm = JulcVm.create();
+        var profile = OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1;
+        vm.setCostModelParams(profile.costModelParameters(), profile.target());
+        for (String name : List.of("alpha", "zeta")) {
+            String l = library.replace("alpha", name);
+            var r = new JulcCompiler(StdlibRegistry.defaultRegistry(), opts("pv11-safe", false, null)).compileMethod(target, "f", List.of(l));
+            var unbounded = vm.evaluateWithArgs(r.program(), List.of(PlutusData.integer(5)));
+            var bounded = vm.evaluateWithArgs(r.program(), List.of(PlutusData.integer(5)), new ExBudget(31_150_000, 110_000));
+            ExBudget b = switch (unbounded) { case EvalResult.Success s -> s.consumed(); case EvalResult.Failure f -> f.consumed(); default -> null; };
+            System.out.println("C12 " + name + ": FLAT " + flat(r) + ", unbounded " + unbounded.getClass().getSimpleName()
+                    + " cpu " + b.cpuSteps() + " mem " + b.memoryUnits() + ", limit (31,150,000, 110,000): " + bounded.getClass().getSimpleName()
+                    + (bounded instanceof EvalResult.Failure f ? " (" + f.error().lines().findFirst().orElse("") + ")" : ""));
+        }
+
+        // C19: alpha-equal library bodies with different local spellings; method rename, and local renames.
+        String t19 = "package v;\nimport q.L;\nclass T {\n    static long f(long x) { return x; }\n}\n";
+        String body = "    public static long %s(long n) { BigInteger %s = BigInteger.valueOf(7); return JulcArray.of(%s).get(0).longValue(); }\n";
+        java.util.function.BiFunction<String[], String[], String> two = (a, b) -> lib("L", String.format(body, a[0], a[1], a[1]) + String.format(body, b[0], b[1], b[1]));
+        record V(String label, String library) {}
+        var variants = List.of(
+                new V("alpha(x), beta(y)", two.apply(new String[]{"alpha", "x"}, new String[]{"beta", "y"})),
+                new V("zeta(x),  beta(y)  [method rename]", two.apply(new String[]{"zeta", "x"}, new String[]{"beta", "y"})),
+                new V("alpha(x), beta(x)  [local y->x]", two.apply(new String[]{"alpha", "x"}, new String[]{"beta", "x"})),
+                new V("alpha(z), beta(y)  [local x->z]", two.apply(new String[]{"alpha", "z"}, new String[]{"beta", "y"})));
+        record M(String label, CompilerOptions o) {}
+        var modes = List.of(
+                new M("pv11-safe, source maps", opts("pv11-safe", true, null)),
+                new M("pv11-safe", opts("pv11-safe", false, null)),
+                new M("default profile", opts(OptimizationLevel.DEFAULT_PROFILE_ID, false, null)),
+                new M("default profile, source maps", opts(OptimizationLevel.DEFAULT_PROFILE_ID, true, null)),
+                new M("pv11-safe, source maps, o10 off", opts("pv11-safe", true, o -> o.disableOptimizationRule("pv11.o10.array-literal-fold"))),
+                new M("none, source maps", opts("none", true, null)));
+        for (var m : modes) {
+            var sb = new StringBuilder("C19 [" + m.label() + "]");
+            for (var v : variants) sb.append("\n    ").append(v.label()).append(": ").append(method(t19, "f", List.of(v.library()), m.o()));
+            System.out.println(sb);
+        }
+        // C19b: a single library method; does renaming its local alone change bytes? And two unrelated methods sharing a local name.
+        String one = "    public static long %s(long n) { BigInteger %s = BigInteger.valueOf(7); return JulcArray.of(%s).get(0).longValue() + n; }\n";
+        String other = "    public static long other(long n) { BigInteger %s = BigInteger.valueOf(9); return %s.longValue() + n; }\n";
+        String t19b = "package v;\nimport q.L;\nclass T {\n    static long f(long x) { return L.alpha(x) + L.other(x); }\n}\n";
+        for (var m : modes) {
+            System.out.println("C19b [" + m.label() + "] reached alpha(x)+other(y): " + method(t19b, "f", List.of(lib("L", String.format(one, "alpha", "x", "x") + String.format(other, "y", "y"))), m.o())
+                    + " | other(x): " + method(t19b, "f", List.of(lib("L", String.format(one, "alpha", "x", "x") + String.format(other, "x", "x"))), m.o()));
+        }
+
+        // C19c: reached methods, no parameter collision; renaming one local so it collides with another method's local.
+        String one2 = "    public static long alpha(long n) { BigInteger x = BigInteger.valueOf(7); return JulcArray.of(x).get(0).longValue() + n; }\n";
+        String other2 = "    public static long other(long m) { BigInteger %s = BigInteger.valueOf(9); return JulcArray.of(%s).get(0).longValue() + m; }\n";
+        String t19c = "package v;\nimport q.L;\nclass T {\n    static long f(long k) { return L.alpha(k) + L.other(k); }\n}\n";
+        for (var m : modes) {
+            System.out.println("C19c [" + m.label() + "] reached, other's local y: " + method(t19c, "f", List.of(lib("L", one2 + String.format(other2, "y", "y"))), m.o())
+                    + " | renamed to x (collides with alpha's): " + method(t19c, "f", List.of(lib("L", one2 + String.format(other2, "x", "x"))), m.o()));
+        }
+
+        // C20: registration retry; library-source order decides whether the program compiles.
+        String a = lib("A", "    public static long a1(long x) { return B.b0(x); }\n    public static long a2(long x) { return B.b1(x); }\n");
+        String b = lib("B", "    public static long b0(long x) { return x + 1; }\n    public static long b1(long x) { return A.a1(x); }\n");
+        String t20 = "package v;\nimport q.A;\nimport q.B;\nclass T {\n    static long f(long x) { return A.a2(x) + B.b1(x); }\n}\n";
+        for (String p : List.of("default", "none")) {
+            var o = p.equals("none") ? opts("none", false, null) : opts(OptimizationLevel.DEFAULT_PROFILE_ID, false, null);
+            System.out.println("C20 [" + p + "] pool [B, A]: " + method(t20, "f", List.of(b, a), o) + " | pool [A, B]: " + method(t20, "f", List.of(a, b), o));
+        }
+    }
+}

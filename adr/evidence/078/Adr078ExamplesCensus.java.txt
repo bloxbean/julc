@@ -46,7 +46,7 @@ public class Adr078ExamplesCensus {
                         + c.equalKeyGroups() + " reachableTieGroups=" + c.reachableTieGroups() + " m1aChangesReachableOrder="
                         + c.m1aChangesReachableOrder() + " residualUnreachableGroups=" + c.residualGroups());
                 if (!c.detail().isEmpty()) System.out.print(c.detail());
-                System.out.println("T2 " + fqcn + " residual=" + Adr078Census.T2_RESIDUAL.get() + " fullOrderChanges=" + Adr078Census.FULL_CHANGES_ORDER.get());
+                System.out.println("T2 " + fqcn + " anyNameTie=" + Adr078Census.T2_ANY_TIE.get() + " spellingTie=" + Adr078Census.T2_SPELLING_TIE.get() + " residual=" + Adr078Census.T2_RESIDUAL.get() + " fullOrderChanges=" + Adr078Census.FULL_CHANGES_ORDER.get());
                 System.out.print(Adr078Census.T2_DETAIL.get());
             } catch (Throwable e) {
                 failed++;

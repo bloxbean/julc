@@ -15,6 +15,10 @@ import java.util.*;
  */
 public final class Adr078Census {
     public static final ThreadLocal<Integer> T2_RESIDUAL = new ThreadLocal<>();
+    /** D1b steps whose smallest key was shared by two or more methods (any tie the qualified name decides). */
+    public static final ThreadLocal<Integer> T2_ANY_TIE = new ThreadLocal<>();
+    /** D1b name ties whose tied PIR values are not identical as written (local spellings or callees differ). */
+    public static final ThreadLocal<Integer> T2_SPELLING_TIE = new ThreadLocal<>();
     public static final ThreadLocal<String> T2_DETAIL = new ThreadLocal<>();
     public static final ThreadLocal<Integer> T2_REACHABLE = new ThreadLocal<>();
     public static final ThreadLocal<List<String>> FULL_SEQ = new ThreadLocal<>();
@@ -81,6 +85,8 @@ public final class Adr078Census {
         var full = new HashMap<String, Integer>(rank);
         int reachableCount = rank.size();
         int t2Residual = 0;
+        T2_ANY_TIE.set(0);
+        T2_SPELLING_TIE.set(0);
         var t2Detail = new StringBuilder();
         while (!full.keySet().containsAll(library.keySet())) {
             var free = new ArrayList<String>();
@@ -95,6 +101,11 @@ public final class Adr078Census {
             free.sort(byKey);
             String pick = free.getFirst();
             var tied = free.stream().filter(n -> keys.getOrDefault(n, "~" + n).equals(keys.getOrDefault(pick, "~" + pick))).toList();
+            if (tied.size() > 1) T2_ANY_TIE.set(T2_ANY_TIE.get() + 1);
+            if (tied.size() > 1 && tied.stream().map(n -> values.get(n)).distinct().count() > 1) {
+                T2_SPELLING_TIE.set(T2_SPELLING_TIE.get() + 1);
+                t2Detail.append("  t2 tie, values differ in spelling or callees: ").append(tied).append('\n');
+            }
             if (tied.size() > 1 && tied.stream().map(n -> alphaKey(library.get(n), library.keySet())).distinct().count() > 1) {
                 t2Residual++;
                 t2Detail.append("  t2 residual: ").append(tied).append('\n');
