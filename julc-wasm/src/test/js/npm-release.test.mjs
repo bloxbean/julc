@@ -9,7 +9,7 @@ import {fileURLToPath} from 'node:url';
 import {
   BETA_TAG, CANDIDATE_TAG, LATEST_TAG, PACKAGES, PREVIEW_TAG, candidateTags, d8Tag, hasFinalVersion, tagProblems,
   certificateIdentity, certificateProblems, compareVersions, distTag, finalVersionOf, isLoopbackRegistry,
-  isPrereleaseCandidate, parseDigests, versionKind, parseSums, releaseIdentity, signingCertificate, statementOf,
+  isPrereleaseCandidate, parseDigests, validatePackument, versionKind, parseSums, releaseIdentity, signingCertificate, statementOf,
   statementProblems, tarballName, verifiedProvenance,
 } from '../../ci/npm-release.mjs';
 
@@ -93,6 +93,32 @@ test('D8 per package: -preN on latest until the package has a final version, the
   assert.equal(d8Tag('0.1.0-rc1', null), 'next');
   assert.equal(d8Tag('1.0.0', null), 'latest');
   assert.throws(() => d8Tag('0.2.0-pre1-rc1', doc('0.1.0')), /release candidate of a prerelease/);
+});
+
+test('a registry document is validated before use; anything incomplete fails, only a 404 means unpublished', () => {
+  const name = '@julclang/wasm-client';
+  const good = {name, 'dist-tags': {latest: '0.1.0-pre21', bootstrap: '0.0.0-oidc-bootstrap.0'},
+    versions: {'0.1.0-pre21': {name, version: '0.1.0-pre21'}, '0.0.0-oidc-bootstrap.0': {name, version: '0.0.0-oidc-bootstrap.0'}}};
+  assert.equal(validatePackument(good, name), good);
+  // latest is required only of the three bootstrapped packages.
+  const other = {name: 'other', versions: {'1.0.0': {version: '1.0.0'}}, 'dist-tags': {next: '1.0.0'}};
+  assert.equal(validatePackument(other, 'other'), other);
+  for (const [label, document] of [
+    ['null', null], ['an empty object', {}], ['an error body', {error: 'internal'}], ['an array', []],
+    ['dist-tags without versions', {name, 'dist-tags': {latest: '1.0.0'}}],
+    ['versions without dist-tags', {name, versions: good.versions}],
+    ['versions as an array', {...good, versions: []}], ['another package', {...good, name: '@julclang/julc-wasm'}],
+    ['a version key that is not a version', {...good, versions: {...good.versions, 'not-a-version': {version: 'not-a-version'}}}],
+    ['a version without its metadata', {...good, versions: {...good.versions, '0.1.0': null}}],
+    ['metadata of another version', {...good, versions: {...good.versions, '0.1.0': {version: '0.2.0'}}}],
+    ['a dist-tag naming a missing version', {...good, 'dist-tags': {...good['dist-tags'], latest: '1.0.0'}}],
+    ['a dist-tag that is not a string', {...good, 'dist-tags': {latest: 1}}],
+    ['an array dist-tag holder', {...good, 'dist-tags': {...good['dist-tags'], latest: ['0.1.0-pre21']}}],
+    ['empty versions and dist-tags', {name, versions: {}, 'dist-tags': {}}],
+    ['no latest for one of the three packages', {...good, 'dist-tags': {bootstrap: '0.0.0-oidc-bootstrap.0'}}],
+  ]) {
+    assert.throws(() => validatePackument(document, name), /the registry's document for @julclang\/wasm-client/, label);
+  }
 });
 
 test('npm-verify\'s tag rule: a final on latest (or behind a later one), a prerelease on one of its tags', () => {

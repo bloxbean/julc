@@ -14,7 +14,7 @@ The npm version is the JuLC release version. Dist-tags:
 
 | Install | Gets |
 |---|---|
-| `npm install @julclang/wasm-client` | `latest`: the newest `-preN` until JuLC has a final release higher than it; then the newest final release |
+| `npm install @julclang/wasm-client` | `latest`: the newest `-preN` until JuLC's first final release; then the newest final release, unless that final is older than the `-preN` on `latest` (see below) |
 | `npm install @julclang/wasm-client@preview` | the newest `-preN` prerelease after a final release |
 | `npm install @julclang/wasm-client@beta` | the newest `-betaN` |
 | `npm install @julclang/wasm-client@next` | the newest release candidate of a final release (`X.Y.Z-rcN`) |
@@ -23,8 +23,8 @@ The npm version is the JuLC release version. Dist-tags:
 - A final release does not reset the channels, so after one a channel can name a version older than `latest`.
 - No dist-tag ever moves to an older version: a version older than the one a tag names (a backfilled first final
   after a `-preN` on `latest`, or a `-betaN` after a `-preN` of the same `X.Y.Z`, which semver orders below it) is on a
-  `release-<major>.<minor>` or `release-<version>` tag instead; such a backfilled final leaves `latest` on the
-  prerelease until a final higher than it is published.
+  `release-<major>.<minor>` or `release-<version>` tag instead. Such a backfilled final leaves `latest` on that older
+  prerelease, and later `-preN`s go to `preview`, until a final higher than it is published.
 - Pin a prerelease exactly (`"@julclang/wasm-client": "0.1.0-pre22"`): a caret range such as `^0.1.0-pre21` also
   matches a later `0.1.0-rcN`.
 

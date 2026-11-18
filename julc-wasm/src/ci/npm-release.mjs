@@ -325,13 +325,46 @@ export function isLoopbackRegistry(registry) {
 }
 const escapedName = name => name.replace('/', '%2f');
 
-/** The registry's full metadata for a package, or null when the registry does not know it (404). */
+const isObject = value => typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/**
+ * A package's registry document, checked before anything reads it: an object for this package, with object-valued
+ * `versions` (each key a version, each value an object) and `dist-tags` (each holder a version in `versions`). An
+ * incomplete document (no `versions`, null, {}, an error body) must never make a prerelease look like "no final version
+ * yet" or switch the no-backwards check off, so it fails the job; only a 404 means "not published".
+ */
+export function validatePackument(document, name) {
+  const where = `the registry's document for ${name}`;
+  if (!isObject(document)) fail(`${where} is not an object: ${JSON.stringify(document)?.slice(0, 200)}`);
+  if (document.name !== name) fail(`${where} names ${JSON.stringify(document.name)}`);
+  if (!isObject(document.versions)) fail(`${where} has no versions object`);
+  if (!isObject(document['dist-tags'])) fail(`${where} has no dist-tags object`);
+  // A published package has versions, and every package of this release already has latest (its bootstrap
+  // placeholder, D8a): a genuinely new package answers 404, never an empty or latest-less 200.
+  if (Object.keys(document.versions).length === 0) fail(`${where} has no versions`);
+  if (PACKAGES.includes(name) && !Object.hasOwn(document['dist-tags'], 'latest')) fail(`${where} has no latest tag`);
+  for (const [version, meta] of Object.entries(document.versions)) {
+    try { parseVersion(version); } catch { fail(`${where} lists a version that is not one: ${JSON.stringify(version)}`); }
+    if (!isObject(meta) || meta.version !== version) fail(`${where}: version ${version} has no metadata of its own`);
+  }
+  for (const [tag, holder] of Object.entries(document['dist-tags'])) {
+    if (typeof holder !== 'string' || !Object.hasOwn(document.versions, holder)) {
+      fail(`${where}: dist-tag ${tag} names ${JSON.stringify(holder)}, which is not one of its versions`);
+    }
+  }
+  return document;
+}
+
+/** The registry's full metadata for a package, validated, or null when the registry does not know it (404). */
 export async function packument(registry, name) {
   const response = await fetch(normaliseRegistry(registry) + escapedName(name), {
     headers: {accept: 'application/json'}, cache: 'no-store'});
   if (response.status === 404) return null;
-  if (!response.ok) fail(`GET ${name} from ${normaliseRegistry(registry)}: HTTP ${response.status}`);
-  return response.json();
+  // Exactly 200: anything else (a 206 partial answer, a 304, a 5xx) is not a document to decide on.
+  if (response.status !== 200) fail(`GET ${name} from ${normaliseRegistry(registry)}: HTTP ${response.status}`);
+  let document;
+  try { document = await response.json(); } catch { fail(`GET ${name}: the registry's answer is not JSON`); }
+  return validatePackument(document, name);
 }
 
 /** One version's metadata, or null when the registry does not (yet) show it. */
@@ -355,8 +388,13 @@ export async function registryProvenance(dist) {
   const response = await fetch(attestations.url, {headers: {accept: 'application/json'}, cache: 'no-store'});
   if (response.status === 404) return null;
   if (!response.ok) fail(`GET ${attestations.url}: HTTP ${response.status}`);
-  const document = await response.json();
-  return (document.attestations ?? []).find(entry => entry.predicateType === SLSA_PROVENANCE_V1)?.bundle ?? null;
+  let document;
+  try { document = await response.json(); } catch { fail(`GET ${attestations.url}: the answer is not JSON`); }
+  if (!isObject(document) || !Array.isArray(document.attestations)) {
+    fail(`GET ${attestations.url}: no attestations list in the answer`);
+  }
+  return document.attestations.find(entry => isObject(entry) && entry.predicateType === SLSA_PROVENANCE_V1)?.bundle
+    ?? null;
 }
 
 const purl = (name, version) => `pkg:npm/${name.replace('@', '%40')}@${version}`;

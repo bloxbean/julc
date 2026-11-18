@@ -40,6 +40,8 @@ export async function startRegistry({provenanceOnPublish = null} = {}) {
   const attestations = new Map();
   const hidden = new Set();
   const failPublish = new Set();
+  // A package's document answered with this raw body (HTTP 200), or {status, body}, instead: a broken registry answer.
+  const overrides = new Map();
   const publishes = [];
   let url;
 
@@ -86,6 +88,12 @@ export async function startRegistry({provenanceOnPublish = null} = {}) {
         res.writeHead(200, {'content-type': 'application/octet-stream'});
         return res.end(bytes);
       }
+      if (req.method === 'GET' && overrides.has(route)) {
+        const override = overrides.get(route);
+        const {status = 200, body} = typeof override === 'string' ? {body: override} : override;
+        res.writeHead(status, {'content-type': 'application/json'});
+        return res.end(body);
+      }
       if (req.method === 'GET') {
         const pkg = packages.get(route);
         if (!pkg) return send(res, 404, {error: 'not found'});
@@ -123,7 +131,7 @@ export async function startRegistry({provenanceOnPublish = null} = {}) {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   url = `http://127.0.0.1:${server.address().port}/`;
   return {
-    url, packages, publishes, failPublish,
+    url, packages, publishes, failPublish, overrides,
     get provenanceOnPublish() { return settings.provenanceOnPublish; },
     set provenanceOnPublish(value) { settings.provenanceOnPublish = value; },
     /** A version already on the registry, for example from an earlier attempt or published by hand. */

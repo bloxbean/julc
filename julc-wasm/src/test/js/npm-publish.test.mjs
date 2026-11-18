@@ -317,6 +317,9 @@ test('npm-verify: a registry tarball that differs, a deleted release asset, or a
     assert.match(result.text, /the tarball the registry serves differs from the release's julclang-julc-wasm-0\.1\.0-pre22\.tgz/);
 
     // A dist-tag that names an older version.
+    // (A dist-tag always names a version the document lists: seed the versions the tags are moved to.)
+    registry.seed(VM, '0.1.0-pre21', release('0.1.0-pre21').bytes(VM), {tag: 'old'});
+    registry.seed(VM, '0.1.0-pre23', release('0.1.0-pre23').bytes(VM), {tag: 'new'});
     registry.packages.get(VM)['dist-tags'].latest = '0.1.0-pre21';
     result = await verify(registry, rel, verifyWork());
     assert.equal(result.status, 1, show(result));
@@ -447,6 +450,7 @@ test('npm-verify checks the tag npm-publish chose for each package it published 
 
     // A chosen tag that later moves forward is legitimate.
     clientTags['release-0.1.8'] = '0.1.8';
+    registry.seed(VM, '0.2.0', release('0.2.0').bytes(VM), {tag: 'later'});
     registry.packages.get(VM)['dist-tags'].latest = '0.2.0';
     verified = await check();
     assert.equal(verified.status, 0, 'latest advanced\n' + show(verified));
@@ -554,6 +558,37 @@ test('npm files of two builds are refused: an engine tarball must carry its arch
     assert.match(result.text, /@julclang\/julc-vm-wasm: engine\/engine\.json differs from julc-vm-wasm-0\.1\.0-pre22\.tar\.gz's \(I1\)/);
     assert.deepEqual(registry.publishes, []);
   } finally { await registry.close(); }
+});
+
+test('an incomplete registry answer with HTTP 200 stops publication and verification, never "unpublished"', async () => {
+  for (const [label, body] of [
+    ['dist-tags without versions', JSON.stringify({name: CLIENT, 'dist-tags': {latest: '1.0.0'}})],
+    ['null', 'null'], ['an empty object', '{}'], ['an error body', JSON.stringify({error: 'internal'})],
+    ['not JSON', '<html>busy</html>'],
+    // At the packageTag/hasFinalVersion boundary: none of these may yield "no final yet" or "latest".
+    ['empty versions and dist-tags', JSON.stringify({name: CLIENT, versions: {}, 'dist-tags': {}})],
+    ['an array dist-tag holder', JSON.stringify({name: CLIENT, versions: {'0.1.0-pre21': {name: CLIENT,
+      version: '0.1.0-pre21'}}, 'dist-tags': {latest: ['0.1.0-pre21']}})],
+    ['no latest for a bootstrapped package', JSON.stringify({name: CLIENT, versions: {'0.1.0-pre21': {name: CLIENT,
+      version: '0.1.0-pre21'}}, 'dist-tags': {bootstrap: '0.1.0-pre21'}})],
+    ['HTTP 206', {status: 206, body: JSON.stringify({name: CLIENT, versions: {}, 'dist-tags': {}})}],
+  ]) {
+    const registry = await startRegistry({provenanceOnPublish: identity(VERSION)});
+    try {
+      const rel = release(VERSION);
+      registry.overrides.set(CLIENT, body);
+      const result = await publish(registry, rel);
+      assert.equal(result.status, 1, label + '\n' + show(result));
+      assert.match(result.text, /the registry's (document for @julclang\/wasm-client|answer)|HTTP 206/, label);
+      assert.deepEqual(registry.publishes, [], label);
+      // The same answer makes npm-verify fail, after a good publication.
+      registry.overrides.clear();
+      assert.equal((await publish(registry, rel)).status, 0, label);
+      registry.overrides.set(VM, body);
+      const verified = await verify(registry, rel, ['--work', scratch('verify-work')]);
+      assert.equal(verified.status, 1, label + '\n' + show(verified));
+    } finally { await registry.close(); }
+  }
 });
 
 test('an engine archive deleted from or replaced in the release stops publication and verification', async () => {
