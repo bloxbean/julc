@@ -19,6 +19,7 @@ import org.julclang.core.source.SourceLocation;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -206,8 +207,13 @@ public final class ValidatorAssembly {
                     wrapMethodBindings(validator.helpers(), validator.entries().getFirst().function(), frontend), frontend);
         }
 
-        // 14. Wrap library methods as Let bindings (topologically sorted: dependencies outermost)
-        var sortedLibMethods = topoSortLibraryMethods(validator.libraries());
+        // 14. Wrap library methods as Let bindings (topologically sorted: dependencies outermost; equal content keys
+        // by first use from the static initialisers and the entry points, ADR-078)
+        var entries = validator.autoDispatch()
+                ? validator.entries().stream().sorted(Comparator.comparingInt(Entry::tag)).map(Entry::function).toList()
+                : List.of(validator.entries().getFirst().function());
+        var sortedLibMethods = topoSortLibraryMethods(validator.libraries(),
+                new FirstUseRanks.Roots(staticValues(validator.statics()), entries, validator.helpers()));
         if (validator.autoDispatch()) {
             handlers.replaceAll((tag, handler) -> bindLibraries(sortedLibMethods, handler, frontend));
         } else {
@@ -336,8 +342,10 @@ public final class ValidatorAssembly {
         body = wrapMethodBindings(program.methods(), body, frontend);
         // 14. Wrap static field initializers
         body = bindStatics(program.statics(), body, frontend);
-        // 15. Wrap library methods as Let bindings
-        body = bindLibraries(topoSortLibraryMethods(program.libraries()), body, frontend);
+        // 15. Wrap library methods as Let bindings (equal content keys by first use from the target, ADR-078)
+        body = bindLibraries(topoSortLibraryMethods(program.libraries(), new FirstUseRanks.Roots(
+                staticValues(program.statics()), List.of(new PirTerm.Var(program.binderName(), program.type())),
+                program.methods())), body, frontend);
         // 16. Wrap with outer @Param lambdas
         body = bindParams(program.params(), frontend.bindProgram(body), frontend);
 
@@ -420,10 +428,14 @@ public final class ValidatorAssembly {
 
     /**
      * The library methods in binding order: dependencies outermost, and otherwise an order fixed by the methods
-     * themselves, not by the order they were found in (issue #328, {@link LibraryBindingOrder}). The first item is
-     * bound innermost, the last outermost.
+     * themselves, not by the order they were found in (issue #328, {@link LibraryBindingOrder}); methods with equal
+     * content keys by first use from {@code roots} (ADR-078). The first item is bound innermost, the last outermost.
      */
-    private static List<LibraryMethod> topoSortLibraryMethods(Collection<LibraryMethod> methods) {
-        return LibraryBindingOrder.innermostFirst(methods);
+    private static List<LibraryMethod> topoSortLibraryMethods(Collection<LibraryMethod> methods, FirstUseRanks.Roots roots) {
+        return LibraryBindingOrder.innermostFirst(methods, roots, null);
+    }
+
+    private static List<PirTerm> staticValues(List<StaticField> statics) {
+        return statics.stream().map(StaticField::value).toList();
     }
 }
