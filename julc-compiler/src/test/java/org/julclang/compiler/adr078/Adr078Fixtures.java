@@ -38,7 +38,10 @@ public final class Adr078Fixtures {
     private Adr078Fixtures() {
     }
 
-    /** One compilation: a {@code compileMethod} target, its method, and its library sources in pool order. */
+    /**
+     * One compilation: a {@code compileMethod} target and its method, or, where {@code method} is null, a validator
+     * compiled whole; and its library sources in pool order.
+     */
     public record Variant(String label, String target, String method, List<String> libraries) {
     }
 
@@ -89,8 +92,9 @@ public final class Adr078Fixtures {
 
     public static Outcome compile(Variant variant, Mode mode) {
         try {
-            var result = new JulcCompiler(StdlibRegistry.defaultRegistry(), mode.options(null))
-                    .compileMethod(variant.target(), variant.method(), variant.libraries());
+            var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), mode.options(null));
+            var result = variant.method() == null ? compiler.compileWithDetails(variant.target(), variant.libraries())
+                    : compiler.compileMethod(variant.target(), variant.method(), variant.libraries());
             if (result.hasErrors()) return new Outcome(null, 0, firstLine(String.valueOf(result.diagnostics())), null, null);
             return outcome(result);
         } catch (RuntimeException e) {
@@ -310,6 +314,67 @@ public final class Adr078Fixtures {
                 variant("renamed: aaa in K, zzz in f", target("import q.L;\n", "    static final BigInteger K = L.aaa(BigInteger.TWO);\n"
                         + "    static BigInteger f(BigInteger x) { return L.zzz(x).add(K); }\n"), List.of(library("q", "L", twins.formatted("zzz", "aaa")))))));
 
+        // Compiled validators (ValidatorAssembly.validator): a single entry point, a static initialiser, and a
+        // multi-purpose validator whose handlers first use opposite twins (handlers ranked in purpose tag order).
+        String spending = """
+                package v;
+
+                import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.Builtins;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
+                import q.L;
+
+                @SpendingValidator
+                class V {
+                %s
+                    @Entrypoint
+                    static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                        BigInteger n = Builtins.unIData(redeemer);
+                %s
+                    }
+                }
+                """;
+        String single = spending.formatted("", "        return L.%s(n).add(L.beta(n.negate())).signum() >= 0;");
+        fixtures.add(new Fixture("validator-single-entry", "SAME", List.of(
+                new Variant("alpha", single.formatted("alpha"), null, List.of(library("q", "L", twins.formatted("alpha", "beta")))),
+                new Variant("zeta", single.formatted("zeta"), null, List.of(library("q", "L", twins.formatted("zeta", "beta")))))));
+        String withStatic = spending.formatted("    static final BigInteger K = L.%s(BigInteger.TWO);\n",
+                "        return L.alpha(n).add(K).signum() >= 0;");
+        fixtures.add(new Fixture("validator-static-initialiser", "SAME", List.of(
+                new Variant("zeta in K", withStatic.formatted("zeta"), null, List.of(library("q", "L", twins.formatted("alpha", "zeta")))),
+                new Variant("aaaa in K", withStatic.formatted("aaaa"), null, List.of(library("q", "L", twins.formatted("alpha", "aaaa")))))));
+        String multi = """
+                package v;
+
+                import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.Builtins;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.MultiValidator;
+                import org.julclang.stdlib.annotation.Purpose;
+                import q.L;
+
+                @MultiValidator
+                class M {
+                    @Entrypoint(purpose = Purpose.MINT)
+                    static boolean mint(PlutusData redeemer, ScriptContext ctx) {
+                        return L.%1$s(Builtins.unIData(redeemer)).signum() >= 0;
+                    }
+
+                    @Entrypoint(purpose = Purpose.SPEND)
+                    static boolean spend(PlutusData redeemer, ScriptContext ctx) {
+                        return L.beta(Builtins.unIData(redeemer)).signum() >= 0;
+                    }
+                }
+                """;
+        fixtures.add(new Fixture("validator-multi-purpose", "SAME", List.of(
+                new Variant("alpha", multi.formatted("alpha"), null, List.of(library("q", "L", twins.formatted("alpha", "beta")))),
+                new Variant("zeta", multi.formatted("zeta"), null, List.of(library("q", "L", twins.formatted("zeta", "beta")))))));
+
         // Negative controls: a constant changed in one twin; a body changed in an unread binding that survives at NONE.
         fixtures.add(new Fixture("negative-constant-in-one-twin", "DIFFERENT_IN_SOME_MODE", List.of(
                 variant("twins", target("import q.L;\n", twinTarget.formatted("alpha", "beta")), List.of(library("q", "L", twins.formatted("alpha", "beta")))),
@@ -334,7 +399,7 @@ public final class Adr078Fixtures {
                     String key = fixture.name() + " | " + variant.label() + " | " + mode;
                     var outcome = compile(variant, mode);
                     lines.put(key, outcome.toString());
-                    if (!outcome.compiled()) continue;
+                    if (!outcome.compiled() || variant.method() == null) continue;
                     var arguments = arguments(fixture);
                     for (int i = 0; i < arguments.size(); i++) {
                         var evaluation = evaluate(outcome.program(), arguments.get(i), REPLAY_LIMIT);

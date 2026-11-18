@@ -28,7 +28,7 @@ public final class Adr078Programs {
     /** ADR-078 D5: the base seed and the number of rewrites per program. */
     public static final long SEED = 78;
     public static final int REWRITES = 40;
-    public static final int PROGRAMS = 3;
+    public static final int PROGRAMS = 10;
 
     private static final List<String> PACKAGES = List.of("p.one", "org.julclang.m", "zzz.y", "com.example.deep.pkg", "aaa.b");
 

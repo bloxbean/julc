@@ -1,7 +1,7 @@
 # ADR-078 D5: the fixed fixtures' outcomes on JuLC 0.1.0-pre21 (08b021ce): fixture | variant | mode [| eval i | budget i].
 # Produced by Adr078Fixtures.main on the pre21 artifacts (see adr/evidence/078/m1a-pre21-recording.md).
 # Compilation: sha256 of the FLAT program and its size, or REJECTED and the first line of the rejection.
-# eval i: the outcome on arguments(fixture).get(i) under REPLAY_LIMIT (result term, failure reason, traces).
+# eval i: the outcome on arguments(fixture).get(i) under REPLAY_LIMIT (result term, failure reason, traces); validators are compiled only.
 twins-reached | alpha/beta | none = d4f49c029a049604b7d23aeb7920d37bc1172a09d9f446b0e1190c2d40a2581b 114 B
 twins-reached | alpha/beta | none | eval 0 = SUCCESS (con integer 15) traces=[]
 twins-reached | alpha/beta | none | budget 0 = 2763125 cpu, 11448 mem
@@ -1146,6 +1146,54 @@ static-initialiser-first-use | renamed: aaa in K, zzz in f | pv11-costed+maps | 
 static-initialiser-first-use | renamed: aaa in K, zzz in f | pv11-costed+maps | budget 0 = 1527878 cpu, 7140 mem
 static-initialiser-first-use | renamed: aaa in K, zzz in f | pv11-costed+maps | eval 1 = SUCCESS (con integer 4) traces=[]
 static-initialiser-first-use | renamed: aaa in K, zzz in f | pv11-costed+maps | budget 1 = 1527878 cpu, 7140 mem
+validator-single-entry | alpha | none = 2c209a118b6e260c9ded7bae006dca749c4b85acbae6a833cfc716059b7ff70a 175 B
+validator-single-entry | alpha | none+maps = 9c506fe0d2939c3aaa7941473e786bf14722f10e43ef7c217aaff248244b147c 182 B
+validator-single-entry | alpha | baseline = 6a58a06f78be392528296c3918f755c3243b999153f53964816553b415da14af 172 B
+validator-single-entry | alpha | baseline+maps = 9c506fe0d2939c3aaa7941473e786bf14722f10e43ef7c217aaff248244b147c 182 B
+validator-single-entry | alpha | pv11-safe = 9ba5feb328c5e1cb2f85e15562ef677aa2e0227338c8901af20f9b38156af958 136 B
+validator-single-entry | alpha | pv11-safe+maps = 4a8c2cd0bca4f819aacaab2e04c34acade3339b40c615e27b24eb4548c2c6184 142 B
+validator-single-entry | alpha | pv11-costed = 9ba5feb328c5e1cb2f85e15562ef677aa2e0227338c8901af20f9b38156af958 136 B
+validator-single-entry | alpha | pv11-costed+maps = 4a8c2cd0bca4f819aacaab2e04c34acade3339b40c615e27b24eb4548c2c6184 142 B
+validator-single-entry | zeta | none = d2d78c48992f5157d7d388e38287c24e9aa5bd16d3e1410dc6bda6b22767a74b 175 B
+validator-single-entry | zeta | none+maps = f5d05d432591994be2d4227d44205f725ec2d09134b0be1221cf5f12b45ae37a 182 B
+validator-single-entry | zeta | baseline = 1dc8046849635a44bd536404e1dedbab6afb1214aa1f2e626495ddf3bf1eaf64 172 B
+validator-single-entry | zeta | baseline+maps = f5d05d432591994be2d4227d44205f725ec2d09134b0be1221cf5f12b45ae37a 182 B
+validator-single-entry | zeta | pv11-safe = e58932bda47e0387d1f5ea0068dc2e89d03985babefbbaead6977d7504de29cc 136 B
+validator-single-entry | zeta | pv11-safe+maps = a7609ee804d5a85676a294eba5850a5100352367ced727bb1f16e0817c93da74 142 B
+validator-single-entry | zeta | pv11-costed = e58932bda47e0387d1f5ea0068dc2e89d03985babefbbaead6977d7504de29cc 136 B
+validator-single-entry | zeta | pv11-costed+maps = a7609ee804d5a85676a294eba5850a5100352367ced727bb1f16e0817c93da74 142 B
+validator-static-initialiser | zeta in K | none = b2639e3955cb07fb459c9fc3cd8fe78b9713ddf3bbd9bf484676f6dfc1ac4ea6 174 B
+validator-static-initialiser | zeta in K | none+maps = bfd1803ae48c73e5a5e9a9ec5808c431d353db43b32ad09df39c4a68d18f485f 180 B
+validator-static-initialiser | zeta in K | baseline = 8861af7b09f65f8b236d8265085261a0936d4147fbc6f154fcc40ee87f9fe00c 171 B
+validator-static-initialiser | zeta in K | baseline+maps = bfd1803ae48c73e5a5e9a9ec5808c431d353db43b32ad09df39c4a68d18f485f 180 B
+validator-static-initialiser | zeta in K | pv11-safe = 432aa5107ae7c228debe464d3bfdb92636f832f45128728d5b73c396ccc1ebb6 135 B
+validator-static-initialiser | zeta in K | pv11-safe+maps = 60c7180c92deca83068a7ec6cefc5f5594ef4af01556bda18ebf43c91d0a523a 140 B
+validator-static-initialiser | zeta in K | pv11-costed = 432aa5107ae7c228debe464d3bfdb92636f832f45128728d5b73c396ccc1ebb6 135 B
+validator-static-initialiser | zeta in K | pv11-costed+maps = 60c7180c92deca83068a7ec6cefc5f5594ef4af01556bda18ebf43c91d0a523a 140 B
+validator-static-initialiser | aaaa in K | none = 7cd71c1d544b7bb0cb03c235cae0bd70a85c3a0f1668b07522da124e94cf27ca 174 B
+validator-static-initialiser | aaaa in K | none+maps = 006058d4549ee7a75a04d7dd75697fdc88304bc8a79d245372fc54f838cdef55 180 B
+validator-static-initialiser | aaaa in K | baseline = 442a638c8937b071775ea5b4146ddd9760f8390007e6e534bde8b1457fecf20c 171 B
+validator-static-initialiser | aaaa in K | baseline+maps = 006058d4549ee7a75a04d7dd75697fdc88304bc8a79d245372fc54f838cdef55 180 B
+validator-static-initialiser | aaaa in K | pv11-safe = e3a967369b69cad2793c9475c1c138423d8da2dd4d9a82bf27657620f8bade6a 135 B
+validator-static-initialiser | aaaa in K | pv11-safe+maps = 5060df92ef2c477c27a8bd4cbb37ec316cac43e5c65ab98e4ebc6cb8b2c788b5 140 B
+validator-static-initialiser | aaaa in K | pv11-costed = e3a967369b69cad2793c9475c1c138423d8da2dd4d9a82bf27657620f8bade6a 135 B
+validator-static-initialiser | aaaa in K | pv11-costed+maps = 5060df92ef2c477c27a8bd4cbb37ec316cac43e5c65ab98e4ebc6cb8b2c788b5 140 B
+validator-multi-purpose | alpha | none = 9852268a31adf7514565b6a963b3b99812979bccc5f13ae3d6fd84174e3c465a 347 B
+validator-multi-purpose | alpha | none+maps = 55235e1d54ced1be469918a8419269fa996fffcb795ca853f9cee62a9b721705 361 B
+validator-multi-purpose | alpha | baseline = 1d2e422b79853d7218b7eaab1e36c5de3a03b05b4f84483e86e1d415e27b36e7 255 B
+validator-multi-purpose | alpha | baseline+maps = 55235e1d54ced1be469918a8419269fa996fffcb795ca853f9cee62a9b721705 361 B
+validator-multi-purpose | alpha | pv11-safe = 6e61f475691a38b5e3b9b1756a4995eadd6306154d25ea9ef93800482a431943 199 B
+validator-multi-purpose | alpha | pv11-safe+maps = c1a54b8f378f29d4fe86c24da1590fc79f18092abd798c1f0f8173d3c1c05e84 273 B
+validator-multi-purpose | alpha | pv11-costed = 6e61f475691a38b5e3b9b1756a4995eadd6306154d25ea9ef93800482a431943 199 B
+validator-multi-purpose | alpha | pv11-costed+maps = c1a54b8f378f29d4fe86c24da1590fc79f18092abd798c1f0f8173d3c1c05e84 273 B
+validator-multi-purpose | zeta | none = 9f13cfd2983e21c283dd8c497892b44efb05327bb945cd231260763dddee8259 347 B
+validator-multi-purpose | zeta | none+maps = bbce11fcf1f3410eb19641b090bfebe37a3c1b329d670ae2750af56c4b46d35e 361 B
+validator-multi-purpose | zeta | baseline = 1d2e422b79853d7218b7eaab1e36c5de3a03b05b4f84483e86e1d415e27b36e7 255 B
+validator-multi-purpose | zeta | baseline+maps = bbce11fcf1f3410eb19641b090bfebe37a3c1b329d670ae2750af56c4b46d35e 361 B
+validator-multi-purpose | zeta | pv11-safe = 6e61f475691a38b5e3b9b1756a4995eadd6306154d25ea9ef93800482a431943 199 B
+validator-multi-purpose | zeta | pv11-safe+maps = e65beedcc41edb4253a5dbe5458c3c0dc31fac3aa96f333d8c18f472e27b0eae 273 B
+validator-multi-purpose | zeta | pv11-costed = 6e61f475691a38b5e3b9b1756a4995eadd6306154d25ea9ef93800482a431943 199 B
+validator-multi-purpose | zeta | pv11-costed+maps = e65beedcc41edb4253a5dbe5458c3c0dc31fac3aa96f333d8c18f472e27b0eae 273 B
 negative-constant-in-one-twin | twins | none = d4f49c029a049604b7d23aeb7920d37bc1172a09d9f446b0e1190c2d40a2581b 114 B
 negative-constant-in-one-twin | twins | none | eval 0 = SUCCESS (con integer 15) traces=[]
 negative-constant-in-one-twin | twins | none | budget 0 = 2763125 cpu, 11448 mem

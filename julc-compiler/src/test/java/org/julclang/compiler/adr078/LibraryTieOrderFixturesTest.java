@@ -148,7 +148,7 @@ class LibraryTieOrderFixturesTest {
             for (var variant : fixture.variants()) {
                 for (var mode : Adr078Fixtures.modes()) {
                     var outcome = NOW.get(key(fixture, variant, mode));
-                    if (!outcome.compiled()) continue;
+                    if (!outcome.compiled() || variant.method() == null) continue;
                     for (int i = 0; i < arguments.size(); i++) {
                         String key = key(fixture, variant, mode) + " | eval " + i;
                         var now = Adr078Fixtures.evaluate(outcome.program(), arguments.get(i), Adr078Fixtures.REPLAY_LIMIT);
@@ -224,6 +224,7 @@ class LibraryTieOrderFixturesTest {
             // Only these fixtures bind library methods with equal content keys.
             assertTrue(key.startsWith("twins-reached") || key.startsWith("C11") || key.startsWith("C12") || key.startsWith("C19 ")
                     || key.startsWith("C19-") || key.startsWith("C26") || key.startsWith("static-initialiser")
+                    || key.startsWith("validator-")
                     || key.startsWith("negative-constant | twins"), "unexpected change: " + key);
         }
     }
