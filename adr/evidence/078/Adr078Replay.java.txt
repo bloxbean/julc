@@ -49,6 +49,12 @@ public class Adr078Replay {
             List.of(PlutusData.integer(BigInteger.ONE), PlutusData.integer(BigInteger.TWO)),
             List.of(PlutusData.integer(BigInteger.valueOf(5)), PlutusData.bytes(new byte[]{9}), PlutusData.integer(BigInteger.TEN)));
 
+    /** The entry points {@link #run} dispatches; any other recorded entry is a harness error (C31). */
+    static final Set<String> ENTRIES = Set.of("compile", "compileWithDetails", "compileMethod", "compileContract",
+            "compileContractWithDetails", "compileForDebug", "compilePath", "compileContractPath");
+    /** The lookups an eligible case may record: the default registry, or none (C31). */
+    static final String DEFAULT_LOOKUP = "default:" + StdlibRegistry.class.getName();
+
     static final ThreadLocal<JulcVm> VM = ThreadLocal.withInitial(() -> {
         var vm = JulcVm.create("Java");
         var profile = OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1;
@@ -124,14 +130,19 @@ public class Adr078Replay {
             List<Path> stagedLibraries = new ArrayList<>();
             Path stagedMain = null;
             try {
+                // The recorded dispatch, lookup and cost profile must be ones this runner knows how to restore (C31).
+                if (!ENTRIES.contains(entry)) throw new IllegalStateException("unsupported entry point " + entry);
+                if (!lookupId.equals(DEFAULT_LOOKUP) && !lookupId.equals("none")) throw new IllegalStateException("unknown lookup " + lookupId);
+                if (entry.equals("compileMethod") && method == null) throw new IllegalStateException("compileMethod without a method");
                 var options = new CompilerOptions();
                 options.setTarget(CompilerTargetRegistry.targetForProfileId(field(fields, "target")));
                 options.setOptimizationLevel(OptimizationLevel.valueOf(level));
                 String cost = field(fields, "costProfile");
                 if (cost != null) {
                     String[] parts = cost.split(" ");
+                    if (parts.length != 2) throw new IllegalStateException("cost profile " + cost + " is not an id and its parameter hash");
                     var profile = OptimizationCostProfiles.forId(parts[0]);
-                    if (parts.length > 1 && !profile.parameterHash().equals(parts[1])) {
+                    if (!profile.parameterHash().equals(parts[1])) {
                         throw new IllegalStateException("cost profile " + parts[0] + " has parameter hash " + profile.parameterHash()
                                 + ", the case recorded " + parts[1]);
                     }
@@ -140,7 +151,7 @@ public class Adr078Replay {
                 options.setSourceMapEnabled(Boolean.parseBoolean(field(fields, "sourceMap")));
                 String disabled = field(fields, "disabledRules");
                 if (disabled != null) for (String rule : disabled.split(",")) options.disableOptimizationRule(rule.trim());
-                StdlibLookup lookup = lookupId.startsWith("default:") ? StdlibRegistry.defaultRegistry() : null;
+                StdlibLookup lookup = lookupId.equals(DEFAULT_LOOKUP) ? StdlibRegistry.defaultRegistry() : null;
                 compiler = new JulcCompiler(lookup, options);
                 mainText = main == null ? null : source(root, main[0]);
                 for (var library : libraries) libraryTexts.add(source(root, library[0]));
@@ -184,7 +195,7 @@ public class Adr078Replay {
             }
             put(records, record("case", key, "level", level, "kind", "compile", "status", "ok",
                     "flat", sha(UplcFlatEncoder.encodeProgram(result.program()))));
-            if (!"compileMethod".equals(entry) || !lookupId.startsWith("default:")) continue;
+            if (!"compileMethod".equals(entry) || !lookupId.equals(DEFAULT_LOOKUP)) continue;
             for (int v = 0; v < VECTORS.size(); v++) {
                 EvalResult transaction;
                 try {

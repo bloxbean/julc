@@ -339,8 +339,20 @@ JOUST's D12 is an M3 deliverable.
 ## Compatibility and release note
 
 - **Deployed scripts and compiled artifacts are unaffected.**
-- **Recompiling** changes bytes, hash and address only for programs with equal-content-key library methods. Near a
-  budget limit, the outcome can change (I6b).
+- **Recompiling** a program compiled from Java sources changes bytes, hash and address only where it has
+  equal-content-key library methods. Near a budget limit, the outcome can change (I6b).
+- **Custom registries and other frontends** (D2's exception, C22): a program whose library bodies hold a closed
+  binding spelled like another library method can also change its binding order, compile where pre21 rejected it,
+  or name a different method in a rejection, without equal keys.
+- **Internal API (accepted P2 deviation, Codex M1a C33).** `ValidatorAssembly.Frontend`, the internal codegen record
+  through which a frontend receives assembled bindings, changed its public signature:
+  - `methodBound` is now a `ValidatorAssembly.MethodBound` that also receives the handler's purpose tag, in place of
+    pre21's `BiConsumer<String, PirTerm>`;
+  - an `observer` component was added.
+
+  A client compiled against pre21's constructor or accessor gets `NoSuchMethodError`. The only users are
+  `JavacCompilation` and a test, and no other module or sibling repository constructs it. The change is accepted for a
+  preview release rather than kept binary-compatible (Fable judged it acceptable).
 - **In-repo oracles** are re-run and explained in M1a's exit: `GoldenUplcTest`, the pre-change goldens,
   `Adr060ByteSnapshotTest`, `LibraryOrderEquivalence`, the ADR-068 frozen reference, the `O11BlsTypesTest` pins and the
   Blaster fixtures.
@@ -354,6 +366,9 @@ JOUST's D12 is an M3 deliverable.
   > rejected, or name a different method in a rejection. Without a budget limit the results, failures and traces are
   > the same; the budget can differ. Names and orders still reach the bytes in the cases listed in ADR-078's known
   > limits.
+  >
+  > API: `ValidatorAssembly.Frontend` (internal codegen API) changed: `methodBound` now receives the handler tag, and
+  > an `observer` component was added. Out-of-tree frontends must adapt.
 
 ## Risks
 
@@ -381,13 +396,16 @@ JOUST's D12 is an M3 deliverable.
     - `./gradlew build` is green.
 - **M3. JOUST with the local M1a build.**
   - It runs the gate's JOUST half.
-  - **Status:** passed on `4bac295d` (`adr/evidence/078/m3-joust-gate.txt`).
+  - **Status: complete.** The gate run passed on the final main code, `6c68f45a`
+    (`adr/evidence/078/m3-joust-gate-6c68f45a.txt`).
     - 67 contracts × 10 edits, `renameAll` included; the renamed-file check; the Pledges swap; a package move.
     - Crowdfund keeps `28e115b5…` and Tips keeps `80648854…`.
     - Source-map mode is 67/67 identical, Steward included.
-    - r8 changed main code (the one lexical graph), so M3 is re-run on the final head.
-  - Its deliverables: JOUST's pins and docs, and D12 citing the known limits.
-  - When it completes, it opens F-ID.
+    - Every `[hash]` line is identical across the three runs: `4bac295d` (`m3-joust-gate.txt`), `2c0edb6e` (after
+      r8's one lexical graph) and `6c68f45a` (after round 3's observer refactor). Main code is frozen at `6c68f45a`.
+  - Its JOUST deliverables (JOUST's pins and docs, and D12 citing the known limits) follow when `0.1.0-pre22` is
+    published.
+  - F-ID opens as OQ9 says.
 - **M1b and M2 (future).** Their own ADR, shipped together.
 
 ## Open questions
@@ -446,4 +464,9 @@ JOUST's D12 is an M3 deliverable.
   - **The exception for custom registries and other frontends** (C22) is stated in D1b, D2 and the release note, with
     both of Codex's cases (an order change and a changed cycle diagnostic) pinned by tests.
   - **The corpus replay's scope** and its pinned exclusions are stated in M1a's exit (C27).
+  - The decision is unchanged.
+- **r10 (2026-11-19).** After Codex's fourth M1a review (C29–C35) and Fable's F10.
+  - **Compatibility:** the summary covers custom registries and other frontends (C35), and records the
+    `ValidatorAssembly.Frontend` signature change as an accepted P2 deviation, with a release-note API line (C33).
+  - **M3:** complete on `6c68f45a`.
   - The decision is unchanged.

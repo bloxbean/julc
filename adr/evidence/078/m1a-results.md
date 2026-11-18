@@ -328,6 +328,64 @@ not used to infer them (C19).
   - The runner imports `NoSuchAlgorithmException`.
   - Each run log starts with the SHA-256 of the compiler class files it loaded.
 
+## Changes after Codex's fourth M1a review (C29–C35) and Fable's (F10)
+
+Main code is frozen at `6c68f45a`; this round changes test sources, evidence and docs only.
+
+- **C29.** The comparator now reads the corpus. Each side's records must be exactly those the corpus calls for:
+  - one manifest record per case directory, with the entry and lookup its `case.txt` records;
+  - one compile record per eligible case and level directory;
+  - seven transaction-limit evaluations for each `compileMethod` case with the default lookup that compiled.
+
+  Every digest must be 64 hex digits, and a rejection must be a class name and a message digest. Each of these fails
+  with the same edit made to both sides:
+  - an evaluation and its retry deleted;
+  - only the 55 exclusions left;
+  - a null FLAT digest;
+  - a reason that is not a digest;
+  - a rejection without its digest;
+  - an evaluation the corpus does not call for;
+  - a manifest entry that is not the corpus's.
+- **C30.** `evaluationsMatchPre21` decides every evaluation that exhausted the transaction limit, on either side or
+  both, at the higher limit (`atTheHigherLimit`):
+  - both replays terminate: their outcomes must be equal;
+  - an exhaustion persists on either side: inconclusive.
+
+  The control `theHigherLimitDecidesAnExhaustion` checks that a pre21 success against a head failure is a mismatch.
+  The comparator's bounded case follows the same rule, with three controls.
+- **C31.** While preparing, the runner rejects, as a harness error:
+  - an entry point it does not dispatch;
+  - a lookup other than `default:org.julclang.stdlib.StdlibRegistry` or `none`;
+  - a `compileMethod` case without a method;
+  - a cost profile without its parameter hash.
+
+  The controls are `compileMethodV2`, a mistyped lookup and a profile missing its hash. The round-3 runner recorded
+  them as a rejection, a compile without a lookup, and a successful compile. The round-4 runner records each as a
+  harness error. No corpus manifest trips these checks, so the archived outputs stand.
+- **C32.** `everyBindingReachesTheMethodBoundCallbackOfItsHandler` finds each handler's spine inside the dispatcher
+  branch for its purpose tag (the value of `#result__tag<n>`). The binders each tag's callbacks received must equal
+  that branch's. Where the emitted PIR keeps the assembled terms, the received chain must be that branch's spine
+  itself; at least four multi-handler compilations are checked this way. These mutations of main code, each made
+  temporarily and reverted, fail the test:
+  - swapping tags 0 and 1 at every callback;
+  - suppressing one library method's callback;
+  - reassigning one method's tag.
+- **C33.** The ADR's compatibility section records the `ValidatorAssembly.Frontend` signature change as an accepted
+  P2 deviation: `methodBound` now receives the handler tag, and an `observer` component was added. The release note
+  has an API line: out-of-tree frontends must adapt. Main code is unchanged.
+- **C34.** Every one-sided exhaustion that the higher limit resolves to the same result is reported as a budget-only
+  difference, with both completed evaluations' budgets. It still passes I6b.
+- **C35.** The ADR's compatibility summary covers custom registries and other frontends, not only equal-key methods.
+  `m1a-pre21-recording.md` already gives the 1,152 evaluations, the exact diagnostics and the two-way id check (r9).
+- **F10.** `AssemblyObserver.bound` duplicates what `MethodBound` receives. This is by design: `JavacCompilation`
+  forwards its own callback to the observer, so the test records exactly what the frontend received. It is to be
+  simplified later; no code change now.
+- **Re-runs.**
+  - The comparator, with the corpus, on the archived outputs: 0 unaccepted, 0 budget-only, 0 inconclusive.
+  - The controls: `m1a-replay-comparator-controls.txt`, from `compare_replay_controls.py.txt`.
+  - The `adr078` fixture tests: 19 and 1, green.
+  - `./gradlew build` on the exact head.
+
 ## M3 (JOUST's half of the gate)
 
 M3 passed on `4bac295d` (`m3-joust-gate.txt`):
@@ -336,8 +394,18 @@ M3 passed on `4bac295d` (`m3-joust-gate.txt`):
 - source-map mode 67/67 identical.
 
 The coordinator re-ran it on `2c0edb6e` after C10 (`m3-joust-gate-2c0edb6e.txt`): passed, every `[hash]` line
-identical to the `4bac295d` run. Round 3 (F9/C26) changed main code again, so M3 is to be re-run on the final head.
+identical to the `4bac295d` run.
+
+**Final gate run: `6c68f45a`** (`m3-joust-gate-6c68f45a.txt`), on the final main code, after round 3's observer
+refactor. It passed:
+- 5 tests, 0 failures;
+- all 73 `[hash]` lines identical to the `4bac295d` and `2c0edb6e` runs;
+- Crowdfund `28e115b5…`, Tips `80648854…`;
+- maps-on 67/67.
+
+**M3 is complete.** Its JOUST deliverables (JOUST's pins, and D12 citing the known limits) follow when
+`0.1.0-pre22` is published. F-ID opens as the ADR's OQ9 says.
 
 ## Not done in M1a
 
-- **The JOUST half of the gate** is M3.
+- **The JOUST half of the gate** is M3, run separately by the coordinator (complete on `6c68f45a`, above).

@@ -4,14 +4,20 @@ Every record is validated against its kind and outcome: required fields present,
 outcomes, no unknown fields. A harness error on either side fails the comparison, even where both sides match. Each
 side must hold exactly one higher-limit retry for every evaluation that exhausted the transaction limit, and none
 for any other (an orphan retry fails). The cases a run skipped must be exactly the pinned 55 (SKIPPED_SHA256).
+Each side's records must be exactly the ones the corpus calls for (C29): one manifest record per case directory, with
+the entry and lookup its case.txt records; one compile record per eligible case and level directory; seven
+transaction-limit evaluations for each compileMethod case with the default lookup that compiled. Digests must be
+64 lowercase hex digits.
 
 Accepted, and reported apart: budget-only differences (I6b), of transaction-limit and of matched higher-limit
 evaluations; bounded comparisons (both sides exhausted the transaction limit; their higher-limit retries are
 compared, semantics and budget); and, per ADR-078's I6a rule, inconclusive cases (one side exhausted the transaction
-limit, and an exhaustion persists at the higher limit). Everything else that differs is unaccepted.
-Usage: compare_replay.py a.jsonl b.jsonl
+limit, and an exhaustion persists at the higher limit). Where the higher limit resolves a one-sided exhaustion to
+the same result, the two completed evaluations' budgets are reported as budget-only (C34). Everything else that
+differs is unaccepted.
+Usage: compare_replay.py corpus a.jsonl b.jsonl
 """
-import hashlib, json, sys
+import hashlib, json, os, re, sys
 from collections import Counter
 
 SKIPPED_SHA256 = "b95d72fa4d276c2e5ac8875804dc500a869734430241f9347c39fd280dc82798"
@@ -26,6 +32,11 @@ REQUIRED = {
     ("eval", "ok"): {"result", "traces", "cpu", "mem"}, ("eval", "fail"): {"reason", "traces", "cpu", "mem"},
     ("eval", "exhausted"): {"traces", "cpu", "mem"}, ("eval", "harness-error"): {"error"},
 }
+
+VECTORS = 7
+HEX = re.compile(r"[0-9a-f]{64}")
+THREW = re.compile(r"[A-Za-z_$][\w.$]* [0-9a-f]{64}")
+DIGESTS = ("flat", "result", "reason", "diagnostics")
 
 def fail(message):
     sys.exit(message)
@@ -48,6 +59,45 @@ def validate(path, number, r):
             fail(f"{path}:{number}: traces is not a list of strings")
         for field in ("cpu", "mem"):
             if field in r and not isinstance(r[field], int): fail(f"{path}:{number}: {field} is not an integer")
+    for field in DIGESTS:
+        if field in r and not (isinstance(r[field], str) and HEX.fullmatch(r[field])):
+            fail(f"{path}:{number}: {field} is not a SHA-256 digest: {r[field]!r}")
+    if kind == "compile" and state == "threw" and not (isinstance(r["error"], str) and THREW.fullmatch(r["error"])):
+        fail(f"{path}:{number}: a rejection is not a class name and a message digest: {r['error']!r}")
+
+def corpus(root):
+    """Per case: (entry, lookup prefix, skipped, levels), from case.txt and the level directories, as the runner reads them."""
+    cases = {}
+    for key in sorted(os.listdir(os.path.join(root, "cases"))):
+        directory = os.path.join(root, "cases", key)
+        fields = {}
+        for line in open(os.path.join(directory, "case.txt"), encoding="utf-8").read().split("\n"):
+            name, colon, value = line.partition(": ")
+            if colon and name not in fields: fields[name] = value
+        entry, lookup = fields["entry"], fields["lookup"]
+        skipped = entry == "JavaLibraryProvider" or lookup.startswith("custom:")
+        levels = sorted(n[len("level-"):] for n in os.listdir(directory) if n.startswith("level-"))
+        cases[key] = (entry, lookup.split(":")[0], skipped, levels)
+    return cases
+
+def expected(path, records, cases):
+    """Fails unless the records are exactly those the corpus calls for, given this side's compile outcomes."""
+    want = set()
+    for key, (entry, lookup, skipped, levels) in cases.items():
+        want.add((key, "", "manifest", "", ""))
+        r = records.get((key, "", "manifest", "", ""))
+        if r is not None and (r["status"], r.get("entry"), r.get("lookup")) != ("skipped" if skipped else "eligible", entry, lookup):
+            fail(f"{path}: manifest record of {key} is not the corpus's: {r}")
+        if skipped: continue
+        for level in levels:
+            want.add((key, level, "compile", "", ""))
+            c = records.get((key, level, "compile", "", ""))
+            if c is not None and c["status"] == "ok" and entry == "compileMethod" and lookup == "default":
+                want.update((key, level, "eval", v, "transaction") for v in range(VECTORS))
+    have = {rid for rid in records if rid[4] != "high"}
+    missing, extra = sorted(want - have), sorted(have - want)
+    if missing: fail(f"{path}: {len(missing)} record(s) the corpus calls for are missing, e.g. {missing[0]}")
+    if extra: fail(f"{path}: {len(extra)} record(s) the corpus does not call for, e.g. {extra[0]}")
 
 def load(path):
     records = {}
@@ -81,7 +131,10 @@ def semantic(r):
 def budget(r):
     return (r.get("cpu"), r.get("mem"))
 
-a, b = load(sys.argv[1]), load(sys.argv[2])
+cases = corpus(sys.argv[1])
+a, b = load(sys.argv[2]), load(sys.argv[3])
+expected(sys.argv[2], a, cases)
+expected(sys.argv[3], b, cases)
 failures, budget_only, inconclusive = [], [], []
 counts = Counter()
 for rid in sorted(set(a) | set(b)):
@@ -105,7 +158,12 @@ for rid in sorted(set(a) | set(b)):
             counts["evaluations bounded (both exhausted the transaction limit)"] += 1
             if semantic(x) != semantic(y): failures.append(("bounded evaluation differs", rid, x, y))
             hx, hy = a[hid], b[hid]
-            if semantic(hx) != semantic(hy): failures.append(("higher-limit retry differs", hid, hx, hy))
+            hex_, hey = hx["outcome"] == "exhausted", hy["outcome"] == "exhausted"
+            if hex_ != hey:
+                # An exhaustion that persists at the higher limit on one side: inconclusive (I6a, as the fixture oracle).
+                counts["evaluations inconclusive"] += 1
+                inconclusive.append(rid)
+            elif semantic(hx) != semantic(hy): failures.append(("higher-limit retry differs", hid, hx, hy))
             elif budget(hx) != budget(hy): budget_only.append((hid, budget(hx), budget(hy)))
             if budget(x) != budget(y): budget_only.append((rid, budget(x), budget(y)))
         elif ex or ey:
@@ -118,6 +176,8 @@ for rid in sorted(set(a) | set(b)):
                 failures.append(("evaluation differs at the higher limit", rid, hx, hy))
             else:
                 counts["evaluations demonstrated " + hx["outcome"] + " (after a one-sided exhaustion)"] += 1
+                # One side ran out of the transaction budget and the other did not: a budget difference, always (C34).
+                budget_only.append((rid, budget(hx), budget(hy)))
         else:
             counts["evaluations demonstrated " + x["outcome"]] += 1
             if semantic(x) != semantic(y): failures.append(("evaluation differs", rid, x, y))

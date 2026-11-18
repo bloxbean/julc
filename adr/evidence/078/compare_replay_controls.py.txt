@@ -1,0 +1,103 @@
+"""ADR-078 M1a: negative controls of compare_replay.py (round 4). Run from the scratch directory."""
+import json, subprocess
+CORPUS = '/Users/satya/work/bloxbean/julc-327-base/build/corpus327'
+pre = open('r5-pre21.jsonl').read().splitlines()
+head = open('r7-head.jsonl').read().splitlines()
+recs = [json.loads(l) for l in head]
+def dump(r): return json.dumps(r, separators=(',', ':'))
+def idx(pred): return next(i for i, r in enumerate(recs) if pred(r))
+def compare(a, b):
+    open('ctl-a.jsonl', 'w').write('\n'.join(a) + '\n'); open('ctl-b.jsonl', 'w').write('\n'.join(b) + '\n')
+    p = subprocess.run(['python3', 'compare_replay.py', CORPUS, 'ctl-a.jsonl', 'ctl-b.jsonl'], capture_output=True, text=True)
+    return p.returncode, (p.stdout + p.stderr).strip().splitlines()
+def show(name, code, lines):
+    errors = [l for l in lines if l.startswith('ctl-')]
+    if errors: key = errors[:1]
+    else: key = [l for l in lines if l.startswith(('unaccepted', 'budget-only', 'inconclusive'))] + [l.strip()[:150] for l in lines if l.startswith('   ')][:1]
+    print(f"{name}: exit {code}; {key}")
+def head_only(name, mutate):
+    out = list(head); mutate(out); show(name, *compare(pre, out))
+def both(name, mutate):
+    a, b = list(pre), list(head); mutate(a); mutate(b); show(name, *compare(a, b))
+def setf(pred, field, value):
+    def m(out):
+        i = idx(pred); r = dict(recs[i]); r[field] = value(r[field]) if callable(value) else value; out[i] = dump(r)
+    return m
+ok_eval = lambda r: r['kind'] == 'eval' and r['outcome'] == 'ok'
+ok_compile = lambda r: r['kind'] == 'compile' and r['status'] == 'ok'
+high = lambda r: r['kind'] == 'eval' and r['limit'] == 'high'
+def delete(pred):
+    def m(out):
+        i = idx(pred); del out[i]
+    return m
+def delete_eval_and_retry(out):
+    i = idx(high); r = recs[i]
+    out[:] = [l for l in out if not (l.startswith('{"case":"%s","level":"%s","kind":"eval","vector":%d,' % (r['case'], r['level'], r['vector'])))]
+def only_exclusions(out):
+    out[:] = [l for l in out if '"status":"skipped"' in l]
+def orphan(out):
+    i = idx(lambda r: r['kind'] == 'eval' and r['limit'] == 'transaction' and r['outcome'] == 'ok'); r = dict(recs[i]); r['limit'] = 'high'; out.append(dump(r))
+def missing_flat(out):
+    i = idx(ok_compile); r = dict(recs[i]); del r['flat']; out[i] = dump(r)
+def harness(out):
+    i = idx(ok_compile); r = recs[i]
+    out[i] = dump({'case': r['case'], 'level': r['level'], 'kind': 'compile', 'status': 'harness-error', 'error': 'java.io.IOException: staged'})
+def extra_skip(out):
+    i = idx(lambda r: r['kind'] == 'manifest' and r['status'] == 'eligible'); r = dict(recs[i]); r['status'] = 'skipped'; out[i] = dump(r)
+def extra_eval(out):
+    i = idx(lambda r: r['kind'] == 'eval' and r['vector'] == 6 and r['limit'] == 'transaction'); r = dict(recs[i]); r['vector'] = 7; out.append(dump(r))
+def entry_not_corpus(out):
+    i = idx(lambda r: r['kind'] == 'manifest' and r['entry'] == 'compileMethod'); r = dict(recs[i]); r['entry'] = 'compile'; out[i] = dump(r)
+def one_sided(high_outcome, cpu_delta):
+    def m(out):
+        i = idx(lambda r: r['kind'] == 'eval' and r['limit'] == 'transaction' and r['outcome'] == 'ok'); r = recs[i]
+        base = {k: r[k] for k in ('case', 'level', 'kind', 'vector')}
+        out[i] = dump({**base, 'limit': 'transaction', 'outcome': 'exhausted', 'traces': [], 'cpu': 10000000001, 'mem': 500})
+        h = {**base, 'limit': 'high', 'outcome': 'exhausted', 'traces': [], 'cpu': 1000000000001, 'mem': 500} if high_outcome == 'exhausted' \
+            else {**r, 'limit': 'high', 'cpu': r['cpu'] + cpu_delta}
+        out.append(dump(h))
+    return m
+print("# Each control edits the head's output, or both outputs (\"both sides\"), and compares against pre21's with the corpus.")
+head_only('baseline: the archived outputs, unedited', lambda out: None)
+head_only('a changed result digest', setf(ok_eval, 'result', '0' * 64))
+head_only('a changed trace list', setf(ok_eval, 'traces', lambda v: v + ['x']))
+head_only('a changed FLAT digest', setf(ok_compile, 'flat', '0' * 64))
+head_only('a record missing', delete(ok_eval))
+head_only('a missing higher-limit record', delete(high))
+head_only('an orphan higher-limit retry', orphan)
+head_only('compile/ok without flat', missing_flat)
+head_only('an unknown kind', lambda out: out.append(dump({'case': 'x', 'kind': 'mystery', 'status': 'ok'})))
+head_only('an extra excluded case', extra_skip)
+head_only('a harness error (one side)', harness)
+head_only('a malformed line', lambda out: out.insert(5, '[TRACE] a continuation line'))
+head_only('a duplicate record', lambda out: out.insert(5, out[5]))
+both('C29, both sides: an evaluation and its higher-limit retry deleted', delete_eval_and_retry)
+both('C29, both sides: only the 55 exclusions', only_exclusions)
+both('C29, both sides: a FLAT digest null', setf(ok_compile, 'flat', None))
+both('C29, both sides: a failure reason that is not a digest', setf(lambda r: r['kind'] == 'eval' and r['outcome'] == 'fail', 'reason', 'boom'))
+both('C29, both sides: a rejection without its message digest', setf(lambda r: r['kind'] == 'compile' and r['status'] == 'threw', 'error', 'org.julclang.compiler.CompilerException'))
+both('C29, both sides: an evaluation the corpus does not call for (vector 7)', extra_eval)
+both("C29, both sides: a manifest entry that is not the corpus's", entry_not_corpus)
+both('C21, both sides: the same harness error', harness)
+head_only('a transaction-limit budget-only change', setf(ok_eval, 'cpu', lambda v: v + 1))
+head_only('a higher-limit CPU change', setf(high, 'cpu', lambda v: v + 1))
+head_only('a one-sided exhaustion that persists at the higher limit', one_sided('exhausted', 0))
+head_only('C34: a one-sided exhaustion the higher limit resolves to the same result', one_sided('ok', 0))
+def one_sided_other_result(out):
+    one_sided('ok', 0)(out); r = json.loads(out[-1]); r['result'] = '0' * 64; out[-1] = dump(r)
+head_only('a one-sided exhaustion the higher limit resolves to another result', one_sided_other_result)
+def bounded(pre21_high, head_high):
+    """Both sides exhaust the transaction limit for one evaluation; the higher-limit retries are as given."""
+    def m(out, side):
+        i = idx(lambda r: r['kind'] == 'eval' and r['limit'] == 'transaction' and r['outcome'] == 'ok'); r = recs[i]
+        base = {k: r[k] for k in ('case', 'level', 'kind', 'vector')}
+        out[i] = dump({**base, 'limit': 'transaction', 'outcome': 'exhausted', 'traces': [], 'cpu': 10000000001, 'mem': 500})
+        h = pre21_high if side == 'a' else head_high
+        out.append(dump({**base, 'limit': 'high', **h}))
+    a, b = list(pre), list(head); m(a, 'a'); m(b, 'b'); return compare(a, b)
+ok_high = {'outcome': 'ok', 'result': '1' * 64, 'traces': [], 'cpu': 20000000000, 'mem': 500}
+fail_high = {'outcome': 'fail', 'reason': '2' * 64, 'traces': [], 'cpu': 20000000000, 'mem': 500}
+ex_high = {'outcome': 'exhausted', 'traces': [], 'cpu': 1000000000001, 'mem': 500}
+show('C30, both exhaust: pre21 succeeds at the higher limit, the head fails', *bounded(ok_high, fail_high))
+show('C30, both exhaust: both succeed alike at the higher limit', *bounded(ok_high, ok_high))
+show('C30, both exhaust: pre21 succeeds at the higher limit, the head still exhausts', *bounded(ok_high, ex_high))
