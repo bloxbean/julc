@@ -205,6 +205,20 @@ a final version is published, to `next`):
 
 ## Recovery
 
+Find your case first; the explanations follow.
+
+| What you see | Do this |
+|---|---|
+| A job failed, and no whole-workflow re-run has been made | "Re-run failed jobs" in that run |
+| `wasm` says the tag "already has a GitHub release" | Complete the release by hand if assets are missing (below), then dispatch on the tag |
+| Dispatch: "No run for the push of v… has a successful attestation yet" | "Re-run failed jobs" in the tag's push run, then dispatch again |
+| Dispatch: "Several runs for the push of v… attested npm files" | Stop: a maintainer decides which build is the release |
+| Dispatch: "Cannot read the run history" | Dispatch again later (a GitHub API problem; nothing was chosen) |
+| Dispatch: "no longer available", or a re-run's download step fails after 14 days | The version cannot reach npm: deprecate any package of it already published, and release the next version |
+| `npm-publish`: "already on the registry and is not this release's tarball" | Do not retry: investigate (see below); that version number is spent |
+| `npm-publish`: "did not show it within 300 s" | Re-run the failed job (the registry was slow) |
+| `npm-verify` failed | Treat the release as bad until the cause is known ("A bad release") |
+
 A release is built once. Web Image output is not byte-identical across builds, so the workflow never rebuilds a
 version that has a GitHub release: `wasm` stops first, with a message pointing here. Never delete release assets or
 recreate a release to "start again"; npm is the record once a version is published.
