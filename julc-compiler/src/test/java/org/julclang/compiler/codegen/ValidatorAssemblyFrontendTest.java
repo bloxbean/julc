@@ -32,7 +32,7 @@ class ValidatorAssemblyFrontendTest {
     void everyMethodBinderIsReported() {
         var told = new ArrayList<String>();
         var frontend = new ValidatorAssembly.Frontend(new IdentityHashMap<>(), null, null, term -> { }, null,
-                (name, binding) -> told.add(name + " " + binding.getClass().getSimpleName()));
+                (handler, name, binding) -> told.add(name + " " + binding.getClass().getSimpleName()));
         var methods = List.of(
                 new ValidatorAssembly.Method("P.m", one()),
                 new ValidatorAssembly.Method("P.loop", self("P.loop")),

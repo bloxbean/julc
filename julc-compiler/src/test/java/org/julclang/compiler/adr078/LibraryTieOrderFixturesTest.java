@@ -1,18 +1,28 @@
 package org.julclang.compiler.adr078;
 
 import org.julclang.compiler.adr078.Adr078Fixtures.Evaluation;
+import org.julclang.compiler.CompileResult;
+import org.julclang.compiler.CompilerOptions;
+import org.julclang.compiler.CompilerTarget;
+import org.julclang.compiler.JavaLibraryProvider;
+import org.julclang.compiler.JulcCompiler;
+import org.julclang.compiler.OptimizationLevel;
 import org.julclang.compiler.codegen.ValidatorAssembly;
+import org.julclang.compiler.frontend.javac.Adr078AssemblyBridge;
+import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.adr078.Adr078Fixtures.Fixture;
 import org.julclang.compiler.adr078.Adr078Fixtures.Mode;
 import org.julclang.compiler.adr078.Adr078Fixtures.Outcome;
 import org.julclang.compiler.adr078.Adr078Fixtures.Variant;
 import org.julclang.core.PlutusData;
+import org.julclang.stdlib.StdlibRegistry;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -194,29 +204,126 @@ class LibraryTieOrderFixturesTest {
         });
     }
 
+    /** A variant compiled through the test bridge with {@code observer}: the same compilation, observed (C26). */
+    private static CompileResult observed(Variant variant, Mode mode, ValidatorAssembly.AssemblyObserver observer) {
+        var options = mode.options(null);
+        return variant.method() == null ? Adr078AssemblyBridge.validator(variant.target(), variant.libraries(), options, observer)
+                : Adr078AssemblyBridge.method(variant.target(), variant.method(), variant.libraries(), options, observer);
+    }
+
     /**
-     * I3 (Codex M1a C17): every method binding is reported to the frontend's {@code methodBound} callback, once per
-     * binding and handler copy, unread ones and C22's helper and library copies included: the bindings the callback is
-     * told equal the method binders in the emitted PIR.
+     * The method binders of each handler's let spine in a PIR term: a spine starts at a let of a qualified (dotted)
+     * binder that no such spine encloses, and runs down the lets' bodies.
+     */
+    private static List<List<String>> handlerSpines(PirTerm term) {
+        var spines = new ArrayList<List<String>>();
+        var pending = new ArrayDeque<PirTerm>();
+        pending.push(term);
+        while (!pending.isEmpty()) {
+            var next = pending.pop();
+            if (startsSpine(next)) {
+                var names = new ArrayList<String>();
+                var at = next;
+                while (at instanceof PirTerm.Let || at instanceof PirTerm.LetRec) {
+                    if (at instanceof PirTerm.Let let) {
+                        if (let.name().contains(".")) names.add(let.name());
+                        at = let.body();
+                    } else {
+                        var rec = (PirTerm.LetRec) at;
+                        for (var binding : rec.bindings()) if (binding.name().contains(".")) names.add(binding.name());
+                        at = rec.body();
+                    }
+                }
+                Collections.sort(names);
+                spines.add(names);
+                continue;
+            }
+            switch (next) {
+                case PirTerm.Let let -> { pending.push(let.value()); pending.push(let.body()); }
+                case PirTerm.LetRec rec -> { rec.bindings().forEach(b -> pending.push(b.value())); pending.push(rec.body()); }
+                case PirTerm.Lam lam -> pending.push(lam.body());
+                case PirTerm.App app -> { pending.push(app.function()); pending.push(app.argument()); }
+                case PirTerm.IfThenElse ite -> { pending.push(ite.cond()); pending.push(ite.thenBranch()); pending.push(ite.elseBranch()); }
+                case PirTerm.Trace trace -> { pending.push(trace.message()); pending.push(trace.body()); }
+                case PirTerm.DataMatch match -> { pending.push(match.scrutinee()); match.branches().forEach(b -> pending.push(b.body())); }
+                case PirTerm.ListMatch match -> { pending.push(match.scrutinee()); pending.push(match.nilBranch()); pending.push(match.consBranch()); }
+                case PirTerm.PairMatch match -> { pending.push(match.scrutinee()); pending.push(match.body()); }
+                case PirTerm.IntegerCase integerCase -> { pending.push(integerCase.scrutinee()); integerCase.branches().forEach(pending::push); }
+                case PirTerm.DataConstr constr -> constr.fields().forEach(pending::push);
+                default -> {
+                }
+            }
+        }
+        return spines;
+    }
+
+    /** Whether {@code inner} is {@code outer} or lies down the chain of {@code outer}'s let bodies. */
+    private static boolean encloses(PirTerm outer, PirTerm inner) {
+        var at = outer;
+        while (true) {
+            if (at == inner) return true;
+            if (at instanceof PirTerm.Let let) at = let.body();
+            else if (at instanceof PirTerm.LetRec rec) at = rec.body();
+            else return false;
+        }
+    }
+
+    private static boolean startsSpine(PirTerm term) {
+        return term instanceof PirTerm.Let let && let.name().contains(".")
+                || term instanceof PirTerm.LetRec rec && rec.bindings().stream().anyMatch(b -> b.name().contains("."));
+    }
+
+    /**
+     * I3 (Codex M1a C17, C25): every method binding reaches the frontend's {@code methodBound} callback, recorded where
+     * the callback receives it, once per binding and handler copy, unread ones and C22's helper and library copies
+     * included. Per handler, the binders the callback received equal the binders of that handler's let spine in the
+     * emitted PIR.
      */
     @Test
-    void everyBindingReachesTheMethodBoundCallback() {
+    void everyBindingReachesTheMethodBoundCallbackOfItsHandler() {
         int compared = 0;
         for (var fixture : Adr078Fixtures.fixtures()) {
             for (var variant : fixture.variants()) {
                 for (var mode : Adr078Fixtures.modes()) {
-                    var bound = new ArrayList<String>();
-                    var handlers = new TreeSet<Integer>();
-                    var outcome = ValidatorAssembly.observing((handler, binder) -> {
-                        bound.add(binder);
-                        handlers.add(handler);
-                    }, () -> Adr078Fixtures.compile(variant, mode));
-                    if (!outcome.compiled()) continue;
-                    Collections.sort(bound);
-                    assertEquals(outcome.binders(), bound.toString(), key(fixture, variant, mode));
-                    if (fixture.name().contains("multi-purpose") || fixture.name().contains("handlers-against-tag-order")) {
-                        assertEquals(List.of(0, 1), List.copyOf(handlers), key(fixture, variant, mode) + ": both handlers bind");
+                    var byHandler = new TreeMap<Integer, List<String>>();
+                    var terms = new TreeMap<Integer, List<PirTerm>>();
+                    CompileResult result;
+                    try {
+                        result = observed(variant, mode, new ValidatorAssembly.AssemblyObserver() {
+                            @Override
+                            public void bound(int handler, String binder, PirTerm binding) {
+                                byHandler.computeIfAbsent(handler, h -> new ArrayList<>()).add(binder);
+                                terms.computeIfAbsent(handler, h -> new ArrayList<>()).add(binding);
+                            }
+                        });
+                    } catch (RuntimeException rejected) {
+                        assertTrue(!NOW.get(key(fixture, variant, mode)).compiled(), key(fixture, variant, mode) + ": " + rejected);
+                        continue;
                     }
+                    if (result.hasErrors()) continue;
+                    var received = new ArrayList<List<String>>();
+                    byHandler.values().forEach(names -> {
+                        var sorted = new ArrayList<>(names);
+                        Collections.sort(sorted);
+                        received.add(sorted);
+                    });
+                    var emitted = handlerSpines(result.pirTerm());
+                    var receivedSorted = new ArrayList<>(received.stream().map(Object::toString).toList());
+                    var emittedSorted = new ArrayList<>(emitted.stream().map(Object::toString).toList());
+                    Collections.sort(receivedSorted);
+                    Collections.sort(emittedSorted);
+                    assertEquals(emittedSorted, receivedSorted, key(fixture, variant, mode));
+                    // Each handler's bindings form one chain: each binding term encloses the one reported before it,
+                    // so a binding reported under another handler's tag is told apart even where both bind its name.
+                    terms.forEach((handler, chain) -> {
+                        for (int i = 1; i < chain.size(); i++) {
+                            assertTrue(encloses(chain.get(i), chain.get(i - 1)), key(fixture, variant, mode) + ": handler "
+                                    + handler + "'s binding " + byHandler.get(handler).get(i) + " does not enclose "
+                                    + byHandler.get(handler).get(i - 1));
+                        }
+                    });
+                    boolean multi = fixture.name().contains("multi-purpose") || fixture.name().contains("handlers-against-tag-order");
+                    assertEquals(multi ? List.of(0, 1) : List.of(-1), List.copyOf(byHandler.keySet()), key(fixture, variant, mode));
                     compared++;
                 }
             }
@@ -234,23 +341,62 @@ class LibraryTieOrderFixturesTest {
         for (var fixture : Adr078Fixtures.fixtures()) {
             for (var variant : fixture.variants()) {
                 var made = new ArrayList<String>();
-                ValidatorAssembly.observing(new ValidatorAssembly.AssemblyObserver() {
-                    @Override
-                    public void bound(int handler, String binder) {
-                    }
-
-                    @Override
-                    public void chose(String key, Map<String, Integer> contenders, String winner) {
-                        int lowest = contenders.values().stream().mapToInt(Integer::intValue).min().orElseThrow();
-                        assertEquals(lowest, contenders.get(winner), variant.label() + ": " + contenders);
-                        made.add(winner);
-                    }
-                }, () -> Adr078Fixtures.compile(variant, new Mode("none", false)));
+                try {
+                    observed(variant, new Mode("none", false), new ValidatorAssembly.AssemblyObserver() {
+                        @Override
+                        public void chose(String key, Map<String, Integer> contenders, String winner) {
+                            int lowest = contenders.values().stream().mapToInt(Integer::intValue).min().orElseThrow();
+                            assertEquals(lowest, contenders.get(winner), variant.label() + ": " + contenders);
+                            made.add(winner);
+                        }
+                    });
+                } catch (RuntimeException rejected) {
+                    continue;
+                }
                 choices += made.size();
                 if (fixture.name().equals("twins-reached")) assertTrue(!made.isEmpty(), variant.label() + ": no equal-key choice");
             }
         }
         assertTrue(choices > 10, "choices " + choices);
+    }
+
+    /**
+     * Codex M1a C22 (ADR-078 r8's compatibility exception): a custom registry whose {@code Math.abs} builder applies a
+     * materialised {@code q.M.b}, a closed {@code let q.M.b = λy.y in q.M.b}, inside library method {@code a}. The
+     * spelling search of pre21 read that as a call of the program's own {@code q.M.b}, which calls {@code a}: a false
+     * cycle, which pre21 keyed with group tokens and bound as z, a, b (FLAT 9aa526d2…, 48 B, recorded on the pre21
+     * artifacts). With one lexical graph, a is bound outside b, which calls it: a, b, z. Java-only programs are not
+     * affected (the corpus replay and the julc-examples gate are identical to pre21's).
+     */
+    @Test
+    void aCustomRegistrysMaterialisedBindingIsNoCall() throws Exception {
+        String provided = "package q;\nimport org.julclang.stdlib.annotation.OnchainLibrary;\n@OnchainLibrary\npublic class M {\n"
+                + "    public static long b(long y) { return y; }\n}\n";
+        var materialised = new JavaLibraryProvider(List.of(provided), null, new CompilerOptions()).materialize("q.M.b");
+        var registry = new StdlibRegistry();
+        registry.register("Math", "abs", args -> new PirTerm.App(materialised, args.getFirst()));
+        String library = "package q;\nimport org.julclang.stdlib.annotation.OnchainLibrary;\n@OnchainLibrary\npublic class M {\n"
+                + "    public static long a(long x) { return Math.abs(x); }\n"
+                + "    public static long b(long x) { return a(x) + 9; }\n"
+                + "    public static long z(long x) { return x + 9; }\n}\n";
+        String target = "package v;\nimport q.M;\nclass T {\n    static long f(long x) { return M.b(x) + M.z(x); }\n}\n";
+        var options = new CompilerOptions().setTarget(CompilerTarget.PLUTUS_V3_PV11).setOptimizationLevel(OptimizationLevel.NONE);
+        // The materialised term's binders were built by the provider, not for this program's source: the test JVM's
+        // I13 binder check (julc.verifyBinderNamespace) does not apply to such a registry, and production never runs it.
+        String before = System.getProperty("julc.verifyBinderNamespace");
+        System.setProperty("julc.verifyBinderNamespace", "false");
+        CompileResult result;
+        try {
+            result = new JulcCompiler(registry, options).compileMethod(target, "f", List.of(library));
+        } finally {
+            if (before == null) System.clearProperty("julc.verifyBinderNamespace");
+            else System.setProperty("julc.verifyBinderNamespace", before);
+        }
+        String pir = result.pirFormatted();
+        int a = pir.indexOf("(let q.M.a ="), b = pir.indexOf("(let q.M.b ="), z = pir.indexOf("(let q.M.z =");
+        assertTrue(a >= 0 && a < b && b < z, "outermost first a, b, z: " + a + ", " + b + ", " + z);
+        assertEquals("d0e16561f2dc5cc2323efa67c78ba7a380b84dcec13a808e074ee77459ed5b53 48 B",
+                Adr078Fixtures.outcome(result).toString());
     }
 
     /** C14: the trace encoding tells two traces from one trace that contains a quote and a comma. */
@@ -438,6 +584,14 @@ class LibraryTieOrderFixturesTest {
                     if (!outcome.compiled()) continue;
                     String prefix = key(fixture, variant, mode) + " | ";
                     Map<String, Evaluation> now = Adr078Fixtures.evaluations(fixture, outcome);
+                    // Codex M1a C24: the evaluations made are exactly the evaluations pre21 recorded, both ways.
+                    var recorded = new TreeSet<String>();
+                    for (String recordedKey : PRE21.keySet()) {
+                        if (!recordedKey.startsWith(prefix)) continue;
+                        String suffix = recordedKey.substring(prefix.length());
+                        if (suffix.startsWith("eval ") || suffix.startsWith("applied")) recorded.add(suffix);
+                    }
+                    assertEquals(recorded, new TreeSet<>(now.keySet()), prefix + "evaluation ids");
                     for (var entry : now.entrySet()) {
                         String suffix = entry.getKey();
                         if (suffix.endsWith(" high") || suffix.endsWith("c12-limit")) continue;
@@ -451,9 +605,8 @@ class LibraryTieOrderFixturesTest {
                             var high = now.get(suffix + " high");
                             if (pre21High == null || high == null) {
                                 mismatches.add(prefix + suffix + ": one-sided exhaustion with no replay");
-                            } else if (!pre21High.startsWith("EXHAUSTED") && high.exhausted()) {
-                                mismatches.add(prefix + suffix + ": pre21 terminated at the higher limit, this build did not");
-                            } else if (pre21High.startsWith("EXHAUSTED") && high.exhausted()) {
+                            } else if (pre21High.startsWith("EXHAUSTED") || high.exhausted()) {
+                                // ADR-078 I6a oracle: an exhaustion that persists at the higher limit is inconclusive.
                                 inconclusive++;
                             } else if (!pre21High.equals(high.outcome())) {
                                 mismatches.add(prefix + suffix + " high: pre21 " + pre21High + ", now " + high.outcome());
