@@ -20,6 +20,8 @@ public final class Adr078Census {
     public static final ThreadLocal<List<String>> FULL_SEQ = new ThreadLocal<>();
     public static final ThreadLocal<Boolean> FULL_CHANGES_ORDER = new ThreadLocal<>();
     public static final ThreadLocal<List<String>> OLD_ORDER = new ThreadLocal<>();
+    /** The D1a-only order (unreachable ties by name), each method labelled by key and its name-independent D1b rank. */
+    public static final ThreadLocal<List<String>> D1A_SEQ = new ThreadLocal<>();
     public static final ThreadLocal<List<String>> FULL_ORDER = new ThreadLocal<>();
     public record Result(int library, int reachable, int equalKeyGroups, int reachableTieGroups, boolean m1aChangesOrder, boolean m1aChangesReachableOrder,
                          int residualGroups, List<String> m1aKeyRankSequence, String detail, List<String> unreachable) {}
@@ -154,6 +156,9 @@ public final class Adr078Census {
             if (reach >= 2) detail.append("  reachable tie (").append(g.size()).append(" members, ").append(reach)
                     .append(" reachable): ").append(g).append('\n');
         }
+        var d1a = new ArrayList<String>();
+        for (var n : newOrder) d1a.add(keys.get(n).substring(0, 8) + "@" + full.get(n));
+        D1A_SEQ.set(d1a);
         var seq = new ArrayList<String>();
         for (var n : newOrder) seq.add(keys.get(n).substring(0, 8) + "@" + (rank.containsKey(n) ? rank.get(n) : "U"));
         return new Result(library.size(), (int) library.keySet().stream().filter(rank::containsKey).count(), eq, reachTies,

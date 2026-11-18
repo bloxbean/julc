@@ -1,419 +1,424 @@
-# ADR-078 r2 census, JOUST corpus (joust-julc-pre21@5522cafc, JuLC 0.1.0-pre21), 2026-11-18. Adr078Diag.java.txt + Adr078Census.java.txt.
-# Per program, as committed (-base) and after renameAll (-renamed):
-#  CENSUS: library methods bound, reachable from the root (D1's T), equal-key groups, groups with >=2 reachable members,
-#          whether M1a's comparator changes the full / the reachable binding order vs pre21's (qualified name).
-#  T2: ties left after ranking unreachable methods (D1b) between bodies that are not alpha-equal (0 = none), and
-#      whether the full order changes vs pre21 (visible at level NONE and in source-map builds).
-#  DEAD-SURVIVING: unreachable library bindings still present in the default-profile UPLC.
-#  DEFAULT-LEVEL-ORDER-CHANGE: whether the order of the library binders present in the default UPLC changes vs pre21.
-#  M1A: whether M1a's order (key@rank sequence, T and T2) is the same for -base and -renamed.
+# ADR-078 r2/r3 census, JOUST corpus (joust-julc-pre21@5522cafc, JuLC 0.1.0-pre21), 2026-11-18. Adr078Diag.java.txt + Adr078Census.java.txt.
+# WHAT WAS MEASURED (ADR-078 r3, C16): a SIMULATION. The census reads pre21's captured PIR (after the PIR passes, before UPLC),
+# recomputes ADR-075 content keys by reflection, and simulates Kahn's order with pre21's comparator and with M1a's.
+# Orders are compared as sequences of (first 8 hex digits of the content key)@(rank). No M1a bytes were produced.
+# Lines, per program, as committed (-base); -renamed lines only for M1A / D1A-ONLY:
+#  CENSUS: library methods bound; reachable from the root (D1a's T); equal-key groups; groups with >=2 reachable members;
+#          whether the simulated full / reachable order differs from pre21's.
+#  T2: D1b ties between bodies that are not alpha-equal (residual), and whether the simulated full order differs from pre21's.
+#  DEAD-SURVIVING: unreachable library binders whose names occur in the default-profile UPLC (printer names).
+#  DEFAULT-LEVEL-ORDER-CHANGE: whether the simulated order, filtered to binder names found in the default-profile UPLC, differs from pre21's.
+#  D1A-ONLY / M1A: whether the D1a-only order (unreachable ties by name) / the D1a+D1b order is the same for -base and -renamed.
+# NOTE: D1b here walks unreachable LIBRARY methods only; the r3 rule that first walks unread validator helpers is not simulated.
 T2 Armory-base residual=0 changesOrder=false
-CENSUS Armory-base library=206 reachable=41 eqKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
+CENSUS Armory-base library=206 reachable=41 equalKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
 DEAD-SURVIVING Armory-base 7 [org.julclang.state.api.mpf.Mpf.combine, org.julclang.state.api.mpf.Mpf.merkle4, org.julclang.state.api.mpf.Mpf.combineMe, org.julclang.state.api.mpf.Mpf.sparseMerkle4, org.julclang.state.api.mpf.Mpf.sparseMerkle8, org.julclang.state.api.mpf.Mpf.merkle8, org.julclang.state.api.mpf.Mpf.sparseMerkle16]
 DEFAULT-LEVEL-ORDER-CHANGE Armory-base false
-DEFAULT-LEVEL-ORDER-CHANGE Armory-renamed false
+D1A-ONLY Armory.jsc order name-independent (base vs renamed): true
 M1A Armory.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 Bank-base residual=0 changesOrder=false
-CENSUS Bank-base library=158 reachable=29 eqKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
+CENSUS Bank-base library=158 reachable=29 equalKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
 DEAD-SURVIVING Bank-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE Bank-base false
-DEFAULT-LEVEL-ORDER-CHANGE Bank-renamed false
+D1A-ONLY Bank.jsc order name-independent (base vs renamed): true
 M1A Bank.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 Bounds-base residual=0 changesOrder=false
-CENSUS Bounds-base library=207 reachable=32 eqKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
+CENSUS Bounds-base library=207 reachable=32 equalKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
 DEAD-SURVIVING Bounds-base 7 [org.julclang.state.api.mpf.Mpf.combine, org.julclang.state.api.mpf.Mpf.merkle4, org.julclang.state.api.mpf.Mpf.combineMe, org.julclang.state.api.mpf.Mpf.sparseMerkle4, org.julclang.state.api.mpf.Mpf.sparseMerkle8, org.julclang.state.api.mpf.Mpf.merkle8, org.julclang.state.api.mpf.Mpf.sparseMerkle16]
 DEFAULT-LEVEL-ORDER-CHANGE Bounds-base false
-DEFAULT-LEVEL-ORDER-CHANGE Bounds-renamed false
+D1A-ONLY Bounds.jsc order name-independent (base vs renamed): true
 M1A Bounds.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 Branches-base residual=0 changesOrder=false
-CENSUS Branches-base library=179 reachable=44 eqKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
+CENSUS Branches-base library=179 reachable=44 equalKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
 DEAD-SURVIVING Branches-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE Branches-base false
-DEFAULT-LEVEL-ORDER-CHANGE Branches-renamed false
+D1A-ONLY Branches.jsc order name-independent (base vs renamed): true
 M1A Branches.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 Coins-base residual=0 changesOrder=true
-CENSUS Coins-base library=245 reachable=84 eqKeyGroups=4 reachableTieGroups=1 m1aChangesOrder=true m1aChangesReachableOrder=true residualUnreachableGroups=0
+CENSUS Coins-base library=245 reachable=84 equalKeyGroups=4 reachableTieGroups=1 m1aChangesOrder=true m1aChangesReachableOrder=true residualUnreachableGroups=0
 DEAD-SURVIVING Coins-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE Coins-base true
-DEFAULT-LEVEL-ORDER-CHANGE Coins-renamed true
+D1A-ONLY Coins.jsc order name-independent (base vs renamed): true
 M1A Coins.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 Council-base residual=0 changesOrder=false
-CENSUS Council-base library=186 reachable=39 eqKeyGroups=4 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=1
+CENSUS Council-base library=186 reachable=39 equalKeyGroups=4 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=1
 DEAD-SURVIVING Council-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE Council-base false
-DEFAULT-LEVEL-ORDER-CHANGE Council-renamed false
+D1A-ONLY Council.jsc order name-independent (base vs renamed): true
 M1A Council.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 Counter2-base residual=0 changesOrder=false
-CENSUS Counter2-base library=146 reachable=23 eqKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
+CENSUS Counter2-base library=146 reachable=23 equalKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
 DEAD-SURVIVING Counter2-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE Counter2-base false
-DEFAULT-LEVEL-ORDER-CHANGE Counter2-renamed false
+D1A-ONLY Counter2.jsc order name-independent (base vs renamed): true
 M1A Counter2.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 CounterV1-base residual=0 changesOrder=false
-CENSUS CounterV1-base library=144 reachable=21 eqKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
+CENSUS CounterV1-base library=144 reachable=21 equalKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
 DEAD-SURVIVING CounterV1-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE CounterV1-base false
-DEFAULT-LEVEL-ORDER-CHANGE CounterV1-renamed false
+D1A-ONLY CounterV1.jsc order name-independent (base vs renamed): true
 M1A CounterV1.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 CounterV2-base residual=0 changesOrder=false
-CENSUS CounterV2-base library=153 reachable=27 eqKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
+CENSUS CounterV2-base library=153 reachable=27 equalKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
 DEAD-SURVIVING CounterV2-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE CounterV2-base false
-DEFAULT-LEVEL-ORDER-CHANGE CounterV2-renamed false
+D1A-ONLY CounterV2.jsc order name-independent (base vs renamed): true
 M1A CounterV2.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 Crowdfund-base residual=0 changesOrder=true
-CENSUS Crowdfund-base library=161 reachable=34 eqKeyGroups=3 reachableTieGroups=1 m1aChangesOrder=true m1aChangesReachableOrder=false residualUnreachableGroups=0
+CENSUS Crowdfund-base library=161 reachable=34 equalKeyGroups=3 reachableTieGroups=1 m1aChangesOrder=true m1aChangesReachableOrder=false residualUnreachableGroups=0
 DEAD-SURVIVING Crowdfund-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE Crowdfund-base false
-DEFAULT-LEVEL-ORDER-CHANGE Crowdfund-renamed true
+D1A-ONLY Crowdfund.jsc order name-independent (base vs renamed): true
 M1A Crowdfund.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 Desk-base residual=0 changesOrder=false
-CENSUS Desk-base library=213 reachable=40 eqKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
+CENSUS Desk-base library=213 reachable=40 equalKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
 DEAD-SURVIVING Desk-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE Desk-base false
-DEFAULT-LEVEL-ORDER-CHANGE Desk-renamed false
+D1A-ONLY Desk.jsc order name-independent (base vs renamed): true
 M1A Desk.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 Dex-base residual=0 changesOrder=true
-CENSUS Dex-base library=241 reachable=55 eqKeyGroups=4 reachableTieGroups=1 m1aChangesOrder=true m1aChangesReachableOrder=true residualUnreachableGroups=1
+CENSUS Dex-base library=241 reachable=55 equalKeyGroups=4 reachableTieGroups=1 m1aChangesOrder=true m1aChangesReachableOrder=true residualUnreachableGroups=1
 DEAD-SURVIVING Dex-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE Dex-base true
-DEFAULT-LEVEL-ORDER-CHANGE Dex-renamed true
+D1A-ONLY Dex.jsc order name-independent (base vs renamed): true
 M1A Dex.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 Escrow-base residual=0 changesOrder=false
-CENSUS Escrow-base library=149 reachable=26 eqKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
+CENSUS Escrow-base library=149 reachable=26 equalKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
 DEAD-SURVIVING Escrow-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE Escrow-base false
-DEFAULT-LEVEL-ORDER-CHANGE Escrow-renamed false
+D1A-ONLY Escrow.jsc order name-independent (base vs renamed): true
 M1A Escrow.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 Ferry-base residual=0 changesOrder=false
-CENSUS Ferry-base library=158 reachable=30 eqKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
+CENSUS Ferry-base library=158 reachable=30 equalKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
 DEAD-SURVIVING Ferry-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE Ferry-base false
-DEFAULT-LEVEL-ORDER-CHANGE Ferry-renamed false
+D1A-ONLY Ferry.jsc order name-independent (base vs renamed): true
 M1A Ferry.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 Guarded-base residual=0 changesOrder=false
-CENSUS Guarded-base library=169 reachable=30 eqKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
+CENSUS Guarded-base library=169 reachable=30 equalKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
 DEAD-SURVIVING Guarded-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE Guarded-base false
-DEFAULT-LEVEL-ORDER-CHANGE Guarded-renamed false
+D1A-ONLY Guarded.jsc order name-independent (base vs renamed): true
 M1A Guarded.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 Guardrail-base residual=0 changesOrder=true
-CENSUS Guardrail-base library=204 reachable=49 eqKeyGroups=5 reachableTieGroups=2 m1aChangesOrder=true m1aChangesReachableOrder=true residualUnreachableGroups=0
+CENSUS Guardrail-base library=204 reachable=49 equalKeyGroups=5 reachableTieGroups=2 m1aChangesOrder=true m1aChangesReachableOrder=true residualUnreachableGroups=0
 DEAD-SURVIVING Guardrail-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE Guardrail-base false
-DEFAULT-LEVEL-ORDER-CHANGE Guardrail-renamed false
+D1A-ONLY Guardrail.jsc order name-independent (base vs renamed): true
 M1A Guardrail.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 Guards-base residual=0 changesOrder=false
-CENSUS Guards-base library=145 reachable=19 eqKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
+CENSUS Guards-base library=145 reachable=19 equalKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
 DEAD-SURVIVING Guards-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE Guards-base false
-DEFAULT-LEVEL-ORDER-CHANGE Guards-renamed false
+D1A-ONLY Guards.jsc order name-independent (base vs renamed): true
 M1A Guards.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 Guild-base residual=0 changesOrder=false
-CENSUS Guild-base library=165 reachable=36 eqKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
+CENSUS Guild-base library=165 reachable=36 equalKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
 DEAD-SURVIVING Guild-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE Guild-base false
-DEFAULT-LEVEL-ORDER-CHANGE Guild-renamed false
+D1A-ONLY Guild.jsc order name-independent (base vs renamed): true
 M1A Guild.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 Inbox-base residual=0 changesOrder=false
-CENSUS Inbox-base library=253 reachable=79 eqKeyGroups=4 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=1
+CENSUS Inbox-base library=253 reachable=79 equalKeyGroups=4 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=1
 DEAD-SURVIVING Inbox-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE Inbox-base false
-DEFAULT-LEVEL-ORDER-CHANGE Inbox-renamed false
+D1A-ONLY Inbox.jsc order name-independent (base vs renamed): true
 M1A Inbox.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 Jar-base residual=0 changesOrder=false
-CENSUS Jar-base library=156 reachable=32 eqKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
+CENSUS Jar-base library=156 reachable=32 equalKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
 DEAD-SURVIVING Jar-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE Jar-base false
-DEFAULT-LEVEL-ORDER-CHANGE Jar-renamed false
+D1A-ONLY Jar.jsc order name-independent (base vs renamed): true
 M1A Jar.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 Keys-base residual=0 changesOrder=false
-CENSUS Keys-base library=193 reachable=43 eqKeyGroups=4 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=1
+CENSUS Keys-base library=193 reachable=43 equalKeyGroups=4 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=1
 DEAD-SURVIVING Keys-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE Keys-base false
-DEFAULT-LEVEL-ORDER-CHANGE Keys-renamed false
+D1A-ONLY Keys.jsc order name-independent (base vs renamed): true
 M1A Keys.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 Kiosk-base residual=0 changesOrder=false
-CENSUS Kiosk-base library=152 reachable=26 eqKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
+CENSUS Kiosk-base library=152 reachable=26 equalKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
 DEAD-SURVIVING Kiosk-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE Kiosk-base false
-DEFAULT-LEVEL-ORDER-CHANGE Kiosk-renamed false
+D1A-ONLY Kiosk.jsc order name-independent (base vs renamed): true
 M1A Kiosk.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 Ledger-base residual=0 changesOrder=true
-CENSUS Ledger-base library=227 reachable=59 eqKeyGroups=3 reachableTieGroups=0 m1aChangesOrder=true m1aChangesReachableOrder=false residualUnreachableGroups=0
+CENSUS Ledger-base library=227 reachable=59 equalKeyGroups=3 reachableTieGroups=0 m1aChangesOrder=true m1aChangesReachableOrder=false residualUnreachableGroups=0
 DEAD-SURVIVING Ledger-base 7 [org.julclang.state.api.mpf.Mpf.combine, org.julclang.state.api.mpf.Mpf.merkle4, org.julclang.state.api.mpf.Mpf.combineMe, org.julclang.state.api.mpf.Mpf.sparseMerkle4, org.julclang.state.api.mpf.Mpf.sparseMerkle8, org.julclang.state.api.mpf.Mpf.merkle8, org.julclang.state.api.mpf.Mpf.sparseMerkle16]
 DEFAULT-LEVEL-ORDER-CHANGE Ledger-base false
-DEFAULT-LEVEL-ORDER-CHANGE Ledger-renamed false
+D1A-ONLY Ledger.jsc order name-independent (base vs renamed): true
 M1A Ledger.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 Locker-base residual=0 changesOrder=true
-CENSUS Locker-base library=274 reachable=52 eqKeyGroups=4 reachableTieGroups=1 m1aChangesOrder=true m1aChangesReachableOrder=true residualUnreachableGroups=1
+CENSUS Locker-base library=274 reachable=52 equalKeyGroups=4 reachableTieGroups=1 m1aChangesOrder=true m1aChangesReachableOrder=true residualUnreachableGroups=1
 DEAD-SURVIVING Locker-base 7 [org.julclang.state.api.mpf.Mpf.combine, org.julclang.state.api.mpf.Mpf.merkle4, org.julclang.state.api.mpf.Mpf.combineMe, org.julclang.state.api.mpf.Mpf.sparseMerkle4, org.julclang.state.api.mpf.Mpf.sparseMerkle8, org.julclang.state.api.mpf.Mpf.merkle8, org.julclang.state.api.mpf.Mpf.sparseMerkle16]
 DEFAULT-LEVEL-ORDER-CHANGE Locker-base true
-DEFAULT-LEVEL-ORDER-CHANGE Locker-renamed true
+D1A-ONLY Locker.jsc order name-independent (base vs renamed): true
 M1A Locker.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 MapInbox-base residual=0 changesOrder=true
-CENSUS MapInbox-base library=245 reachable=40 eqKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=1
+CENSUS MapInbox-base library=245 reachable=40 equalKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=1
 DEAD-SURVIVING MapInbox-base 7 [org.julclang.state.api.mpf.Mpf.combine, org.julclang.state.api.mpf.Mpf.merkle4, org.julclang.state.api.mpf.Mpf.combineMe, org.julclang.state.api.mpf.Mpf.sparseMerkle4, org.julclang.state.api.mpf.Mpf.sparseMerkle8, org.julclang.state.api.mpf.Mpf.merkle8, org.julclang.state.api.mpf.Mpf.sparseMerkle16]
 DEFAULT-LEVEL-ORDER-CHANGE MapInbox-base false
-DEFAULT-LEVEL-ORDER-CHANGE MapInbox-renamed false
+D1A-ONLY MapInbox.jsc order name-independent (base vs renamed): true
 M1A MapInbox.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 MapVotes-base residual=0 changesOrder=false
-CENSUS MapVotes-base library=206 reachable=31 eqKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
+CENSUS MapVotes-base library=206 reachable=31 equalKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
 DEAD-SURVIVING MapVotes-base 7 [org.julclang.state.api.mpf.Mpf.combine, org.julclang.state.api.mpf.Mpf.merkle4, org.julclang.state.api.mpf.Mpf.combineMe, org.julclang.state.api.mpf.Mpf.sparseMerkle4, org.julclang.state.api.mpf.Mpf.sparseMerkle8, org.julclang.state.api.mpf.Mpf.merkle8, org.julclang.state.api.mpf.Mpf.sparseMerkle16]
 DEFAULT-LEVEL-ORDER-CHANGE MapVotes-base false
-DEFAULT-LEVEL-ORDER-CHANGE MapVotes-renamed false
+D1A-ONLY MapVotes.jsc order name-independent (base vs renamed): true
 M1A MapVotes.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 Market-base residual=0 changesOrder=true
-CENSUS Market-base library=241 reachable=65 eqKeyGroups=4 reachableTieGroups=1 m1aChangesOrder=true m1aChangesReachableOrder=false residualUnreachableGroups=0
+CENSUS Market-base library=241 reachable=65 equalKeyGroups=4 reachableTieGroups=1 m1aChangesOrder=true m1aChangesReachableOrder=false residualUnreachableGroups=0
 DEAD-SURVIVING Market-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE Market-base false
-DEFAULT-LEVEL-ORDER-CHANGE Market-renamed false
+D1A-ONLY Market.jsc order name-independent (base vs renamed): true
 M1A Market.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 Members-base residual=0 changesOrder=false
-CENSUS Members-base library=173 reachable=42 eqKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
+CENSUS Members-base library=173 reachable=42 equalKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
 DEAD-SURVIVING Members-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE Members-base false
-DEFAULT-LEVEL-ORDER-CHANGE Members-renamed false
+D1A-ONLY Members.jsc order name-independent (base vs renamed): true
 M1A Members.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 Mix-base residual=0 changesOrder=false
-CENSUS Mix-base library=171 reachable=46 eqKeyGroups=3 reachableTieGroups=1 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
+CENSUS Mix-base library=171 reachable=46 equalKeyGroups=3 reachableTieGroups=1 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
 DEAD-SURVIVING Mix-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE Mix-base false
-DEFAULT-LEVEL-ORDER-CHANGE Mix-renamed false
+D1A-ONLY Mix.jsc order name-independent (base vs renamed): true
 M1A Mix.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 Mixed-base residual=0 changesOrder=false
-CENSUS Mixed-base library=171 reachable=43 eqKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
+CENSUS Mixed-base library=171 reachable=43 equalKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
 DEAD-SURVIVING Mixed-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE Mixed-base false
-DEFAULT-LEVEL-ORDER-CHANGE Mixed-renamed false
+D1A-ONLY Mixed.jsc order name-independent (base vs renamed): true
 M1A Mixed.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 Oracle-base residual=0 changesOrder=false
-CENSUS Oracle-base library=144 reachable=22 eqKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
+CENSUS Oracle-base library=144 reachable=22 equalKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
 DEAD-SURVIVING Oracle-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE Oracle-base false
-DEFAULT-LEVEL-ORDER-CHANGE Oracle-renamed false
+D1A-ONLY Oracle.jsc order name-independent (base vs renamed): true
 M1A Oracle.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 OwnedIntents-base residual=0 changesOrder=false
-CENSUS OwnedIntents-base library=162 reachable=39 eqKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
+CENSUS OwnedIntents-base library=162 reachable=39 equalKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
 DEAD-SURVIVING OwnedIntents-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE OwnedIntents-base false
-DEFAULT-LEVEL-ORDER-CHANGE OwnedIntents-renamed false
+D1A-ONLY OwnedIntents.jsc order name-independent (base vs renamed): true
 M1A OwnedIntents.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 Pledges-base residual=0 changesOrder=false
-CENSUS Pledges-base library=186 reachable=45 eqKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
+CENSUS Pledges-base library=186 reachable=45 equalKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
 DEAD-SURVIVING Pledges-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE Pledges-base false
-DEFAULT-LEVEL-ORDER-CHANGE Pledges-renamed false
+D1A-ONLY Pledges.jsc order name-independent (base vs renamed): true
 M1A Pledges.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 Points-base residual=0 changesOrder=false
-CENSUS Points-base library=198 reachable=39 eqKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
+CENSUS Points-base library=198 reachable=39 equalKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
 DEAD-SURVIVING Points-base 7 [org.julclang.state.api.mpf.Mpf.combine, org.julclang.state.api.mpf.Mpf.merkle4, org.julclang.state.api.mpf.Mpf.combineMe, org.julclang.state.api.mpf.Mpf.sparseMerkle4, org.julclang.state.api.mpf.Mpf.sparseMerkle8, org.julclang.state.api.mpf.Mpf.merkle8, org.julclang.state.api.mpf.Mpf.sparseMerkle16]
 DEFAULT-LEVEL-ORDER-CHANGE Points-base false
-DEFAULT-LEVEL-ORDER-CHANGE Points-renamed false
+D1A-ONLY Points.jsc order name-independent (base vs renamed): true
 M1A Points.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 Pool-base residual=0 changesOrder=false
-CENSUS Pool-base library=156 reachable=32 eqKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
+CENSUS Pool-base library=156 reachable=32 equalKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
 DEAD-SURVIVING Pool-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE Pool-base false
-DEFAULT-LEVEL-ORDER-CHANGE Pool-renamed false
+D1A-ONLY Pool.jsc order name-independent (base vs renamed): true
 M1A Pool.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 Pot-base residual=0 changesOrder=false
-CENSUS Pot-base library=193 reachable=32 eqKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
+CENSUS Pot-base library=193 reachable=32 equalKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
 DEAD-SURVIVING Pot-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE Pot-base false
-DEFAULT-LEVEL-ORDER-CHANGE Pot-renamed false
+D1A-ONLY Pot.jsc order name-independent (base vs renamed): true
 M1A Pot.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 Ratio-base residual=0 changesOrder=false
-CENSUS Ratio-base library=143 reachable=16 eqKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
+CENSUS Ratio-base library=143 reachable=16 equalKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
 DEAD-SURVIVING Ratio-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE Ratio-base false
-DEFAULT-LEVEL-ORDER-CHANGE Ratio-renamed false
+D1A-ONLY Ratio.jsc order name-independent (base vs renamed): true
 M1A Ratio.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 Registry-base residual=0 changesOrder=false
-CENSUS Registry-base library=166 reachable=41 eqKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
+CENSUS Registry-base library=166 reachable=41 equalKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
 DEAD-SURVIVING Registry-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE Registry-base false
-DEFAULT-LEVEL-ORDER-CHANGE Registry-renamed false
+D1A-ONLY Registry.jsc order name-independent (base vs renamed): true
 M1A Registry.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 RelayV1-base residual=0 changesOrder=false
-CENSUS RelayV1-base library=165 reachable=38 eqKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
+CENSUS RelayV1-base library=165 reachable=38 equalKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
 DEAD-SURVIVING RelayV1-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE RelayV1-base false
-DEFAULT-LEVEL-ORDER-CHANGE RelayV1-renamed false
+D1A-ONLY RelayV1.jsc order name-independent (base vs renamed): true
 M1A RelayV1.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 RelayV2-base residual=0 changesOrder=true
-CENSUS RelayV2-base library=176 reachable=37 eqKeyGroups=7 reachableTieGroups=0 m1aChangesOrder=true m1aChangesReachableOrder=false residualUnreachableGroups=0
+CENSUS RelayV2-base library=176 reachable=37 equalKeyGroups=7 reachableTieGroups=0 m1aChangesOrder=true m1aChangesReachableOrder=false residualUnreachableGroups=0
 DEAD-SURVIVING RelayV2-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE RelayV2-base false
-DEFAULT-LEVEL-ORDER-CHANGE RelayV2-renamed false
+D1A-ONLY RelayV2.jsc order name-independent (base vs renamed): true
 M1A RelayV2.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 Safes-base residual=0 changesOrder=false
-CENSUS Safes-base library=283 reachable=48 eqKeyGroups=4 reachableTieGroups=1 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=1
+CENSUS Safes-base library=283 reachable=48 equalKeyGroups=4 reachableTieGroups=1 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=1
 DEAD-SURVIVING Safes-base 7 [org.julclang.state.api.mpf.Mpf.combine, org.julclang.state.api.mpf.Mpf.merkle4, org.julclang.state.api.mpf.Mpf.combineMe, org.julclang.state.api.mpf.Mpf.sparseMerkle4, org.julclang.state.api.mpf.Mpf.sparseMerkle8, org.julclang.state.api.mpf.Mpf.merkle8, org.julclang.state.api.mpf.Mpf.sparseMerkle16]
 DEFAULT-LEVEL-ORDER-CHANGE Safes-base false
-DEFAULT-LEVEL-ORDER-CHANGE Safes-renamed false
+D1A-ONLY Safes.jsc order name-independent (base vs renamed): true
 M1A Safes.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 Shelf-base residual=0 changesOrder=false
-CENSUS Shelf-base library=234 reachable=52 eqKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
+CENSUS Shelf-base library=234 reachable=52 equalKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
 DEAD-SURVIVING Shelf-base 7 [org.julclang.state.api.mpf.Mpf.combine, org.julclang.state.api.mpf.Mpf.merkle4, org.julclang.state.api.mpf.Mpf.combineMe, org.julclang.state.api.mpf.Mpf.sparseMerkle4, org.julclang.state.api.mpf.Mpf.sparseMerkle8, org.julclang.state.api.mpf.Mpf.merkle8, org.julclang.state.api.mpf.Mpf.sparseMerkle16]
 DEFAULT-LEVEL-ORDER-CHANGE Shelf-base false
-DEFAULT-LEVEL-ORDER-CHANGE Shelf-renamed false
+D1A-ONLY Shelf.jsc order name-independent (base vs renamed): true
 M1A Shelf.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 Shop-base residual=0 changesOrder=false
-CENSUS Shop-base library=181 reachable=46 eqKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
+CENSUS Shop-base library=181 reachable=46 equalKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
 DEAD-SURVIVING Shop-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE Shop-base false
-DEFAULT-LEVEL-ORDER-CHANGE Shop-renamed false
+D1A-ONLY Shop.jsc order name-independent (base vs renamed): true
 M1A Shop.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 StakedCounterV1-base residual=0 changesOrder=false
-CENSUS StakedCounterV1-base library=248 reachable=40 eqKeyGroups=4 reachableTieGroups=1 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=1
+CENSUS StakedCounterV1-base library=248 reachable=40 equalKeyGroups=4 reachableTieGroups=1 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=1
 DEAD-SURVIVING StakedCounterV1-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE StakedCounterV1-base false
-DEFAULT-LEVEL-ORDER-CHANGE StakedCounterV1-renamed false
+D1A-ONLY StakedCounterV1.jsc order name-independent (base vs renamed): true
 M1A StakedCounterV1.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 StakedCounterV2-base residual=0 changesOrder=true
-CENSUS StakedCounterV2-base library=261 reachable=41 eqKeyGroups=6 reachableTieGroups=1 m1aChangesOrder=true m1aChangesReachableOrder=false residualUnreachableGroups=1
+CENSUS StakedCounterV2-base library=261 reachable=41 equalKeyGroups=6 reachableTieGroups=1 m1aChangesOrder=true m1aChangesReachableOrder=false residualUnreachableGroups=1
 DEAD-SURVIVING StakedCounterV2-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE StakedCounterV2-base false
-DEFAULT-LEVEL-ORDER-CHANGE StakedCounterV2-renamed false
+D1A-ONLY StakedCounterV2.jsc order name-independent (base vs renamed): true
 M1A StakedCounterV2.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 StakedDesk-base residual=0 changesOrder=true
-CENSUS StakedDesk-base library=255 reachable=52 eqKeyGroups=4 reachableTieGroups=0 m1aChangesOrder=true m1aChangesReachableOrder=false residualUnreachableGroups=2
+CENSUS StakedDesk-base library=255 reachable=52 equalKeyGroups=4 reachableTieGroups=0 m1aChangesOrder=true m1aChangesReachableOrder=false residualUnreachableGroups=2
 DEAD-SURVIVING StakedDesk-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE StakedDesk-base false
-DEFAULT-LEVEL-ORDER-CHANGE StakedDesk-renamed false
+D1A-ONLY StakedDesk.jsc order name-independent (base vs renamed): true
 M1A StakedDesk.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 StakedQueue-base residual=0 changesOrder=true
-CENSUS StakedQueue-base library=245 reachable=43 eqKeyGroups=4 reachableTieGroups=0 m1aChangesOrder=true m1aChangesReachableOrder=false residualUnreachableGroups=1
+CENSUS StakedQueue-base library=245 reachable=43 equalKeyGroups=4 reachableTieGroups=0 m1aChangesOrder=true m1aChangesReachableOrder=false residualUnreachableGroups=1
 DEAD-SURVIVING StakedQueue-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE StakedQueue-base false
-DEFAULT-LEVEL-ORDER-CHANGE StakedQueue-renamed false
+D1A-ONLY StakedQueue.jsc order name-independent (base vs renamed): true
 M1A StakedQueue.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 StakedVault-base residual=0 changesOrder=false
-CENSUS StakedVault-base library=252 reachable=46 eqKeyGroups=4 reachableTieGroups=1 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=1
+CENSUS StakedVault-base library=252 reachable=46 equalKeyGroups=4 reachableTieGroups=1 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=1
 DEAD-SURVIVING StakedVault-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE StakedVault-base false
-DEFAULT-LEVEL-ORDER-CHANGE StakedVault-renamed false
+D1A-ONLY StakedVault.jsc order name-independent (base vs renamed): true
 M1A StakedVault.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 Stall-base residual=0 changesOrder=false
-CENSUS Stall-base library=195 reachable=32 eqKeyGroups=2 reachableTieGroups=1 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
+CENSUS Stall-base library=195 reachable=32 equalKeyGroups=2 reachableTieGroups=1 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
 DEAD-SURVIVING Stall-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE Stall-base false
-DEFAULT-LEVEL-ORDER-CHANGE Stall-renamed false
+D1A-ONLY Stall.jsc order name-independent (base vs renamed): true
 M1A Stall.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 Stash-base residual=0 changesOrder=false
-CENSUS Stash-base library=192 reachable=36 eqKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
+CENSUS Stash-base library=192 reachable=36 equalKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
 DEAD-SURVIVING Stash-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE Stash-base false
-DEFAULT-LEVEL-ORDER-CHANGE Stash-renamed false
+D1A-ONLY Stash.jsc order name-independent (base vs renamed): true
 M1A Stash.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 StashReader-base residual=0 changesOrder=true
-CENSUS StashReader-base library=196 reachable=26 eqKeyGroups=3 reachableTieGroups=0 m1aChangesOrder=true m1aChangesReachableOrder=false residualUnreachableGroups=0
+CENSUS StashReader-base library=196 reachable=26 equalKeyGroups=3 reachableTieGroups=0 m1aChangesOrder=true m1aChangesReachableOrder=false residualUnreachableGroups=0
 DEAD-SURVIVING StashReader-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE StashReader-base false
-DEFAULT-LEVEL-ORDER-CHANGE StashReader-renamed false
+D1A-ONLY StashReader.jsc order name-independent (base vs renamed): true
 M1A StashReader.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 StdBytes-base residual=0 changesOrder=false
-CENSUS StdBytes-base library=179 reachable=52 eqKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
+CENSUS StdBytes-base library=179 reachable=52 equalKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
 DEAD-SURVIVING StdBytes-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE StdBytes-base false
-DEFAULT-LEVEL-ORDER-CHANGE StdBytes-renamed false
+D1A-ONLY StdBytes.jsc order name-independent (base vs renamed): true
 M1A StdBytes.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 StdMath-base residual=0 changesOrder=false
-CENSUS StdMath-base library=174 reachable=41 eqKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
+CENSUS StdMath-base library=174 reachable=41 equalKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
 DEAD-SURVIVING StdMath-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE StdMath-base false
-DEFAULT-LEVEL-ORDER-CHANGE StdMath-renamed false
+D1A-ONLY StdMath.jsc order name-independent (base vs renamed): true
 M1A StdMath.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 Steward-base residual=0 changesOrder=true
-CENSUS Steward-base library=275 reachable=70 eqKeyGroups=6 reachableTieGroups=3 m1aChangesOrder=true m1aChangesReachableOrder=true residualUnreachableGroups=1
+CENSUS Steward-base library=275 reachable=70 equalKeyGroups=6 reachableTieGroups=3 m1aChangesOrder=true m1aChangesReachableOrder=true residualUnreachableGroups=1
 DEAD-SURVIVING Steward-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE Steward-base false
-DEFAULT-LEVEL-ORDER-CHANGE Steward-renamed true
+D1A-ONLY Steward.jsc order name-independent (base vs renamed): true
 M1A Steward.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 Studio-base residual=0 changesOrder=false
-CENSUS Studio-base library=162 reachable=33 eqKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
+CENSUS Studio-base library=162 reachable=33 equalKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
 DEAD-SURVIVING Studio-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE Studio-base false
-DEFAULT-LEVEL-ORDER-CHANGE Studio-renamed false
+D1A-ONLY Studio.jsc order name-independent (base vs renamed): true
 M1A Studio.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 TallyV1-base residual=0 changesOrder=false
-CENSUS TallyV1-base library=158 reachable=33 eqKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
+CENSUS TallyV1-base library=158 reachable=33 equalKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
 DEAD-SURVIVING TallyV1-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE TallyV1-base false
-DEFAULT-LEVEL-ORDER-CHANGE TallyV1-renamed false
+D1A-ONLY TallyV1.jsc order name-independent (base vs renamed): true
 M1A TallyV1.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 TallyV2-base residual=0 changesOrder=true
-CENSUS TallyV2-base library=174 reachable=36 eqKeyGroups=5 reachableTieGroups=0 m1aChangesOrder=true m1aChangesReachableOrder=false residualUnreachableGroups=0
+CENSUS TallyV2-base library=174 reachable=36 equalKeyGroups=5 reachableTieGroups=0 m1aChangesOrder=true m1aChangesReachableOrder=false residualUnreachableGroups=0
 DEAD-SURVIVING TallyV2-base 1 [org.julclang.state.examples.dsl.TallyV1.mapEmpty__Int]
 DEFAULT-LEVEL-ORDER-CHANGE TallyV2-base false
-DEFAULT-LEVEL-ORDER-CHANGE TallyV2-renamed false
+D1A-ONLY TallyV2.jsc order name-independent (base vs renamed): true
 M1A TallyV2.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 Tipper-base residual=0 changesOrder=true
-CENSUS Tipper-base library=265 reachable=68 eqKeyGroups=5 reachableTieGroups=1 m1aChangesOrder=true m1aChangesReachableOrder=true residualUnreachableGroups=2
+CENSUS Tipper-base library=265 reachable=68 equalKeyGroups=5 reachableTieGroups=1 m1aChangesOrder=true m1aChangesReachableOrder=true residualUnreachableGroups=2
 DEAD-SURVIVING Tipper-base 1 [org.julclang.state.examples.dsl.Tips.mapEmpty__Int]
 DEFAULT-LEVEL-ORDER-CHANGE Tipper-base true
-DEFAULT-LEVEL-ORDER-CHANGE Tipper-renamed true
+D1A-ONLY Tipper.jsc order name-independent (base vs renamed): true
 M1A Tipper.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 Tips-base residual=0 changesOrder=true
-CENSUS Tips-base library=244 reachable=69 eqKeyGroups=5 reachableTieGroups=2 m1aChangesOrder=true m1aChangesReachableOrder=true residualUnreachableGroups=1
+CENSUS Tips-base library=244 reachable=69 equalKeyGroups=5 reachableTieGroups=2 m1aChangesOrder=true m1aChangesReachableOrder=true residualUnreachableGroups=1
 DEAD-SURVIVING Tips-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE Tips-base true
-DEFAULT-LEVEL-ORDER-CHANGE Tips-renamed false
+D1A-ONLY Tips.jsc order name-independent (base vs renamed): true
 M1A Tips.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 Token-base residual=0 changesOrder=false
-CENSUS Token-base library=198 reachable=38 eqKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
+CENSUS Token-base library=198 reachable=38 equalKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
 DEAD-SURVIVING Token-base 7 [org.julclang.state.api.mpf.Mpf.combine, org.julclang.state.api.mpf.Mpf.merkle4, org.julclang.state.api.mpf.Mpf.combineMe, org.julclang.state.api.mpf.Mpf.sparseMerkle4, org.julclang.state.api.mpf.Mpf.sparseMerkle8, org.julclang.state.api.mpf.Mpf.merkle8, org.julclang.state.api.mpf.Mpf.sparseMerkle16]
 DEFAULT-LEVEL-ORDER-CHANGE Token-base false
-DEFAULT-LEVEL-ORDER-CHANGE Token-renamed false
+D1A-ONLY Token.jsc order name-independent (base vs renamed): true
 M1A Token.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 Treasury-base residual=0 changesOrder=false
-CENSUS Treasury-base library=180 reachable=33 eqKeyGroups=4 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=1
+CENSUS Treasury-base library=180 reachable=33 equalKeyGroups=4 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=1
 DEAD-SURVIVING Treasury-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE Treasury-base false
-DEFAULT-LEVEL-ORDER-CHANGE Treasury-renamed false
+D1A-ONLY Treasury.jsc order name-independent (base vs renamed): true
 M1A Treasury.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 Twin-base residual=0 changesOrder=false
-CENSUS Twin-base library=155 reachable=27 eqKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
+CENSUS Twin-base library=155 reachable=27 equalKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
 DEAD-SURVIVING Twin-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE Twin-base false
-DEFAULT-LEVEL-ORDER-CHANGE Twin-renamed false
+D1A-ONLY Twin.jsc order name-independent (base vs renamed): true
 M1A Twin.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 TwinReader-base residual=0 changesOrder=false
-CENSUS TwinReader-base library=153 reachable=26 eqKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
+CENSUS TwinReader-base library=153 reachable=26 equalKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
 DEAD-SURVIVING TwinReader-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE TwinReader-base false
-DEFAULT-LEVEL-ORDER-CHANGE TwinReader-renamed false
+D1A-ONLY TwinReader.jsc order name-independent (base vs renamed): true
 M1A TwinReader.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 Vault-base residual=0 changesOrder=false
-CENSUS Vault-base library=149 reachable=24 eqKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
+CENSUS Vault-base library=149 reachable=24 equalKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
 DEAD-SURVIVING Vault-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE Vault-base false
-DEFAULT-LEVEL-ORDER-CHANGE Vault-renamed false
+D1A-ONLY Vault.jsc order name-independent (base vs renamed): true
 M1A Vault.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 Vectors-base residual=0 changesOrder=false
-CENSUS Vectors-base library=157 reachable=35 eqKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
+CENSUS Vectors-base library=157 reachable=35 equalKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
 DEAD-SURVIVING Vectors-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE Vectors-base false
-DEFAULT-LEVEL-ORDER-CHANGE Vectors-renamed false
+D1A-ONLY Vectors.jsc order name-independent (base vs renamed): true
 M1A Vectors.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 Vouch-base residual=0 changesOrder=false
-CENSUS Vouch-base library=157 reachable=29 eqKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
+CENSUS Vouch-base library=157 reachable=29 equalKeyGroups=2 reachableTieGroups=0 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=0
 DEAD-SURVIVING Vouch-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE Vouch-base false
-DEFAULT-LEVEL-ORDER-CHANGE Vouch-renamed false
+D1A-ONLY Vouch.jsc order name-independent (base vs renamed): true
 M1A Vouch.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 T2 Wards-base residual=0 changesOrder=false
-CENSUS Wards-base library=250 reachable=86 eqKeyGroups=5 reachableTieGroups=2 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=1
+CENSUS Wards-base library=250 reachable=86 equalKeyGroups=5 reachableTieGroups=2 m1aChangesOrder=false m1aChangesReachableOrder=false residualUnreachableGroups=1
 DEAD-SURVIVING Wards-base 0 []
 DEFAULT-LEVEL-ORDER-CHANGE Wards-base false
-DEFAULT-LEVEL-ORDER-CHANGE Wards-renamed false
+D1A-ONLY Wards.jsc order name-independent (base vs renamed): true
 M1A Wards.jsc order name-independent (base vs renamed, key@rank, T and T2): true
 
-# Summary
-M1A name-independent (base vs renamed): 67/67
-T2 residual ties: 0 programs
-Reachable order changed vs pre21 (as committed): 7/67
-Default-UPLC binder order changed vs pre21 (as committed): 5/67: Coins-base Dex-base Locker-base Tipper-base Tips-base 
-Full order (NONE level, source-map builds) changed vs pre21: 17/67
-Programs with unreachable library bindings surviving the default optimizer: 12/67
+# Summary (simulated)
+M1a (D1a+D1b) order same for base and renamed: 67/67
+D1a-only order same for base and renamed: 67/67 (renameAll keeps imported and API names, so no unreachable tie flips here)
+D1b residual ties (not alpha-equal): 0 programs
+Simulated reachable order differs from pre21 (as committed): 7/67
+Simulated order, filtered to binder names in the default-profile UPLC, differs from pre21 (as committed): 5/67: Coins-base Dex-base Locker-base Tipper-base Tips-base 
+Simulated full order differs from pre21 (relevant to NONE and source-map builds): 17/67
+Programs with unreachable library binder names in the default-profile UPLC: 12/67
+Largest number of offered library methods: 283 (Safes)

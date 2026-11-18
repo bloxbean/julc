@@ -63,3 +63,10 @@ sed -E 's/\(lam [^ ()]+/(lam _/g' X-base.uplc | tr ' ' '\n' > a; (same for X-ren
 
 The census simulates M1a on pre21's captured PIR (after the PIR passes, before UPLC). Its counts are estimates. M1a's
 exit measures them on the implementation.
+
+## r3 additions (after review round 2)
+
+| File | What |
+|---|---|
+| `R2Probes.java.txt`, `r2-probes.txt` | Codex round-2 findings run against pre21 at the default profile, `NONE` and source maps. **C11** (an unread helper reads one twin): identical at the default profile, different at `NONE` and with source maps. **C13** (a cross-class recursive type group, class `A` renamed to `Z`): different in all three modes. **C14** (one overload-family member renamed): 88 → 96 B. **C15**: a mutually recursive library pair is rejected ("Unbound variable") whether reachable or not, and a self-recursive method compiles. **C12**, my reconstruction from the review summary: identical 998 B and 30,764,348 CPU for both twin names, so Codex's numbers are not reproduced (the mechanism is accepted). |
+| `m1a-census-joust.txt` (regenerated) | Every figure is labelled as a simulation (C16). Adds `D1A-ONLY` (base vs renamed with unread ties by name: 67/67 equal on JOUST) and the corrected maximum: 283 library methods (Safes). D1a′ (r3) is not simulated. |

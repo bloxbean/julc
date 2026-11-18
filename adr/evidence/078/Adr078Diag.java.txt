@@ -30,6 +30,7 @@ public class Adr078Diag {
         variants.put("base", src);
         variants.put("renamed", JscV2HashStabilityTest.rename(src, JscV2HashStabilityTest.renameAll(src)));
         var seqs = new ArrayList<List<String>>();
+        var d1aSeqs = new ArrayList<List<String>>();
         for (var v : variants.entrySet()) {
             String tag = file.replace(".jsc", "") + "-" + v.getKey();
             Files.writeString(out.resolve(tag + ".jsc"), v.getValue());
@@ -68,6 +69,7 @@ public class Adr078Diag {
             if (Boolean.getBoolean("adr078.pir")) Files.writeString(out.resolve(tag + ".pir"), res.pirPretty());
             var census = probe.Adr078Census.of(res.pirTerm(), c.packageName() + "." + c.validatorName());
             seqs.add(probe.Adr078Census.FULL_SEQ.get());
+            d1aSeqs.add(probe.Adr078Census.D1A_SEQ.get());
             System.out.println("T2 " + tag + " residual=" + probe.Adr078Census.T2_RESIDUAL.get() + " changesOrder=" + probe.Adr078Census.FULL_CHANGES_ORDER.get());
             System.out.print(probe.Adr078Census.T2_DETAIL.get());
             System.out.println("CENSUS " + tag + " library=" + census.library() + " reachable=" + census.reachable()
@@ -83,6 +85,7 @@ public class Adr078Diag {
                     .equals(probe.Adr078Census.FULL_ORDER.get().stream().filter(present::contains).toList());
             System.out.println("DEFAULT-LEVEL-ORDER-CHANGE " + tag + " " + defaultChanges);
         }
+        System.out.println("D1A-ONLY " + file + " order name-independent (base vs renamed): " + d1aSeqs.get(0).equals(d1aSeqs.get(1)));
         System.out.println("M1A " + file + " order name-independent (base vs renamed, key@rank, T and T2): " + seqs.get(0).equals(seqs.get(1)));
     }
 }
