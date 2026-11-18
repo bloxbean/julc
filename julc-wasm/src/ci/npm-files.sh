@@ -47,19 +47,24 @@ gh attestation verify "$dir/${files[0]}" --repo "$GITHUB_REPOSITORY" \
   --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/native-image-release.yml" \
   --source-ref "refs/tags/v${version}" --source-digest "$SOURCE_DIGEST" --signer-digest "$SIGNER_DIGEST" \
   --deny-self-hosted-runners --format json > "$work/attestations.json"
+# The answer must be exactly one JSON document, an array.
+if ! jq -e -s 'length == 1 and (.[0] | type == "array")' "$work/attestations.json" > /dev/null 2>&1; then
+  echo "::error::gh attestation verify did not answer with exactly one JSON array for ${files[0]}." >&2
+  exit 1
+fi
 prefix="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${NPM_FILES_RUN}/attempts/"
-matching=$(jq --slurpfile expected "$work/expected.json" --arg prefix "$prefix" '[.[] | select(
+# \A and \z anchor the whole string: a trailing newline or path after the attempt number does not match.
+if ! jq -e --slurpfile expected "$work/expected.json" --arg prefix "$prefix" 'any(.[]; (
     ((.verificationResult.statement.subject // []) | map({name: .name, sha256: .digest.sha256}) | sort_by(.name))
-      == $expected[0]
+      == $expected[0])
     and ((.verificationResult.signature.certificate.runInvocationURI // "") as $uri
-      | ($uri | startswith($prefix)) and ($uri | ltrimstr($prefix) | test("^[1-9][0-9]*$"))))] | length' \
-  "$work/attestations.json")
-if [[ "$matching" == 0 ]]; then
+      | ($uri | type == "string") and ($uri | startswith($prefix))
+      and ($uri | ltrimstr($prefix) | test("\\A[1-9][0-9]*\\z"))))' "$work/attestations.json" > /dev/null; then
   echo "::error::No single attestation of run ${NPM_FILES_RUN} covers exactly these five npm files of v${version}: they" \
     "are not one attested set (files of different attempts or builds, or another run's). Attested sets for" \
     "${files[0]}:" >&2
   jq -r '.[] | (.verificationResult.signature.certificate.runInvocationURI // "?"),
-    (.verificationResult.statement.subject[]? | "  \(.name) \(.digest.sha256)")' "$work/attestations.json" >&2
+    (.verificationResult.statement.subject[]? | "  \(.name) \(.digest.sha256)")' "$work/attestations.json" >&2 || true
   exit 1
 fi
 echo "attested: the five files are one set, run ${NPM_FILES_RUN}"

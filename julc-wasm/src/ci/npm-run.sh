@@ -51,12 +51,19 @@ if [[ -z "$runs" ]]; then
 fi
 attested=()
 for run in $runs; do
+  # Every job classified from well-typed fields (a positive integer id, a string name, a string conclusion, or null
+  # for a job still pending) before any is counted; anything else is INVALID and stops recovery.
   if ! jobs=$(gh api --paginate "${api}/runs/${run}/jobs?filter=all&per_page=100" \
-      --jq '.jobs[] | select(.name == "Attest the npm tarballs and engine archives" and .conclusion == "success") | .id'); then
+      --jq '.jobs[] | if (.id | type) == "number" and .id > 0 and (.id | floor) == .id and (.name | type) == "string"
+        and ((.conclusion | type) == "string" or .conclusion == null)
+        then (if .name == "Attest the npm tarballs and engine archives" and .conclusion == "success"
+          then "ATTESTED \(.id)" else "OTHER \(.id)" end) else "INVALID" end'); then
     unreadable "the jobs of run ${run}"
   fi
-  if [[ -n "$jobs" ]] && grep -qvE '^[1-9][0-9]*$' <<< "$jobs"; then unreadable "a malformed job list of run ${run}"; fi
-  if [[ -n "$jobs" ]]; then attested+=("$run"); fi
+  if [[ -n "$jobs" ]] && grep -qvE '^(ATTESTED|OTHER) [1-9][0-9]*$' <<< "$jobs"; then
+    unreadable "a malformed job list of run ${run}"
+  fi
+  if grep -q '^ATTESTED ' <<< "$jobs"; then attested+=("$run"); fi
 done
 if [[ ${#attested[@]} -eq 0 ]]; then
   echo "::error::No run for the push of v${version} has a successful attestation yet (runs: ${runs//$'\n'/, }). Check" \
@@ -69,11 +76,19 @@ if [[ ${#attested[@]} -gt 1 ]]; then
   exit 1
 fi
 run=${attested[0]}
-if ! live=$(gh api --paginate "${api}/runs/${run}/artifacts?name=npm-packages&per_page=100" \
-    --jq '.artifacts[] | select(.name == "npm-packages" and .expired == false) | .id'); then
+# Every artifact classified from well-typed fields (a positive integer id, a string name, a boolean expired): an
+# expired that is null or missing is not expiry, it is an unreadable answer.
+if ! rows=$(gh api --paginate "${api}/runs/${run}/artifacts?name=npm-packages&per_page=100" \
+    --jq '.artifacts[] | if (.id | type) == "number" and .id > 0 and (.id | floor) == .id and (.name | type) == "string"
+      and (.expired | type) == "boolean"
+      then (if .name != "npm-packages" then "OTHER \(.id)" elif .expired then "EXPIRED \(.id)" else "LIVE \(.id)" end)
+      else "INVALID" end'); then
   unreadable "the artifacts of run ${run}"
 fi
-if [[ -n "$live" ]] && grep -qvE '^[1-9][0-9]*$' <<< "$live"; then unreadable "a malformed artifact list of run ${run}"; fi
+if [[ -n "$rows" ]] && grep -qvE '^(LIVE|EXPIRED|OTHER) [1-9][0-9]*$' <<< "$rows"; then
+  unreadable "a malformed artifact list of run ${run}"
+fi
+live=$(awk '$1 == "LIVE" { print $2 }' <<< "$rows")
 artifacts=$(grep -c . <<< "$live" || true)
 if [[ "$artifacts" -eq 0 ]]; then
   gone "run ${run}'s npm-packages artifact has expired or was deleted"

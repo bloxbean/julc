@@ -98,44 +98,8 @@ jobs:
         } >> "$GITHUB_OUTPUT"
         echo "Version $VERSION (final: $IS_FINAL), GitHub release for this tag: ${GITHUB_RELEASE:-false}"
 
-  # ADR-077 D8a: a release is built once. Web Image output is not byte-identical across builds, and no native image or
-  # jar is reproducible either, so a whole-workflow re-run would make different bytes from those already attached (and
-  # perhaps on npm). Every job that builds a release file needs this one, which stops when the tag has a GitHub release
-  # at all, so such a re-run builds nothing. github-release creates releases published from the start, never drafts,
-  # so this read-only token sees every release it made. No checkout, no build.
-  release-guard:
-    needs: validate
-    if: github.event_name == 'push'
-    runs-on: ubuntu-latest
-    name: Refuse to build a released version again
-    permissions:
-      contents: read
-    env:
-      VERSION: ${{ needs.validate.outputs.version }}
-    steps:
-    - name: Refuse to build a released version again
-      env:
-        GH_TOKEN: ${{ github.token }}
-      shell: bash
-      run: |
-        set -euo pipefail
-        if ! releases=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
-            --jq ".[] | select(.tag_name == \"v${VERSION}\") | \"\(.id) \(.assets | length)\"" 2> "$RUNNER_TEMP/releases.err"); then
-          cat "$RUNNER_TEMP/releases.err" >&2
-          echo "::error::Could not read the GitHub releases; refusing to build without knowing." >&2
-          exit 1
-        fi
-        if [[ -z "$releases" ]]; then
-          echo "No GitHub release of v${VERSION} yet: building."
-          exit 0
-        fi
-        echo "::error::v${VERSION} already has a GitHub release (id and asset count: ${releases//$'\n'/; })." \
-          "A release is built once (ADR-077 D8a): rebuilding would make different bytes. Use 'Re-run failed jobs' in" \
-          "the original run; after a whole-workflow re-run, see 'Recovery' in adr/evidence/077-m4/RUNBOOK.md." >&2
-        exit 1
-
   native-image:
-    needs: [validate, release-guard]
+    needs: validate
     if: github.event_name == 'push'
     strategy:
       fail-fast: false
@@ -167,6 +131,14 @@ jobs:
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       with:
         persist-credentials: false
+
+    # ADR-077 D8a: a release is built once; this job builds nothing when the tag already has a GitHub release, even in
+    # a targeted re-run (julc-wasm/src/ci/release-guard.sh).
+    - name: Refuse to build a released version again
+      env:
+        GH_TOKEN: ${{ github.token }}
+      shell: bash
+      run: bash julc-wasm/src/ci/release-guard.sh "$VERSION"
 
     - name: Set up GraalVM JDK 25
       uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
@@ -216,7 +188,7 @@ jobs:
   # built and verified once here and reused everywhere: the playground native images bundle it, the GitHub release
   # carries it, and docs-deploy.yml publishes the static playground from the release asset.
   wasm:
-    needs: [validate, release-guard]
+    needs: validate
     if: github.event_name == 'push'
     runs-on: ubuntu-22.04
     name: Build JuLC WebAssembly distributions
@@ -237,6 +209,14 @@ jobs:
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       with:
         persist-credentials: false
+
+    # ADR-077 D8a: a release is built once; this job builds nothing when the tag already has a GitHub release, even in
+    # a targeted re-run (julc-wasm/src/ci/release-guard.sh).
+    - name: Refuse to build a released version again
+      env:
+        GH_TOKEN: ${{ github.token }}
+      shell: bash
+      run: bash julc-wasm/src/ci/release-guard.sh "$VERSION"
 
     # Web Image ships with the GraalVM 25.3 innovation release. Only graalvm/setup-graalvm resolves that line
     # (actions/setup-java only sees the 25.0 LTS line); it exports GRAALVM_HOME, which the Gradle build reads.
@@ -479,7 +459,7 @@ jobs:
           --nodes "$WASM_SMOKE_NODES" --only node,plain,vite,webpack,webpack-keep,extension,webpack-node,esbuild,next
 
   native-image-playground:
-    needs: [validate, release-guard, wasm]
+    needs: [validate, wasm]
     if: github.event_name == 'push'
     strategy:
       fail-fast: false
@@ -511,6 +491,14 @@ jobs:
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       with:
         persist-credentials: false
+
+    # ADR-077 D8a: a release is built once; this job builds nothing when the tag already has a GitHub release, even in
+    # a targeted re-run (julc-wasm/src/ci/release-guard.sh).
+    - name: Refuse to build a released version again
+      env:
+        GH_TOKEN: ${{ github.token }}
+      shell: bash
+      run: bash julc-wasm/src/ci/release-guard.sh "$VERSION"
 
     - name: Set up GraalVM JDK 25
       uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
@@ -569,17 +557,27 @@ jobs:
         retention-days: 14
 
   shadow-jars:
-    needs: [validate, release-guard]
+    needs: validate
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     name: Build Shadow JARs
     permissions:
       contents: read
+    env:
+      VERSION: ${{ needs.validate.outputs.version }}
 
     steps:
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       with:
         persist-credentials: false
+
+    # ADR-077 D8a: a release is built once; this job builds nothing when the tag already has a GitHub release, even in
+    # a targeted re-run (julc-wasm/src/ci/release-guard.sh).
+    - name: Refuse to build a released version again
+      env:
+        GH_TOKEN: ${{ github.token }}
+      shell: bash
+      run: bash julc-wasm/src/ci/release-guard.sh "$VERSION"
 
     - name: Set up JDK 25
       uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
