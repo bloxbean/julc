@@ -57,7 +57,7 @@ sed -E 's/\(lam [^ ()]+/(lam _/g' X-base.uplc | tr ' ' '\n' > a; (same for X-ren
 | `Adr078Census.java.txt` | From a compiled program's PIR, recovers the library bindings and their ADR-075 content keys (by reflection on `LibraryBindingOrder`), computes D1's ranks (`T`, then D1b for unreachable methods), and simulates Kahn's order with pre21's comparator and with M1a's. It flags D1b ties between bodies that are not α-equal (the residual), and equal-key groups. |
 | `Adr078ExamplesCensus.java.txt` | Runs the census over a source tree of validators (julc-examples). |
 | `m1a-census-joust.txt` | The census over the 67 JOUST examples. The summary is at the end: M1a's order is the same before and after `renameAll` for 67/67; there are no residual ties; 5/67 change the order of the binders present in the default-profile UPLC; 17/67 change the full order (`NONE`, source maps); 12/67 keep unreachable library bindings after the default optimizer. |
-| `m1a-census-julc-examples.txt` | The census over `../julc-examples` (43 validators compiled, 3 skipped): no ties, no change. |
+| `m1a-census-julc-examples.txt` | The census over `../julc-examples` (43 validators compiled, 3 skipped): no tie between reachable methods, and no simulated order change. Corrected in r5: 31 of 43 programs have a D1b name tie between unread methods (see the r4 table). |
 | `m1a-case1-probe.txt` | The JuLC-only two-identical-bodies probe. M1a's `key@rank` order is the same for both names. |
 | `C1Probe.java.txt`, `c1-probe-results.txt` | Reproduces Codex C1. A datum holding two records with the same simple name and fields is 276 B; renaming one gives 318 B. |
 
@@ -78,3 +78,13 @@ exit measures them on the implementation.
 | `C12.java.txt` | Codex's exact C12 program, adopted as a D5 fixture. On pre21: `alpha` gives 1,010 B and 31,073,556 CPU and succeeds; `zeta` gives 1,012 B and 31,201,556 CPU and exhausts the budget under `ExBudget(31_150_000, 110_000)`. |
 | `R3Probes.java.txt`, `r3-probes.txt` | Round-3 findings run against pre21. **C12:** reproduced exactly. **C19:** α-equal twins with different local spellings; renaming the method changes FLAT with source maps (`471fb25d` → `18ed8feb`, 45 B); with O10 disabled, or at `NONE`, nothing changes. Local renames alone also change bytes. **C19c:** a reached library method's local, renamed to collide with another method's local, gives 33 → 73 B at the default profile. **C20:** pool `[B, A]` compiles and `[A, B]` is rejected ("Undefined variable: B"). |
 | `m1a-census-*.txt` (regenerated) | Labelled as label-sequence comparisons (C23). Adds `anyNameTie` and `spellingTie`: every JOUST program, and 31 of 43 julc-examples programs, has a D1b name tie; 19 JOUST programs (all `AddressAdapter.payment` / `AddressLib.paymentCredential`) and no julc-examples program have one whose values differ as written. |
+
+## r5 additions (after review round 4)
+
+| File | What |
+|---|---|
+| `R4Probes.java.txt`, `r4-probes.txt` | **C26:** a root that is also its own library, with `alpha`/`beta` bodies that read `xs.get(0)` and `xs.get(1)`. Renaming `alpha` to `zeta` changes FLAT at `PV11_COSTED` with source maps (`d471844a` → `b378ec82`, 311 B). Nothing changes with O9 (`pv11.o9.list-to-array`) disabled, at `pv11-safe` or `NONE`, or with source maps off. **C27:** an unnamed-package `@OnchainLibrary class Math` whose `magnitude` is renamed to `abs` goes to the stdlib intrinsic: 33 → 28 B at the default profile, 37 → 52 B at `NONE`. |
+| `joust-corpus-locals.txt` | JOUST's "locals, lambda and loop variables, fns, parameters and methods renamed" edit, on pre21, for all 67 examples: lines of name-stripped UPLC that differ, at the default profile. 0 for every example. |
+
+The two census measurements are separate (C34): (a) the order filtered to binder names in the default-profile UPLC
+changes for 5/67; (b) the full simulated order changes for 17/67. Both are simulations compared as label sequences.

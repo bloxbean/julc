@@ -29,6 +29,7 @@ public class Adr078Diag {
         Map<String, String> variants = new LinkedHashMap<>();
         variants.put("base", src);
         variants.put("renamed", JscV2HashStabilityTest.rename(src, JscV2HashStabilityTest.renameAll(src)));
+        if (Boolean.getBoolean("adr078.locals")) variants.put("locals", JscV2HashStabilityTest.rename(src, JscV2HashStabilityTest.renames(src)));
         var seqs = new ArrayList<List<String>>();
         var d1aSeqs = new ArrayList<List<String>>();
         for (var v : variants.entrySet()) {
