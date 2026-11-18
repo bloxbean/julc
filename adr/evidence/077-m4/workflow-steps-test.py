@@ -121,7 +121,9 @@ elif args[0] == 'api':
     def emit(kind, pages):
         """Answers pages as gh api --paginate --jq does: the script's own filter, run by jq on each page."""
         import subprocess
-        for page in faults.get('pages', {}).get(kind, pages):
+        for page in pages if kind is None else faults.get('pages', {}).get(kind, pages):
+            if page == '204':  # an empty answer: nothing for jq to read
+                continue
             if not jq:
                 print(json.dumps(page)); continue
             done = subprocess.run(['jq', '-r', jq], input=json.dumps(page), text=True, capture_output=True)
@@ -156,10 +158,14 @@ elif args[0] == 'api':
             artifacts = run.get('artifacts', [])
             emit('artifacts', [{'total_count': len(artifacts), 'artifacts': artifacts}])
         sys.exit(2)
-    if url.endswith('/releases?per_page=100'):
-        emit('releases', [[{'id': r['id'], 'tag_name': r['tag'], 'draft': r['draft'],
-                            'assets': [{k: a.get(k) for k in ('id', 'name', 'state', 'digest')} for a in r['assets']]}
-                           for r in visible]])
+    if '/releases?per_page=100' in url:
+        pages = faults.get('pages', {}).get('releases', [[{'id': r['id'], 'tag_name': r['tag'], 'draft': r['draft'],
+            'assets': [{k: a.get(k) for k in ('id', 'name', 'state', 'digest')} for a in r['assets']]} for r in visible]])
+        number = re.search(r'[?&]page=(\d+)', url)
+        if number:  # one page, as release-guard.sh reads them; past the last, an empty array
+            n = int(number.group(1))
+            pages = [pages[n - 1] if n <= len(pages) else []]
+        emit(None, pages)
     if '/assets?per_page=100' in url:
         i = int(url.split('/releases/')[1].split('/')[0])
         for r in visible:
@@ -186,6 +192,8 @@ def step(job, name):
 
 
 def run(script, env, cwd):
+    if not os.path.exists(os.path.join(cwd, 'julc-wasm')):  # the job's sparse checkout of julc-wasm/src/ci
+        os.symlink(os.path.join(ROOT, 'julc-wasm'), os.path.join(cwd, 'julc-wasm'))
     return subprocess.run(['bash', '-e', '-o', 'pipefail', '-c', script], env={**os.environ, **env}, cwd=cwd, text=True,
                           capture_output=True)
 
@@ -339,12 +347,20 @@ def build_once(tmp):
     # R23-C29: a malformed answer is not "no release"; an empty one is.
     malformed = 'release list is malformed'
     case('an empty release list (no release of any tag)', [], True, 'building', pages=[[]])
-    case('an empty answer (HTTP 204, an empty body: no page at all, R23-C36)', [], False, malformed, pages=[])
+    case('an empty answer (HTTP 204, an empty body, R23-C36)', [], False, malformed, pages=['204'])
+    others = [{'id': 1000 + i, 'tag_name': f'v9.{i}.0', 'draft': False} for i in range(100)]
+    case('a full page, then an HTTP 204 (R23-C44)', [], False, 'page 2 is not a JSON array', pages=[others, '204'])
+    case('a full page, then an empty array: no release', [], True, 'building', pages=[others, []])
+    case('a full page, then this tag\'s release on page 2', [], False, 'already has a GitHub release (id 7)',
+         pages=[others, [{'id': 7, 'tag_name': f'v{V}', 'draft': False}]])
+    case('this tag\'s release with a null draft flag', [], False, malformed,
+         pages=[[{'id': 7, 'tag_name': f'v{V}', 'draft': None}]])
+    case('this tag\'s release with id 0', [], False, malformed, pages=[[{'id': 0, 'tag_name': f'v{V}', 'draft': False}]])
     case('a release without a tag_name ([{}])', [], False, malformed, pages=[[{}]])
     case('a release whose tag_name is not a string', [], False, malformed, pages=[[{'id': 1, 'tag_name': 7}]])
     case('a release whose tag_name is empty', [], False, malformed, pages=[[{'id': 1, 'tag_name': ''}]])
     case('a malformed row on a second page, beside another tag\'s release', [], False, malformed,
-         pages=[[{'id': 1, 'tag_name': f'v{V}0'}], [{'id': 2}]])
+         pages=[[{'id': 1000 + i, 'tag_name': f'v9.{i}.0', 'draft': False} for i in range(100)], [{'id': 2}]])
     case('a page that is not an array', [], False, malformed, pages=[{'message': 'Bad credentials'}])
     case('a page that is null', [], False, malformed, pages=[None])
 
@@ -409,6 +425,12 @@ def create_once(tmp):
                           {'id': 7, 'draft': 'true'}), ('no id', {'draft': True}), ('id 0', {'id': 0, 'draft': False})]:
         case(f'a malformed release record ({label}): stop, change nothing', full, [], False, stop, expect_uploads=[],
              pages=[[{'tag_name': f'v{V}', 'assets': [], **record}]])
+    # R23-C45: the release list itself is validated before "no release" can mean "create one".
+    for label, pages in [('a sole HTTP 204', ['204']), ('an object, not an array', [{}]),
+                         ('a release without a tag_name', [[{}]])]:
+        state = case(f'{label}: stop, nothing created', full, [], False, stop, expect_uploads=[], pages=pages)
+        check(f'github-release create-once: {label}: no release created', releases_of(state) == [],
+              repr(releases_of(state)))
     case('two releases (a draft too) with the tag', full, [rel([], i=7), rel([], draft=True, i=8)], False, '2 releases')
     case('another tag\'s release is not this one', full,
          [{'id': 3, 'tag': f'v{V}0', 'draft': False, 'assets': [asset(5, name, 'A')]}], True, 'Created release')
@@ -594,6 +616,9 @@ def npm_run_lookup(tmp):
          faults={'pages': {'artifacts': [live]}})
     # R23-F10: only a complete release (its github-release succeeded) reaches npm.
     never = 'was never completed (run {}\'s github-release did not succeed)'
+    # R23-C43: a deciding job with a conclusion outside the workflow-job enum stops recovery, even beside a selectable run.
+    case('a selectable run beside an attest job concluded startup_failure', [run_(61, [attest('success')]),
+         run_(62, [attest('startup_failure')])], expect_text=malformed)
     case('github-release failed (an incomplete release)', [run_(55, [attest('success')], release='failure')],
          expect_text=never.format(55))
     case('github-release never ran', [run_(56, [attest('success')], release=None)], expect_text=never.format(56))
@@ -830,7 +855,7 @@ def graph():
           jobs['npm-publish']['outputs'].get('tags') == '${{ steps.publish.outputs.tags }}'
           and '--published-tags' in [s for s in jobs['npm-verify']['steps'] if s.get('name', '').startswith('Compare')][0]['run'])
     check('wasm holds contents: read only', jobs['wasm']['permissions'] == {'contents': 'read'})
-    for job in ['npm-dry-run', 'npm-publish', 'npm-verify']:
+    for job in ['npm-dry-run', 'npm-publish', 'npm-verify', 'github-release']:
         checkout = [s for s in jobs[job]['steps'] if str(s.get('uses', '')).startswith('actions/checkout@')][0]
         check(f'{job} checks out only julc-wasm/src/ci without credentials',
               checkout['with'] == {'persist-credentials': False, 'sparse-checkout': 'julc-wasm/src/ci',

@@ -671,6 +671,13 @@ jobs:
     env:
       VERSION: ${{ needs.validate.outputs.version }}
     steps:
+    # Only julc-wasm/src/ci (release-owner reviewed): release-guard.sh's validated reading of the release list.
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      with:
+        persist-credentials: false
+        sparse-checkout: julc-wasm/src/ci
+        sparse-checkout-cone-mode: false
+
     - name: Download release assets
       uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
       with:
@@ -708,23 +715,19 @@ jobs:
           cat "$RUNNER_TEMP/inventory.diff" >&2
           exit 1
         fi
-        gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
-          --jq ".[] | select(.tag_name == \"v${VERSION}\") | [(.id | tojson), (.draft | tojson)] | @tsv" > "$RUNNER_TEMP/releases.tsv"
-        count=$(wc -l < "$RUNNER_TEMP/releases.tsv" | tr -d ' ')
+        # The tag's releases, from a reading that validates every page and record first (R23-C45): a malformed
+        # answer stops here, never reads as "no release".
+        bash julc-wasm/src/ci/release-guard.sh "$VERSION" --list > "$RUNNER_TEMP/releases.tsv"
+        count=$(grep -c . "$RUNNER_TEMP/releases.tsv" || true)
         if [[ "$count" -gt 1 ]]; then
           echo "::error::${count} releases (drafts included) have tag v${VERSION}; resolve that by hand first." >&2
           exit 1
         fi
         if [[ "$count" == 1 ]]; then
           IFS=$'\t' read -r id draft < "$RUNNER_TEMP/releases.tsv"
-          if [[ "$id" =~ ^[1-9][0-9]*$ && "$draft" == true ]]; then
+          if [[ "$draft" == true ]]; then
             echo "::error::Release ${id} for v${VERSION} is a draft, which this workflow never makes: it was made" \
               "by hand. Delete it, never publish it, then re-run this job (ADR-077 D8a)." >&2
-            exit 1
-          fi
-          if [[ ! "$id" =~ ^[1-9][0-9]*$ || "$draft" != false ]]; then
-            echo "::error::The release record for v${VERSION} is malformed (id '${id}', draft '${draft}'). Stop:" \
-              "preserve the published release and its tag, change nothing, and investigate (ADR-077 D8a)." >&2
             exit 1
           fi
           echo "Release ${id} for v${VERSION} exists."
@@ -788,9 +791,8 @@ jobs:
       shell: bash
       run: |
         set -euo pipefail
-        gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
-          --jq ".[] | select(.tag_name == \"v${VERSION}\") | [(.id | tojson), (.draft | tojson)] | @tsv" > "$RUNNER_TEMP/releases.tsv"
-        if [[ "$(wc -l < "$RUNNER_TEMP/releases.tsv" | tr -d ' ')" != 1 ]]; then
+        bash julc-wasm/src/ci/release-guard.sh "$VERSION" --list > "$RUNNER_TEMP/releases.tsv"
+        if [[ "$(grep -c . "$RUNNER_TEMP/releases.tsv" || true)" != 1 ]]; then
           echo "::error::Expected exactly one release for v${VERSION}:" >&2
           cat "$RUNNER_TEMP/releases.tsv" >&2
           exit 1

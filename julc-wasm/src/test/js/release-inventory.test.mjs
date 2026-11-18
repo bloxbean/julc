@@ -92,10 +92,13 @@ test('the files of the ten release-* artifacts are exactly github-release\'s 14-
   assert.deepEqual(sorted(delivered.map(plain)), sorted(inventory.map(plain)));
 });
 
-test('the job names npm-run.sh looks for are the attest and github-release jobs\' names', () => {
+test('the job names npm-run.sh looks for are the attest and github-release jobs\' names, each in its role', () => {
   const nameOf = job => /^ {4}name: ([^\n]+)$/m.exec(jobs[job])?.[1];
-  const expected = sorted([nameOf('attest'), nameOf('github-release')]);
-  assert.ok(expected.every(Boolean), JSON.stringify(expected));
+  const roleOf = kind => new RegExp(`\\.name == "([^"]+)" then "${kind} `).exec(npmRun)?.[1];
+  // The name whose success makes a run ATTESTED is attest's; the one that makes it RELEASED is github-release's.
+  assert.deepEqual([roleOf('ATTESTED'), roleOf('RELEASED')], [nameOf('attest'), nameOf('github-release')]);
+  assert.ok(nameOf('attest') && nameOf('github-release'));
+  // And npm-run.sh names no other job.
   const used = sorted(new Set([...npmRun.matchAll(/\.name == "([^"]+)"/g)].map(match => match[1])));
-  assert.deepEqual(used, expected);
+  assert.deepEqual(used, sorted([nameOf('attest'), nameOf('github-release')]));
 });

@@ -66,7 +66,7 @@ for run in $runs; do
     'def deciding: .name == "Attest the npm tarballs and engine archives" or .name == "Create GitHub release";
       def known: (.status | IN("queued", "in_progress", "completed", "waiting", "requested", "pending"))
         and (.conclusion == null or (.conclusion | IN("success", "failure", "neutral", "cancelled", "skipped",
-          "timed_out", "action_required", "stale", "startup_failure")));
+          "timed_out", "action_required")));
       if valid_id and (.name | type) == "string" and (.status | type) == "string" and has("conclusion")
       and (if .status == "completed" then (.conclusion | type) == "string" else .conclusion == null end)
       and (if deciding then known else true end)
