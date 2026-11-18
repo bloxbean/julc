@@ -1,5 +1,6 @@
 package org.julclang.compiler.codegen;
 
+import org.julclang.compiler.pir.PirSubstitution;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.resolve.LibraryMethodRegistry.LibraryMethod;
 
@@ -9,6 +10,7 @@ import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.PriorityQueue;
@@ -62,7 +64,10 @@ final class FirstUseRanks {
 
     /** The rule that ranked a method (ADR-078 D5's instrumentation). */
     enum Rule {
-        /** Reached from the root (D1a), or from an unread helper (D1a′), at its first use. */
+        /**
+         * At its first use in a walked body: from the root (D1a), from an unread helper (D1a′), or from a library method
+         * D1b ranked, whose callees D1b's walk ranks in turn.
+         */
         FIRST_USE,
         /** A helper the root walk did not reach (D1a′). */
         UNREAD_HELPER,
@@ -83,15 +88,29 @@ final class FirstUseRanks {
     }
 
     /**
+     * One choice of {@link LibraryBindingOrder}'s Kahn algorithm between ready methods with equal content keys: the
+     * contenders with their ranks, and the one bound (the lowest rank).
+     */
+    record TieChoice(String key, Map<String, Integer> contenders, String winner) {
+    }
+
+    /** ADR-078 D5's instrumentation: told each ranking step, and each choice between equal keys. */
+    interface Observer {
+        void selected(Selection selection);
+
+        default void chose(TieChoice choice) {
+        }
+    }
+
+    /**
      * The rank of each library method, by qualified name.
      *
-     * @param methods      the library methods, by qualified name
-     * @param keys         their content keys
-     * @param dependencies the library methods each one calls, itself excluded
-     * @param observer     told each selection, in rank order, or null
+     * @param methods  the library methods, by qualified name
+     * @param keys     their content keys
+     * @param observer told each selection, in rank order, or null
      */
     static Map<String, Integer> of(Roots roots, Map<String, LibraryMethod> methods, Map<String, String> keys,
-                                   Map<String, Set<String>> dependencies, Consumer<Selection> observer) {
+                                   Observer observer) {
         var walk = new Walk(roots.helpers(), methods, observer);
         // D1a: the static initialisers see only library methods; the entry points see the helpers too.
         for (var value : roots.statics()) walk.walk(value, true);
@@ -100,14 +119,24 @@ final class FirstUseRanks {
         for (var helper : roots.helpers()) {
             if (!walk.helperRanks.containsKey(helper.name())) walk.rankHelper(helper.name(), Rule.UNREAD_HELPER);
         }
-        unread(walk, methods, keys, dependencies);
+        unread(walk, methods, keys);
         return walk.libraryRanks;
     }
 
-    /** D1b: the library methods no walk reached, by content key, each walked as it is ranked. */
-    private static void unread(Walk walk, Map<String, LibraryMethod> methods, Map<String, String> keys,
-                               Map<String, Set<String>> dependencies) {
+    /**
+     * D1b: the library methods no walk reached, by content key, each walked as it is ranked. A method calls another
+     * when the other's name is free in its body (resolved lexically, as the walk resolves it), itself excluded.
+     */
+    private static void unread(Walk walk, Map<String, LibraryMethod> methods, Map<String, String> keys) {
         if (walk.libraryRanks.size() == methods.size()) return;
+        var dependencies = new HashMap<String, Set<String>>();
+        for (var entry : methods.entrySet()) {
+            var calls = new LinkedHashSet<String>();
+            for (String name : PirSubstitution.collectFreeVarNames(entry.getValue().body())) {
+                if (!name.equals(entry.getKey()) && methods.containsKey(name)) calls.add(name);
+            }
+            dependencies.put(entry.getKey(), calls);
+        }
         Comparator<String> canonical = Comparator.<String, String>comparing(keys::get).thenComparing(Comparator.naturalOrder());
         // Each unranked method's count of unranked library callers; a method is a candidate when it has none.
         var callers = new HashMap<String, Integer>();
@@ -176,14 +205,14 @@ final class FirstUseRanks {
     private static final class Walk {
         final Map<String, PirTerm> helperBodies = new LinkedHashMap<>();
         final Map<String, LibraryMethod> methods;
-        final Consumer<Selection> observer;
+        final Observer observer;
         final Map<String, Integer> helperRanks = new HashMap<>();
         final Map<String, Integer> libraryRanks = new HashMap<>();
         final ArrayDeque<Frame> frames = new ArrayDeque<>();
         Consumer<String> onLibraryRanked = name -> { };
         int next;
 
-        Walk(Collection<ValidatorAssembly.Method> helpers, Map<String, LibraryMethod> methods, Consumer<Selection> observer) {
+        Walk(Collection<ValidatorAssembly.Method> helpers, Map<String, LibraryMethod> methods, Observer observer) {
             for (var helper : helpers) helperBodies.putIfAbsent(helper.name(), helper.body());
             this.methods = methods;
             this.observer = observer;
@@ -191,14 +220,14 @@ final class FirstUseRanks {
 
         void rankHelper(String name, Rule rule) {
             helperRanks.put(name, next);
-            if (observer != null) observer.accept(new Selection(name, true, next, rule));
+            if (observer != null) observer.selected(new Selection(name, true, next, rule));
             next++;
             walk(helperBodies.get(name), false);
         }
 
         void rankLibrary(String name, Rule rule) {
             libraryRanks.put(name, next);
-            if (observer != null) observer.accept(new Selection(name, false, next, rule));
+            if (observer != null) observer.selected(new Selection(name, false, next, rule));
             next++;
             onLibraryRanked.accept(name);
             walk(methods.get(name).body(), true);
@@ -237,7 +266,7 @@ final class FirstUseRanks {
                     if (!helperRanks.containsKey(name)) {
                         // Ranked here: the helper's body is pushed above this frame and walked before its rest.
                         helperRanks.put(name, next);
-                        if (observer != null) observer.accept(new Selection(name, true, next, Rule.FIRST_USE));
+                        if (observer != null) observer.selected(new Selection(name, true, next, Rule.FIRST_USE));
                         next++;
                         push(helperBodies.get(name), false);
                     }
@@ -245,7 +274,7 @@ final class FirstUseRanks {
                 }
                 if (methods.containsKey(name) && !libraryRanks.containsKey(name)) {
                     libraryRanks.put(name, next);
-                    if (observer != null) observer.accept(new Selection(name, false, next, Rule.FIRST_USE));
+                    if (observer != null) observer.selected(new Selection(name, false, next, Rule.FIRST_USE));
                     next++;
                     onLibraryRanked.accept(name);
                     push(methods.get(name).body(), true);
@@ -253,17 +282,13 @@ final class FirstUseRanks {
                 return;
             }
             var children = new ArrayList<Step>();
-            LibraryBindingOrder.children(term, child -> children.add(new Step.Visit(child)), (names, body) -> {
+            LibraryBindingOrder.children(term, child -> children.add(new Step.Visit(child)), (names, parts) -> {
                 children.add(new Step.Bind(names));
-                children.add(new Step.Visit(body));
+                for (var part : parts) children.add(new Step.Visit(part));
                 children.add(new Step.Unbind(names));
             });
             for (int i = children.size() - 1; i >= 0; i--) frame.steps().push(children.get(i));
         }
     }
 
-    /** The visitor {@link LibraryBindingOrder#children} reports a child under new binders to. */
-    interface Bound {
-        void child(List<String> names, PirTerm body);
-    }
 }

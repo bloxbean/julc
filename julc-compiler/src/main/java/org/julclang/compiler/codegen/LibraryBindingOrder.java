@@ -22,6 +22,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 /**
@@ -64,13 +65,17 @@ final class LibraryBindingOrder {
     }
 
     /**
-     * The methods in binding order, ties between equal content keys broken by first use from {@code roots}
-     * (ADR-078 D2).
+     * The methods in binding order (ADR-078 D2). Kahn's algorithm binds, at each step, the ready method (every
+     * library method it calls already bound) that is smallest by content key; among ready methods with equal keys, the
+     * one with the lower first-use rank ({@link FirstUseRanks}). The ranks are unique, so the qualified name is never
+     * compared here; a name decides only inside {@link FirstUseRanks}' D1b, among methods nothing reaches, and in the
+     * order of a stalled recursive group, which the backend rejects.
      *
-     * @param observer told each ranking step, or null (ADR-078 D5's instrumentation)
+     * @param observer told each ranking step and each choice between ready methods with equal keys, or null
+     *                 (ADR-078 D5's instrumentation)
      */
     static List<LibraryMethod> innermostFirst(Collection<LibraryMethod> methods, FirstUseRanks.Roots roots,
-                                              Consumer<FirstUseRanks.Selection> observer) {
+                                              FirstUseRanks.Observer observer) {
         var byName = new LinkedHashMap<String, LibraryMethod>();
         for (var method : methods) byName.put(method.qualifiedName(), method);
 
@@ -86,7 +91,7 @@ final class LibraryBindingOrder {
         }
 
         var keys = contentKeys(byName, dependencies);
-        var ranks = FirstUseRanks.of(roots, byName, keys, dependencies, observer);
+        var ranks = FirstUseRanks.of(roots, byName, keys, observer);
         Comparator<String> canonical = Comparator.<String, String>comparing(keys::get)
                 .thenComparingInt(ranks::get).thenComparing(Comparator.naturalOrder());
 
@@ -104,9 +109,23 @@ final class LibraryBindingOrder {
                 }
             }
             if (next == null) {
-                // A recursive group with no method ready: bind the rest in canonical order.
-                for (String name : remaining) order.add(byName.get(name));
+                // A recursive group with no method ready, which the backend rejects: bind the rest by content key and
+                // name, as before ADR-078, so that the rejection names the same method.
+                var stalled = new ArrayList<>(remaining);
+                stalled.sort(Comparator.<String, String>comparing(keys::get).thenComparing(Comparator.naturalOrder()));
+                for (String name : stalled) order.add(byName.get(name));
                 break;
+            }
+            if (observer != null) {
+                var contenders = new ArrayList<String>();
+                for (String name : remaining) {
+                    if (keys.get(name).equals(keys.get(next)) && bound.containsAll(dependencies.get(name))) contenders.add(name);
+                }
+                if (contenders.size() > 1) {
+                    var contenderRanks = new LinkedHashMap<String, Integer>();
+                    for (String name : contenders) contenderRanks.put(name, ranks.get(name));
+                    observer.chose(new FirstUseRanks.TieChoice(keys.get(next), contenderRanks, next));
+                }
             }
             remaining.remove(next);
             bound.add(next);
@@ -205,30 +224,37 @@ final class LibraryBindingOrder {
             case PirTerm.IntegerCase integerCase -> text.append("(case ").append(integerCase.branches().size());
         }
         var children = new ArrayList<Step>();
-        children(term, child -> children.add(new Step.Visit(child)), (names, body) -> bound(children, names, body));
-        // A form with parts closes after them; the parts run in order. A recursive group's names are bound for each of
-        // its parts in turn, which gives every part the same scope as binding them once around all of them.
+        children(term, child -> children.add(new Step.Visit(child)), (names, parts) -> {
+            children.add(new Step.Bind(names));
+            for (var part : parts) children.add(new Step.Visit(part));
+            children.add(new Step.Unbind(names.size()));
+        });
+        // A form with parts closes after them; the parts run in order.
         if (!children.isEmpty()) children.add(new Step.Write(")"));
         for (int i = children.size() - 1; i >= 0; i--) pending.push(children.get(i));
     }
 
     /**
-     * Reports {@code term}'s children in the order {@link #describe} walks them: {@code plain} for a child under no new
-     * binder, {@code bound} for one under the binders a lambda, let, match or recursive group introduces.
+     * Reports {@code term}'s children in the one child order of this class, which {@link #describe} and
+     * {@link FirstUseRanks}' walk share: {@code plain} for a child under no new binder, {@code scoped} for the children
+     * under the binders a lambda, let, match or recursive group introduces. A recursive group's names are reported once
+     * with all of its parts, values and body, so that a walk binds them once (ADR-078 r7).
      */
-    static void children(PirTerm term, Consumer<PirTerm> plain, FirstUseRanks.Bound bound) {
+    static void children(PirTerm term, Consumer<PirTerm> plain, BiConsumer<List<String>, List<PirTerm>> scoped) {
         switch (term) {
             case PirTerm.Var _, PirTerm.Const _, PirTerm.Builtin _, PirTerm.Error _ -> {
             }
-            case PirTerm.Lam lam -> bound.child(List.of(lam.param()), lam.body());
+            case PirTerm.Lam lam -> scoped.accept(List.of(lam.param()), List.of(lam.body()));
             case PirTerm.Let let -> {
                 plain.accept(let.value());
-                bound.child(List.of(let.name()), let.body());
+                scoped.accept(List.of(let.name()), List.of(let.body()));
             }
             case PirTerm.LetRec rec -> {
                 var names = rec.bindings().stream().map(PirTerm.Binding::name).toList();
-                for (var binding : rec.bindings()) bound.child(names, binding.value());
-                bound.child(names, rec.body());
+                var parts = new ArrayList<PirTerm>();
+                for (var binding : rec.bindings()) parts.add(binding.value());
+                parts.add(rec.body());
+                scoped.accept(names, parts);
             }
             case PirTerm.App app -> {
                 plain.accept(app.function());
@@ -249,29 +275,23 @@ final class LibraryBindingOrder {
                 for (var branch : match.branches()) {
                     var names = new ArrayList<>(branch.bindings());
                     if (branch.patternVar() != null) names.add(branch.patternVar());
-                    bound.child(names, branch.body());
+                    scoped.accept(names, List.of(branch.body()));
                 }
             }
             case PirTerm.ListMatch match -> {
                 plain.accept(match.scrutinee());
                 plain.accept(match.nilBranch());
-                bound.child(List.of(match.headName(), match.tailName()), match.consBranch());
+                scoped.accept(List.of(match.headName(), match.tailName()), List.of(match.consBranch()));
             }
             case PirTerm.PairMatch match -> {
                 plain.accept(match.scrutinee());
-                bound.child(List.of(match.firstName(), match.secondName()), match.body());
+                scoped.accept(List.of(match.firstName(), match.secondName()), List.of(match.body()));
             }
             case PirTerm.IntegerCase integerCase -> {
                 plain.accept(integerCase.scrutinee());
                 integerCase.branches().forEach(plain);
             }
         }
-    }
-
-    private static void bound(List<Step> children, List<String> names, PirTerm body) {
-        children.add(new Step.Bind(names));
-        children.add(new Step.Visit(body));
-        children.add(new Step.Unbind(names.size()));
     }
 
     private static String variable(String name, LibraryMethod method, Map<String, String> keys, Set<String> libraryMethods,
