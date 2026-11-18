@@ -114,15 +114,31 @@ elif args[0] == 'api':
         runs = json.load(open(runs_file)) if os.path.exists(runs_file) else []
         query = dict(part.split('=', 1) for part in url.split('?', 1)[1].split('&'))
         matching = [r for r in runs if r['event'] == query['event'] and r['head_sha'] == query['head_sha']]
-        if jq == '.total_count':
+        if jq.startswith('.total_count'):
             print(faults.get('total_count', len(matching))); sys.exit(0)
-        rows = [f"{r['id']} {r['head_branch']}" for r in matching[:faults.get('listed', len(matching))]]
+        def row(r):  # the jq classification: a positive integer id and a non-blank string branch, or INVALID
+            ok = (isinstance(r['id'], int) and not isinstance(r['id'], bool) and r['id'] > 0
+                  and isinstance(r['head_branch'], str) and re.fullmatch(r'\S+', r['head_branch']))
+            return f"{r['id']} {r['head_branch']}" if ok else 'INVALID'
+        rows = [row(r) for r in matching[:faults.get('listed', len(matching))]]
         if 'duplicate' in faults:
-            rows += [f"{r['id']} {r['head_branch']}" for r in matching if r['id'] == faults['duplicate']]
+            rows += [row(r) for r in matching if r['id'] == faults['duplicate']]
         if faults.get('malformed'):
             rows = ['abc ' + r.split(' ')[1] for r in rows]
         print('\n'.join(rows))
         sys.exit(0)
+    if '/actions/artifacts/' in url and url.endswith('/zip'):
+        import io, zipfile
+        artifact_id = int(url.split('/actions/artifacts/')[1].split('/')[0])
+        runs_file = os.path.join(state, 'runs.json')
+        for r in (json.load(open(runs_file)) if os.path.exists(runs_file) else []):
+            for artifact in r.get('artifacts', []):
+                if artifact['id'] == artifact_id:
+                    buffer = io.BytesIO()
+                    with zipfile.ZipFile(buffer, 'w') as z:
+                        for name, content in artifact.get('files', {}).items(): z.writestr(name, content)
+                    sys.stdout.buffer.write(buffer.getvalue()); sys.exit(0)
+        sys.stderr.write('gh: Not Found (HTTP 404)\n'); sys.exit(1)
     if '/actions/runs/' in url:
         runs_file = os.path.join(state, 'runs.json')
         runs = {r['id']: r for r in (json.load(open(runs_file)) if os.path.exists(runs_file) else [])}
@@ -134,6 +150,11 @@ elif args[0] == 'api':
             for job in runs[run_id]['jobs']:
                 if job['name'] == 'Attest the npm tarballs and engine archives' and job['conclusion'] == 'success':
                     print(job['id'])
+            sys.exit(0)
+        if url.endswith('/artifacts?per_page=100'):
+            for artifact in runs[run_id].get('artifacts', []):
+                if artifact['name'].startswith('release-'):
+                    print(f"{artifact['id']} {artifact['name']} {'true' if artifact['expired'] else 'false'}")
             sys.exit(0)
         if '/artifacts?name=npm-packages' in url:
             if faults.get('artifacts'):
@@ -212,6 +233,17 @@ def github(tmp, releases, attested=None):
 
 
 ARTIFACT_RUN = 777
+
+
+LABELS = ['macos-aarch64', 'linux-x86_64', 'linux-arm64', 'windows-x86_64']
+
+
+def inventory(prefix=''):
+    """The 14 files github-release attaches (R23-C16), with distinct contents."""
+    names = ([f'julc-{V}-{l}.zip' for l in LABELS] + [f'julc-playground-{V}-{l}.zip' for l in LABELS]
+             + [f'julc-compiler-all-{V}-all.jar', f'julc-vm-java-all-{V}-all.jar', FILES[3], FILES[4],
+                f'julc-playground-static-{V}.tar.gz', f'julc-wasm-{V}-SHA256SUMS.txt'])
+    return {name: f'{prefix}bytes of {name}' for name in names}
 
 
 def statement(files, run=ARTIFACT_RUN, attempt=1, **identity):
@@ -298,7 +330,7 @@ def build_once(tmp):
     def case(label, releases, expect_ok, expect_text):
         state = github(tmp, releases)
         work = tempfile.mkdtemp(dir=tmp)
-        result = run(step('wasm', 'Refuse to build a released version again'),
+        result = run(step('release-guard', 'Refuse to build a released version again'),
                      {'FAKE_GH': state, 'FAKE_TOKEN': 'read', 'VERSION': V, 'GITHUB_REPOSITORY': 'bloxbean/julc',
                       'RUNNER_TEMP': work}, work)
         check(f'wasm build-once: {label}',
@@ -347,32 +379,40 @@ def create_once(tmp):
         return state
     name = FILES[4]
     rel = lambda assets, draft=False, i=7: {'id': i, 'tag': f'v{V}', 'draft': draft, 'assets': assets}
-    everything = {f'julc-{V}-linux-x86_64.zip': 'Z', FILES[3]: 'D', FILES[4]: 'E', f'julc-wasm-{V}-SHA256SUMS.txt': 'S'}
-    state = case('no release yet: created published, every file attached once', everything, [], True, 'Created release',
-                 expect_uploads=sorted(everything))
+    full = inventory()
+    state = case('no release yet: created published, every file of the inventory attached once', full, [], True,
+                 'Created release', expect_uploads=sorted(full))
     created = releases_of(state)[0]
     check('github-release create-once: the release is created published, prerelease, make_latest legacy',
           created['draft'] is False and created['fields'] == {'tag_name': f'v{V}', 'name': V, 'prerelease': 'true',
                                                                 'draft': 'false', 'make_latest': 'legacy'},
           repr(created))
-    case('the same bytes already attached (digest)', {name: 'A'}, [rel([asset(5, name, 'A')])], True, 'Keeping',
-         expect_uploads=[])
-    case('the same bytes already attached (no digest field: downloaded)', {name: 'A'},
-         [rel([asset(5, name, 'A', digest=False)])], True, 'Keeping', expect_uploads=[])
-    case('other bytes already attached: stops before uploading anything', {name: 'B', 'other.zip': 'C'},
-         [rel([asset(5, name, 'A')])], False, 'already attached with other bytes', expect_uploads=[])
-    case('a failed upload placeholder (HTTP 502) is deleted and uploaded again', {name: 'A'},
+    rest = sorted(n for n in full if n != name)
+    case('the same bytes already attached (digest)', full, [rel([asset(5, name, full[name])])], True, 'Keeping',
+         expect_uploads=rest)
+    case('the same bytes already attached (no digest field: downloaded)', full,
+         [rel([asset(5, name, full[name], digest=False)])], True, 'Keeping', expect_uploads=rest)
+    case('other bytes already attached: stops before uploading anything', full, [rel([asset(5, name, 'A')])], False,
+         'already attached with other bytes', expect_uploads=[])
+    case('a failed upload placeholder (HTTP 502) is deleted and uploaded again', full,
          [rel([asset(6, name, '', state='starter', digest=False)])], True, 'failed upload', expect_deleted=[6],
-         expect_uploads=[name])
-    case('a placeholder and a differing asset', {name: 'A', 'other.zip': 'C'},
-         [rel([asset(6, name, '', state='starter', digest=False), asset(8, 'other.zip', 'D')])], False, 'other bytes',
+         expect_uploads=sorted(full))
+    case('a placeholder and a differing asset', full,
+         [rel([asset(6, name, '', state='starter', digest=False), asset(8, FILES[3], 'D')])], False, 'other bytes',
          expect_deleted=[6], expect_uploads=[])
-    case('a draft with the tag (this workflow never makes one): refused', {name: 'A'}, [rel([], draft=True)], False,
+    case('a draft with the tag (this workflow never makes one): refused', full, [rel([], draft=True)], False,
          'is a draft')
-    case('two releases (a draft too) with the tag', {name: 'A'}, [rel([], i=7), rel([], draft=True, i=8)], False,
-         '2 releases')
-    case('another tag\'s release is not this one', {name: 'B'},
+    case('two releases (a draft too) with the tag', full, [rel([], i=7), rel([], draft=True, i=8)], False, '2 releases')
+    case('another tag\'s release is not this one', full,
          [{'id': 3, 'tag': f'v{V}0', 'draft': False, 'assets': [asset(5, name, 'A')]}], True, 'Created release')
+    # R23-C16: the inventory, before anything is created or changed.
+    lacking = {n: c for n, c in full.items() if 'windows' not in n or 'playground' in n}
+    state = case('a CLI zip missing from the download: nothing created', lacking, [], False,
+                 f'> julc-{V}-windows-x86_64.zip', expect_uploads=[])
+    check('github-release create-once: no release is created without the inventory', releases_of(state) == [],
+          repr(releases_of(state)))
+    case('a file outside the inventory (an npm tarball): nothing created', {**full, FILES[0]: 'npm'}, [], False,
+         f'< {FILES[0]}', expect_uploads=[])
 
 
 def failed_upload_recovery(tmp):
@@ -380,8 +420,7 @@ def failed_upload_recovery(tmp):
     original bytes: by re-running the failed job, or by hand from the original run's artifacts. Then the npm side (a
     dispatch) finds the run, and its npm files check against their attestation and the finished release's archives."""
     npm = {f: f'bytes of {f}' for f in FILES + [SUMS]}
-    data = {FILES[3]: npm[FILES[3]], FILES[4]: npm[FILES[4]], f'julc-wasm-{V}-SHA256SUMS.txt': 'sums',
-            f'julc-{V}-linux-x86_64.zip': 'cli'}
+    data = {**inventory(), FILES[3]: npm[FILES[3]], FILES[4]: npm[FILES[4]]}
     attested = [statement(npm)]
     for recovery in ['re-run failed jobs', 'by hand after a refused full re-run']:
         state = github(tmp, [], attested)
@@ -392,7 +431,7 @@ def failed_upload_recovery(tmp):
               and any(a['state'] == 'starter' and a['name'] == FILES[3] for a in partial['assets']),
               result.stdout + result.stderr + repr(partial))
         work = tempfile.mkdtemp(dir=tmp)
-        rerun = run(step('wasm', 'Refuse to build a released version again'),
+        rerun = run(step('release-guard', 'Refuse to build a released version again'),
                     {'FAKE_GH': state, 'FAKE_TOKEN': 'read', 'VERSION': V, 'GITHUB_REPOSITORY': 'bloxbean/julc',
                      'RUNNER_TEMP': work}, work)
         check(f'C9 ({recovery}): a whole-workflow re-run stops in wasm, building nothing',
@@ -514,6 +553,46 @@ def npm_run_lookup(tmp):
          [run_(33, [attest('skipped')], artifacts=[]), run_(34, [attest('success')]), run_(35, [attest('skipped')])],
          expect_text='inconsistent', faults={'duplicate': 34, 'listed': 2})
     case('a malformed run id', [run_(36, [attest('success')])], expect_text='malformed', faults={'malformed': True})
+    case('a valid candidate and an unclassifiable row (id null, R23-C15)',
+         [run_(37, [attest('success')]), {**run_(38, [attest('skipped')]), 'id': None}], expect_text='malformed')
+    case('a valid candidate and a row with no branch', [run_(39, [attest('success')]),
+                                                       {**run_(40, [attest('skipped')]), 'head_branch': None}],
+         expect_text='malformed')
+
+
+def runbook_manual_download(tmp):
+    """RUNBOOK.md's download of the original run's release-* artifacts by id (R23-C13)."""
+    text = open(os.path.join(ROOT, 'adr/evidence/077-m4/RUNBOOK.md')).read()
+    start = text.index('  (\n    set -euo pipefail\n    run=<original run id>')
+    block = text[start:text.index('  )\n  ```', start) + 4].replace('\n  ', '\n').strip().replace('<original run id>', '777')
+    files = inventory()
+    def artifact(i, name, contents, expired=False):
+        return {'id': i, 'name': name, 'expired': expired, 'files': contents}
+    by_artifact = {**{f'release-cli-{l}': {f'julc-{V}-{l}.zip': files[f'julc-{V}-{l}.zip']} for l in LABELS},
+                   **{f'release-playground-{l}': {f'julc-playground-{V}-{l}.zip': files[f'julc-playground-{V}-{l}.zip']}
+                      for l in LABELS},
+                   'release-shadow-jars': {n: files[n] for n in files if n.endswith('.jar')},
+                   'release-wasm': {n: files[n] for n in [FILES[3], FILES[4], f'julc-playground-static-{V}.tar.gz',
+                                                          f'julc-wasm-{V}-SHA256SUMS.txt']}}
+    ten = [artifact(100 + i, name, contents) for i, (name, contents) in enumerate(sorted(by_artifact.items()))]
+    def case(label, artifacts, expect_ok, expect_text):
+        state = github(tmp, [])
+        json.dump([{'id': 777, 'event': 'push', 'head_sha': TAG_SHA, 'head_branch': f'v{V}', 'jobs': [],
+                    'artifacts': artifacts}], open(os.path.join(state, 'runs.json'), 'w'))
+        work = tempfile.mkdtemp(dir=tmp)
+        result = subprocess.run(['bash', '-c', block], cwd=work, text=True, capture_output=True,
+                                env={**os.environ, 'FAKE_GH': state, 'FAKE_TOKEN': 'read'})
+        got = sorted(os.path.relpath(os.path.join(d, f), os.path.join(work, 'dist'))
+                     for d, _, fs in os.walk(os.path.join(work, 'dist')) for f in fs) if expect_ok else []
+        check(f'runbook manual download: {label}', (result.returncode == 0) == expect_ok
+              and expect_text in result.stdout + result.stderr
+              and (not expect_ok or len(got) == 14), result.stdout + result.stderr + repr(got))
+    case('the ten artifacts, each once: 14 files in dist/<artifact>/', ten, True, f'release-wasm/{FILES[4]}')
+    rebuilt = ten + [artifact(200, f'release-cli-{LABELS[3]}', {f'julc-{V}-{LABELS[3]}.zip': 'rebuilt bytes'})]
+    case('a CLI zip artifact uploaded twice with different bytes (a rebuild): refused', rebuilt, False,
+         f'uploaded more than once (a rebuild): release-cli-{LABELS[3]}')
+    case('an artifact missing', ten[1:], False, 'not the ten expected')
+    case('an artifact expired', ten[:-1] + [{**ten[-1], 'expired': True}], False, 'expired')
 
 
 def runbook_release_check(tmp):
@@ -605,6 +684,8 @@ def release_verified(tmp):
          rel([complete[0], asset(2, FILES[3], '', 'starter', False)]), False, 'state starter')
     case('an asset with other bytes', local, rel([complete[0], asset(2, FILES[3], 'X')]), False, FILES[3])
     case('no release', local, [], False, 'Expected exactly one release')
+    case('an asset that is not this run\'s file (R23-C16)', local, rel(complete + [asset(9, FILES[0], 'npm')]), False,
+         f'< {FILES[0]}')
 
 
 def npm_files_check(tmp):
@@ -644,6 +725,11 @@ def npm_files_check(tmp):
          False, '--signer-digest')
     case('an attestation for another ref', data, [statement(data, ref='refs/heads/main')], False, '--source-ref')
     case('an attestation of another run', data, [statement(data, run=999)], False, 'not one attested set')
+    case('a run invocation with attempt 0 (R23-C14)', data, [statement(data, attempt=0)], False, 'not one attested set')
+    case('a run invocation with a trailing path', data, [statement(data, attempt='1/extra')], False,
+         'not one attested set')
+    case('a run invocation of a run whose id starts with this one\'s', data, [statement(data, run=7770)], False,
+         'not one attested set')
     # R23-C7: two attempts that signed builds with identical archives but different client and wrapper bytes.
     other = {**data, FILES[0]: 'client of attempt 2', FILES[1]: 'vm package of attempt 2', FILES[2]: 'full of attempt 2'}
     both = [statement(data, attempt=1), statement(other, attempt=2)]
@@ -734,6 +820,18 @@ def graph():
     check('every build job, attest, github-release and update-homebrew run only on push',
           all("github.event_name == 'push'" in str(jobs[j].get('if', '')) for j in pushed_only))
     check('github-release needs attest', 'attest' in jobs['github-release']['needs'])
+    producers = [j for j, spec in jobs.items() if any('upload-artifact' in str(st.get('uses', '')) and (
+        str(st['with']['name']).startswith('release-') or st['with']['name'] == 'npm-packages')
+        for st in spec.get('steps', []))]
+    check(f'every job that uploads a release file needs release-guard ({", ".join(sorted(producers))}, R23-C13)',
+          sorted(producers) == ['native-image', 'native-image-playground', 'shadow-jars', 'wasm']
+          and all('release-guard' in jobs[j]['needs'] for j in producers), repr(producers))
+    guard = jobs['release-guard']
+    check('release-guard: build-free, read-only, push only',
+          guard['permissions'] == {'contents': 'read'} and "github.event_name == 'push'" in guard['if']
+          and not any('uses' in st for st in guard['steps']))
+    check('wasm no longer carries its own release check',
+          not any(st.get('name') == 'Refuse to build a released version again' for st in jobs['wasm']['steps']))
     check('no draft-first release action', 'softprops/action-gh-release' not in text)
     check('one concurrency group for every npm publication, never cancelling a running one',
           jobs['npm-publish']['concurrency'] == {'group': 'npm-publish-julclang', 'cancel-in-progress': False},
@@ -769,6 +867,7 @@ def main():
     release_verified(tmp)
     npm_run_lookup(tmp)
     npm_files_check(tmp)
+    runbook_manual_download(tmp)
     runbook_release_check(tmp)
     graph()
     shutil.rmtree(tmp)

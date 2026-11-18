@@ -25,13 +25,19 @@ unreadable() {
 }
 query="${api}/workflows/native-image-release.yml/runs?event=push&head_sha=${SOURCE_DIGEST}&per_page=100"
 # GitHub returns at most 1,000 runs for a filtered query: refuse if the history could be longer, or was not all read.
-if ! total=$(gh api "$query" --jq '.total_count'); then unreadable "listing the workflow's runs"; fi
-if ! listed=$(gh api --paginate "$query" --jq '.workflow_runs[] | "\(.id) \(.head_branch)"'); then
+if ! total=$(gh api "$query" --jq '.total_count | if type == "number" then . else "INVALID" end'); then
+  unreadable "listing the workflow's runs"
+fi
+# Each run classified only from well-typed fields: a positive integer id and a non-blank string branch; any other row
+# is INVALID, and stops recovery.
+if ! listed=$(gh api --paginate "$query" --jq '.workflow_runs[] | if (.id | type) == "number" and .id > 0
+    and (.id | floor) == .id and (.head_branch | type) == "string" and (.head_branch | test("^[^\\s]+$"))
+    then "\(.id) \(.head_branch)" else "INVALID" end'); then
   unreadable "listing the workflow's runs"
 fi
 # Each row a numeric run id and a branch; the distinct ids must be exactly as many as GitHub says there are (pages can
 # overlap when runs are added while reading).
-if [[ -n "$listed" ]] && grep -qvE '^[0-9]+ [^ ]+$' <<< "$listed"; then unreadable "a malformed run list"; fi
+if [[ -n "$listed" ]] && grep -qvE '^[1-9][0-9]* [^ ]+$' <<< "$listed"; then unreadable "a malformed run list"; fi
 rows=$(grep -c . <<< "$listed" || true)
 count=$({ cut -d' ' -f1 <<< "$listed" | grep . || true; } | sort -u | wc -l | tr -d ' ')
 if [[ ! "$total" =~ ^[0-9]+$ || "$total" -gt 1000 || "$count" -ne "$total" || "$rows" -ne "$count" ]]; then
@@ -49,6 +55,7 @@ for run in $runs; do
       --jq '.jobs[] | select(.name == "Attest the npm tarballs and engine archives" and .conclusion == "success") | .id'); then
     unreadable "the jobs of run ${run}"
   fi
+  if [[ -n "$jobs" ]] && grep -qvE '^[1-9][0-9]*$' <<< "$jobs"; then unreadable "a malformed job list of run ${run}"; fi
   if [[ -n "$jobs" ]]; then attested+=("$run"); fi
 done
 if [[ ${#attested[@]} -eq 0 ]]; then
@@ -66,6 +73,7 @@ if ! live=$(gh api --paginate "${api}/runs/${run}/artifacts?name=npm-packages&pe
     --jq '.artifacts[] | select(.name == "npm-packages" and .expired == false) | .id'); then
   unreadable "the artifacts of run ${run}"
 fi
+if [[ -n "$live" ]] && grep -qvE '^[1-9][0-9]*$' <<< "$live"; then unreadable "a malformed artifact list of run ${run}"; fi
 artifacts=$(grep -c . <<< "$live" || true)
 if [[ "$artifacts" -eq 0 ]]; then
   gone "run ${run}'s npm-packages artifact has expired or was deleted"

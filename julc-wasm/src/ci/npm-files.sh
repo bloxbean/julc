@@ -27,28 +27,39 @@ for file in "${files[@]}" "$sums"; do
   fi
 done
 if command -v sha256sum > /dev/null; then sha256() { sha256sum "$1" | cut -d' ' -f1; }
-else sha256() { shasum -a 256 "$1" | cut -d' ' -f1; }; fi
-# The five files, as attest names them: "<file name> <sha256>", sorted.
-expected=$(for file in "${files[@]}"; do echo "${file} $(sha256 "$dir/$file")"; done | LC_ALL=C sort | paste -sd ';' -)
-# Every attestation that covers the first file, each verified against this workflow's identity at the tag; then one of
-# them must have exactly the five files as subjects and come from the artifact's run.
+elif command -v shasum > /dev/null; then sha256() { shasum -a 256 "$1" | cut -d' ' -f1; }
+else echo "::error::npm-files.sh needs sha256sum or shasum." >&2; exit 1; fi
+if [[ ! "$NPM_FILES_RUN" =~ ^[1-9][0-9]*$ ]]; then echo "::error::NPM_FILES_RUN is not a run id: ${NPM_FILES_RUN}" >&2; exit 1; fi
 work=$(mktemp -d)
+# The five files, as attest names them: a JSON array of {name, sha256}, sorted by name. Each hash is checked.
+: > "$work/expected.tsv"
+for file in "${files[@]}"; do
+  hash=$(sha256 "$dir/$file")
+  if [[ ! "$hash" =~ ^[0-9a-f]{64}$ ]]; then echo "::error::Could not hash ${file}." >&2; exit 1; fi
+  printf '%s\t%s\n' "$file" "$hash" >> "$work/expected.tsv"
+done
+jq -R -s 'split("\n") | map(select(length > 0) | split("\t") | {name: .[0], sha256: .[1]}) | sort_by(.name)' \
+  "$work/expected.tsv" > "$work/expected.json"
+# Every attestation that covers the first file, each verified against this workflow's identity at the tag; then one of
+# them must have exactly the five files as subjects, and a run invocation that is exactly the artifact's run (any
+# attempt).
 gh attestation verify "$dir/${files[0]}" --repo "$GITHUB_REPOSITORY" \
   --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/native-image-release.yml" \
   --source-ref "refs/tags/v${version}" --source-digest "$SOURCE_DIGEST" --signer-digest "$SIGNER_DIGEST" \
   --deny-self-hosted-runners --format json > "$work/attestations.json"
-statements=$(jq -r '.[] | (.verificationResult.statement.subject | map("\(.name) \(.digest.sha256)") | sort | join(";"))
-  + "|" + .verificationResult.signature.certificate.runInvocationURI' "$work/attestations.json")
-run="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${NPM_FILES_RUN}/attempts/"
-found=false
-while IFS='|' read -r subjects invocation; do
-  if [[ "$subjects" == "$expected" && "$invocation" == "$run"* ]]; then found=true; fi
-done <<< "$statements"
-if [[ "$found" != true ]]; then
+prefix="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${NPM_FILES_RUN}/attempts/"
+matching=$(jq --slurpfile expected "$work/expected.json" --arg prefix "$prefix" '[.[] | select(
+    ((.verificationResult.statement.subject // []) | map({name: .name, sha256: .digest.sha256}) | sort_by(.name))
+      == $expected[0]
+    and ((.verificationResult.signature.certificate.runInvocationURI // "") as $uri
+      | ($uri | startswith($prefix)) and ($uri | ltrimstr($prefix) | test("^[1-9][0-9]*$"))))] | length' \
+  "$work/attestations.json")
+if [[ "$matching" == 0 ]]; then
   echo "::error::No single attestation of run ${NPM_FILES_RUN} covers exactly these five npm files of v${version}: they" \
     "are not one attested set (files of different attempts or builds, or another run's). Attested sets for" \
     "${files[0]}:" >&2
-  echo "$statements" | tr ';' '\n' >&2
+  jq -r '.[] | (.verificationResult.signature.certificate.runInvocationURI // "?"),
+    (.verificationResult.statement.subject[]? | "  \(.name) \(.digest.sha256)")' "$work/attestations.json" >&2
   exit 1
 fi
 echo "attested: the five files are one set, run ${NPM_FILES_RUN}"
@@ -60,7 +71,7 @@ if ! assets=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/v${version}" \
   exit 1
 fi
 for archive in "${archives[@]}"; do
-  ours=$(sha256 "$dir/$archive")
+  ours=$(awk -F'\t' -v name="$archive" '$1 == name { print $2 }' "$work/expected.tsv")
   theirs=$(awk -v name="$archive" '$1 == name { print $2 " " $3 }' <<< "$assets")
   if [[ "$theirs" != "uploaded sha256:${ours}" ]]; then
     echo "::error::The release of v${version} does not attach ${archive} with the npm files' bytes" \

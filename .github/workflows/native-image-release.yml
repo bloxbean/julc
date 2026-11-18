@@ -98,8 +98,44 @@ jobs:
         } >> "$GITHUB_OUTPUT"
         echo "Version $VERSION (final: $IS_FINAL), GitHub release for this tag: ${GITHUB_RELEASE:-false}"
 
-  native-image:
+  # ADR-077 D8a: a release is built once. Web Image output is not byte-identical across builds, and no native image or
+  # jar is reproducible either, so a whole-workflow re-run would make different bytes from those already attached (and
+  # perhaps on npm). Every job that builds a release file needs this one, which stops when the tag has a GitHub release
+  # at all, so such a re-run builds nothing. github-release creates releases published from the start, never drafts,
+  # so this read-only token sees every release it made. No checkout, no build.
+  release-guard:
     needs: validate
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    name: Refuse to build a released version again
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.validate.outputs.version }}
+    steps:
+    - name: Refuse to build a released version again
+      env:
+        GH_TOKEN: ${{ github.token }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        if ! releases=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+            --jq ".[] | select(.tag_name == \"v${VERSION}\") | \"\(.id) \(.assets | length)\"" 2> "$RUNNER_TEMP/releases.err"); then
+          cat "$RUNNER_TEMP/releases.err" >&2
+          echo "::error::Could not read the GitHub releases; refusing to build without knowing." >&2
+          exit 1
+        fi
+        if [[ -z "$releases" ]]; then
+          echo "No GitHub release of v${VERSION} yet: building."
+          exit 0
+        fi
+        echo "::error::v${VERSION} already has a GitHub release (id and asset count: ${releases//$'\n'/; })." \
+          "A release is built once (ADR-077 D8a): rebuilding would make different bytes. Use 'Re-run failed jobs' in" \
+          "the original run; after a whole-workflow re-run, see 'Recovery' in adr/evidence/077-m4/RUNBOOK.md." >&2
+        exit 1
+
+  native-image:
+    needs: [validate, release-guard]
     if: github.event_name == 'push'
     strategy:
       fail-fast: false
@@ -180,7 +216,7 @@ jobs:
   # built and verified once here and reused everywhere: the playground native images bundle it, the GitHub release
   # carries it, and docs-deploy.yml publishes the static playground from the release asset.
   wasm:
-    needs: validate
+    needs: [validate, release-guard]
     if: github.event_name == 'push'
     runs-on: ubuntu-22.04
     name: Build JuLC WebAssembly distributions
@@ -198,31 +234,6 @@ jobs:
       sha256_full_archive: ${{ steps.npm-files.outputs.sha256_full_archive }}
 
     steps:
-    # ADR-077 D8a: a release is built once. Web Image output is not byte-identical across builds, so a whole-workflow
-    # re-run would make different bytes from those already attached (and perhaps on npm). Stop before building when
-    # the tag has a GitHub release at all. github-release creates releases published from the start, never drafts, so
-    # this read-only token sees every release it made.
-    - name: Refuse to build a released version again
-      env:
-        GH_TOKEN: ${{ github.token }}
-      shell: bash
-      run: |
-        set -euo pipefail
-        if ! releases=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
-            --jq ".[] | select(.tag_name == \"v${VERSION}\") | \"\(.id) \(.assets | length)\"" 2> "$RUNNER_TEMP/releases.err"); then
-          cat "$RUNNER_TEMP/releases.err" >&2
-          echo "::error::Could not read the GitHub releases; refusing to build without knowing." >&2
-          exit 1
-        fi
-        if [[ -z "$releases" ]]; then
-          echo "No GitHub release of v${VERSION} yet: building."
-          exit 0
-        fi
-        echo "::error::v${VERSION} already has a GitHub release (id and asset count: ${releases//$'\n'/; })." \
-          "A release is built once (ADR-077 D8a): rebuilding would make different bytes. Use 'Re-run failed jobs' in" \
-          "the original run; after a whole-workflow re-run, see 'Recovery' in adr/evidence/077-m4/RUNBOOK.md." >&2
-        exit 1
-
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       with:
         persist-credentials: false
@@ -468,7 +479,7 @@ jobs:
           --nodes "$WASM_SMOKE_NODES" --only node,plain,vite,webpack,webpack-keep,extension,webpack-node,esbuild,next
 
   native-image-playground:
-    needs: [validate, wasm]
+    needs: [validate, release-guard, wasm]
     if: github.event_name == 'push'
     strategy:
       fail-fast: false
@@ -558,7 +569,7 @@ jobs:
         retention-days: 14
 
   shadow-jars:
-    needs: validate
+    needs: [validate, release-guard]
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     name: Build Shadow JARs
@@ -686,6 +697,19 @@ jobs:
       shell: bash
       run: |
         set -euo pipefail
+        # The release's inventory (14 files): exactly these, no more and none missing, before anything is created.
+        for label in macos-aarch64 linux-x86_64 linux-arm64 windows-x86_64; do
+          echo "julc-${VERSION}-${label}.zip"; echo "julc-playground-${VERSION}-${label}.zip"
+        done > "$RUNNER_TEMP/inventory.txt"
+        printf '%s\n' "julc-compiler-all-${VERSION}-all.jar" "julc-vm-java-all-${VERSION}-all.jar" \
+          "julc-wasm-${VERSION}.tar.gz" "julc-vm-wasm-${VERSION}.tar.gz" "julc-playground-static-${VERSION}.tar.gz" \
+          "julc-wasm-${VERSION}-SHA256SUMS.txt" >> "$RUNNER_TEMP/inventory.txt"
+        if ! diff <(find dist -mindepth 1 -maxdepth 1 -type f -exec basename {} \; | sort) \
+            <(sort "$RUNNER_TEMP/inventory.txt") > "$RUNNER_TEMP/inventory.diff"; then
+          echo "::error::The downloaded release files are not the release's inventory (< not in it, > missing):" >&2
+          cat "$RUNNER_TEMP/inventory.diff" >&2
+          exit 1
+        fi
         gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
           --jq ".[] | select(.tag_name == \"v${VERSION}\") | [.id, .draft] | @tsv" > "$RUNNER_TEMP/releases.tsv"
         count=$(wc -l < "$RUNNER_TEMP/releases.tsv" | tr -d ' ')
@@ -798,6 +822,13 @@ jobs:
             failed=1
           fi
         done
+        # Nothing else: the release's assets are exactly the files of this run (the inventory, checked above).
+        if ! diff <(cut -f2 "$RUNNER_TEMP/assets.tsv" | sort) \
+            <(find dist -mindepth 1 -maxdepth 1 -type f -exec basename {} \; | sort) > "$RUNNER_TEMP/assets.diff"; then
+          echo "::error::The release's assets are not this run's files (< extra on the release, > missing):" >&2
+          cat "$RUNNER_TEMP/assets.diff" >&2
+          failed=1
+        fi
         exit "$failed"
 
   # ADR-077 D8 and D8a: whether and how npm-publish runs, read without Gradle from gradle.properties at the tag, for a
