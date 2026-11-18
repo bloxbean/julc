@@ -2,6 +2,7 @@ package org.julclang.compiler.adr078;
 
 import org.julclang.compiler.adr078.Adr078Fixtures.Evaluation;
 import org.julclang.compiler.CompileResult;
+import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.CompilerTarget;
 import org.julclang.compiler.JavaLibraryProvider;
@@ -35,6 +36,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -361,7 +363,7 @@ class LibraryTieOrderFixturesTest {
     }
 
     /**
-     * Codex M1a C22 (ADR-078 r8's compatibility exception): a custom registry whose {@code Math.abs} builder applies a
+     * Codex M1a C22 (ADR-078 r9's compatibility exception): a custom registry whose {@code Math.abs} builder applies a
      * materialised {@code q.M.b}, a closed {@code let q.M.b = λy.y in q.M.b}, inside library method {@code a}. The
      * spelling search of pre21 read that as a call of the program's own {@code q.M.b}, which calls {@code a}: a false
      * cycle, which pre21 keyed with group tokens and bound as z, a, b (FLAT 9aa526d2…, 48 B, recorded on the pre21
@@ -369,34 +371,60 @@ class LibraryTieOrderFixturesTest {
      * affected (the corpus replay and the julc-examples gate are identical to pre21's).
      */
     @Test
-    void aCustomRegistrysMaterialisedBindingIsNoCall() throws Exception {
+    void aCustomRegistrysMaterialisedBindingIsNoCall() {
+        var result = compileWithMaterialisedAbs("""
+                    public static long a(long x) { return Math.abs(x); }
+                    public static long b(long x) { return a(x) + 9; }
+                    public static long z(long x) { return x + 9; }
+                """, "M.b(x) + M.z(x)");
+        String pir = result.pirFormatted();
+        int a = pir.indexOf("(let q.M.a ="), b = pir.indexOf("(let q.M.b ="), z = pir.indexOf("(let q.M.z =");
+        assertTrue(a >= 0 && a < b && b < z, "outermost first a, b, z: " + a + ", " + b + ", " + z);
+        assertEquals("d0e16561f2dc5cc2323efa67c78ba7a380b84dcec13a808e074ee77459ed5b53 48 B",
+                Adr078Fixtures.outcome(result).toString());
+    }
+
+    /**
+     * Codex M1a C22: the diagnostic of a genuine cycle can change next to such a registry. Beside the false a/b cycle
+     * above, c and d call each other. pre21's stalled group held all four, and it reported {@code Unbound variable:
+     * q.M.a} (recorded on the pre21 artifacts). With one lexical graph, a and b are bound, and the stalled group is the
+     * genuine cycle: the program is still rejected, naming {@code q.M.d}.
+     */
+    @Test
+    void aGenuineCycleBesideACustomRegistrysBindingIsTheOneReported() {
+        var rejection = assertThrows(CompilerException.class, () -> compileWithMaterialisedAbs("""
+                    public static long a(long x) { return Math.abs(x); }
+                    public static long b(long x) { return a(x) + 1; }
+                    public static long c(long x) { return d(x) + 1; }
+                    public static long d(long x) { return c(x) - 1; }
+                """, "M.b(x)"));
+        assertEquals("Unbound variable: q.M.d", rejection.getMessage());
+    }
+
+    /**
+     * Compiles {@code f(x) = body} against library {@code q.M} with the given methods, through a registry whose
+     * {@code Math.abs} builder applies a materialised {@code q.M.b = λy.y}, at {@code NONE}.
+     */
+    private static CompileResult compileWithMaterialisedAbs(String methods, String body) {
         String provided = "package q;\nimport org.julclang.stdlib.annotation.OnchainLibrary;\n@OnchainLibrary\npublic class M {\n"
                 + "    public static long b(long y) { return y; }\n}\n";
         var materialised = new JavaLibraryProvider(List.of(provided), null, new CompilerOptions()).materialize("q.M.b");
         var registry = new StdlibRegistry();
         registry.register("Math", "abs", args -> new PirTerm.App(materialised, args.getFirst()));
         String library = "package q;\nimport org.julclang.stdlib.annotation.OnchainLibrary;\n@OnchainLibrary\npublic class M {\n"
-                + "    public static long a(long x) { return Math.abs(x); }\n"
-                + "    public static long b(long x) { return a(x) + 9; }\n"
-                + "    public static long z(long x) { return x + 9; }\n}\n";
-        String target = "package v;\nimport q.M;\nclass T {\n    static long f(long x) { return M.b(x) + M.z(x); }\n}\n";
+                + methods + "}\n";
+        String target = "package v;\nimport q.M;\nclass T {\n    static long f(long x) { return " + body + "; }\n}\n";
         var options = new CompilerOptions().setTarget(CompilerTarget.PLUTUS_V3_PV11).setOptimizationLevel(OptimizationLevel.NONE);
         // The materialised term's binders were built by the provider, not for this program's source: the test JVM's
         // I13 binder check (julc.verifyBinderNamespace) does not apply to such a registry, and production never runs it.
         String before = System.getProperty("julc.verifyBinderNamespace");
         System.setProperty("julc.verifyBinderNamespace", "false");
-        CompileResult result;
         try {
-            result = new JulcCompiler(registry, options).compileMethod(target, "f", List.of(library));
+            return new JulcCompiler(registry, options).compileMethod(target, "f", List.of(library));
         } finally {
             if (before == null) System.clearProperty("julc.verifyBinderNamespace");
             else System.setProperty("julc.verifyBinderNamespace", before);
         }
-        String pir = result.pirFormatted();
-        int a = pir.indexOf("(let q.M.a ="), b = pir.indexOf("(let q.M.b ="), z = pir.indexOf("(let q.M.z =");
-        assertTrue(a >= 0 && a < b && b < z, "outermost first a, b, z: " + a + ", " + b + ", " + z);
-        assertEquals("d0e16561f2dc5cc2323efa67c78ba7a380b84dcec13a808e074ee77459ed5b53 48 B",
-                Adr078Fixtures.outcome(result).toString());
     }
 
     /** C14: the trace encoding tells two traces from one trace that contains a quote and a comma. */

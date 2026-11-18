@@ -33,9 +33,11 @@ import java.util.function.Consumer;
  * validator's {@code import} declarations and of the library sources a caller passed. Neither has any meaning in Java,
  * yet each changed the script's bytes and so its hash.
  * <p>
- * The order is a function of the methods and of where the program first uses them. Among the methods whose dependencies are already bound, the next
- * one bound is the one with the smallest <em>content key</em>, and the qualified name decides only between methods
- * whose keys are equal. A method's content key is a digest of its body in which:
+ * The order is a function of the methods and of where the program first uses them. Among the methods whose dependencies
+ * are already bound, the next one bound is the one with the smallest <em>content key</em>; among those with equal keys,
+ * the one with the lower first-use rank ({@link FirstUseRanks}). A qualified name decides only inside
+ * {@link FirstUseRanks}' D1b, among methods the program does not reach, and in a stalled group the backend rejects.
+ * A method's content key is a digest of its body in which:
  * <ul>
  *   <li>a variable bound inside the body is its de Bruijn index, so the names of locals and parameters do not count;</li>
  *   <li>a call of another library method is that method's content key, so neither its name, its class nor its package
