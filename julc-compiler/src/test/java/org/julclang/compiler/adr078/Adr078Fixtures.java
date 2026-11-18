@@ -6,11 +6,13 @@ import org.julclang.compiler.CompilerTarget;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.OptimizationConfiguration;
 import org.julclang.compiler.OptimizationLevel;
+import org.julclang.compiler.pir.PirTerm;
+import org.julclang.core.Constant;
 import org.julclang.core.PlutusData;
 import org.julclang.core.Program;
+import org.julclang.core.Term;
 import org.julclang.core.flat.UplcFlatEncoder;
 import org.julclang.core.source.SourceLocation;
-import org.julclang.core.text.UplcPrinter;
 import org.julclang.stdlib.StdlibRegistry;
 import org.julclang.vm.EvalResult;
 import org.julclang.vm.ExBudget;
@@ -19,7 +21,9 @@ import org.julclang.vm.OptimizationCostProfiles;
 
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -78,8 +82,13 @@ public final class Adr078Fixtures {
         return modes;
     }
 
-    /** The outcome of compiling a variant in a mode: its FLAT digest and size, or the first line of its rejection. */
-    public record Outcome(String flat, int size, String rejection, Map<Integer, SourceLocation> sourceMap, Program program) {
+    /**
+     * The outcome of compiling a variant in a mode: its FLAT digest and size, or its whole rejection message; the
+     * multiset of method binders in its PIR (I3); and, with source maps, the complete map, every DFS index with its full
+     * location (I4).
+     */
+    public record Outcome(String flat, int size, String rejection, Map<Integer, SourceLocation> sourceMap, Program program,
+                          String pir, String binders) {
         public boolean compiled() {
             return rejection == null;
         }
@@ -88,6 +97,18 @@ public final class Adr078Fixtures {
         public String toString() {
             return compiled() ? flat + " " + size + " B" : "REJECTED " + rejection;
         }
+
+        /**
+         * The complete source map: one {@code index=file:line:column:fragment} entry per mapped DFS index, the entries
+         * separated by tabs (escaped in fragments).
+         */
+        public String fullSourceMap() {
+            if (sourceMap == null) return "none";
+            var entries = new ArrayList<String>();
+            sourceMap.forEach((index, location) -> entries.add(index + "=" + location.fileName() + ":" + location.line() + ":"
+                    + location.column() + ":" + escape(String.valueOf(location.fragment()))));
+            return String.join("\t", entries);
+        }
     }
 
     public static Outcome compile(Variant variant, Mode mode) {
@@ -95,22 +116,88 @@ public final class Adr078Fixtures {
             var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), mode.options(null));
             var result = variant.method() == null ? compiler.compileWithDetails(variant.target(), variant.libraries())
                     : compiler.compileMethod(variant.target(), variant.method(), variant.libraries());
-            if (result.hasErrors()) return new Outcome(null, 0, firstLine(String.valueOf(result.diagnostics())), null, null);
+            if (result.hasErrors()) return rejected(String.valueOf(result.diagnostics()));
             return outcome(result);
         } catch (RuntimeException e) {
-            return new Outcome(null, 0, e.getClass().getSimpleName() + ": " + firstLine(String.valueOf(e.getMessage())), null, null);
+            return rejected(e.getClass().getSimpleName() + ": " + e.getMessage());
         }
+    }
+
+    private static Outcome rejected(String message) {
+        return new Outcome(null, 0, escape(message), null, null, null, null);
     }
 
     public static Outcome outcome(CompileResult result) {
         byte[] bytes = UplcFlatEncoder.encodeProgram(result.program());
         Map<Integer, SourceLocation> indexed = result.sourceMap() == null ? null
                 : new TreeMap<>(result.sourceMap().toIndexed(result.program().term()));
-        return new Outcome(sha256(bytes), bytes.length, null, indexed, result.program());
+        return new Outcome(sha256(bytes), bytes.length, null, indexed, result.program(), result.pirFormatted(),
+                binders(result.pirTerm()));
     }
 
-    private static String firstLine(String text) {
-        return text.lines().findFirst().orElse("");
+    /** The method binders of a PIR term (qualified, so dotted), as a sorted multiset: one per binding and copy. */
+    static String binders(PirTerm term) {
+        if (term == null) return "none";
+        var names = new ArrayList<String>();
+        var pending = new ArrayDeque<PirTerm>();
+        pending.push(term);
+        while (!pending.isEmpty()) {
+            switch (pending.pop()) {
+                case PirTerm.Let let -> {
+                    if (let.name().contains(".")) names.add(let.name());
+                    pending.push(let.value());
+                    pending.push(let.body());
+                }
+                case PirTerm.LetRec rec -> {
+                    for (var binding : rec.bindings()) {
+                        if (binding.name().contains(".")) names.add(binding.name());
+                        pending.push(binding.value());
+                    }
+                    pending.push(rec.body());
+                }
+                case PirTerm.Lam lam -> pending.push(lam.body());
+                case PirTerm.App app -> {
+                    pending.push(app.function());
+                    pending.push(app.argument());
+                }
+                case PirTerm.IfThenElse ite -> {
+                    pending.push(ite.cond());
+                    pending.push(ite.thenBranch());
+                    pending.push(ite.elseBranch());
+                }
+                case PirTerm.Trace trace -> {
+                    pending.push(trace.message());
+                    pending.push(trace.body());
+                }
+                case PirTerm.DataConstr constr -> constr.fields().forEach(pending::push);
+                case PirTerm.DataMatch match -> {
+                    pending.push(match.scrutinee());
+                    match.branches().forEach(branch -> pending.push(branch.body()));
+                }
+                case PirTerm.ListMatch match -> {
+                    pending.push(match.scrutinee());
+                    pending.push(match.nilBranch());
+                    pending.push(match.consBranch());
+                }
+                case PirTerm.PairMatch match -> {
+                    pending.push(match.scrutinee());
+                    pending.push(match.body());
+                }
+                case PirTerm.IntegerCase integerCase -> {
+                    pending.push(integerCase.scrutinee());
+                    integerCase.branches().forEach(pending::push);
+                }
+                default -> {
+                }
+            }
+        }
+        Collections.sort(names);
+        return names.toString();
+    }
+
+    /** A value on one line: backslashes and line breaks escaped. */
+    static String escape(String text) {
+        return text.replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
     }
 
     public static String sha256(byte[] bytes) {
@@ -121,53 +208,96 @@ public final class Adr078Fixtures {
         }
     }
 
-    /** The argument vectors a fixture's {@code f} is applied to: an integer, or, for C26, a list and an integer. */
+    /**
+     * The argument vectors a fixture's {@code f} is applied to. The first is empty: the result is the function itself,
+     * which {@link #record} then applies to the next vector, so a returned function is compared by what it computes.
+     */
     public static List<List<PlutusData>> arguments(Fixture fixture) {
         if (fixture.name().startsWith("C26")) {
-            return List.of(List.of(PlutusData.list(PlutusData.integer(1), PlutusData.integer(2)), PlutusData.integer(3)));
+            return List.of(List.of(), List.of(PlutusData.list(PlutusData.integer(1), PlutusData.integer(2)), PlutusData.integer(3)));
         }
-        return List.of(List.of(PlutusData.integer(5)), List.of(PlutusData.integer(2)));
+        if (fixture.name().startsWith("traces")) {
+            return List.of(List.of(), List.of(PlutusData.integer(5)));
+        }
+        return List.of(List.of(), List.of(PlutusData.integer(5)), List.of(PlutusData.integer(2)));
     }
 
     private static JulcVm vm;
 
-    /** The PV11 VM with the costs the optimisation profiles assume. */
+    /** The PV11 VM (the Java provider) with the costs the optimisation profiles assume. */
     public static synchronized JulcVm vm() {
         if (vm == null) {
-            vm = JulcVm.create();
+            vm = JulcVm.create("Java");
             var profile = OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1;
             vm.setCostModelParams(profile.costModelParameters(), profile.target());
         }
         return vm;
     }
 
-    /**
-     * The replay limit: a transaction's maximum budget. ADR-078 I6a compares evaluations without a limit; a replay
-     * that exhausts this one is reported as inconclusive, not compared.
-     */
+    /** The replay limit: a transaction's maximum budget. */
     public static final ExBudget REPLAY_LIMIT = new ExBudget(10_000_000_000L, 14_000_000L);
 
-    /**
-     * An evaluation as ADR-078 I6a compares it: the result term, the failure reason, or exhaustion, with the traces.
-     * The budget is returned apart (I6b).
-     */
-    public record Evaluation(String outcome, ExBudget budget) {
-    }
+    /** The higher limit a one-sided exhaustion is replayed at; still exhausted there, it is inconclusive. */
+    public static final ExBudget HIGH_LIMIT = new ExBudget(1_000_000_000_000L, 1_400_000_000L);
 
-    public static Evaluation evaluate(Program program, List<PlutusData> arguments) {
-        return describe(vm().evaluateWithArgs(program, arguments));
+    /** C12's tight limit, under which pre21's two spellings differed. */
+    public static final ExBudget C12_LIMIT = new ExBudget(31_150_000, 110_000);
+
+    /**
+     * An evaluation as ADR-078 I6a compares it, structurally: the result term as FLAT (hex), or the whole failure
+     * reason, or exhaustion; and the traces as a list. The budget is apart (I6b); {@code result} is kept to apply a
+     * returned function.
+     */
+    public record Evaluation(String outcome, ExBudget budget, Term result) {
+        public boolean exhausted() {
+            return outcome.startsWith("EXHAUSTED");
+        }
     }
 
     public static Evaluation evaluate(Program program, List<PlutusData> arguments, ExBudget limit) {
         return describe(vm().evaluateWithArgs(program, arguments, limit));
     }
 
+    /** {@code function} applied to {@code arguments}, each as Data, under {@code limit}. */
+    public static Evaluation apply(Term function, List<PlutusData> arguments, ExBudget limit) {
+        var term = function;
+        for (var argument : arguments) term = Term.apply(term, Term.const_(Constant.data(argument)));
+        return describe(vm().evaluate(Program.plutusV3(term), limit));
+    }
+
+    private static String traces(List<String> traces) {
+        var text = new StringBuilder("[");
+        for (int i = 0; i < traces.size(); i++) text.append(i == 0 ? "" : ", ").append('"').append(escape(traces.get(i))).append('"');
+        return text.append(']').toString();
+    }
+
     private static Evaluation describe(EvalResult result) {
         return switch (result) {
-            case EvalResult.Success s -> new Evaluation("SUCCESS " + UplcPrinter.print(s.resultTerm()) + " traces=" + s.traces(), s.consumed());
-            case EvalResult.Failure f -> new Evaluation("FAILURE " + firstLine(f.error()) + " traces=" + f.traces(), f.consumed());
-            case EvalResult.BudgetExhausted e -> new Evaluation("EXHAUSTED traces=" + e.traces(), e.consumed());
+            case EvalResult.Success s -> new Evaluation("SUCCESS term=" + HexFormat.of().formatHex(
+                    UplcFlatEncoder.encodeProgram(Program.plutusV3(s.resultTerm()))) + " traces=" + traces(s.traces()), s.consumed(), s.resultTerm());
+            case EvalResult.Failure f -> new Evaluation("FAILURE reason=" + escape(String.valueOf(f.error())) + " traces=" + traces(f.traces()), f.consumed(), null);
+            case EvalResult.BudgetExhausted e -> new Evaluation("EXHAUSTED traces=" + traces(e.traces()), e.consumed(), null);
         };
+    }
+
+    /**
+     * Every evaluation of a compiled variant, keyed by suffix: {@code eval i} on each argument vector (at the replay
+     * limit, and, where it exhausts, {@code eval i high} at the higher one); for a returned function, {@code applied}
+     * to the next vector; and {@code budget …} lines apart.
+     */
+    public static Map<String, Evaluation> evaluations(Fixture fixture, Outcome outcome) {
+        var result = new LinkedHashMap<String, Evaluation>();
+        var arguments = arguments(fixture);
+        for (int i = 0; i < arguments.size(); i++) {
+            var evaluation = evaluate(outcome.program(), arguments.get(i), REPLAY_LIMIT);
+            result.put("eval " + i, evaluation);
+            result.put("eval " + i + " high", evaluate(outcome.program(), arguments.get(i), HIGH_LIMIT));
+            if (i == 0 && evaluation.result() instanceof Term.Lam && arguments.size() > 1) {
+                result.put("applied", apply(evaluation.result(), arguments.get(1), REPLAY_LIMIT));
+            }
+        }
+        if (fixture.name().startsWith("C12")) result.put("eval 1 c12-limit", evaluate(outcome.program(), arguments.get(1), C12_LIMIT));
+        return result;
     }
 
     // ------------------------------------------------------------------ sources
@@ -179,6 +309,7 @@ public final class Adr078Fixtures {
                 import org.julclang.core.PlutusData;
                 import org.julclang.core.types.JulcArray;
                 import org.julclang.core.types.JulcList;
+                import org.julclang.stdlib.Builtins;
                 import org.julclang.stdlib.annotation.OnchainLibrary;
 
                 @OnchainLibrary
@@ -189,7 +320,7 @@ public final class Adr078Fixtures {
 
     static String target(String imports, String body) {
         return "package v;\n\nimport java.math.BigInteger;\nimport java.util.Optional;\nimport org.julclang.core.PlutusData;\n"
-                + "import org.julclang.core.types.JulcList;\n" + imports + "\nclass T {\n" + body + "}\n";
+                + "import org.julclang.core.types.JulcList;\nimport org.julclang.stdlib.Builtins;\n" + imports + "\nclass T {\n" + body + "}\n";
     }
 
     private static Variant variant(String label, String target, List<String> libraries) {
@@ -375,6 +506,52 @@ public final class Adr078Fixtures {
                 new Variant("alpha", multi.formatted("alpha"), null, List.of(library("q", "L", twins.formatted("alpha", "beta")))),
                 new Variant("zeta", multi.formatted("zeta"), null, List.of(library("q", "L", twins.formatted("zeta", "beta")))))));
 
+        // C3: traces in a fixed order, through a library twin.
+        String traced = "    public static PlutusData %s(PlutusData d) { return Builtins.trace(\"t\", d); }\n"
+                + "    public static PlutusData beta(PlutusData d) { return Builtins.trace(\"t\", d); }\n";
+        String tracedTarget = "    static PlutusData f(PlutusData d) { return Builtins.trace(\"one\", L.%s(L.beta(Builtins.trace(\"two\", d)))); }\n";
+        fixtures.add(new Fixture("traces-ordered", "SAME", List.of(
+                variant("alpha", target("import q.L;\n", tracedTarget.formatted("alpha")), List.of(library("q", "L", traced.formatted("alpha")))),
+                variant("zeta", target("import q.L;\n", tracedTarget.formatted("zeta")), List.of(library("q", "L", traced.formatted("zeta")))))));
+
+        // C2: the assembly's roots. Handlers declared against tag order, first using opposite twins: the mint handler
+        // (tag 0) comes first, so its twin is bound outermost.
+        String longTwins = "    public static long %s(long x) { return x + 1; }\n    public static long beta(long y) { return y + 1; }\n";
+        String reverseTags = """
+                package v;
+
+                import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.Builtins;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.MultiValidator;
+                import org.julclang.stdlib.annotation.Purpose;
+                import q.L;
+
+                @MultiValidator
+                class M {
+                    @Entrypoint(purpose = Purpose.SPEND)
+                    static boolean spend(PlutusData redeemer, ScriptContext ctx) {
+                        return L.beta(Builtins.unIData(redeemer).longValue()) > 0;
+                    }
+
+                    @Entrypoint(purpose = Purpose.MINT)
+                    static boolean mint(PlutusData redeemer, ScriptContext ctx) {
+                        return L.%1$s(Builtins.unIData(redeemer).longValue()) > 0;
+                    }
+                }
+                """;
+        fixtures.add(new Fixture("assembly-handlers-against-tag-order", "SAME", List.of(
+                new Variant("zeta", reverseTags.formatted("zeta"), null, List.of(library("q", "L", longTwins.formatted("zeta")))),
+                new Variant("aaaa", reverseTags.formatted("aaaa"), null, List.of(library("q", "L", longTwins.formatted("aaaa")))))));
+        // compileMethod: an unread helper declared before the target, first using the other twin: the target's twin is
+        // bound outermost.
+        String helperFirst = "    static long unused(long x) { return L.beta(x); }\n    static long f(long x) { return L.%s(x); }\n";
+        fixtures.add(new Fixture("assembly-unread-helper-before-target", "SAME", List.of(
+                variant("zeta", target("import q.L;\n", helperFirst.formatted("zeta")), List.of(library("q", "L", longTwins.formatted("zeta")))),
+                variant("aaaa", target("import q.L;\n", helperFirst.formatted("aaaa")), List.of(library("q", "L", longTwins.formatted("aaaa")))))));
+
         // Negative controls: a constant changed in one twin; a body changed in an unread binding that survives at NONE.
         fixtures.add(new Fixture("negative-constant-in-one-twin", "DIFFERENT_IN_SOME_MODE", List.of(
                 variant("twins", target("import q.L;\n", twinTarget.formatted("alpha", "beta")), List.of(library("q", "L", twins.formatted("alpha", "beta")))),
@@ -389,7 +566,8 @@ public final class Adr078Fixtures {
 
     /**
      * The fixtures' outcomes in every mode, as the pre21 recording holds them: per fixture, variant and mode, the
-     * compilation, then each evaluation (I6a's outcome; the budget on a line of its own).
+     * compilation, the method binders (I3), the complete source map (I4, map modes), and every evaluation of a
+     * compiled {@code compileMethod} variant (I6a) with its budget apart (I6b).
      */
     public static Map<String, String> record() {
         var lines = new LinkedHashMap<String, String>();
@@ -399,12 +577,30 @@ public final class Adr078Fixtures {
                     String key = fixture.name() + " | " + variant.label() + " | " + mode;
                     var outcome = compile(variant, mode);
                     lines.put(key, outcome.toString());
-                    if (!outcome.compiled() || variant.method() == null) continue;
-                    var arguments = arguments(fixture);
-                    for (int i = 0; i < arguments.size(); i++) {
-                        var evaluation = evaluate(outcome.program(), arguments.get(i), REPLAY_LIMIT);
-                        lines.put(key + " | eval " + i, evaluation.outcome());
-                        lines.put(key + " | budget " + i, evaluation.budget().cpuSteps() + " cpu, " + evaluation.budget().memoryUnits() + " mem");
+                    if (!outcome.compiled()) continue;
+                    lines.put(key + " | binders", outcome.binders());
+                    if (mode.sourceMaps()) lines.put(key + " | source map", outcome.fullSourceMap());
+                    if (variant.method() == null) continue;
+                    evaluations(fixture, outcome).forEach((suffix, evaluation) -> {
+                        lines.put(key + " | " + suffix, evaluation.outcome());
+                        lines.put(key + " | budget " + suffix, evaluation.budget().cpuSteps() + " cpu, " + evaluation.budget().memoryUnits() + " mem");
+                    });
+                }
+            }
+        }
+        // C5: a rejected program's diagnostic, with the binder-namespace check off and on.
+        for (var fixture : fixtures()) {
+            for (var variant : fixture.variants()) {
+                var mode = new Mode("pv11-safe", false);
+                for (boolean verify : List.of(false, true)) {
+                    String before = System.getProperty("julc.verifyBinderNamespace");
+                    System.setProperty("julc.verifyBinderNamespace", String.valueOf(verify));
+                    try {
+                        var outcome = compile(variant, mode);
+                        if (!outcome.compiled()) lines.put(fixture.name() + " | " + variant.label() + " | diagnostic verify=" + verify, outcome.rejection());
+                    } finally {
+                        if (before == null) System.clearProperty("julc.verifyBinderNamespace");
+                        else System.setProperty("julc.verifyBinderNamespace", before);
                     }
                 }
             }

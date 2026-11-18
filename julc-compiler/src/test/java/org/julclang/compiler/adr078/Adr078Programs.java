@@ -2,6 +2,7 @@ package org.julclang.compiler.adr078;
 
 import org.julclang.compiler.adr078.Adr078Fixtures.Variant;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -88,18 +89,28 @@ public final class Adr078Programs {
         return new Naming(methods, classes, packages, order, order, "base");
     }
 
-    /** A rewrite: fresh names (half of the time in reversed name order), packages, and permuted orders. */
-    static Naming rewrite(Model model, Random random, int index) {
+    /** How a rewrite assigns method names. */
+    enum Kind {
+        /** Fresh names whose order is exactly the reverse of the base's (m0 < m1 < … becomes the largest first). */
+        REVERSED,
+        /** Fresh names in a random order. */
+        RANDOM
+    }
+
+    /**
+     * A rewrite of {@code kind}: fresh method and class names, other packages (among them one that sorts among the
+     * stdlib's), and permuted library sources and imports.
+     */
+    static Naming rewrite(Model model, Random random, int index, Kind kind) {
         var used = new HashSet<String>();
         var methods = new LinkedHashMap<Integer, String>();
-        boolean reverse = random.nextBoolean();
         var fresh = new ArrayList<String>();
         for (int i = 0; i < model.methods().size(); i++) fresh.add(freshName(random, used, "m"));
         Collections.sort(fresh);
-        if (reverse) Collections.reverse(fresh);
         var ids = new ArrayList<Integer>();
         for (var method : model.methods()) ids.add(method.id());
-        Collections.shuffle(ids, random);
+        if (kind == Kind.REVERSED) Collections.reverse(fresh);
+        else Collections.shuffle(ids, random);
         for (int i = 0; i < ids.size(); i++) methods.put(ids.get(i), fresh.get(i));
         var classes = new LinkedHashMap<Integer, String>();
         var packages = new LinkedHashMap<Integer, String>();
@@ -111,8 +122,7 @@ public final class Adr078Programs {
         Collections.shuffle(sourceOrder, random);
         var importOrder = new ArrayList<Integer>(classes.keySet());
         Collections.shuffle(importOrder, random);
-        return new Naming(methods, classes, packages, sourceOrder, importOrder,
-                "rewrite " + index + (reverse ? " (reversed names)" : ""));
+        return new Naming(methods, classes, packages, sourceOrder, importOrder, "rewrite " + index + " " + kind);
     }
 
     private static String freshName(Random random, Set<String> used, String prefix) {
@@ -156,6 +166,18 @@ public final class Adr078Programs {
         return method.owner() == from ? name : naming.classes().get(method.owner()) + "." + name;
     }
 
+    /** A digest of every generated source, so that a recording made from another generator is detected as stale. */
+    public static String digest(List<List<Variant>> programs) {
+        var text = new StringBuilder();
+        for (var variants : programs) {
+            for (var variant : variants) {
+                text.append(variant.label()).append('\n').append(variant.target()).append('\n');
+                variant.libraries().forEach(library -> text.append(library).append('\n'));
+            }
+        }
+        return Adr078Fixtures.sha256(text.toString().getBytes(StandardCharsets.UTF_8));
+    }
+
     /** Every program and its rewrites: base first. */
     public static List<List<Variant>> programs() {
         var programs = new ArrayList<List<Variant>>();
@@ -164,7 +186,7 @@ public final class Adr078Programs {
             var model = model(random);
             var variants = new ArrayList<Variant>();
             variants.add(render(model, baseNaming(model)));
-            for (int i = 0; i < REWRITES; i++) variants.add(render(model, rewrite(model, random, i)));
+            for (int i = 0; i < REWRITES; i++) variants.add(render(model, rewrite(model, random, i, i % 2 == 0 ? Kind.REVERSED : Kind.RANDOM)));
             programs.add(variants);
         }
         return programs;
@@ -176,6 +198,7 @@ public final class Adr078Programs {
      */
     public static void main(String[] args) {
         var programs = programs();
+        System.out.println("sources = " + digest(programs));
         for (int p = 0; p < programs.size(); p++) {
             for (var mode : Adr078Fixtures.modes()) {
                 var base = Adr078Fixtures.compile(programs.get(p).getFirst(), mode);

@@ -3,6 +3,7 @@ package org.julclang.compiler.codegen;
 import org.julclang.compiler.codegen.FirstUseRanks.Roots;
 import org.julclang.compiler.codegen.FirstUseRanks.Rule;
 import org.julclang.compiler.codegen.FirstUseRanks.Selection;
+import org.julclang.compiler.codegen.FirstUseRanks.TieChoice;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.resolve.LibraryMethodRegistry.LibraryMethod;
@@ -13,11 +14,13 @@ import org.junit.jupiter.api.Test;
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -200,6 +203,120 @@ class FirstUseRanksTest {
         var together = names(LibraryBindingOrder.innermostFirst(more, roots, null)).stream().filter(alone::contains).toList();
         assertEquals(alone, together);
         assertFalse(alone.isEmpty());
+    }
+
+    /** {@code \param. param}: a method whose only variable is its own parameter, named {@code param}. */
+    private static LibraryMethod identity(String qualified, String param) {
+        int dot = qualified.lastIndexOf('.');
+        return new LibraryMethod(qualified.substring(0, dot), qualified.substring(dot + 1), FUN,
+                new PirTerm.Lam(param, INT, new PirTerm.Var(param, INT)));
+    }
+
+    /**
+     * Codex M1a C1: a local that spells a library method's name is not a call. Both methods have equal keys and nothing
+     * calls either, so D1b's name decides; with a spelling search, b's parameter named q.M.a counted as a call of a.
+     */
+    @Test
+    void aLocalSpelledLikeAMethodIsNotACall() {
+        var selections = selections(List.of(identity("q.M.a", "x"), identity("q.M.b", "q.M.a")), Roots.NONE);
+        assertEquals(new Selection("q.M.a", false, 0, Rule.UNREAD_BY_NAME), selections.getFirst());
+        // Each one's local spells the other: no edge either way, so no cycle.
+        var crossed = selections(List.of(identity("q.M.a", "q.M.b"), identity("q.M.b", "q.M.a")), Roots.NONE);
+        assertTrue(crossed.stream().noneMatch(s -> s.rule() == Rule.CYCLE), crossed.toString());
+        assertEquals(new Selection("q.M.a", false, 0, Rule.UNREAD_BY_NAME), crossed.getFirst());
+    }
+
+    /**
+     * Codex M1a C6: at every choice of Kahn's algorithm between ready methods with equal keys, the lowest rank wins;
+     * α-equal twins nothing calls, with the same callees, lie in one run of equal-key methods (Lemma 3's block; a
+     * member of the run that is not identical to them can sit between them); and a dependent of one twin can be bound
+     * between two reached twins (Lemma 4).
+     */
+    @Test
+    void equalKeyChoicesTakeTheLowestRankAndTheLemmasHold() {
+        var random = new Random(781);
+        int choices = 0, adjacentPairs = 0, interleaved = 0;
+        for (int trial = 0; trial < 500; trial++) {
+            int count = 4 + random.nextInt(10);
+            var constants = new ArrayList<Integer>();
+            var calls = new ArrayList<List<Integer>>();
+            for (int i = 0; i < count; i++) {
+                constants.add(random.nextInt(2));
+                var callees = new ArrayList<Integer>();
+                for (int j = i + 1; j < count; j++) if (random.nextInt(5) == 0) callees.add(j);
+                calls.add(callees);
+            }
+            var rootCalls = new ArrayList<String>();
+            for (int i = 0; i < count; i++) if (random.nextInt(3) == 0) rootCalls.add("q.L.m" + (char) ('a' + i));
+            var methods = library(constants, calls, i -> "q.L.m" + (char) ('a' + i));
+            var tieChoices = new ArrayList<TieChoice>();
+            var order = names(LibraryBindingOrder.innermostFirst(methods, entries(calls(rootCalls.toArray(String[]::new))),
+                    new FirstUseRanks.Observer() {
+                        @Override
+                        public void selected(Selection selection) {
+                        }
+
+                        @Override
+                        public void chose(TieChoice choice) {
+                            tieChoices.add(choice);
+                        }
+                    }));
+            for (var choice : tieChoices) {
+                choices++;
+                int lowest = choice.contenders().values().stream().mapToInt(Integer::intValue).min().orElseThrow();
+                assertEquals(lowest, choice.contenders().get(choice.winner()), "trial " + trial + ": " + choice);
+            }
+            // Lemma 3 and 4, over pairs of twins with the same callees.
+            var callers = new HashSet<String>();
+            for (int i = 0; i < count; i++) for (int callee : calls.get(i)) callers.add("q.L.m" + (char) ('a' + callee));
+            for (int i = 0; i < count; i++) {
+                for (int j = i + 1; j < count; j++) {
+                    if (!constants.get(i).equals(constants.get(j)) || !calls.get(i).equals(calls.get(j))) continue;
+                    String a = "q.L.m" + (char) ('a' + i), b = "q.L.m" + (char) ('a' + j);
+                    int distance = Math.abs(order.indexOf(a) - order.indexOf(b));
+                    boolean unread = !callers.contains(a) && !callers.contains(b) && !rootCalls.contains(a) && !rootCalls.contains(b);
+                    if (unread) {
+                        // They lie in one run of equal-key methods: whatever is bound between them has their key.
+                        int from = Math.min(order.indexOf(a), order.indexOf(b)), to = Math.max(order.indexOf(a), order.indexOf(b));
+                        for (int k = from + 1; k < to; k++) {
+                            int between = order.get(k).charAt(order.get(k).length() - 1) - 'a';
+                            assertEquals(constants.get(i), constants.get(between), "trial " + trial + ": " + order.get(k)
+                                    + " between unread twins " + a + ", " + b + " in " + order);
+                            assertEquals(calls.get(i).size(), calls.get(between).size(), "trial " + trial + ": " + order);
+                        }
+                        adjacentPairs++;
+                    } else if (distance > 1) {
+                        interleaved++;
+                    }
+                }
+            }
+        }
+        assertTrue(choices > 100, "equal-key choices: " + choices);
+        assertTrue(adjacentPairs > 20, "unread twin pairs: " + adjacentPairs);
+        assertTrue(interleaved > 0, "no dependent was ever bound between twins");
+    }
+
+    /** Codex M1a C7: a wide recursive group binds its names once, not once per part: the walk stays linear. */
+    @Test
+    void aWideRecursiveGroupIsWalkedInLinearTime() {
+        long[] times = new long[3];
+        int[] widths = {1_024, 2_048, 4_096};
+        for (int round = 0; round < 3; round++) {
+            for (int w = 0; w < widths.length; w++) {
+                var bindings = new ArrayList<PirTerm.Binding>();
+                for (int i = 0; i < widths[w]; i++) {
+                    bindings.add(new PirTerm.Binding("r" + i, new PirTerm.Lam("x", INT, new PirTerm.Var("r" + ((i + 1) % widths[w]), FUN))));
+                }
+                var group = new PirTerm.LetRec(bindings, calls("q.L.alpha"));
+                var twins = List.of(method("q.L.alpha", 1, List.of()), method("q.L.beta", 1, List.of()));
+                long start = System.nanoTime();
+                LibraryBindingOrder.innermostFirst(twins, entries(group), null);
+                long elapsed = System.nanoTime() - start;
+                times[w] = round == 0 ? elapsed : Math.min(times[w], elapsed);
+            }
+        }
+        // Binding all names for each part would grow with the square of the width: sixteen times from 1,024 to 4,096.
+        assertTrue(times[2] < 8 * times[0] + 20_000_000L, "1,024: " + times[0] + " ns, 4,096: " + times[2] + " ns");
     }
 
     private interface Namer {

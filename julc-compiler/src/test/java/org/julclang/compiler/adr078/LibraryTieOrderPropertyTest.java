@@ -27,20 +27,23 @@ class LibraryTieOrderPropertyTest {
     @Test
     void rewritesKeepTheBytesInEveryMode() throws IOException {
         var programs = Adr078Programs.programs();
+        String recording = pre21();
+        assertTrue(recording.contains("sources = " + Adr078Programs.digest(programs)),
+                "pre21-programs.txt was recorded from another generator: re-record it on the pre21 class path");
         var differences = new ArrayList<String>();
         var coverage = new StringBuilder();
-        int compiled = 0;
+        var compared = new TreeMap<String, Integer>();
         for (int p = 0; p < programs.size(); p++) {
             var variants = programs.get(p);
             for (var mode : Adr078Fixtures.modes()) {
                 var base = Adr078Fixtures.compile(variants.getFirst(), mode);
                 assertTrue(base.compiled(), "program " + p + " " + mode + ": " + base);
-                int same = 0, reversed = 0;
-                for (var variant : variants) {
+                int same = 0;
+                for (var variant : variants.subList(1, variants.size())) {
                     var outcome = Adr078Fixtures.compile(variant, mode);
                     assertTrue(outcome.compiled(), "program " + p + " " + variant.label() + " " + mode + " compiled on pre21: " + outcome);
-                    compiled++;
-                    if (variant.label().contains("reversed")) reversed++;
+                    String kind = variant.label().substring(variant.label().lastIndexOf(' ') + 1);
+                    compared.merge(kind + " | " + mode, 1, Integer::sum);
                     if (outcome.toString().equals(base.toString())) {
                         same++;
                     } else {
@@ -51,12 +54,19 @@ class LibraryTieOrderPropertyTest {
                     }
                 }
                 coverage.append("program ").append(p).append(" | ").append(mode).append(": ").append(same).append('/')
-                        .append(variants.size()).append(" give the base's bytes (").append(reversed).append(" rewrites in reversed name order)\n");
+                        .append(variants.size() - 1).append(" rewrites give the base's bytes\n");
             }
         }
         System.out.print(coverage);
-        System.out.println("pre21, for comparison:\n" + pre21());
-        assertTrue(compiled > 0);
+        compared.forEach((key, count) -> System.out.println("compared " + key + ": " + count));
+        // Every rewrite kind is exercised in every mode, for every program.
+        for (var kind : Adr078Programs.Kind.values()) {
+            for (var mode : Adr078Fixtures.modes()) {
+                int expected = programs.size() * (Adr078Programs.REWRITES / 2);
+                assertEquals(expected, compared.getOrDefault(kind + " | " + mode, 0), kind + " | " + mode);
+            }
+        }
+        System.out.println("pre21, for comparison:\n" + recording);
         assertEquals(List.of(), differences);
     }
 

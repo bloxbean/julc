@@ -1,12 +1,11 @@
 package org.julclang.compiler.adr078;
 
+import org.julclang.compiler.adr078.Adr078Fixtures.Evaluation;
 import org.julclang.compiler.adr078.Adr078Fixtures.Fixture;
 import org.julclang.compiler.adr078.Adr078Fixtures.Mode;
 import org.julclang.compiler.adr078.Adr078Fixtures.Outcome;
 import org.julclang.compiler.adr078.Adr078Fixtures.Variant;
 import org.julclang.core.PlutusData;
-import org.julclang.core.source.SourceLocation;
-import org.julclang.vm.ExBudget;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
@@ -19,6 +18,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -27,19 +28,25 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * ADR-078 D5: the fixed fixtures, compiled in every mode, against what {@code 0.1.0-pre21} gave for them
  * ({@code adr078/pre21-fixtures.txt}, recorded by {@link Adr078Fixtures#main}).
  * <ul>
- *   <li>A variant compiles exactly where it compiled on pre21 (C29).</li>
+ *   <li>A variant compiles exactly where it compiled on pre21, and a rejection says what pre21's said, with the
+ *       binder-namespace check off and on (C29, C5).</li>
  *   <li>A {@code SAME} fixture's variants give the base's bytes in every mode: the tie rule (D1, D2).</li>
  *   <li>A {@code DIFFERENT_IN_SOME_MODE} fixture is a known limit or a negative control: some mode differs.</li>
- *   <li>Every evaluation that pre21 completed has the same result term, failure reason and traces (I6a); budgets are
- *       reported, not compared (I6b).</li>
- *   <li>Source maps: every variant has as many mapped DFS indices as on pre21, on the same lines; where a variant's
- *       bytes are pre21's, every index maps to the same location (I4).</li>
+ *   <li>The assembly's roots decide the order (C2): handlers in purpose tag order, and the target before unread
+ *       helpers.</li>
+ *   <li>I3: every variant binds the same multiset of method binders as on pre21.</li>
+ *   <li>I4: every source-map build has pre21's complete map (every DFS index, file, line, column and fragment), and a
+ *       renamed variant has its base's map through the rename mapping.</li>
+ *   <li>I6a: every evaluation pre21 completed has the same result (as a FLAT term), failure reason and traces; a
+ *       returned function is applied and compared too; a one-sided exhaustion is replayed at a higher limit. Budgets
+ *       are reported, not compared (I6b).</li>
  * </ul>
  */
 class LibraryTieOrderFixturesTest {
 
     private static final Map<String, String> PRE21 = new LinkedHashMap<>();
     private static final Map<String, Outcome> NOW = new HashMap<>();
+    private static final Pattern ENTRY = Pattern.compile("(\\d+)=([^:]*):(\\d+):(\\d+):(.*)");
 
     @BeforeAll
     static void load() throws IOException {
@@ -61,6 +68,10 @@ class LibraryTieOrderFixturesTest {
         return fixture.name() + " | " + variant.label() + " | " + mode;
     }
 
+    private static Fixture fixture(String prefix) {
+        return Adr078Fixtures.fixtures().stream().filter(f -> f.name().startsWith(prefix)).findFirst().orElseThrow();
+    }
+
     @Test
     void everyVariantCompilesExactlyWherePre21CompiledIt() {
         var mismatches = new ArrayList<String>();
@@ -69,12 +80,36 @@ class LibraryTieOrderFixturesTest {
                 for (var mode : Adr078Fixtures.modes()) {
                     String key = key(fixture, variant, mode);
                     String pre21 = PRE21.get(key);
-                    assertTrue(pre21 != null, "no pre21 record for " + key);
+                    assertTrue(pre21 != null, "no pre21 record for " + key + ": re-record pre21-fixtures.txt");
                     if (pre21.startsWith("REJECTED") == NOW.get(key).compiled()) mismatches.add(key + ": pre21 " + pre21 + ", now " + NOW.get(key));
                 }
             }
         }
         assertEquals(List.of(), mismatches);
+    }
+
+    /** C5: a rejected program's diagnostic is pre21's, with julc.verifyBinderNamespace off and on. */
+    @Test
+    void rejectionsSayWhatPre21Said() {
+        int pinned = 0;
+        String before = System.getProperty("julc.verifyBinderNamespace");
+        try {
+            for (var fixture : Adr078Fixtures.fixtures()) {
+                for (var variant : fixture.variants()) {
+                    for (boolean verify : List.of(false, true)) {
+                        String key = fixture.name() + " | " + variant.label() + " | diagnostic verify=" + verify;
+                        if (!PRE21.containsKey(key)) continue;
+                        System.setProperty("julc.verifyBinderNamespace", String.valueOf(verify));
+                        assertEquals(PRE21.get(key), Adr078Fixtures.compile(variant, new Mode("pv11-safe", false)).rejection(), key);
+                        pinned++;
+                    }
+                }
+            }
+        } finally {
+            if (before == null) System.clearProperty("julc.verifyBinderNamespace");
+            else System.setProperty("julc.verifyBinderNamespace", before);
+        }
+        assertTrue(pinned >= 4, "diagnostics pinned: " + pinned);
     }
 
     @Test
@@ -112,17 +147,171 @@ class LibraryTieOrderFixturesTest {
         System.out.print(report);
     }
 
-    /** C12: both spellings give the pre21 alpha program, which succeeds under the limit where the zeta one exhausted. */
+    /**
+     * C2: the assembly's roots decide which twin is bound outermost. A multi-purpose validator whose handlers are
+     * declared against tag order binds the mint handler's twin first; a compileMethod target binds its own twin before
+     * that of an unread helper declared above it. Neither follows declaration order or names.
+     */
+    @Test
+    void theAssemblysRootsDecideTheEmittedOrder() {
+        for (String name : List.of("assembly-handlers-against-tag-order", "assembly-unread-helper-before-target")) {
+            var fixture = fixture(name);
+            for (var variant : fixture.variants()) {
+                String first = "q.L." + variant.label();
+                for (var mode : Adr078Fixtures.modes()) {
+                    String pir = NOW.get(key(fixture, variant, mode)).pir();
+                    int outer = pir.indexOf("(let " + first + " =");
+                    int inner = pir.indexOf("(let q.L.beta =");
+                    assertTrue(outer >= 0 && inner >= 0, key(fixture, variant, mode) + ": both twins are bound");
+                    assertTrue(outer < inner, key(fixture, variant, mode) + ": " + first + " is bound outside q.L.beta");
+                }
+            }
+        }
+    }
+
+    /** I3: the multiset of method binders, one per binding and assembly copy, is pre21's (C22's helper copies too). */
+    @Test
+    void everyVariantBindsPre21sMethodBinders() {
+        var differences = new ArrayList<String>();
+        int compared = 0;
+        for (var fixture : Adr078Fixtures.fixtures()) {
+            for (var variant : fixture.variants()) {
+                for (var mode : Adr078Fixtures.modes()) {
+                    String key = key(fixture, variant, mode) + " | binders";
+                    var outcome = NOW.get(key(fixture, variant, mode));
+                    if (!outcome.compiled()) continue;
+                    compared++;
+                    if (!PRE21.get(key).equals(outcome.binders())) differences.add(key + ": pre21 " + PRE21.get(key) + ", now " + outcome.binders());
+                }
+            }
+        }
+        assertEquals(List.of(), differences);
+        String rootAsLibrary = NOW.get("C22-root-as-own-library | root | pv11-safe").binders();
+        assertTrue(rootAsLibrary.indexOf("q.H.g") != rootAsLibrary.lastIndexOf("q.H.g"),
+                "C22 binds the helper and the library copy of q.H.g: " + rootAsLibrary);
+        assertTrue(compared > 100);
+    }
+
+    /** I4: every source-map build has pre21's complete source map. */
+    @Test
+    void sourceMapsArePre21s() {
+        var differences = new ArrayList<String>();
+        int compared = 0;
+        for (var fixture : Adr078Fixtures.fixtures()) {
+            for (var variant : fixture.variants()) {
+                for (var mode : Adr078Fixtures.modes()) {
+                    if (!mode.sourceMaps() || !NOW.get(key(fixture, variant, mode)).compiled()) continue;
+                    String key = key(fixture, variant, mode) + " | source map";
+                    compared++;
+                    if (!PRE21.get(key).equals(NOW.get(key(fixture, variant, mode)).fullSourceMap())) differences.add(key);
+                }
+            }
+        }
+        assertEquals(List.of(), differences);
+        assertTrue(compared > 50, "source maps compared: " + compared);
+    }
+
+    /** I4 through the rename: a renamed variant's map is its base's pre21 map, each location carried by the rename. */
+    @Test
+    void renamedSourceMapsAreTheBasesThroughTheRenameMapping() {
+        int carried = 0, moved = 0;
+        for (var fixture : Adr078Fixtures.fixtures()) {
+            if (!fixture.expectation().equals("SAME")) continue;
+            var base = fixture.variants().getFirst();
+            for (var variant : fixture.variants().subList(1, fixture.variants().size())) {
+                for (var mode : Adr078Fixtures.modes()) {
+                    if (!mode.sourceMaps()) continue;
+                    String expected = PRE21.get(key(fixture, base, mode) + " | source map");
+                    String through = carry(expected, base.target(), variant.target());
+                    if (!through.equals(expected)) moved++;
+                    assertSameMap(through, NOW.get(key(fixture, variant, mode)).fullSourceMap(), key(fixture, variant, mode));
+                    carried++;
+                }
+            }
+        }
+        assertTrue(carried > 20 && moved > 0, "carried " + carried + ", moved by the rename " + moved);
+        // A negative control: without the mapping, a renamed variant's map is not its base's.
+        var fixture = fixture("twins-reached");
+        var mode = new Mode("none", true);
+        String base = PRE21.get(key(fixture, fixture.variants().getFirst(), mode) + " | source map");
+        String renamed = NOW.get(key(fixture, fixture.variants().get(1), mode)).fullSourceMap();
+        assertTrue(!base.equals(renamed), "the renamed variant's map differs from its base's without the mapping");
+    }
+
+    /**
+     * Two full maps agree: the same indices, files, lines and columns, and the same fragments. A fragment the compiler
+     * truncated ({@code ...}) is compared on the prefix both have, since a rename changes where the truncation falls.
+     */
+    private static void assertSameMap(String expected, String actual, String message) {
+        String[] want = expected.split("\t"), got = actual.split("\t");
+        assertEquals(want.length, got.length, message + ": entries");
+        for (int i = 0; i < want.length; i++) {
+            Matcher w = ENTRY.matcher(want[i]), g = ENTRY.matcher(got[i]);
+            assertTrue(w.matches() && g.matches(), message + ": " + want[i] + " / " + got[i]);
+            for (int part = 1; part <= 4; part++) assertEquals(w.group(part), g.group(part), message + ": " + want[i] + " / " + got[i]);
+            String a = w.group(5), b = g.group(5);
+            if (a.endsWith("...") || b.endsWith("...")) {
+                a = a.endsWith("...") ? a.substring(0, a.length() - 3) : a;
+                b = b.endsWith("...") ? b.substring(0, b.length() - 3) : b;
+                int common = Math.min(a.length(), b.length());
+                assertEquals(a.substring(0, common), b.substring(0, common), message + ": " + want[i] + " / " + got[i]);
+            } else {
+                assertEquals(a, b, message + ": " + want[i] + " / " + got[i]);
+            }
+        }
+    }
+
+    /** {@code map} (a full source map of {@code base}) with every location carried to {@code renamed}, token by token. */
+    private static String carry(String map, String base, String renamed) {
+        String[] baseLines = base.split("\n", -1), renamedLines = renamed.split("\n", -1);
+        var entries = new ArrayList<String>();
+        for (String entry : map.split("\t")) {
+            if (entry.isEmpty()) continue;
+            Matcher m = ENTRY.matcher(entry);
+            assertTrue(m.matches(), entry);
+            int line = Integer.parseInt(m.group(3)), column = Integer.parseInt(m.group(4));
+            var baseTokens = tokens(baseLines[line - 1]);
+            var renamedTokens = tokens(renamedLines[line - 1]);
+            assertEquals(baseTokens.size(), renamedTokens.size(), "a rename keeps the tokens of line " + line);
+            int start = 0, renamedStart = 0, mapped = column;
+            for (int i = 0; i < baseTokens.size(); i++) {
+                if (column - 1 < start + baseTokens.get(i).length()) {
+                    mapped = renamedStart + Math.min(column - 1 - start, renamedTokens.get(i).length() - 1) + 1;
+                    break;
+                }
+                start += baseTokens.get(i).length();
+                renamedStart += renamedTokens.get(i).length();
+            }
+            // The fragment's identifiers are renamed all at once, token by token, so that a swap stays a swap.
+            var renames = new HashMap<String, String>();
+            for (int i = 0; i < baseTokens.size(); i++) {
+                if (!baseTokens.get(i).equals(renamedTokens.get(i))) renames.put(baseTokens.get(i), renamedTokens.get(i));
+            }
+            var fragment = new StringBuilder();
+            for (String token : tokens(m.group(5))) fragment.append(renames.getOrDefault(token, token));
+            entries.add(m.group(1) + "=" + m.group(2) + ":" + line + ":" + mapped + ":" + fragment);
+        }
+        return String.join("\t", entries);
+    }
+
+    private static List<String> tokens(String line) {
+        var tokens = new ArrayList<String>();
+        Matcher m = Pattern.compile("\\w+|\\W").matcher(line);
+        while (m.find()) tokens.add(m.group());
+        return tokens;
+    }
+
+    /** C12: both spellings give the pre21 alpha program, which succeeds under the limit where pre21's zeta exhausted. */
     @Test
     void c12BothSpellingsGiveTheAlphaProgramAndSucceedUnderTheLimit() {
-        var fixture = Adr078Fixtures.fixtures().stream().filter(f -> f.name().startsWith("C12")).findFirst().orElseThrow();
+        var fixture = fixture("C12");
         var mode = new Mode("pv11-safe", false);
-        assertEquals("4ab65773da337e917d9ade748526156aadd66db1c1e7ddcd77632ffc17ca40f3 1012 B",
-                PRE21.get(key(fixture, fixture.variants().get(1), mode)), "pre21's zeta program");
+        assertTrue(PRE21.get(key(fixture, fixture.variants().get(0), mode) + " | eval 1 c12-limit").startsWith("SUCCESS"), "pre21 alpha");
+        assertTrue(PRE21.get(key(fixture, fixture.variants().get(1), mode) + " | eval 1 c12-limit").startsWith("EXHAUSTED"), "pre21 zeta");
         for (var variant : fixture.variants()) {
             var outcome = NOW.get(key(fixture, variant, mode));
             assertEquals("c8489246affdc535e5b559c5b75c027ef31b5285aa003384721ca78b25c95380 1010 B", outcome.toString(), variant.label());
-            var bounded = Adr078Fixtures.evaluate(outcome.program(), List.of(PlutusData.integer(5)), new ExBudget(31_150_000, 110_000));
+            var bounded = Adr078Fixtures.evaluate(outcome.program(), List.of(PlutusData.integer(5)), Adr078Fixtures.C12_LIMIT);
             assertTrue(bounded.outcome().startsWith("SUCCESS"), variant.label() + ": " + bounded.outcome());
         }
     }
@@ -130,90 +319,85 @@ class LibraryTieOrderFixturesTest {
     /** C20: the pool order still decides whether the program compiles (L-C4), exactly as on pre21. */
     @Test
     void c20PoolOrdersArePinned() {
-        var fixture = Adr078Fixtures.fixtures().stream().filter(f -> f.name().startsWith("C20")).findFirst().orElseThrow();
+        var fixture = fixture("C20");
         for (var mode : Adr078Fixtures.modes()) {
             assertTrue(NOW.get(key(fixture, fixture.variants().get(0), mode)).compiled(), "[B, A] " + mode);
-            assertEquals("REJECTED CompilerException: Undefined variable: B", NOW.get(key(fixture, fixture.variants().get(1), mode)).toString(), "[A, B] " + mode);
+            assertTrue(NOW.get(key(fixture, fixture.variants().get(1), mode)).toString()
+                    .startsWith("REJECTED CompilerException: Undefined variable: B"), "[A, B] " + mode);
         }
     }
 
-    /** I6a: what pre21 computed, failed with or traced is unchanged; budgets are reported apart (I6b). */
+    /**
+     * I6a: what pre21 computed, failed with or traced is unchanged, compared structurally; a returned function is
+     * applied to the same arguments and compared; a one-sided exhaustion is replayed at the higher limit, where pre21
+     * terminating and this build not is a failure and both exhausting is inconclusive. Budgets are reported (I6b).
+     */
     @Test
     void evaluationsMatchPre21() {
         var mismatches = new ArrayList<String>();
         var budgets = new StringBuilder();
-        int compared = 0, inconclusive = 0;
+        int compared = 0, inconclusive = 0, applied = 0, traced = 0;
         for (var fixture : Adr078Fixtures.fixtures()) {
-            var arguments = Adr078Fixtures.arguments(fixture);
             for (var variant : fixture.variants()) {
+                if (variant.method() == null) continue;
                 for (var mode : Adr078Fixtures.modes()) {
                     var outcome = NOW.get(key(fixture, variant, mode));
-                    if (!outcome.compiled() || variant.method() == null) continue;
-                    for (int i = 0; i < arguments.size(); i++) {
-                        String key = key(fixture, variant, mode) + " | eval " + i;
-                        var now = Adr078Fixtures.evaluate(outcome.program(), arguments.get(i), Adr078Fixtures.REPLAY_LIMIT);
-                        String pre21 = PRE21.get(key);
-                        if (pre21.startsWith("EXHAUSTED") || now.outcome().startsWith("EXHAUSTED")) {
+                    if (!outcome.compiled()) continue;
+                    String prefix = key(fixture, variant, mode) + " | ";
+                    Map<String, Evaluation> now = Adr078Fixtures.evaluations(fixture, outcome);
+                    for (var entry : now.entrySet()) {
+                        String suffix = entry.getKey();
+                        if (suffix.endsWith(" high") || suffix.endsWith("c12-limit")) continue;
+                        String pre21 = PRE21.get(prefix + suffix);
+                        assertTrue(pre21 != null, "no pre21 record for " + prefix + suffix);
+                        var evaluation = entry.getValue();
+                        if (pre21.startsWith("EXHAUSTED") != evaluation.exhausted()) {
+                            String pre21High = PRE21.get(prefix + suffix + " high");
+                            var high = now.get(suffix + " high");
+                            if (pre21High == null || high == null) {
+                                mismatches.add(prefix + suffix + ": one-sided exhaustion with no replay");
+                            } else if (!pre21High.startsWith("EXHAUSTED") && high.exhausted()) {
+                                mismatches.add(prefix + suffix + ": pre21 terminated at the higher limit, this build did not");
+                            } else if (pre21High.startsWith("EXHAUSTED") && high.exhausted()) {
+                                inconclusive++;
+                            } else if (!pre21High.equals(high.outcome())) {
+                                mismatches.add(prefix + suffix + " high: pre21 " + pre21High + ", now " + high.outcome());
+                            } else {
+                                compared++;
+                            }
+                            continue;
+                        }
+                        if (evaluation.exhausted()) {
                             inconclusive++;
                             continue;
                         }
                         compared++;
-                        if (!pre21.equals(now.outcome())) mismatches.add(key + ": pre21 " + pre21 + ", now " + now.outcome());
-                        String budget = now.budget().cpuSteps() + " cpu, " + now.budget().memoryUnits() + " mem";
-                        String pre21Budget = PRE21.get(key(fixture, variant, mode) + " | budget " + i);
-                        if (!budget.equals(pre21Budget)) budgets.append(key).append(": ").append(pre21Budget).append(" -> ").append(budget).append('\n');
+                        if (suffix.equals("applied")) applied++;
+                        if (evaluation.outcome().contains("traces=[\"")) traced++;
+                        if (!pre21.equals(evaluation.outcome())) mismatches.add(prefix + suffix + ": pre21 " + pre21 + ", now " + evaluation.outcome());
+                        String budget = evaluation.budget().cpuSteps() + " cpu, " + evaluation.budget().memoryUnits() + " mem";
+                        String pre21Budget = PRE21.get(prefix + "budget " + suffix);
+                        if (!budget.equals(pre21Budget)) budgets.append(prefix).append(suffix).append(": ").append(pre21Budget).append(" -> ").append(budget).append('\n');
                     }
                 }
             }
         }
-        System.out.println("I6a: " + compared + " evaluations compared, " + inconclusive + " inconclusive (exhausted)");
+        System.out.println("I6a: " + compared + " evaluations compared (" + applied + " returned functions applied, " + traced
+                + " with traces), " + inconclusive + " inconclusive");
         System.out.print(budgets.isEmpty() ? "I6b: every budget as on pre21\n" : "I6b: budgets that changed\n" + budgets);
         assertEquals(List.of(), mismatches);
-        assertTrue(compared > 0);
+        assertTrue(compared > 0 && applied > 0 && traced > 0, "compared " + compared + ", applied " + applied + ", traced " + traced);
     }
 
-    /** I4: the source maps keep their entries and lines; where the bytes are pre21's, every location is pre21's. */
+    /** A report of the fixtures whose bytes M1a changed from pre21: only programs with equal-key methods may change. */
     @Test
-    void sourceMapsKeepTheirLocations() {
-        for (var fixture : Adr078Fixtures.fixtures()) {
-            for (var variant : fixture.variants()) {
-                for (var mode : Adr078Fixtures.modes()) {
-                    if (!mode.sourceMaps()) continue;
-                    var outcome = NOW.get(key(fixture, variant, mode));
-                    if (!outcome.compiled()) continue;
-                    assertTrue(outcome.sourceMap() != null && !outcome.sourceMap().isEmpty(), key(fixture, variant, mode));
-                }
-            }
-        }
-        // Same-source comparison against the fixture's base (identity rename mapping on lines): equal lines per index.
-        for (var fixture : Adr078Fixtures.fixtures()) {
-            if (!fixture.expectation().equals("SAME")) continue;
-            for (var mode : Adr078Fixtures.modes()) {
-                if (!mode.sourceMaps()) continue;
-                var base = lines(NOW.get(key(fixture, fixture.variants().getFirst(), mode)).sourceMap());
-                for (var variant : fixture.variants()) {
-                    assertEquals(base, lines(NOW.get(key(fixture, variant, mode)).sourceMap()), key(fixture, variant, mode));
-                }
-            }
-        }
-    }
-
-    private static Map<Integer, Integer> lines(Map<Integer, SourceLocation> map) {
-        var lines = new TreeMap<Integer, Integer>();
-        map.forEach((index, location) -> lines.put(index, location.line()));
-        return lines;
-    }
-
-    /** A report of the fixtures whose bytes M1a changed from pre21's: only programs with equal-key methods may change. */
-    @Test
-    void reportWhichFixturesChangedFromPre21() {
+    void onlyFixturesWithEqualKeyMethodsChangedFromPre21() {
         var changed = new TreeMap<String, String>();
         for (var fixture : Adr078Fixtures.fixtures()) {
             for (var variant : fixture.variants()) {
                 for (var mode : Adr078Fixtures.modes()) {
                     String key = key(fixture, variant, mode);
-                    // A rejection's text can differ with the test JVM's checks (julc.verifyBinderNamespace reports I13
-                    // before the backend's "Unbound variable"); that it is rejected is compared above.
+                    // A rejection's text depends on the test JVM's I13 check; rejectionsSayWhatPre21Said pins it.
                     boolean bothRejected = PRE21.get(key).startsWith("REJECTED") && !NOW.get(key).compiled();
                     if (!bothRejected && !PRE21.get(key).equals(NOW.get(key).toString())) changed.put(key, PRE21.get(key) + " -> " + NOW.get(key));
                 }
@@ -222,9 +406,9 @@ class LibraryTieOrderFixturesTest {
         changed.forEach((key, value) -> System.out.println("changed from pre21: " + key + ": " + value));
         for (String key : changed.keySet()) {
             // Only these fixtures bind library methods with equal content keys.
-            assertTrue(key.startsWith("twins-reached") || key.startsWith("C11") || key.startsWith("C12") || key.startsWith("C19 ")
-                    || key.startsWith("C19-") || key.startsWith("C26") || key.startsWith("static-initialiser")
-                    || key.startsWith("validator-")
+            assertTrue(key.startsWith("twins-reached") || key.startsWith("C11") || key.startsWith("C12") || key.startsWith("C19-")
+                    || key.startsWith("C26") || key.startsWith("static-initialiser") || key.startsWith("validator-")
+                    || key.startsWith("traces-") || key.startsWith("assembly-")
                     || key.startsWith("negative-constant | twins"), "unexpected change: " + key);
         }
     }
