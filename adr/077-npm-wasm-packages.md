@@ -791,13 +791,16 @@ prerelease part, as written (case-sensitive, `N` from 1):
    any other unsupported form fails the gate when a GitHub release is made). JOUST publishes its `-pre1-rc9`
    candidates to `latest`; JuLC deliberately differs.
 3. **`preview` once a final exists.** The job reads the package's registry `versions` at publication time: until
-   JuLC's first final release, `npm install` gets the newest `-preN`; after it, the newest final release, and
-   `npm install <name>@preview` the newest `-preN` ahead of it. Semver compares `betaN` as text, so `beta1` sorts below
+   JuLC's first final release, `npm install` gets the newest `-preN`; after a final higher than the `-preN` on
+   `latest`, the newest final release, and `npm install <name>@preview` the newest `-preN` ahead of it. A first final
+   backfilled below the `-preN` on `latest` leaves `latest` on that older prerelease (rule 7), and later `-preN`s go
+   to `preview`, until a final higher than it is published. Semver compares `betaN` as text, so `beta1` sorts below
    every `preN`.
 4. **Channels are ahead of `latest`.** `preview`, `beta` and `next` are taken only by a version ahead of `latest`.
 5. **No dist-tag ever moves backwards** (r19, M4-F1; per package and with a third candidate from r20, M4-C10/C11).
-   For each package, immediately before publishing it, the job reads the registry's dist-tags and publishes to the
-   first of these that does not already name a higher version of that package:
+   For each package, immediately before publishing it, the job reads the registry's document for it (validated:
+   only a 404 means "not published"; any other status, or an incomplete 200 answer, fails the job, r23) and
+   publishes to the first of these that does not already name a higher version of that package:
    - the table's tag (a channel only if the version is also ahead of `latest`, rule 4);
    - `release-<major>.<minor>` (for example `release-0.1`);
    - `release-<version>` (for example `release-0.1.0-pre21`), which can only ever name that version.
@@ -912,10 +915,18 @@ nor their checksum file (r19 to r22 did).
   - After the upload, it checks that exactly one release exists for the tag, that it is published, and that every
     file is attached as `uploaded` with this run's SHA-256 (r19).
 - **A release is built once.**
-  - The `wasm` job starts by checking whether the tag has any GitHub release. If it does, the job stops before
-    building, with a message pointing to recovery (r20; this workflow never makes drafts, so the read-only token sees
-    every release it makes).
-  - So a whole-workflow re-run, which would rebuild different bytes (ADR-057, open question 4), changes nothing.
+  - A build-free `release-guard` job (r23, R23-C13; the check was in `wasm` from r8 to r23's first rounds) checks
+    whether the tag has any GitHub release. Every job that builds a release file (`native-image`, `wasm`,
+    `native-image-playground`, `shadow-jars`) needs it, so if a release exists nothing is built, and the job says so
+    with a message pointing to recovery (this workflow never makes drafts, so the read-only token sees every release
+    it makes).
+  - So a whole-workflow re-run, which would rebuild different bytes (ADR-057, open question 4; no native image or jar
+    is reproducible either), changes nothing: no second upload of any `release-*` or `npm-packages` artifact.
+  - `github-release` requires the 14-file inventory (4 CLI zips, 4 playground zips, 2 shadow jars, the 2 engine
+    archives, the static playground, the archives' `SHA256SUMS`) before creating or changing the release, and after
+    uploading requires the release's assets to be exactly those files (R23-C16).
+  - Completing a release by hand downloads the original run's ten `release-*` artifacts by id, and refuses if any
+    name occurs more than once (R23-C13).
   - After a refused whole-workflow re-run, a release whose upload failed is completed by hand from the original run's
     artifacts (`adr/evidence/077-m4/RUNBOOK.md`), then published to npm by a dispatch (r21, M4-F13):
     - each attached asset is checked against those artifacts by `state` and SHA-256 `digest`;
@@ -926,7 +937,7 @@ nor their checksum file (r19 to r22 did).
   - **Within the original attempt,** before any full re-run, "re-run failed jobs" recovers. It keeps that attempt's
     assets, artifacts and job outputs.
   - **After a refused full re-run, or once the original attempt can no longer be re-run,** only the manual
-    `workflow_dispatch` entry recovers. After the early stop in `wasm`, "re-run failed jobs" would hit the same stop,
+    `workflow_dispatch` entry recovers. After the early stop in `release-guard`, "re-run failed jobs" would hit the same stop,
     and the downstream jobs would lack their artifacts.
 - **The `workflow_dispatch` entry's contract:**
   - It is dispatched on the tag itself: its execution ref must be exactly `refs/tags/v<version>`. A run on a branch,
@@ -2034,3 +2045,20 @@ choosing the recommendation recorded with each.
     - R23-C12: a backfilled first final leaves `latest` on the prerelease until a higher final is published.
     - R23-F6: the rehearsal states what a dispatch's by-id download should show.
     - The dispatch contract's ref check is described as it runs: after `npm-gates`' pinned checkout and Node set-up.
+  - **Review round 3 of r23** (Codex R23-C13 to C18; Fable R23-F7, a symptom-to-action table in the runbook):
+    - R23-C13: a build-free `release-guard` job, needed by every job that builds a release file, stops a
+      whole-workflow re-run when the tag has a release; manual completion downloads the original run's `release-*`
+      artifacts by id and refuses a name that occurs twice.
+    - R23-C14: the attestation check compares structured {name, sha256} arrays, checks each hash, and requires the
+      run invocation to be exactly the artifact's run with a positive attempt.
+    - R23-C15: run rows are classified only from well-typed fields; anything else is unreadable history.
+    - R23-C16: `github-release` requires the 14-file inventory before and after uploading.
+    - R23-C17: an empty artifact answer means expiry only after `attest` succeeded.
+    - R23-C18: after a backfilled final, `latest` can keep naming an older prerelease (D8 rule 3, the READMEs).
+    - Registry answers are validated before use (found by Codex in JOUST's port of the same logic): a package
+      document must come with exactly HTTP 200 and be an object for the requested name, with a non-empty
+      object-valued `versions` (version keys, each with its own metadata) and `dist-tags` (each a string naming one of
+      those versions), including `latest` for the three bootstrapped packages; an attestations answer must carry an
+      attestations list. Anything else (a 206, an empty or latest-less 200, an array holder) fails the job; only a
+      404 means "not published", so an incomplete answer can never make a prerelease look like "no final version
+      yet" or switch the no-backwards check off.
