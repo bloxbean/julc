@@ -1,7 +1,7 @@
 # JuLC documentation
 
 Static Astro/Starlight site deployed to GitHub Pages by `docs-deploy.yml`.
-Use Node **22.19.0 or newer** (the resolved `undici` dependency requires it).
+Use Node **22.23.4 or newer** (the resolved Astro 7.4 packages require it).
 CI uses the latest Node 22 patch. Install the reviewed lockfile, not floating dependencies:
 
 ```sh
@@ -22,6 +22,13 @@ The September 2026 release-gate update replaces the vulnerable Astro 6 dependenc
 with Astro 7.3.3, matching Starlight/Svelte integrations, and sharp 0.35.4. A clean
 lockfile install and static build passed; `npm audit` reported zero advisories at the
 time of validation. This is a point-in-time check, not a guarantee against unknown bugs.
+
+The November 2026 refresh (`npm audit fix`, no `--force`) moves to Astro 7.4.12, Starlight
+0.42.11, @astrojs/svelte 9.1.6, sharp 0.35.5, undici 8.12.4 and vite 8.3.8; the built site has
+the same pages, text, links and components. `npm audit` then reports one advisory,
+[GHSA-fc5q-39xc-vjpf](https://github.com/advisories/GHSA-fc5q-39xc-vjpf) (picomatch ReDoS),
+for which picomatch has no patched release; the other findings are the packages that depend
+on picomatch. npm's suggested `--force` fix downgrades Starlight and Astro, so it is not applied.
 
 This site has no SSR adapter or deployed Node server. Server-route advisories therefore
 have a different exposure than in an SSR application, but build-time image processing
