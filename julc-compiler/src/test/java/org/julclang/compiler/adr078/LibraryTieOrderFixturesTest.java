@@ -214,49 +214,66 @@ class LibraryTieOrderFixturesTest {
     }
 
     /**
-     * The method binders of each handler's let spine in a PIR term: a spine starts at a let of a qualified (dotted)
-     * binder that no such spine encloses, and runs down the lets' bodies.
+     * The let spines of method binders in a PIR term, by the purpose tag of the handler branch that holds them (C32): a
+     * spine starts at a let of a qualified (dotted) binder that no such spine encloses, and runs down the lets' bodies.
+     * A spine inside the value of the dispatcher's {@code #result__tag<n>} binding belongs to handler {@code n}; any
+     * other spine to {@code -1}.
      */
-    private static List<List<String>> handlerSpines(PirTerm term) {
-        var spines = new ArrayList<List<String>>();
-        var pending = new ArrayDeque<PirTerm>();
-        pending.push(term);
+    private static Map<Integer, List<PirTerm>> handlerSpines(PirTerm term) {
+        var spines = new TreeMap<Integer, List<PirTerm>>();
+        var pending = new ArrayDeque<Map.Entry<PirTerm, Integer>>();
+        pending.push(Map.entry(term, -1));
         while (!pending.isEmpty()) {
-            var next = pending.pop();
+            var popped = pending.pop();
+            var next = popped.getKey();
+            int tag = popped.getValue();
             if (startsSpine(next)) {
-                var names = new ArrayList<String>();
-                var at = next;
-                while (at instanceof PirTerm.Let || at instanceof PirTerm.LetRec) {
-                    if (at instanceof PirTerm.Let let) {
-                        if (let.name().contains(".")) names.add(let.name());
-                        at = let.body();
-                    } else {
-                        var rec = (PirTerm.LetRec) at;
-                        for (var binding : rec.bindings()) if (binding.name().contains(".")) names.add(binding.name());
-                        at = rec.body();
-                    }
-                }
-                Collections.sort(names);
-                spines.add(names);
+                spines.computeIfAbsent(tag, t -> new ArrayList<>()).add(next);
                 continue;
             }
+            var children = new ArrayList<PirTerm>();
             switch (next) {
-                case PirTerm.Let let -> { pending.push(let.value()); pending.push(let.body()); }
-                case PirTerm.LetRec rec -> { rec.bindings().forEach(b -> pending.push(b.value())); pending.push(rec.body()); }
-                case PirTerm.Lam lam -> pending.push(lam.body());
-                case PirTerm.App app -> { pending.push(app.function()); pending.push(app.argument()); }
-                case PirTerm.IfThenElse ite -> { pending.push(ite.cond()); pending.push(ite.thenBranch()); pending.push(ite.elseBranch()); }
-                case PirTerm.Trace trace -> { pending.push(trace.message()); pending.push(trace.body()); }
-                case PirTerm.DataMatch match -> { pending.push(match.scrutinee()); match.branches().forEach(b -> pending.push(b.body())); }
-                case PirTerm.ListMatch match -> { pending.push(match.scrutinee()); pending.push(match.nilBranch()); pending.push(match.consBranch()); }
-                case PirTerm.PairMatch match -> { pending.push(match.scrutinee()); pending.push(match.body()); }
-                case PirTerm.IntegerCase integerCase -> { pending.push(integerCase.scrutinee()); integerCase.branches().forEach(pending::push); }
-                case PirTerm.DataConstr constr -> constr.fields().forEach(pending::push);
+                case PirTerm.Let let -> {
+                    Matcher result = HANDLER_RESULT.matcher(let.name());
+                    pending.push(Map.entry(let.value(), result.matches() ? Integer.parseInt(result.group(1)) : tag));
+                    children.add(let.body());
+                }
+                case PirTerm.LetRec rec -> { rec.bindings().forEach(b -> children.add(b.value())); children.add(rec.body()); }
+                case PirTerm.Lam lam -> children.add(lam.body());
+                case PirTerm.App app -> { children.add(app.function()); children.add(app.argument()); }
+                case PirTerm.IfThenElse ite -> { children.add(ite.cond()); children.add(ite.thenBranch()); children.add(ite.elseBranch()); }
+                case PirTerm.Trace trace -> { children.add(trace.message()); children.add(trace.body()); }
+                case PirTerm.DataMatch match -> { children.add(match.scrutinee()); match.branches().forEach(b -> children.add(b.body())); }
+                case PirTerm.ListMatch match -> { children.add(match.scrutinee()); children.add(match.nilBranch()); children.add(match.consBranch()); }
+                case PirTerm.PairMatch match -> { children.add(match.scrutinee()); children.add(match.body()); }
+                case PirTerm.IntegerCase integerCase -> { children.add(integerCase.scrutinee()); children.addAll(integerCase.branches()); }
+                case PirTerm.DataConstr constr -> children.addAll(constr.fields());
                 default -> {
                 }
             }
+            children.forEach(child -> pending.push(Map.entry(child, tag)));
         }
         return spines;
+    }
+
+    private static final Pattern HANDLER_RESULT = Pattern.compile("#result__tag(\\d+)");
+
+    /** The sorted method binders down a spine's let bodies. */
+    private static List<String> spineBinders(PirTerm start) {
+        var names = new ArrayList<String>();
+        var at = start;
+        while (at instanceof PirTerm.Let || at instanceof PirTerm.LetRec) {
+            if (at instanceof PirTerm.Let let) {
+                if (let.name().contains(".")) names.add(let.name());
+                at = let.body();
+            } else {
+                var rec = (PirTerm.LetRec) at;
+                for (var binding : rec.bindings()) if (binding.name().contains(".")) names.add(binding.name());
+                at = rec.body();
+            }
+        }
+        Collections.sort(names);
+        return names;
     }
 
     /** Whether {@code inner} is {@code outer} or lies down the chain of {@code outer}'s let bodies. */
@@ -278,12 +295,14 @@ class LibraryTieOrderFixturesTest {
     /**
      * I3 (Codex M1a C17, C25): every method binding reaches the frontend's {@code methodBound} callback, recorded where
      * the callback receives it, once per binding and handler copy, unread ones and C22's helper and library copies
-     * included. Per handler, the binders the callback received equal the binders of that handler's let spine in the
-     * emitted PIR.
+     * included. Per handler, the binders the callback received equal the binders of the let spine in the dispatcher
+     * branch for that handler's purpose tag (C32); where the emitted PIR keeps the assembled terms, the received chain is
+     * that branch's spine itself.
      */
     @Test
     void everyBindingReachesTheMethodBoundCallbackOfItsHandler() {
         int compared = 0;
+        int[] branchesMatchedByIdentity = {0};
         for (var fixture : Adr078Fixtures.fixtures()) {
             for (var variant : fixture.variants()) {
                 for (var mode : Adr078Fixtures.modes()) {
@@ -303,34 +322,41 @@ class LibraryTieOrderFixturesTest {
                         continue;
                     }
                     if (result.hasErrors()) continue;
-                    var received = new ArrayList<List<String>>();
-                    byHandler.values().forEach(names -> {
+                    boolean multi = fixture.name().contains("multi-purpose") || fixture.name().contains("handlers-against-tag-order");
+                    var emitted = handlerSpines(result.pirTerm());
+                    String at = key(fixture, variant, mode);
+                    assertEquals(multi ? List.of(0, 1) : List.of(-1), List.copyOf(emitted.keySet()), at + ": the emitted handlers");
+                    // C32: each tag's callbacks match the spine in the branch the dispatcher runs for that purpose tag.
+                    byHandler.forEach((handler, names) -> {
+                        var spine = emitted.get(handler);
+                        assertTrue(spine != null && spine.size() == 1, at + ": handler " + handler + "'s spines " + spine);
                         var sorted = new ArrayList<>(names);
                         Collections.sort(sorted);
-                        received.add(sorted);
-                    });
-                    var emitted = handlerSpines(result.pirTerm());
-                    var receivedSorted = new ArrayList<>(received.stream().map(Object::toString).toList());
-                    var emittedSorted = new ArrayList<>(emitted.stream().map(Object::toString).toList());
-                    Collections.sort(receivedSorted);
-                    Collections.sort(emittedSorted);
-                    assertEquals(emittedSorted, receivedSorted, key(fixture, variant, mode));
-                    // Each handler's bindings form one chain: each binding term encloses the one reported before it,
-                    // so a binding reported under another handler's tag is told apart even where both bind its name.
-                    terms.forEach((handler, chain) -> {
+                        assertEquals(spineBinders(spine.getFirst()), sorted, at + ": handler " + handler);
+                        // Each binding term the callback received encloses the one reported before it. Where the
+                        // emitted PIR still holds the assembled terms (no pass rebuilt them), the outermost one is the
+                        // spine of this tag's branch: a binding reported under another tag is told apart even where
+                        // both branches bind the same names in the same order.
+                        var chain = terms.get(handler);
                         for (int i = 1; i < chain.size(); i++) {
-                            assertTrue(encloses(chain.get(i), chain.get(i - 1)), key(fixture, variant, mode) + ": handler "
-                                    + handler + "'s binding " + byHandler.get(handler).get(i) + " does not enclose "
-                                    + byHandler.get(handler).get(i - 1));
+                            assertTrue(encloses(chain.get(i), chain.get(i - 1)), at + ": handler " + handler
+                                    + "'s binding " + names.get(i) + " does not enclose " + names.get(i - 1));
+                        }
+                        boolean assembledTermsKept = emitted.values().stream().flatMap(List::stream)
+                                .anyMatch(start -> terms.values().stream().anyMatch(c -> c.getLast() == start));
+                        if (assembledTermsKept) {
+                            assertTrue(chain.getLast() == spine.getFirst(), at + ": handler " + handler
+                                    + "'s bindings are not the spine of its branch");
+                            if (multi) branchesMatchedByIdentity[0]++;
                         }
                     });
-                    boolean multi = fixture.name().contains("multi-purpose") || fixture.name().contains("handlers-against-tag-order");
-                    assertEquals(multi ? List.of(0, 1) : List.of(-1), List.copyOf(byHandler.keySet()), key(fixture, variant, mode));
+                    assertEquals(multi ? List.of(0, 1) : List.of(-1), List.copyOf(byHandler.keySet()), at + ": the handlers called back");
                     compared++;
                 }
             }
         }
         assertTrue(compared > 100, "compared " + compared);
+        assertTrue(branchesMatchedByIdentity[0] >= 4, "multi-handler branches matched by identity: " + branchesMatchedByIdentity[0]);
     }
 
     /**
@@ -596,8 +622,8 @@ class LibraryTieOrderFixturesTest {
 
     /**
      * I6a: what pre21 computed, failed with or traced is unchanged, compared structurally; a returned function is
-     * applied to the same arguments and compared; a one-sided exhaustion is replayed at the higher limit, where pre21
-     * terminating and this build not is a failure and both exhausting is inconclusive. Budgets are reported (I6b).
+     * applied to the same arguments and compared; an evaluation that exhausts the transaction limit on either side is
+     * decided at the higher limit ({@link #atTheHigherLimit}). Budgets are reported (I6b).
      */
     @Test
     void evaluationsMatchPre21() {
@@ -628,23 +654,12 @@ class LibraryTieOrderFixturesTest {
                         String pre21 = PRE21.get(prefix + suffix);
                         assertTrue(pre21 != null, "no pre21 record for " + prefix + suffix);
                         var evaluation = entry.getValue();
-                        if (pre21.startsWith("EXHAUSTED") != evaluation.exhausted()) {
-                            String pre21High = PRE21.get(prefix + suffix + " high");
+                        if (pre21.startsWith("EXHAUSTED") || evaluation.exhausted()) {
                             var high = now.get(suffix + " high");
-                            if (pre21High == null || high == null) {
-                                mismatches.add(prefix + suffix + ": one-sided exhaustion with no replay");
-                            } else if (pre21High.startsWith("EXHAUSTED") || high.exhausted()) {
-                                // ADR-078 I6a oracle: an exhaustion that persists at the higher limit is inconclusive.
-                                inconclusive++;
-                            } else if (!pre21High.equals(high.outcome())) {
-                                mismatches.add(prefix + suffix + " high: pre21 " + pre21High + ", now " + high.outcome());
-                            } else {
-                                compared++;
-                            }
-                            continue;
-                        }
-                        if (evaluation.exhausted()) {
-                            inconclusive++;
+                            String verdict = atTheHigherLimit(PRE21.get(prefix + suffix + " high"), high == null ? null : high.outcome());
+                            if (verdict.equals(INCONCLUSIVE)) inconclusive++;
+                            else if (verdict.equals(COMPARED)) compared++;
+                            else mismatches.add(prefix + suffix + " high: " + verdict);
                             continue;
                         }
                         compared++;
@@ -659,11 +674,38 @@ class LibraryTieOrderFixturesTest {
             }
         }
         System.out.println("I6a: " + compared + " evaluations compared (" + applied + " returned functions applied, " + traced
-                + " with traces); demonstrated mismatches: " + mismatches.size() + "; inconclusive (exhausted at the higher limit"
-                + " on both sides): " + inconclusive);
+                + " with traces); demonstrated mismatches: " + mismatches.size()
+                + "; inconclusive (an exhaustion that persists at the higher limit on either side): " + inconclusive);
         System.out.print(budgets.isEmpty() ? "I6b: every budget as on pre21\n" : "I6b: budgets that changed\n" + budgets);
         assertEquals(List.of(), mismatches);
         assertTrue(compared > 0 && applied > 0 && traced > 0, "compared " + compared + ", applied " + applied + ", traced " + traced);
+    }
+
+    static final String COMPARED = "compared", INCONCLUSIVE = "inconclusive";
+
+    /**
+     * ADR-078's I6a oracle for an evaluation that exhausted the transaction limit on either side, or both (Codex M1a
+     * C30): the higher-limit replays decide. Where both terminate, their outcomes must be equal. Where an exhaustion
+     * persists on either side, the case is inconclusive. Returns {@link #COMPARED}, {@link #INCONCLUSIVE}, or the
+     * mismatch.
+     */
+    static String atTheHigherLimit(String pre21High, String nowHigh) {
+        if (pre21High == null || nowHigh == null) return "an exhaustion with no higher-limit replay";
+        if (pre21High.startsWith("EXHAUSTED") || nowHigh.startsWith("EXHAUSTED")) return INCONCLUSIVE;
+        return pre21High.equals(nowHigh) ? COMPARED : "pre21 " + pre21High + ", now " + nowHigh;
+    }
+
+    /** C30's control: an exhaustion on both sides is no longer inconclusive by itself; the higher limit decides. */
+    @Test
+    void theHigherLimitDecidesAnExhaustion() {
+        String success = "SUCCESS term=010100480781 traces=[]", failure = "FAILURE reason=\"error\" traces=[]";
+        String exhausted = "EXHAUSTED traces=[]";
+        assertEquals("pre21 " + success + ", now " + failure, atTheHigherLimit(success, failure));
+        assertEquals(COMPARED, atTheHigherLimit(success, success));
+        assertEquals(INCONCLUSIVE, atTheHigherLimit(exhausted, exhausted));
+        assertEquals(INCONCLUSIVE, atTheHigherLimit(success, exhausted));
+        assertEquals(INCONCLUSIVE, atTheHigherLimit(exhausted, failure));
+        assertEquals("an exhaustion with no higher-limit replay", atTheHigherLimit(success, null));
     }
 
     /** A report of the fixtures whose bytes M1a changed from pre21: only programs with equal-key methods may change. */
