@@ -1,7 +1,7 @@
 # ADR-078: First use breaks ties among equal-content-key library methods
 
-**Status:** Proposed (2026-11-18), revision r6. Design only; nothing is implemented. Approved in review round 5
-(`dcf36096`). r6 is a text round before external review; the decision is unchanged.
+**Status:** Accepted (2026-11-19), revision r6. Approved by Claude (Fable) and Codex in review round 5 (`dcf36096`) and
+by the maintainer's external reviewer (reviewer1) at r6 (`d68b2c50`). Implementation: M1a, then M3, in the same PR.
 **Date:** 2026-11-18
 **Risk class:** correctness-sensitive, **low**.
 - The change touches only the comparator that orders library `let`s whose content keys are equal.
