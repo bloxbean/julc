@@ -345,7 +345,9 @@ export function validatePackument(document, name) {
   if (PACKAGES.includes(name) && !Object.hasOwn(document['dist-tags'], 'latest')) fail(`${where} has no latest tag`);
   for (const [version, meta] of Object.entries(document.versions)) {
     try { parseVersion(version); } catch { fail(`${where} lists a version that is not one: ${JSON.stringify(version)}`); }
-    if (!isObject(meta) || meta.version !== version) fail(`${where}: version ${version} has no metadata of its own`);
+    if (!isObject(meta) || meta.version !== version || meta.name !== name) {
+      fail(`${where}: version ${version} has no metadata of its own (name ${JSON.stringify(meta?.name)})`);
+    }
   }
   for (const [tag, holder] of Object.entries(document['dist-tags'])) {
     if (typeof holder !== 'string' || !Object.hasOwn(document.versions, holder)) {

@@ -101,7 +101,7 @@ test('a registry document is validated before use; anything incomplete fails, on
     versions: {'0.1.0-pre21': {name, version: '0.1.0-pre21'}, '0.0.0-oidc-bootstrap.0': {name, version: '0.0.0-oidc-bootstrap.0'}}};
   assert.equal(validatePackument(good, name), good);
   // latest is required only of the three bootstrapped packages.
-  const other = {name: 'other', versions: {'1.0.0': {version: '1.0.0'}}, 'dist-tags': {next: '1.0.0'}};
+  const other = {name: 'other', versions: {'1.0.0': {name: 'other', version: '1.0.0'}}, 'dist-tags': {next: '1.0.0'}};
   assert.equal(validatePackument(other, 'other'), other);
   for (const [label, document] of [
     ['null', null], ['an empty object', {}], ['an error body', {error: 'internal'}], ['an array', []],
@@ -114,6 +114,9 @@ test('a registry document is validated before use; anything incomplete fails, on
     ['a dist-tag naming a missing version', {...good, 'dist-tags': {...good['dist-tags'], latest: '1.0.0'}}],
     ['a dist-tag that is not a string', {...good, 'dist-tags': {latest: 1}}],
     ['an array dist-tag holder', {...good, 'dist-tags': {...good['dist-tags'], latest: ['0.1.0-pre21']}}],
+    ['a foreign package\'s version entry (it would count as a final, R23-C23)',
+      {...good, versions: {...good.versions, '0.1.0': {name: '@julclang/julc-wasm', version: '0.1.0'}}}],
+    ['a version entry with no name', {...good, versions: {...good.versions, '0.1.0': {version: '0.1.0'}}}],
     ['empty versions and dist-tags', {name, versions: {}, 'dist-tags': {}}],
     ['no latest for one of the three packages', {...good, 'dist-tags': {bootstrap: '0.0.0-oidc-bootstrap.0'}}],
   ]) {

@@ -572,6 +572,9 @@ test('an incomplete registry answer with HTTP 200 stops publication and verifica
     ['no latest for a bootstrapped package', JSON.stringify({name: CLIENT, versions: {'0.1.0-pre21': {name: CLIENT,
       version: '0.1.0-pre21'}}, 'dist-tags': {bootstrap: '0.1.0-pre21'}})],
     ['HTTP 206', {status: 206, body: JSON.stringify({name: CLIENT, versions: {}, 'dist-tags': {}})}],
+    // A foreign entry posing as a final would make d8Tag choose preview (R23-C23).
+    ['a foreign final version entry', JSON.stringify({name: CLIENT, 'dist-tags': {latest: '0.1.0-pre21'}, versions: {
+      '0.1.0-pre21': {name: CLIENT, version: '0.1.0-pre21'}, '0.1.0': {name: '@other/package', version: '0.1.0'}}})],
   ]) {
     const registry = await startRegistry({provenanceOnPublish: identity(VERSION)});
     try {
