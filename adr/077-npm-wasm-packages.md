@@ -907,9 +907,13 @@ nor their checksum file (r19 to r22 did).
     release action created a final release as a draft and published it only after uploading, so a failed upload left
     a draft that the read-only build-once check could not see and that recovery could not download. That action is
     no longer used. The release keeps `prerelease` as before, and `make_latest=legacy`.
-  - It refuses an existing draft for the tag, or more than one release for it. It advises deleting a draft only for
-    a well-formed record (a positive id, `draft` JSON `true`); any other record stops it without advice to change
-    anything (R23-C37).
+  - It refuses an existing draft for the tag, or more than one release for it. It reads the tag's releases, before
+    creating and in its final check, with `release-guard.sh --list` (a sparse checkout of `julc-wasm/src/ci`, as
+    the npm jobs do): page by page, each page a JSON array and every record well formed (a non-empty string
+    `tag_name`; for this tag a positive id and a boolean `draft`), so an empty or malformed answer stops the job
+    and never reads as "no release, create one" (R23-C44, R23-C45). It advises deleting a draft only for such a
+    well-formed record; a malformed one stops it with "preserve the published release and its tag; investigate"
+    (R23-C37).
   - It attaches each file at most once. For each existing asset, by release id, using GitHub's asset `state`:
     - a completed asset (`uploaded`) with the same name and different bytes stops the job, and nothing is replaced;
     - a failed upload's placeholder (`starter`, which GitHub documents an HTTP 502 can leave behind, and which is safe
@@ -2139,3 +2143,13 @@ choosing the recommendation recorded with each.
       included) is unreadable history.
     - R23-C42: the recovery test is split into recovery before a whole-workflow re-run and abandonment after one;
       the r23 summary no longer mentions completing a release by hand.
+  - **Review round 7 of r23** (Codex approved 9d9964e7 with R23-C43 to C46):
+    - R23-C43: a deciding job's conclusion must be one of the workflow-job values (`stale` and `startup_failure`
+      are not); otherwise recovery stops, even beside a selectable run.
+    - R23-C44: `release-guard.sh` reads the release list page by page, validating each page (a JSON array) before
+      asking for the next, so a valid page followed by an empty answer refuses.
+    - R23-C45: `github-release` reads the list through the same validated reading (`release-guard.sh --list`)
+      before creating and in its final check; a sole empty answer, `{}` or `[{}]` stops it instead of creating a
+      release, and a draft flag that is not a boolean is malformed, not "still a draft".
+    - R23-C46: a build test requires the job names `npm-run.sh` gives the ATTESTED and RELEASED roles to be the
+      names of `attest` and `github-release`, each in its role.
