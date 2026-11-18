@@ -23,7 +23,7 @@ import java.util.function.Consumer;
  * <ul>
  *   <li><b>D1a.</b> The root: the static initialisers in textual order, then the entry points (by purpose tag under
  *       auto-dispatch; the call of the target under {@code compileMethod}). The walk is pre-order and left to right,
- *       in {@link LibraryBindingOrder}'s child order. The first reference to a method not yet ranked gives it the next
+ *       in {@link LibraryBindingOrder#children}'s order, the order the content key walks. The first reference to a method not yet ranked gives it the next
  *       rank, and its body is walked there, before the rest of the term. A method is ranked before its body is walked,
  *       so recursion ends.</li>
  *   <li><b>D1a′.</b> The helpers the root walk did not reach, in the order the assembly receives them (declaration
@@ -43,7 +43,11 @@ final class FirstUseRanks {
     private FirstUseRanks() {
     }
 
-    /** What the root walk visits: static initialisers, then entry points, and the validator's helpers. */
+    /**
+     * What the root walk visits: static initialisers, then entry points, and the validator's helpers. The {@code @Param}
+     * decoders are not walked: each is {@code PirHelpers.wrapDecode} over the raw argument's variable, and holds no
+     * reference to a method (ADR-078 D1a).
+     */
     record Roots(List<PirTerm> statics, List<PirTerm> entries, List<ValidatorAssembly.Method> helpers) {
 
         /** No root: every library method is ranked by D1b. */
@@ -64,7 +68,11 @@ final class FirstUseRanks {
         UNREAD_HELPER,
         /** D1b, by content key: no other candidate shared the key. */
         UNREAD_BY_KEY,
-        /** D1b, where candidates shared the smallest key: the qualified name decided. */
+        /**
+         * D1b, where candidates shared the smallest key: the qualified name decided. Only the methods taken while another
+         * candidate with the same key was still waiting are labelled so; the last of a tied group, taken when no other
+         * remained, is labelled {@link #UNREAD_BY_KEY}.
+         */
         UNREAD_BY_NAME,
         /** D1b's cycle fallback: every unranked method was called by another. */
         CYCLE

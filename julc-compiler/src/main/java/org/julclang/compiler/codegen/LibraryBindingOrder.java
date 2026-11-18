@@ -175,84 +175,39 @@ final class LibraryBindingOrder {
 
     /**
      * Writes {@code term}'s own token and schedules its children, each under the binders it sees, in the order of
-     * {@link PirHelpers#mapChildren}.
+     * {@link #children}: the one child order of this class, which {@link FirstUseRanks}'s walk uses too (ADR-078).
      */
     private static void describe(PirTerm term, LibraryMethod method, Map<String, String> keys, Set<String> libraryMethods,
                                  List<String> scope, ArrayDeque<Step> pending, StringBuilder text) {
-        var children = new ArrayList<Step>();
         switch (term) {
             case PirTerm.Var variable -> text.append(variable(variable.name(), method, keys, libraryMethods, scope))
                     .append(type(variable.type()));
             case PirTerm.Const constant -> text.append("(c ").append(constant(constant.value())).append(')');
             case PirTerm.Builtin builtin -> text.append("(b ").append(builtin.fun().name()).append(')');
             case PirTerm.Error error -> text.append("(error ").append(type(error.type())).append(')');
-            case PirTerm.Lam lam -> {
-                text.append("(lam ").append(type(lam.paramType()));
-                bound(children, List.of(lam.param()), lam.body());
-            }
-            case PirTerm.Let let -> {
-                text.append("(let");
-                children.add(new Step.Visit(let.value()));
-                bound(children, List.of(let.name()), let.body());
-            }
-            case PirTerm.LetRec rec -> {
-                text.append("(letrec ").append(rec.bindings().size());
-                var names = rec.bindings().stream().map(PirTerm.Binding::name).toList();
-                children.add(new Step.Bind(names));
-                for (var binding : rec.bindings()) children.add(new Step.Visit(binding.value()));
-                children.add(new Step.Visit(rec.body()));
-                children.add(new Step.Unbind(names.size()));
-            }
-            case PirTerm.App app -> {
-                text.append("(app");
-                children.add(new Step.Visit(app.function()));
-                children.add(new Step.Visit(app.argument()));
-            }
-            case PirTerm.IfThenElse ite -> {
-                text.append("(if");
-                children.add(new Step.Visit(ite.cond()));
-                children.add(new Step.Visit(ite.thenBranch()));
-                children.add(new Step.Visit(ite.elseBranch()));
-            }
-            case PirTerm.Trace trace -> {
-                text.append("(trace");
-                children.add(new Step.Visit(trace.message()));
-                children.add(new Step.Visit(trace.body()));
-            }
-            case PirTerm.DataConstr constr -> {
-                text.append("(constr ").append(constr.tag()).append(' ').append(type(constr.dataType()))
-                        .append(' ').append(constr.fields().size());
-                for (var field : constr.fields()) children.add(new Step.Visit(field));
-            }
+            case PirTerm.Lam lam -> text.append("(lam ").append(type(lam.paramType()));
+            case PirTerm.Let _ -> text.append("(let");
+            case PirTerm.LetRec rec -> text.append("(letrec ").append(rec.bindings().size());
+            case PirTerm.App _ -> text.append("(app");
+            case PirTerm.IfThenElse _ -> text.append("(if");
+            case PirTerm.Trace _ -> text.append("(trace");
+            case PirTerm.DataConstr constr -> text.append("(constr ").append(constr.tag()).append(' ')
+                    .append(type(constr.dataType())).append(' ').append(constr.fields().size());
             case PirTerm.DataMatch match -> {
                 text.append("(match ").append(match.branches().size());
-                children.add(new Step.Visit(match.scrutinee()));
                 for (var branch : match.branches()) {
-                    var names = new ArrayList<>(branch.bindings());
-                    if (branch.patternVar() != null) names.add(branch.patternVar());
                     text.append(' ').append(branch.bindings().size()).append(branch.patternVar() == null ? "" : "+");
                     for (var bindingType : branch.bindingTypes()) text.append(type(bindingType));
-                    bound(children, names, branch.body());
                 }
             }
-            case PirTerm.ListMatch match -> {
-                text.append("(listmatch");
-                children.add(new Step.Visit(match.scrutinee()));
-                children.add(new Step.Visit(match.nilBranch()));
-                bound(children, List.of(match.headName(), match.tailName()), match.consBranch());
-            }
-            case PirTerm.PairMatch match -> {
-                text.append("(pairmatch ").append(type(match.pairType()));
-                children.add(new Step.Visit(match.scrutinee()));
-                bound(children, List.of(match.firstName(), match.secondName()), match.body());
-            }
-            case PirTerm.IntegerCase integerCase -> {
-                text.append("(case ").append(integerCase.branches().size());
-                children.add(new Step.Visit(integerCase.scrutinee()));
-                for (var branch : integerCase.branches()) children.add(new Step.Visit(branch));
-            }
+            case PirTerm.ListMatch _ -> text.append("(listmatch");
+            case PirTerm.PairMatch match -> text.append("(pairmatch ").append(type(match.pairType()));
+            case PirTerm.IntegerCase integerCase -> text.append("(case ").append(integerCase.branches().size());
         }
-        // A form with parts closes after them; the parts run in order.
+        var children = new ArrayList<Step>();
+        children(term, child -> children.add(new Step.Visit(child)), (names, body) -> bound(children, names, body));
+        // A form with parts closes after them; the parts run in order. A recursive group's names are bound for each of
+        // its parts in turn, which gives every part the same scope as binding them once around all of them.
         if (!children.isEmpty()) children.add(new Step.Write(")"));
         for (int i = children.size() - 1; i >= 0; i--) pending.push(children.get(i));
     }
