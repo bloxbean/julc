@@ -49,6 +49,8 @@ export async function startRegistry({provenanceOnPublish = null, bootstrap = tru
   // A function is asked on each read, and answers such a value, or null for the registry's own answer.
   const overrides = new Map();
   const publishes = [];
+  // The query of each read of a package's document by JuLC's scripts (Node's fetch; npm's own reads are not counted).
+  const queries = [];
   let url;
 
   const escaped = name => name.replace('/', '%2f');
@@ -101,6 +103,7 @@ export async function startRegistry({provenanceOnPublish = null, bootstrap = tru
         return res.end(body);
       }
       if (req.method === 'GET') {
+        if (!/^npm\//.test(req.headers['user-agent'] ?? '')) queries.push(new URL(req.url, url).search);
         const pkg = packages.get(route);
         if (!pkg) return send(res, 404, {error: 'not found'});
         const versions = Object.fromEntries(Object.entries(pkg.versions)
@@ -138,7 +141,7 @@ export async function startRegistry({provenanceOnPublish = null, bootstrap = tru
   url = `http://127.0.0.1:${server.address().port}/`;
   if (bootstrap) for (const name of PACKAGES) store(name, BOOTSTRAP, Buffer.from(`placeholder ${name}`), 'latest');
   return {
-    url, packages, publishes, failPublish, overrides,
+    url, packages, publishes, failPublish, overrides, queries,
     get provenanceOnPublish() { return settings.provenanceOnPublish; },
     set provenanceOnPublish(value) { settings.provenanceOnPublish = value; },
     /** A version already on the registry, for example from an earlier attempt or published by hand. */
