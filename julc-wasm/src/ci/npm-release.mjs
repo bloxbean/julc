@@ -364,7 +364,9 @@ export function validatePackument(document, name) {
 export async function packument(registry, name) {
   let response;
   for (let attempt = 1; ; attempt++) {
-    response = await fetch(normaliseRegistry(registry) + escapedName(name), {
+    // `?write=true`: npmjs answers from the registry itself, uncached. The plain document is served from a cache for
+    // up to 5 minutes (`max-age=300`), which hid 0.1.0-pre22's provenance from npm-publish's check (ADR-077 r24).
+    response = await fetch(`${normaliseRegistry(registry)}${escapedName(name)}?write=true`, {
       headers: {accept: 'application/json'}, cache: 'no-store'});
     if (response.status !== 404) break;
     if (!PACKAGES.includes(name)) return null;

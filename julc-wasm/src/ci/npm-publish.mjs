@@ -87,7 +87,8 @@ async function main() {
     throw new ReleaseError('a real publication runs only in GitHub Actions, through trusted publishing (ADR-077 D8a)');
   }
   const npm = options.npm ?? 'npm';
-  const timeout = Number(options['visibility-timeout'] ?? 300) * 1000;
+  // The registry can take minutes to show a publication's provenance attestation: 15 minutes, within the job's 60.
+  const timeout = Number(options['visibility-timeout'] ?? 900) * 1000;
   const identity = releaseIdentity(version);
 
   // Refusals (a snapshot, a release candidate of a prerelease in publish mode, a form D8 has no rule for) come first.

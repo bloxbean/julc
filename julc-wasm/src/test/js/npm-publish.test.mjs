@@ -128,6 +128,9 @@ test('a new version: the three packages are published in dependency order, with 
       '--work', scratch('verify-work'), ...rel.digests()]);
     assert.equal(verified.status, 0, show(verified));
     assert.match(verified.text, /ok: 3 packages at 0\.1\.0-pre22/);
+    // Every read of a package's document asks for the registry's own, uncached answer (ADR-077 r24).
+    assert.ok(registry.queries.length > 0 && registry.queries.every(query => query === '?write=true'),
+      `uncached reads only: ${[...new Set(registry.queries)]}`);
   } finally { await registry.close(); }
 });
 

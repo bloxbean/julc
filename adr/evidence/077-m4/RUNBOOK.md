@@ -228,7 +228,8 @@ Find your case first; the explanations follow.
 | Dispatch: "Cannot read the run history" | Dispatch again later (a GitHub API problem; nothing was chosen) |
 | Dispatch: "no longer available", or a re-run's download step fails after 14 days | The version cannot reach npm: deprecate any package of it already published, and release the next version |
 | `npm-publish`: "already on the registry and is not this release's tarball" | Do not retry: investigate (see below); that version number is spent |
-| `npm-publish`: "did not show it within 300 s" | Re-run the failed job (the registry was slow) |
+| `npm-publish`: "did not show it within 900 s" | Re-run the failed job (the registry was slow) |
+| `npm-publish`: "on the registry is not this release's tarball" (after its upload) or "already on the registry and is not this release's tarball" (on a re-run), listing **only** "no provenance attestation" | The registry is still slow to show the attestation: wait, then re-run; if `npm view <package>@<version> dist` still shows no `attestations` after an hour, investigate. Any other problem listed (integrity, shasum, workflow, ref): investigate, do not retry |
 | `npm-verify` failed | Treat the release as bad until the cause is known ("A bad release") |
 
 A release is built once. Web Image output is not byte-identical across builds, so the workflow never rebuilds a
@@ -322,7 +323,16 @@ refs/tags/v<version>`, plus `npm audit signatures` in a project that installs it
 - **`npm-publish` fails with "already on the registry and is not this release's tarball with this workflow's
   provenance"**: someone published that version another way (by hand, or another build). Do not retry. Investigate;
   the version number is spent. Deprecate it if it is wrong (below) and release the next version.
-- **`npm-publish` fails with "did not show it within 300 s"**: the registry was slow. Re-run the failed job.
+- **`npm-publish` fails with "did not show it within 900 s"**: the registry was slow. Re-run the failed job. (Its
+  reads ask npmjs to revalidate rather than serve its cache, `?write=true`; the plain document can be cached for up
+  to 5 minutes, a likely contributor to the pre22 run passing the old 300 s limit.)
+- **`npm-publish` fails with "on the registry is not this release's tarball" after its upload, or a re-run fails with
+  "already on the registry and is not this release's tarball", listing only "no provenance attestation"**: the
+  attestation is not shown yet. With uncached reads this should be rare. Wait and re-run; if `npm view
+  <package>@<version> dist` still shows no `attestations` after an hour, investigate as below. If anything else is
+  listed, investigate and do not retry.
+- **Every registry read fails with HTTP 401 or 403**: npmjs has changed the anonymous `?write=true` read the scripts
+  use. Nothing more is published (the job fails closed); fix `packument()` in `npm-release.mjs` before re-running.
 - **`npm-verify` fails**: treat the release as bad until the cause is known.
 
 ## Dist-tags by hand
