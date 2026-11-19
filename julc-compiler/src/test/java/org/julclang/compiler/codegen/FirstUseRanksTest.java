@@ -1,5 +1,6 @@
 package org.julclang.compiler.codegen;
 
+import com.sun.management.ThreadMXBean;
 import org.julclang.compiler.codegen.FirstUseRanks.Roots;
 import org.julclang.compiler.codegen.FirstUseRanks.Rule;
 import org.julclang.compiler.codegen.FirstUseRanks.Selection;
@@ -12,6 +13,7 @@ import org.julclang.core.Constant;
 import org.julclang.core.DefaultFun;
 import org.junit.jupiter.api.Test;
 
+import java.lang.management.ManagementFactory;
 import java.math.BigInteger;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -143,6 +145,25 @@ class FirstUseRanksTest {
         var throughLibrary = new Roots(List.of(field("q.L.alpha", four)), List.of(calls("q.L.gamma", "q.L.beta")), List.of());
         assertEquals(List.of(new Selection("q.L.gamma", false, 0, Rule.FIRST_USE), new Selection("q.L.alpha", false, 1, Rule.FIRST_USE)),
                 selections(library, throughLibrary).subList(0, 2));
+    }
+
+    /**
+     * Codex M1a C47: the fields in scope are one shared set, not a copy per initialiser, so many static fields cost
+     * linear memory. 4,000 fields, each read by the next, with no library method: with a copy per initialiser this
+     * allocated about 400 MiB; shared, about 1.4 MiB. The bound is generous, and far below the quadratic cost.
+     */
+    @Test
+    void manyStaticFieldsCostLinearMemory() {
+        var threads = (ThreadMXBean) ManagementFactory.getThreadMXBean();
+        var fields = new ArrayList<ValidatorAssembly.StaticField>();
+        fields.add(field("v.T.f0", new PirTerm.Const(Constant.integer(BigInteger.ONE))));
+        for (int i = 1; i < 4_000; i++) fields.add(field("v.T.f" + i, new PirTerm.Var("v.T.f" + (i - 1), INT)));
+        var roots = new Roots(fields, List.of(new PirTerm.Var("v.T.f3999", INT)), List.of());
+        long thread = Thread.currentThread().threadId();
+        long before = threads.getThreadAllocatedBytes(thread);
+        assertEquals(Map.of(), FirstUseRanks.of(roots, Map.of(), Map.of(), Map.of(), null));
+        long allocated = threads.getThreadAllocatedBytes(thread) - before;
+        assertTrue(allocated < 32L * 1024 * 1024, "allocated " + allocated + " bytes for 4,000 static fields");
     }
 
     /** C11, D1a′: a helper the root does not reach ranks the library methods it reads before D1b does. */

@@ -6,6 +6,7 @@ import org.julclang.compiler.resolve.LibraryMethodRegistry.LibraryMethod;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -35,7 +36,8 @@ import java.util.function.Consumer;
  *       smallest by content key and name is taken.</li>
  * </ul>
  * A reference resolves lexically, to the binding its name has where it occurs, as the assembly nests them (outermost
- * first: library methods, static fields in declaration order, helpers, the entry point): a local first; then, outside
+ * first: the {@code @Param} binders, library methods, static fields in declaration order, helpers, the entry point;
+ * the {@code @Param} binders are outermost, so they shadow nothing the walk ranks): a local first; then, outside
  * a library body and a static initialiser, a validator helper; then a static field in scope; then a library method.
  * A static initialiser sees the static fields declared before it; a helper and an entry point see every static field
  * (ADR-078 r12, reviewer1's finding 1). A library body starts in its own defining scope, outside the statics and the
@@ -117,9 +119,12 @@ final class FirstUseRanks {
         var walk = new Walk(roots.helpers(), roots.statics(), methods, observer);
         // D1a: each static initialiser sees the library methods and the statics before it; the entry points see every
         // static and the helpers too.
+        // One growing set, shared without copying (Codex M1a C47: a copy per initialiser is quadratic). walk() returns
+        // only when every frame it pushed is popped, so no frame still holds the set when the next field joins it.
         var before = new HashSet<String>();
+        var inScope = Collections.unmodifiableSet(before);
         for (var field : roots.statics()) {
-            walk.walk(field.value(), true, Set.copyOf(before));
+            walk.walk(field.value(), true, inScope);
             before.add(field.name());
         }
         for (var entry : roots.entries()) walk.walk(entry, false, walk.fields);
