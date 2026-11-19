@@ -109,4 +109,5 @@ changes for 5/67; (b) the full simulated order changes for 17/67. Both are simul
 | `m3-joust-gate-2c0edb6e.txt` | M3 re-run by the coordinator on `2c0edb6e`: passed, every `[hash]` line identical to the `4bac295d` run. |
 | `m3-joust-gate-6c68f45a.txt` | M3's final gate run by the coordinator on the final main code `6c68f45a`: passed, all 73 `[hash]` lines identical to the earlier runs. M3 complete. |
 | `m3-joust-gate-e5d61aa6.txt` | M3 re-run by the coordinator on the r12 head `e5d61aa6`: passed, all 73 `[hash]` lines identical to the earlier runs. |
+| `m3-joust-gate-31df46ba.txt` | M3 re-run by the coordinator on the r13 head `31df46ba`: passed, all 73 `[hash]` lines identical to the earlier runs. |
 | `compare_replay_controls.py.txt` | The script that produces `m1a-replay-comparator-controls.txt` from the archived replay outputs (round 4). |

@@ -527,7 +527,12 @@ It passed:
 - 5 tests, 0 failures;
 - all 73 `[hash]` lines identical to the `4bac295d`, `2c0edb6e` and `6c68f45a` runs.
 
-r13 changes main code again (C47, memory only), so the coordinator re-runs M3 on the r13 head. Its JOUST deliverables (JOUST's pins, and D12 citing the known limits) follow when
+r13 changes main code again (C47, memory only). The coordinator re-ran M3 on the r13 head `31df46ba`
+(`m3-joust-gate-31df46ba.txt`), with the local snapshot `0.1.0-pre22-adr078-31df46ba-SNAPSHOT`. It passed:
+- 5 tests, 0 failures;
+- all 73 `[hash]` lines identical to the four earlier runs; Crowdfund `28e115b5…`, Tips `80648854…`; maps-on 67/67.
+
+ Its JOUST deliverables (JOUST's pins, and D12 citing the known limits) follow when
 `0.1.0-pre22` is published. F-ID opens as the ADR's OQ9 says.
 
 ## Not done in M1a
