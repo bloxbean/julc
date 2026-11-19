@@ -2158,9 +2158,10 @@ choosing the recommendation recorded with each.
     retry, and only distinct ids of the tag need resolving by hand; the page cap says the end of the list is unconfirmed.
 - **r24** (2026-11-19, after the 0.1.0-pre22 release): in the pre22 run, `npm publish` succeeded for
   `@julclang/julc-vm-wasm`, but its check did not see the provenance attestation within 300 s, and
-  `@julclang/julc-wasm` waited for a re-run (which then succeeded). npmjs serves the plain package document from a
-  cache for up to 5 minutes (`cache-control: max-age=300`, observed `cf-cache-status: HIT`); `?write=true` is answered
-  by the registry itself (`DYNAMIC`), anonymously. Every package-document read now uses `?write=true`, and
+  `@julclang/julc-wasm` waited for a re-run (which then succeeded). npmjs can serve the plain package document from a
+  cache for up to 5 minutes (`cache-control: max-age=300`, observed `cf-cache-status: HIT`), a likely contributor;
+  `?write=true` asks for revalidation (npm-registry-fetch documents it; observed `DYNAMIC`), anonymously. The headers
+  cannot show when the registry first had pre22's attestation, so the 900 s wait stays as the margin. Every package-document read now uses `?write=true`, and
   `npm-publish`'s wait rises from 300 s to 900 s (the job's limit stays 60 minutes: at most 15 minutes for each of
   three packages). The checks themselves are unchanged.
   - **Rejected alternative: count an accepted publication at once and move the wait to `npm-verify`.** Tried over five
@@ -2168,9 +2169,13 @@ choosing the recommendation recorded with each.
     dist-tag to the next release queued in the concurrency group (D8: no tag moves backwards; R24-C1), and splitting
     "wait" reads from "check" reads let each loop see a different registry answer, which produced a new regression in
     every round (R24-C16, C21 to C23, C26 to C28). Keeping one strict read path, and making its reads uncached, fixes
-    the observed failure without either problem.
+    the observed failure without either problem (Codex: no P0 to P2 regression relative to b782bf4c; Claude:
+    approved).
   - Hardening found along the way that predates r24 (not regressions): a re-run that finds an earlier attempt's
     version without its attestation yet stops at once instead of waiting (R24-F1; runbook guidance added);
     `npm-verify` retries any failed `npm pack` or `npm install`, including npm's own `EINTEGRITY` (R24-C20; the bytes it
     keeps are still compared with the release's); a release queued behind a failed publication reads the registry as
-    it is (R24-C6, C13). These go to a follow-up issue.
+    it is (R24-C6, C13). Also for that issue (Claude R24b-F1, F2): `?write=true` is npm's client convention, not a
+    documented anonymous contract (a 401 or 403 fails closed; the runbook says so); and the attestations endpoint is
+    cached for a year (`max-age=31557600`), read only after the uncached document lists `dist.attestations`, so a 404
+    there is final rather than "not yet". These go to a follow-up issue.
