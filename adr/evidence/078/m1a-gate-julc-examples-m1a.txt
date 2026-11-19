@@ -1,4 +1,4 @@
-# ADR-078 gate, julc-examples half: the same inputs compiled on the M1a build after r12's static scopes (julc-078 julc-compiler test class path, the working tree of the r12 head; ValidatorAssembly.class d9e76165…, FirstUseRanks.class 6be5465f…). Identical to the pre21 output, and its source maps identical to pre21's (diff -r).
+# ADR-078 gate, julc-examples half: the same inputs compiled on the M1a build after r13 (julc-078 julc-compiler test class path, the working tree of the r13 head; ValidatorAssembly.class d9e76165…, FirstUseRanks.class 875c97f6…). Identical to the pre21 output, and its source maps identical to pre21's (diff -r).
 # classpath libraries: 16, pool: 107, validator files: 46
 com/example/benchmark/wingriders/WingRidersPoolValidator.java | SKIPPED CompilerException: 'return' is not supported inside while loop body
 com/example/benchmark/wingriders/WingRidersRequestValidator.java | SKIPPED CompilerException: 'return' is not supported inside while loop body

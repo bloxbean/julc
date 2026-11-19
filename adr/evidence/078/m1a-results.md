@@ -476,6 +476,34 @@ binders are qualified. On the new classes (ValidatorAssembly `d9e76165…`, Firs
   - The comparator controls: 38, as expected (`m1a-replay-comparator-controls.txt`).
   - The comparator on the archived outputs and on the r12 replay: 0 unaccepted.
 
+## Changes after Codex's C47–C50 and Fable's PR348-F1 (r13)
+
+- **C47 (main code, memory).**
+  - `FirstUseRanks.of` passes one growing set of the fields in scope, as an unmodifiable view, to every static
+    initialiser's walk. It no longer copies the set for each initialiser.
+  - The sharing is safe. `walk()` returns only when every frame it pushed has been popped, so no frame holds the set
+    when the next field joins it. Library bodies get an empty set, and helpers are not reachable from an initialiser.
+  - The new test `manyStaticFieldsCostLinearMemory` takes 4,000 fields, each read by the next, with no library
+    method, and requires under 32 MiB of thread allocation. Restoring the copy per initialiser fails it, at 417,951,560
+    bytes.
+  - There is no behaviour change: the replay, the gate and the debug oracle are identical (below).
+- **C48.** When the parent `eval 0` still exhausts on either side, each side's own applications are first checked
+  against their own retries. Only then do the applied ids leave the cross-side comparison. The control is
+  `againstItsRetry` with `["lost"]` against `["kept"]`.
+- **C49.** At load, a duplicate pre21 row is an error. Every recorded evaluation (higher and tight limits included)
+  must have exactly one trace row, and no trace row may be an orphan. The test is
+  `everyRecordedEvaluationHasExactlyOneTraceRow`, with a missing and an orphan control.
+- **C50.** A bounded evaluation's retry budgets are compared and reported in I6b; the verdict stays bounded.
+- **F1.** ADR D1's scope list and the `FirstUseRanks` Javadoc name the `@Param` binders as the outermost scope. They
+  sit outside the library methods, so they shadow nothing the walk ranks.
+- **Re-runs on the r13 classes** (FirstUseRanks `875c97f6…`):
+  - The corpus replay is byte-identical to pre21's (sha `e04953cd…`), with 0 unaccepted, 0 budget-only and 0
+    inconclusive.
+  - The julc-examples gate is GATE-SAME and MAPS-SAME for all 43 programs.
+  - `LibraryTieDebugOracleTest` passes 3/3.
+  - The adr078 tests pass: 20 and 1. I6a compared 1,152 evaluations with 0 mismatches.
+  - `FirstUseRanksTest` passes 17.
+
 ## M3 (JOUST's half of the gate)
 
 M3 passed on `4bac295d` (`m3-joust-gate.txt`):
@@ -493,8 +521,8 @@ refactor. It passed:
 - Crowdfund `28e115b5…`, Tips `80648854…`;
 - maps-on 67/67.
 
-**M3 is complete** on `6c68f45a`. r12 changes main code (reviewer1's finding 1), so the coordinator re-runs M3 on
-the r12 head. Its JOUST deliverables (JOUST's pins, and D12 citing the known limits) follow when
+**M3 is complete** on `6c68f45a`. r12 and r13 change main code (reviewer1's finding 1; C47), so the coordinator
+re-runs M3 on the r13 head. Its JOUST deliverables (JOUST's pins, and D12 citing the known limits) follow when
 `0.1.0-pre22` is published. F-ID opens as the ADR's OQ9 says.
 
 ## Not done in M1a

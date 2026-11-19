@@ -80,10 +80,11 @@ hash moves from `28e115b5…` to `f338eb56…` (`crowdfund-diff.txt`).
 - **Resolution.** References resolve **lexically**, to the innermost binding of that name in scope.
 - **Scopes (r12, reviewer1's finding 1).** The walk sees the bindings as the assembly nests them. From outermost to
   innermost, they are:
-  1. library methods;
-  2. static fields, in declaration order;
-  3. helpers;
-  4. the handler or target.
+  1. the `@Param` binders, outside the library methods, so they shadow nothing the walk ranks (r13, Fable PR348-F1);
+  2. library methods;
+  3. static fields, in declaration order;
+  4. helpers;
+  5. the handler or target.
 
   So:
   - a static initialiser sees the library methods and the fields declared before it;
@@ -423,7 +424,8 @@ JOUST's D12 is an M3 deliverable.
 - **M3. JOUST with the local M1a build.**
   - It runs the gate's JOUST half.
   - **Status: complete** on `6c68f45a` (`adr/evidence/078/m3-joust-gate-6c68f45a.txt`). r12 changes main code
-    (D1 scopes; no byte change for Java programs), so M3 is re-run on the r12 head.
+    (D1 scopes; no byte change for Java programs), and r13 changes it again (C47, memory only), so M3 is re-run on
+    the r13 head.
     - 67 contracts × 10 edits, `renameAll` included; the renamed-file check; the Pledges swap; a package move.
     - Crowdfund keeps `28e115b5…` and Tips keeps `80648854…`.
     - Source-map mode is 67/67 identical, Steward included.
@@ -516,3 +518,8 @@ JOUST's D12 is an M3 deliverable.
     - "bounded" is one category in both oracles;
     - the exhaustion text is consolidated.
   - The decision is unchanged.
+- **r13 (2026-11-19).** Codex's C47–C50 and Fable's PR348-F1. The first-use walk shares one set of the fields in
+  scope instead of copying it for every initialiser, so its memory is linear (C47, main code, no behaviour change).
+  The D5 oracle checks each side's dropped applications against their own retries (C48), requires one trace row per
+  recorded evaluation (C49), and reports the budgets of bounded retries (C50). D1 names the `@Param` binders as the
+  outermost scope (F1). The decision is unchanged.
