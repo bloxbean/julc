@@ -244,15 +244,18 @@ public final class Adr078Fixtures {
     public static final ExBudget C12_LIMIT = new ExBudget(31_150_000, 110_000);
 
     /**
-     * An evaluation as ADR-078 I6a compares it, structurally: the result term as FLAT (hex), or the whole failure
-     * reason, or exhaustion; and the traces as a list. The budget is apart (I6b); {@code result} is kept to apply a
-     * returned function.
+     * An evaluation as ADR-078 I6a compares it, structurally: {@code outcome} is the result term as FLAT (hex), or the
+     * whole failure reason, or exhaustion; {@code traces} is the trace list, as a JSON array, kept apart from the
+     * outcome so that no failure reason can be read as traces (reviewer1's finding 2, Codex M1A-C43). The budget is
+     * apart (I6b); {@code result} is kept to apply a returned function.
      */
-    public record Evaluation(String outcome, ExBudget budget, Term result) {
+    public record Evaluation(String outcome, String traces, ExBudget budget, Term result) {
         public boolean exhausted() {
-            return outcome.startsWith("EXHAUSTED");
+            return outcome.equals(EXHAUSTED);
         }
     }
+
+    public static final String EXHAUSTED = "EXHAUSTED";
 
     public static Evaluation evaluate(Program program, List<PlutusData> arguments, ExBudget limit) {
         return describe(vm().evaluateWithArgs(program, arguments, limit));
@@ -297,16 +300,16 @@ public final class Adr078Fixtures {
     private static Evaluation describe(EvalResult result) {
         return switch (result) {
             case EvalResult.Success s -> new Evaluation("SUCCESS term=" + HexFormat.of().formatHex(
-                    UplcFlatEncoder.encodeProgram(Program.plutusV3(s.resultTerm()))) + " traces=" + traces(s.traces()), s.consumed(), s.resultTerm());
-            case EvalResult.Failure f -> new Evaluation("FAILURE reason=" + escape(String.valueOf(f.error())) + " traces=" + traces(f.traces()), f.consumed(), null);
-            case EvalResult.BudgetExhausted e -> new Evaluation("EXHAUSTED traces=" + traces(e.traces()), e.consumed(), null);
+                    UplcFlatEncoder.encodeProgram(Program.plutusV3(s.resultTerm()))), traces(s.traces()), s.consumed(), s.resultTerm());
+            case EvalResult.Failure f -> new Evaluation("FAILURE reason=" + escape(String.valueOf(f.error())), traces(f.traces()), f.consumed(), null);
+            case EvalResult.BudgetExhausted e -> new Evaluation(EXHAUSTED, traces(e.traces()), e.consumed(), null);
         };
     }
 
     /**
      * Every evaluation of a compiled variant, keyed by suffix: {@code eval i} on each argument vector (at the replay
      * limit, and, where it exhausts, {@code eval i high} at the higher one); for a returned function, {@code applied}
-     * to the next vector; and {@code budget …} lines apart.
+     * to the next vector; and {@code traces …} and {@code budget …} lines apart.
      */
     public static Map<String, Evaluation> evaluations(Fixture fixture, Outcome outcome) {
         var result = new LinkedHashMap<String, Evaluation>();
@@ -611,6 +614,7 @@ public final class Adr078Fixtures {
                     if (variant.method() == null) continue;
                     evaluations(fixture, outcome).forEach((suffix, evaluation) -> {
                         lines.put(key + " | " + suffix, evaluation.outcome());
+                        lines.put(key + " | traces " + suffix, evaluation.traces());
                         lines.put(key + " | budget " + suffix, evaluation.budget().cpuSteps() + " cpu, " + evaluation.budget().memoryUnits() + " mem");
                     });
                 }
