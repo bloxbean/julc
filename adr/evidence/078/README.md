@@ -108,4 +108,5 @@ changes for 5/67; (b) the full simulated order changes for 17/67. Both are simul
 | `C22Probes.java.txt`, `c22-probes.txt` | Codex's C22 on pre21 and on the head: a custom registry's materialised `q.M.b` changes the order z, a, b to a, b, z, and a genuine cycle beside it is reported as `q.M.d` where pre21 said `q.M.a`. |
 | `m3-joust-gate-2c0edb6e.txt` | M3 re-run by the coordinator on `2c0edb6e`: passed, every `[hash]` line identical to the `4bac295d` run. |
 | `m3-joust-gate-6c68f45a.txt` | M3's final gate run by the coordinator on the final main code `6c68f45a`: passed, all 73 `[hash]` lines identical to the earlier runs. M3 complete. |
+| `m3-joust-gate-e5d61aa6.txt` | M3 re-run by the coordinator on the r12 head `e5d61aa6`: passed, all 73 `[hash]` lines identical to the earlier runs. |
 | `compare_replay_controls.py.txt` | The script that produces `m1a-replay-comparator-controls.txt` from the archived replay outputs (round 4). |

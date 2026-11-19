@@ -424,8 +424,9 @@ JOUST's D12 is an M3 deliverable.
 - **M3. JOUST with the local M1a build.**
   - It runs the gate's JOUST half.
   - **Status: complete** on `6c68f45a` (`adr/evidence/078/m3-joust-gate-6c68f45a.txt`). r12 changes main code
-    (D1 scopes; no byte change for Java programs), and r13 changes it again (C47, memory only), so M3 is re-run on
-    the r13 head.
+    (D1 scopes; no byte change for Java programs); M3 passed again on the r12 head `e5d61aa6`
+    (`m3-joust-gate-e5d61aa6.txt`, every `[hash]` line identical). r13 changes main code again (C47, memory only),
+    so M3 is re-run on the r13 head.
     - 67 contracts × 10 edits, `renameAll` included; the renamed-file check; the Pledges swap; a package move.
     - Crowdfund keeps `28e115b5…` and Tips keeps `80648854…`.
     - Source-map mode is 67/67 identical, Steward included.

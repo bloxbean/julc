@@ -521,8 +521,13 @@ refactor. It passed:
 - Crowdfund `28e115b5…`, Tips `80648854…`;
 - maps-on 67/67.
 
-**M3 is complete** on `6c68f45a`. r12 and r13 change main code (reviewer1's finding 1; C47), so the coordinator
-re-runs M3 on the r13 head. Its JOUST deliverables (JOUST's pins, and D12 citing the known limits) follow when
+**M3 is complete** on `6c68f45a`. r12 changed main code (reviewer1's finding 1). The coordinator re-ran M3 on the
+r12 head `e5d61aa6` (`m3-joust-gate-e5d61aa6.txt`), with the local snapshot `0.1.0-pre22-adr078-e5d61aa6-SNAPSHOT`.
+It passed:
+- 5 tests, 0 failures;
+- all 73 `[hash]` lines identical to the `4bac295d`, `2c0edb6e` and `6c68f45a` runs.
+
+r13 changes main code again (C47, memory only), so the coordinator re-runs M3 on the r13 head. Its JOUST deliverables (JOUST's pins, and D12 citing the known limits) follow when
 `0.1.0-pre22` is published. F-ID opens as the ADR's OQ9 says.
 
 ## Not done in M1a
