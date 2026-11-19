@@ -3,7 +3,7 @@
 > Single-file dump of the JuLC docsite, suitable for AI agent ingestion.
 
 julcVersion: 0.1.0-pre21
-Generated: 2026-11-18T05:10:18.129Z
+Generated: 2026-11-19T04:12:20.882Z
 Site: https://julc.dev
 Repo: https://github.com/bloxbean/julc
 Examples: https://github.com/bloxbean/julc-examples
