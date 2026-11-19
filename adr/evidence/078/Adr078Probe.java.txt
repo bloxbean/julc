@@ -1,0 +1,86 @@
+package probe;
+
+import org.julclang.clientlib.JulcScriptAdapter;
+import org.julclang.compiler.*;
+import org.julclang.stdlib.StdlibRegistry;
+
+import java.nio.file.*;
+import java.util.*;
+
+/** ADR-078 M0: JuLC-only probes of cases 1, 2 and 3 (pre21). Args: outDir. */
+public class Adr078Probe {
+    static Path out;
+
+    static String lib(String cls, String body) {
+        return "package q;\nimport java.math.BigInteger;\nimport org.julclang.core.PlutusData;\nimport org.julclang.ledger.*;\n"
+                + "import org.julclang.stdlib.annotation.OnchainLibrary;\n@OnchainLibrary\npublic class " + cls + " {\n" + body + "\n}\n";
+    }
+
+    static String validator(String imports, String helpers, String expr) {
+        return "package v;\nimport java.math.BigInteger;\nimport org.julclang.core.PlutusData;\nimport org.julclang.ledger.*;\n"
+                + "import org.julclang.stdlib.annotation.*;\n" + imports + "\n@SpendingValidator\nclass Probe {\n" + helpers
+                + "\n    @Entrypoint\n    static boolean validate(PlutusData datum, PlutusData redeemer, ScriptContext ctx) {\n        return " + expr + ";\n    }\n}\n";
+    }
+
+    static String compile(String tag, String validator, List<String> libs) throws Exception {
+        var opts = OptimizationConfiguration.apply(new CompilerOptions().setTarget(CompilerTarget.PLUTUS_V3_PV11),
+                OptimizationLevel.DEFAULT_PROFILE_ID, null);
+        var res = new JulcCompiler(StdlibRegistry.defaultRegistry(), opts).compileWithDetails(validator, libs);
+        if (res.hasErrors()) throw new IllegalStateException(tag + ": " + res.diagnostics());
+        String h = JulcScriptAdapter.scriptHash(res.program());
+        Files.writeString(out.resolve(tag + ".uplc"), res.uplcFormatted());
+        Files.writeString(out.resolve(tag + ".java.txt"), validator + "\n// ---- libraries\n" + String.join("\n", libs));
+        var census = Adr078Census.of(res.pirTerm(), "v.Probe");
+        System.out.println(tag + " " + h + " " + res.scriptSizeBytes() + " B; M1a key@rank order " + census.m1aKeyRankSequence()
+                + " T2 " + Adr078Census.FULL_SEQ.get() + " reachableTieGroups=" + census.reachableTieGroups() + " m1aChangesReachableOrder=" + census.m1aChangesReachableOrder());
+        return h;
+    }
+
+    static void pair(String name, String a, List<String> la, String b, List<String> lb) throws Exception {
+        String ha = compile(name + "-a", a, la), hb = compile(name + "-b", b, lb);
+        System.out.println(name + ": " + (ha.equals(hb) ? "SAME" : "DIFFERENT"));
+    }
+
+    public static void main(String[] args) throws Exception {
+        out = Path.of(args[0]);
+        Files.createDirectories(out);
+        // Case 1: two library methods with identical bodies; renaming one so that the name order flips.
+        String c1 = "    public static BigInteger %s(BigInteger x) { if (x.signum() > 0) { return x; } else { return BigInteger.ZERO; } }\n"
+                + "    public static BigInteger %s(BigInteger x) { if (x.signum() > 0) { return x; } else { return BigInteger.ZERO; } }\n";
+        pair("case1-identical-bodies",
+                validator("import q.L;", "", "L.alpha(BigInteger.ONE).add(L.beta(BigInteger.TWO)).signum() > 0"),
+                List.of(lib("L", String.format(c1, "alpha", "beta"))),
+                validator("import q.L;", "", "L.zeta(BigInteger.ONE).add(L.beta(BigInteger.TWO)).signum() > 0"),
+                List.of(lib("L", String.format(c1, "zeta", "beta"))));
+        // Case 2a: shape checks of two ledger types from two library classes; rename one class across the other.
+        String cred = "    public static boolean cred(PlutusData d) { Credential c = Credential.fromPlutusData(d); return c instanceof Credential.PubKeyCredential; }\n";
+        String ref = "    public static boolean ref(PlutusData d) { TxOutRef r = TxOutRef.fromPlutusData(d); return r.index().signum() >= 0; }\n";
+        pair("case2a-shape-ids-class-rename",
+                validator("import q.A;\nimport q.B;", "", "A.cred(datum) && B.ref(redeemer)"),
+                List.of(lib("A", cred), lib("B", ref)),
+                validator("import q.Z;\nimport q.B;", "", "Z.cred(datum) && B.ref(redeemer)"),
+                List.of(lib("Z", cred), lib("B", ref)));
+        // Case 2b: the same two checks in one library class, the two methods reordered (no rename).
+        pair("case2b-shape-ids-method-reorder",
+                validator("import q.A;", "", "A.cred(datum) && A.ref(redeemer)"),
+                List.of(lib("A", cred + ref)),
+                validator("import q.A;", "", "A.cred(datum) && A.ref(redeemer)"),
+                List.of(lib("A", ref + cred)));
+        // Case 3: two independent validator helper methods, declaration order swapped.
+        String h1 = "    static BigInteger twice(BigInteger x) { return x.add(x); }\n";
+        String h2 = "    static BigInteger square(BigInteger x) { return x.multiply(x); }\n";
+        pair("case3-helper-reorder",
+                validator("", h1 + h2, "twice(BigInteger.ONE).compareTo(square(BigInteger.TWO)) < 0"), List.of(),
+                validator("", h2 + h1, "twice(BigInteger.ONE).compareTo(square(BigInteger.TWO)) < 0"), List.of());
+        // Case 3 + 2: validator helpers that check shapes, reordered.
+        String v1 = "    static boolean cred(PlutusData d) { Credential c = Credential.fromPlutusData(d); return c instanceof Credential.PubKeyCredential; }\n";
+        String v2 = "    static boolean ref(PlutusData d) { TxOutRef r = TxOutRef.fromPlutusData(d); return r.index().signum() >= 0; }\n";
+        pair("case3b-validator-shape-helpers-reorder",
+                validator("", v1 + v2, "cred(datum) && ref(redeemer)"), List.of(),
+                validator("", v2 + v1, "cred(datum) && ref(redeemer)"), List.of());
+        // Control: renaming validator helpers (declaration order kept).
+        pair("control-helper-rename",
+                validator("", h1 + h2, "twice(BigInteger.ONE).compareTo(square(BigInteger.TWO)) < 0"), List.of(),
+                validator("", (h1 + h2).replace("twice", "zz").replace("square", "aa"), "zz(BigInteger.ONE).compareTo(aa(BigInteger.TWO)) < 0"), List.of());
+    }
+}

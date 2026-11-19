@@ -1,0 +1,225 @@
+package probe;
+
+import org.julclang.compiler.pir.PirHelpers;
+import org.julclang.compiler.pir.PirTerm;
+import org.julclang.compiler.resolve.LibraryMethodRegistry.LibraryMethod;
+
+import java.lang.reflect.Method;
+import java.util.*;
+
+/**
+ * ADR-078 r2 census (evidence, not product code). From a compiled program's captured PIR, it recovers the library
+ * method bindings, their ADR-075 content keys (LibraryBindingOrder.contentKeys, by reflection), and the first-use rank
+ * of D1's traversal; then it simulates ADR-075's Kahn order with the pre21 tie-break (qualified name) and with M1a's
+ * (first use; unreachable methods last, by name).
+ */
+public final class Adr078Census {
+    public static final ThreadLocal<Integer> T2_RESIDUAL = new ThreadLocal<>();
+    /** D1b steps whose smallest key was shared by two or more methods (any tie the qualified name decides). */
+    public static final ThreadLocal<Integer> T2_ANY_TIE = new ThreadLocal<>();
+    /** D1b name ties whose tied PIR values are not identical as written (local spellings or callees differ). */
+    public static final ThreadLocal<Integer> T2_SPELLING_TIE = new ThreadLocal<>();
+    public static final ThreadLocal<String> T2_DETAIL = new ThreadLocal<>();
+    public static final ThreadLocal<Integer> T2_REACHABLE = new ThreadLocal<>();
+    public static final ThreadLocal<List<String>> FULL_SEQ = new ThreadLocal<>();
+    public static final ThreadLocal<Boolean> FULL_CHANGES_ORDER = new ThreadLocal<>();
+    public static final ThreadLocal<List<String>> OLD_ORDER = new ThreadLocal<>();
+    /** The D1a-only order (unreachable ties by name), each method labelled by key and its name-independent D1b rank. */
+    public static final ThreadLocal<List<String>> D1A_SEQ = new ThreadLocal<>();
+    public static final ThreadLocal<List<String>> FULL_ORDER = new ThreadLocal<>();
+    public record Result(int library, int reachable, int equalKeyGroups, int reachableTieGroups, boolean m1aChangesOrder, boolean m1aChangesReachableOrder,
+                         int residualGroups, List<String> m1aKeyRankSequence, String detail, List<String> unreachable) {}
+
+    public static Result of(PirTerm pir, String validatorFqcn) throws Exception {
+        var values = new LinkedHashMap<String, PirTerm>();
+        var stack = new ArrayDeque<PirTerm>();
+        stack.push(pir);
+        while (!stack.isEmpty()) {
+            var t = stack.pop();
+            switch (t) {
+                // A method binding's value is not searched: a library class's static fields are dotted lets inside it.
+                case PirTerm.Let l -> { if (l.name().contains(".")) values.putIfAbsent(l.name(), l.value()); else stack.push(l.value()); stack.push(l.body()); }
+                case PirTerm.LetRec r -> { for (var b : r.bindings()) { if (b.name().contains(".")) values.putIfAbsent(b.name(), b.value()); else stack.push(b.value()); } stack.push(r.body()); }
+                default -> children(t).forEach(stack::push);
+            }
+        }
+        var library = new LinkedHashMap<String, LibraryMethod>();
+        for (var e : values.entrySet()) {
+            String owner = e.getKey().substring(0, e.getKey().lastIndexOf('.'));
+            if (!owner.equals(validatorFqcn)) library.put(e.getKey(), new LibraryMethod(owner, e.getKey().substring(owner.length() + 1), null, e.getValue()));
+        }
+        var deps = new LinkedHashMap<String, Set<String>>();
+        var dependents = new HashMap<String, Integer>();
+        for (var m : library.values()) {
+            var uses = new LinkedHashSet<String>();
+            for (var o : library.keySet()) if (!o.equals(m.qualifiedName()) && PirHelpers.containsVarRef(m.body(), o)) { uses.add(o); dependents.merge(o, 1, Integer::sum); }
+            deps.put(m.qualifiedName(), uses);
+        }
+        Class<?> order = Class.forName("org.julclang.compiler.codegen.LibraryBindingOrder");
+        Method ck = order.getDeclaredMethod("contentKeys", Map.class, Map.class);
+        ck.setAccessible(true);
+        @SuppressWarnings("unchecked") var keys = (Map<String, String>) ck.invoke(null, library, deps);
+
+        // D1's traversal: method values are walked at their first reference, never at their binding.
+        var rank = new HashMap<String, Integer>();
+        var walk = new ArrayDeque<PirTerm>();
+        walk.push(pir);
+        while (!walk.isEmpty()) {
+            var t = walk.pop();
+            switch (t) {
+                case PirTerm.Let l when values.containsKey(l.name()) -> walk.push(l.body());
+                case PirTerm.LetRec r when r.bindings().stream().anyMatch(b -> values.containsKey(b.name())) -> {
+                    walk.push(r.body());
+                    for (var b : r.bindings()) if (!values.containsKey(b.name())) walk.push(b.value());
+                }
+                case PirTerm.Var v when values.containsKey(v.name()) && !rank.containsKey(v.name()) -> {
+                    rank.put(v.name(), rank.size());
+                    walk.push(values.get(v.name()));
+                }
+                default -> { var c = children(t); for (int i = c.size() - 1; i >= 0; i--) walk.push(c.get(i)); }
+            }
+        }
+        // T2 (ADR-078 r2 D1b): rank what the root does not reach. Repeatedly take, among unranked methods that no
+        // unranked method calls, the one with the smallest content key, and walk it as T does. A tie there between
+        // methods with different dependencies is the only place a name still decides (t2Residual).
+        var full = new HashMap<String, Integer>(rank);
+        int reachableCount = rank.size();
+        int t2Residual = 0;
+        T2_ANY_TIE.set(0);
+        T2_SPELLING_TIE.set(0);
+        var t2Detail = new StringBuilder();
+        while (!full.keySet().containsAll(library.keySet())) {
+            var free = new ArrayList<String>();
+            for (var n : library.keySet()) {
+                if (full.containsKey(n)) continue;
+                boolean called = false;
+                for (var o : library.keySet()) if (!o.equals(n) && !full.containsKey(o) && deps.get(o).contains(n)) { called = true; break; }
+                if (!called) free.add(n);
+            }
+            if (free.isEmpty()) { for (var n : library.keySet()) if (!full.containsKey(n)) free.add(n); }
+            Comparator<String> byKey = Comparator.comparing((String n) -> keys.getOrDefault(n, "~" + n)).thenComparing(Comparator.naturalOrder());
+            free.sort(byKey);
+            String pick = free.getFirst();
+            var tied = free.stream().filter(n -> keys.getOrDefault(n, "~" + n).equals(keys.getOrDefault(pick, "~" + pick))).toList();
+            if (tied.size() > 1) T2_ANY_TIE.set(T2_ANY_TIE.get() + 1);
+            if (tied.size() > 1 && tied.stream().map(n -> values.get(n)).distinct().count() > 1) {
+                T2_SPELLING_TIE.set(T2_SPELLING_TIE.get() + 1);
+                t2Detail.append("  t2 tie, values differ in spelling or callees: ").append(tied).append('\n');
+            }
+            if (tied.size() > 1 && tied.stream().map(n -> alphaKey(library.get(n), library.keySet())).distinct().count() > 1) {
+                t2Residual++;
+                t2Detail.append("  t2 residual: ").append(tied).append('\n');
+            }
+            var w = new ArrayDeque<PirTerm>();
+            full.put(pick, full.size());
+            w.push(values.get(pick));
+            while (!w.isEmpty()) {
+                var t = w.pop();
+                switch (t) {
+                    case PirTerm.Var v when values.containsKey(v.name()) && !full.containsKey(v.name()) -> { full.put(v.name(), full.size()); w.push(values.get(v.name())); }
+                    default -> { var c = children(t); for (int i = c.size() - 1; i >= 0; i--) w.push(c.get(i)); }
+                }
+            }
+        }
+        T2_RESIDUAL.set(t2Residual);
+        T2_DETAIL.set(t2Detail.toString());
+        T2_REACHABLE.set(reachableCount);
+        for (String dn : System.getProperty("adr078.debug", "").split(",")) if (!dn.isEmpty())
+            System.err.println("DEBUG " + dn + " inValues=" + values.containsKey(dn) + " inLibrary=" + library.containsKey(dn) + " rank=" + rank.get(dn)
+                    + " deps=" + deps.get(dn) + " dependents=" + dependents.get(dn));
+        Comparator<String> old = Comparator.<String, String>comparing(keys::get).thenComparing(Comparator.naturalOrder());
+        Comparator<String> m1a = Comparator.<String, String>comparing(keys::get)
+                .thenComparingInt(n -> rank.getOrDefault(n, Integer.MAX_VALUE)).thenComparing(Comparator.naturalOrder());
+        Comparator<String> m1aFull = Comparator.<String, String>comparing(keys::get)
+                .thenComparingInt(n -> full.get(n)).thenComparing(Comparator.naturalOrder());
+        var fullOrder = kahn(library.keySet(), deps, m1aFull);
+        var fullSeq = new ArrayList<String>();
+        for (var n : fullOrder) fullSeq.add(keys.get(n).substring(0, 8) + "@" + full.get(n));
+        FULL_SEQ.set(fullSeq);
+        FULL_CHANGES_ORDER.set(!kahn(library.keySet(), deps, old).equals(fullOrder));
+        OLD_ORDER.set(kahn(library.keySet(), deps, old));
+        FULL_ORDER.set(fullOrder);
+        var oldOrder = kahn(library.keySet(), deps, old);
+        var newOrder = kahn(library.keySet(), deps, m1a);
+
+        var groups = new TreeMap<String, List<String>>();
+        for (var n : library.keySet()) groups.computeIfAbsent(keys.get(n), k -> new ArrayList<>()).add(n);
+        int eq = 0, reachTies = 0, residual = 0;
+        var detail = new StringBuilder();
+        for (var g : groups.values()) {
+            if (g.size() < 2) continue;
+            eq++;
+            long reach = g.stream().filter(rank::containsKey).count();
+            if (reach >= 2) reachTies++;
+            var unreachable = g.stream().filter(n -> !rank.containsKey(n)).toList();
+            if (unreachable.size() >= 2) {
+                // Lemma 2 of ADR-078 r2: unreferenced, same dependencies, adjacent in M1a's order -> the swap is invisible.
+                boolean unreferenced = unreachable.stream().allMatch(n -> dependents.getOrDefault(n, 0) == 0);
+                boolean sameDeps = unreachable.stream().map(deps::get).distinct().count() == 1;
+                var idx = unreachable.stream().map(newOrder::indexOf).sorted().toList();
+                boolean adjacent = idx.getLast() - idx.getFirst() == idx.size() - 1;
+                if (!(unreferenced && sameDeps && adjacent)) {
+                    residual++;
+                    detail.append("  residual: ").append(unreachable).append(" unreferenced=").append(unreferenced)
+                            .append(" sameDeps=").append(sameDeps).append(" adjacent=").append(adjacent).append('\n');
+                }
+            }
+            if (reach >= 2) detail.append("  reachable tie (").append(g.size()).append(" members, ").append(reach)
+                    .append(" reachable): ").append(g).append('\n');
+        }
+        var d1a = new ArrayList<String>();
+        for (var n : newOrder) d1a.add(keys.get(n).substring(0, 8) + "@" + full.get(n));
+        D1A_SEQ.set(d1a);
+        var seq = new ArrayList<String>();
+        for (var n : newOrder) seq.add(keys.get(n).substring(0, 8) + "@" + (rank.containsKey(n) ? rank.get(n) : "U"));
+        return new Result(library.size(), (int) library.keySet().stream().filter(rank::containsKey).count(), eq, reachTies,
+                !oldOrder.equals(newOrder), !oldOrder.stream().filter(rank::containsKey).toList().equals(newOrder.stream().filter(rank::containsKey).toList()), residual, seq, detail.toString(), library.keySet().stream().filter(n -> !rank.containsKey(n)).toList());
+    }
+
+    /** A digest equal for two methods exactly when their bodies are equal up to bound names, calls of the same methods. */
+    static String alphaKey(LibraryMethod m, Set<String> names) {
+        try {
+            Class<?> order = Class.forName("org.julclang.compiler.codegen.LibraryBindingOrder");
+            Method key = order.getDeclaredMethod("key", LibraryMethod.class, Map.class, Set.class);
+            key.setAccessible(true);
+            var ids = new HashMap<String, String>();
+            for (var n : names) ids.put(n, "N:" + n);
+            return (String) key.invoke(null, new LibraryMethod("#", "#", null, m.body()), ids, names);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    static List<String> kahn(Collection<String> names, Map<String, Set<String>> deps, Comparator<String> cmp) {
+        var bound = new LinkedHashSet<String>();
+        var out = new ArrayList<String>();
+        var remaining = new ArrayList<>(names);
+        remaining.sort(cmp);
+        while (!remaining.isEmpty()) {
+            String next = null;
+            for (var n : remaining) if (bound.containsAll(deps.get(n))) { next = n; break; }
+            if (next == null) { out.addAll(remaining); break; }
+            remaining.remove(next);
+            bound.add(next);
+            out.add(next);
+        }
+        return out;
+    }
+
+    static List<PirTerm> children(PirTerm t) {
+        return switch (t) {
+            case PirTerm.Var _, PirTerm.Const _, PirTerm.Builtin _, PirTerm.Error _ -> List.of();
+            case PirTerm.Lam l -> List.of(l.body());
+            case PirTerm.Let l -> List.of(l.value(), l.body());
+            case PirTerm.LetRec r -> { var c = new ArrayList<PirTerm>(); r.bindings().forEach(b -> c.add(b.value())); c.add(r.body()); yield c; }
+            case PirTerm.App a -> List.of(a.function(), a.argument());
+            case PirTerm.IfThenElse i -> List.of(i.cond(), i.thenBranch(), i.elseBranch());
+            case PirTerm.Trace tr -> List.of(tr.message(), tr.body());
+            case PirTerm.DataConstr d -> d.fields();
+            case PirTerm.DataMatch m -> { var c = new ArrayList<PirTerm>(); c.add(m.scrutinee()); m.branches().forEach(b -> c.add(b.body())); yield c; }
+            case PirTerm.ListMatch m -> List.of(m.scrutinee(), m.nilBranch(), m.consBranch());
+            case PirTerm.PairMatch m -> List.of(m.scrutinee(), m.body());
+            case PirTerm.IntegerCase c -> { var l = new ArrayList<PirTerm>(); l.add(c.scrutinee()); l.addAll(c.branches()); yield l; }
+        };
+    }
+}

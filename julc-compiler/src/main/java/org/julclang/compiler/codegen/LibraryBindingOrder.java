@@ -1,6 +1,6 @@
 package org.julclang.compiler.codegen;
 
-import org.julclang.compiler.pir.PirHelpers;
+import org.julclang.compiler.pir.PirSubstitution;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.resolve.LibraryMethodRegistry.LibraryMethod;
@@ -22,6 +22,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 
 /**
  * The order in which a program binds the library methods it uses (issue #328, ADR-075).
@@ -31,9 +33,11 @@ import java.util.Set;
  * validator's {@code import} declarations and of the library sources a caller passed. Neither has any meaning in Java,
  * yet each changed the script's bytes and so its hash.
  * <p>
- * The order is now a function of the methods alone. Among the methods whose dependencies are already bound, the next
- * one bound is the one with the smallest <em>content key</em>, and the qualified name decides only between methods
- * whose keys are equal. A method's content key is a digest of its body in which:
+ * The order is a function of the methods and of where the program first uses them. Among the methods whose dependencies
+ * are already bound, the next one bound is the one with the smallest <em>content key</em>; among those with equal keys,
+ * the one with the lower first-use rank ({@link FirstUseRanks}). A qualified name decides only inside
+ * {@link FirstUseRanks}' D1b, among methods the program does not reach, and in a stalled group the backend rejects.
+ * A method's content key is a digest of its body in which:
  * <ul>
  *   <li>a variable bound inside the body is its de Bruijn index, so the names of locals and parameters do not count;</li>
  *   <li>a call of another library method is that method's content key, so neither its name, its class nor its package
@@ -43,9 +47,12 @@ import java.util.Set;
  *       names are left out.</li>
  * </ul>
  * So moving a library class to another package, renaming it, or reordering imports or library sources leaves the
- * order, and the script, as they were. Changing what a method does can move it, as it changes the bytes anyway.
- * Methods in a recursive group key each other's calls with a fixed token; their qualified names then decide between
- * them where their bodies agree.
+ * order as it was. Changing what a method does can move it, as it changes the bytes anyway.
+ * Methods in a recursive group key each other's calls with a fixed token.
+ * <p>
+ * Methods whose keys are equal are bound in the order the program first uses them ({@link FirstUseRanks}, ADR-078),
+ * not by their names: the method with the lower first-use rank is taken first. So the order depends on the methods and
+ * on the program's roots (its static initialisers, entry points and helpers), not on the methods alone.
  */
 final class LibraryBindingOrder {
 
@@ -57,22 +64,30 @@ final class LibraryBindingOrder {
      * come after it.
      */
     static List<LibraryMethod> innermostFirst(Collection<LibraryMethod> methods) {
+        return innermostFirst(methods, FirstUseRanks.Roots.NONE, null);
+    }
+
+    /**
+     * The methods in binding order (ADR-078 D2). Kahn's algorithm binds, at each step, the ready method (every
+     * library method it calls already bound) that is smallest by content key; among ready methods with equal keys, the
+     * one with the lower first-use rank ({@link FirstUseRanks}). The ranks are unique, so the qualified name is never
+     * compared here; a name decides only inside {@link FirstUseRanks}' D1b, among methods nothing reaches, and in the
+     * order of a stalled recursive group, which the backend rejects.
+     *
+     * @param observer told each ranking step and each choice between ready methods with equal keys, or null
+     *                 (ADR-078 D5's instrumentation)
+     */
+    static List<LibraryMethod> innermostFirst(Collection<LibraryMethod> methods, FirstUseRanks.Roots roots,
+                                              FirstUseRanks.Observer observer) {
         var byName = new LinkedHashMap<String, LibraryMethod>();
         for (var method : methods) byName.put(method.qualifiedName(), method);
 
-        var dependencies = new LinkedHashMap<String, Set<String>>();
-        for (var method : byName.values()) {
-            var uses = new LinkedHashSet<String>();
-            for (var other : byName.keySet()) {
-                if (!other.equals(method.qualifiedName()) && PirHelpers.containsVarRef(method.body(), other)) {
-                    uses.add(other);
-                }
-            }
-            dependencies.put(method.qualifiedName(), uses);
-        }
-
+        // One graph schedules the content keys, D1b's walk and the order below (ADR-078 r8).
+        var dependencies = dependencies(byName);
         var keys = contentKeys(byName, dependencies);
-        Comparator<String> canonical = Comparator.<String, String>comparing(keys::get).thenComparing(Comparator.naturalOrder());
+        var ranks = FirstUseRanks.of(roots, byName, keys, dependencies, observer);
+        Comparator<String> canonical = Comparator.<String, String>comparing(keys::get)
+                .thenComparingInt(ranks::get).thenComparing(Comparator.naturalOrder());
 
         // Kahn's algorithm, dependencies first, taking the canonically smallest ready method each time.
         var bound = new LinkedHashSet<String>();
@@ -88,9 +103,23 @@ final class LibraryBindingOrder {
                 }
             }
             if (next == null) {
-                // A recursive group with no method ready: bind the rest in canonical order.
-                for (String name : remaining) order.add(byName.get(name));
+                // A recursive group with no method ready, which the backend rejects: bind the rest by content key and
+                // name, as before ADR-078, so that the rejection names the same method.
+                var stalled = new ArrayList<>(remaining);
+                stalled.sort(Comparator.<String, String>comparing(keys::get).thenComparing(Comparator.naturalOrder()));
+                for (String name : stalled) order.add(byName.get(name));
                 break;
+            }
+            if (observer != null) {
+                var contenders = new ArrayList<String>();
+                for (String name : remaining) {
+                    if (keys.get(name).equals(keys.get(next)) && bound.containsAll(dependencies.get(name))) contenders.add(name);
+                }
+                if (contenders.size() > 1) {
+                    var contenderRanks = new LinkedHashMap<String, Integer>();
+                    for (String name : contenders) contenderRanks.put(name, ranks.get(name));
+                    observer.chose(new FirstUseRanks.TieChoice(keys.get(next), contenderRanks, next));
+                }
             }
             remaining.remove(next);
             bound.add(next);
@@ -98,6 +127,29 @@ final class LibraryBindingOrder {
         }
         Collections.reverse(order);
         return order;
+    }
+
+    /**
+     * The library methods each method calls: the names free in its body that name another library method, resolved
+     * lexically, so that a local or a closed inner binding of the same spelling is not a call (ADR-078 r8).
+     */
+    static Map<String, Set<String>> dependencies(Map<String, LibraryMethod> byName) {
+        var dependencies = new LinkedHashMap<String, Set<String>>();
+        for (var method : byName.values()) {
+            var uses = new LinkedHashSet<String>();
+            for (String name : PirSubstitution.collectFreeVarNames(method.body())) {
+                if (!name.equals(method.qualifiedName()) && byName.containsKey(name)) uses.add(name);
+            }
+            dependencies.put(method.qualifiedName(), uses);
+        }
+        return dependencies;
+    }
+
+    /** The content key of each of {@code methods}, by qualified name: for tests of ADR-078's lemmas. */
+    static Map<String, String> contentKeys(Collection<LibraryMethod> methods) {
+        var byName = new LinkedHashMap<String, LibraryMethod>();
+        for (var method : methods) byName.put(method.qualifiedName(), method);
+        return contentKeys(byName, dependencies(byName));
     }
 
     /**
@@ -138,10 +190,39 @@ final class LibraryBindingOrder {
         record Unbind(int count) implements Step {}
     }
 
+    /**
+     * The names bound around the term being described, innermost last: each name's de Bruijn index is found in constant
+     * time, so a deep or wide body is keyed in linear time.
+     */
+    private static final class Scope {
+        private final List<String> names = new ArrayList<>();
+        private final Map<String, ArrayDeque<Integer>> positions = new HashMap<>();
+
+        void addAll(List<String> bound) {
+            for (String name : bound) {
+                positions.computeIfAbsent(name, n -> new ArrayDeque<>()).push(names.size());
+                names.add(name);
+            }
+        }
+
+        void removeLast() {
+            String name = names.removeLast();
+            var stack = positions.get(name);
+            stack.pop();
+            if (stack.isEmpty()) positions.remove(name);
+        }
+
+        /** The de Bruijn index of the innermost binding of {@code name}, or -1 if it is not bound here. */
+        int index(String name) {
+            var stack = positions.get(name);
+            return stack == null ? -1 : names.size() - 1 - stack.peek();
+        }
+    }
+
     /** The digest of {@code method}'s body as {@link LibraryBindingOrder} describes it, walked without recursion. */
     private static String key(LibraryMethod method, Map<String, String> keys, Set<String> libraryMethods) {
         var text = new StringBuilder();
-        var scope = new ArrayList<String>();
+        var scope = new Scope();
         var pending = new ArrayDeque<Step>();
         pending.push(new Step.Visit(method.body()));
         while (!pending.isEmpty()) {
@@ -159,98 +240,110 @@ final class LibraryBindingOrder {
 
     /**
      * Writes {@code term}'s own token and schedules its children, each under the binders it sees, in the order of
-     * {@link PirHelpers#mapChildren}.
+     * {@link #children}: the one child order of this class, which {@link FirstUseRanks}'s walk uses too (ADR-078).
      */
     private static void describe(PirTerm term, LibraryMethod method, Map<String, String> keys, Set<String> libraryMethods,
-                                 List<String> scope, ArrayDeque<Step> pending, StringBuilder text) {
-        var children = new ArrayList<Step>();
+                                 Scope scope, ArrayDeque<Step> pending, StringBuilder text) {
         switch (term) {
             case PirTerm.Var variable -> text.append(variable(variable.name(), method, keys, libraryMethods, scope))
                     .append(type(variable.type()));
             case PirTerm.Const constant -> text.append("(c ").append(constant(constant.value())).append(')');
             case PirTerm.Builtin builtin -> text.append("(b ").append(builtin.fun().name()).append(')');
             case PirTerm.Error error -> text.append("(error ").append(type(error.type())).append(')');
-            case PirTerm.Lam lam -> {
-                text.append("(lam ").append(type(lam.paramType()));
-                bound(children, List.of(lam.param()), lam.body());
-            }
-            case PirTerm.Let let -> {
-                text.append("(let");
-                children.add(new Step.Visit(let.value()));
-                bound(children, List.of(let.name()), let.body());
-            }
-            case PirTerm.LetRec rec -> {
-                text.append("(letrec ").append(rec.bindings().size());
-                var names = rec.bindings().stream().map(PirTerm.Binding::name).toList();
-                children.add(new Step.Bind(names));
-                for (var binding : rec.bindings()) children.add(new Step.Visit(binding.value()));
-                children.add(new Step.Visit(rec.body()));
-                children.add(new Step.Unbind(names.size()));
-            }
-            case PirTerm.App app -> {
-                text.append("(app");
-                children.add(new Step.Visit(app.function()));
-                children.add(new Step.Visit(app.argument()));
-            }
-            case PirTerm.IfThenElse ite -> {
-                text.append("(if");
-                children.add(new Step.Visit(ite.cond()));
-                children.add(new Step.Visit(ite.thenBranch()));
-                children.add(new Step.Visit(ite.elseBranch()));
-            }
-            case PirTerm.Trace trace -> {
-                text.append("(trace");
-                children.add(new Step.Visit(trace.message()));
-                children.add(new Step.Visit(trace.body()));
-            }
-            case PirTerm.DataConstr constr -> {
-                text.append("(constr ").append(constr.tag()).append(' ').append(type(constr.dataType()))
-                        .append(' ').append(constr.fields().size());
-                for (var field : constr.fields()) children.add(new Step.Visit(field));
-            }
+            case PirTerm.Lam lam -> text.append("(lam ").append(type(lam.paramType()));
+            case PirTerm.Let _ -> text.append("(let");
+            case PirTerm.LetRec rec -> text.append("(letrec ").append(rec.bindings().size());
+            case PirTerm.App _ -> text.append("(app");
+            case PirTerm.IfThenElse _ -> text.append("(if");
+            case PirTerm.Trace _ -> text.append("(trace");
+            case PirTerm.DataConstr constr -> text.append("(constr ").append(constr.tag()).append(' ')
+                    .append(type(constr.dataType())).append(' ').append(constr.fields().size());
             case PirTerm.DataMatch match -> {
                 text.append("(match ").append(match.branches().size());
-                children.add(new Step.Visit(match.scrutinee()));
                 for (var branch : match.branches()) {
-                    var names = new ArrayList<>(branch.bindings());
-                    if (branch.patternVar() != null) names.add(branch.patternVar());
                     text.append(' ').append(branch.bindings().size()).append(branch.patternVar() == null ? "" : "+");
                     for (var bindingType : branch.bindingTypes()) text.append(type(bindingType));
-                    bound(children, names, branch.body());
                 }
             }
-            case PirTerm.ListMatch match -> {
-                text.append("(listmatch");
-                children.add(new Step.Visit(match.scrutinee()));
-                children.add(new Step.Visit(match.nilBranch()));
-                bound(children, List.of(match.headName(), match.tailName()), match.consBranch());
-            }
-            case PirTerm.PairMatch match -> {
-                text.append("(pairmatch ").append(type(match.pairType()));
-                children.add(new Step.Visit(match.scrutinee()));
-                bound(children, List.of(match.firstName(), match.secondName()), match.body());
-            }
-            case PirTerm.IntegerCase integerCase -> {
-                text.append("(case ").append(integerCase.branches().size());
-                children.add(new Step.Visit(integerCase.scrutinee()));
-                for (var branch : integerCase.branches()) children.add(new Step.Visit(branch));
-            }
+            case PirTerm.ListMatch _ -> text.append("(listmatch");
+            case PirTerm.PairMatch match -> text.append("(pairmatch ").append(type(match.pairType()));
+            case PirTerm.IntegerCase integerCase -> text.append("(case ").append(integerCase.branches().size());
         }
+        var children = new ArrayList<Step>();
+        children(term, child -> children.add(new Step.Visit(child)), (names, parts) -> {
+            children.add(new Step.Bind(names));
+            for (var part : parts) children.add(new Step.Visit(part));
+            children.add(new Step.Unbind(names.size()));
+        });
         // A form with parts closes after them; the parts run in order.
         if (!children.isEmpty()) children.add(new Step.Write(")"));
         for (int i = children.size() - 1; i >= 0; i--) pending.push(children.get(i));
     }
 
-    private static void bound(List<Step> children, List<String> names, PirTerm body) {
-        children.add(new Step.Bind(names));
-        children.add(new Step.Visit(body));
-        children.add(new Step.Unbind(names.size()));
+    /**
+     * Reports {@code term}'s children in the one child order of this class, which {@link #describe} and
+     * {@link FirstUseRanks}' walk share: {@code plain} for a child under no new binder, {@code scoped} for the children
+     * under the binders a lambda, let, match or recursive group introduces. A recursive group's names are reported once
+     * with all of its parts, values and body, so that a walk binds them once (ADR-078 r7).
+     */
+    static void children(PirTerm term, Consumer<PirTerm> plain, BiConsumer<List<String>, List<PirTerm>> scoped) {
+        switch (term) {
+            case PirTerm.Var _, PirTerm.Const _, PirTerm.Builtin _, PirTerm.Error _ -> {
+            }
+            case PirTerm.Lam lam -> scoped.accept(List.of(lam.param()), List.of(lam.body()));
+            case PirTerm.Let let -> {
+                plain.accept(let.value());
+                scoped.accept(List.of(let.name()), List.of(let.body()));
+            }
+            case PirTerm.LetRec rec -> {
+                var names = rec.bindings().stream().map(PirTerm.Binding::name).toList();
+                var parts = new ArrayList<PirTerm>();
+                for (var binding : rec.bindings()) parts.add(binding.value());
+                parts.add(rec.body());
+                scoped.accept(names, parts);
+            }
+            case PirTerm.App app -> {
+                plain.accept(app.function());
+                plain.accept(app.argument());
+            }
+            case PirTerm.IfThenElse ite -> {
+                plain.accept(ite.cond());
+                plain.accept(ite.thenBranch());
+                plain.accept(ite.elseBranch());
+            }
+            case PirTerm.Trace trace -> {
+                plain.accept(trace.message());
+                plain.accept(trace.body());
+            }
+            case PirTerm.DataConstr constr -> constr.fields().forEach(plain);
+            case PirTerm.DataMatch match -> {
+                plain.accept(match.scrutinee());
+                for (var branch : match.branches()) {
+                    var names = new ArrayList<>(branch.bindings());
+                    if (branch.patternVar() != null) names.add(branch.patternVar());
+                    scoped.accept(names, List.of(branch.body()));
+                }
+            }
+            case PirTerm.ListMatch match -> {
+                plain.accept(match.scrutinee());
+                plain.accept(match.nilBranch());
+                scoped.accept(List.of(match.headName(), match.tailName()), List.of(match.consBranch()));
+            }
+            case PirTerm.PairMatch match -> {
+                plain.accept(match.scrutinee());
+                scoped.accept(List.of(match.firstName(), match.secondName()), List.of(match.body()));
+            }
+            case PirTerm.IntegerCase integerCase -> {
+                plain.accept(integerCase.scrutinee());
+                integerCase.branches().forEach(plain);
+            }
+        }
     }
 
     private static String variable(String name, LibraryMethod method, Map<String, String> keys, Set<String> libraryMethods,
-                                   List<String> scope) {
-        int index = scope.lastIndexOf(name);
-        if (index >= 0) return "(v " + (scope.size() - 1 - index) + ")";
+                                   Scope scope) {
+        int index = scope.index(name);
+        if (index >= 0) return "(v " + index + ")";
         if (name.equals(method.qualifiedName())) return "(self)";
         if (libraryMethods.contains(name)) {
             String key = keys.get(name);

@@ -1,0 +1,93 @@
+# ADR-078 census, ../julc-examples (com.example, julcVersion 0.1.0-pre21) src/main/java, compiled directly with JuLC 0.1.0-pre21
+# (Adr078ExamplesCensus.java.txt); a simulation, label sequences, keys after PIR passes, D1a' not simulated.
+# 3 skipped: 2 WingRiders benchmark validators do not compile standalone, 1 off-chain file.
+SKIP com.example.benchmark.wingriders.WingRidersPoolValidator org.julclang.compiler.CompilerException: 'return' is not supported inside while loop body
+SKIP com.example.benchmark.wingriders.WingRidersRequestValidator org.julclang.compiler.CompilerException: 'return' is not supported inside while loop body
+CENSUS com.example.bls.onchain.BlsAggregateVaultValidator library=19 reachable=6 equalKeyGroups=0 reachableTieGroups=0 m1aChangesReachableOrder=false residualUnreachableGroups=0
+T2 com.example.bls.onchain.BlsAggregateVaultValidator anyNameTie=0 spellingTie=0 residual=0 fullOrderChanges=false
+CENSUS com.example.bls.onchain.BlsVaultValidator library=19 reachable=5 equalKeyGroups=0 reachableTieGroups=0 m1aChangesReachableOrder=false residualUnreachableGroups=0
+T2 com.example.bls.onchain.BlsVaultValidator anyNameTie=0 spellingTie=0 residual=0 fullOrderChanges=false
+CENSUS com.example.cftemplates.anonymousdata.onchain.CfAnonymousDataValidator library=121 reachable=10 equalKeyGroups=1 reachableTieGroups=0 m1aChangesReachableOrder=false residualUnreachableGroups=0
+T2 com.example.cftemplates.anonymousdata.onchain.CfAnonymousDataValidator anyNameTie=1 spellingTie=0 residual=0 fullOrderChanges=false
+CENSUS com.example.cftemplates.atomictx.onchain.CfAtomicTxValidator library=0 reachable=0 equalKeyGroups=0 reachableTieGroups=0 m1aChangesReachableOrder=false residualUnreachableGroups=0
+T2 com.example.cftemplates.atomictx.onchain.CfAtomicTxValidator anyNameTie=0 spellingTie=0 residual=0 fullOrderChanges=false
+CENSUS com.example.cftemplates.auction.onchain.CfAuctionValidator library=123 reachable=10 equalKeyGroups=1 reachableTieGroups=0 m1aChangesReachableOrder=false residualUnreachableGroups=0
+T2 com.example.cftemplates.auction.onchain.CfAuctionValidator anyNameTie=1 spellingTie=0 residual=0 fullOrderChanges=false
+CENSUS com.example.cftemplates.bet.onchain.CfBetValidator library=123 reachable=11 equalKeyGroups=1 reachableTieGroups=0 m1aChangesReachableOrder=false residualUnreachableGroups=0
+T2 com.example.cftemplates.bet.onchain.CfBetValidator anyNameTie=1 spellingTie=0 residual=0 fullOrderChanges=false
+CENSUS com.example.cftemplates.crowdfund.onchain.CfCrowdfundValidator library=123 reachable=5 equalKeyGroups=1 reachableTieGroups=0 m1aChangesReachableOrder=false residualUnreachableGroups=0
+T2 com.example.cftemplates.crowdfund.onchain.CfCrowdfundValidator anyNameTie=1 spellingTie=0 residual=0 fullOrderChanges=false
+CENSUS com.example.cftemplates.escrow.onchain.CfEscrowValidator library=112 reachable=5 equalKeyGroups=1 reachableTieGroups=0 m1aChangesReachableOrder=false residualUnreachableGroups=0
+T2 com.example.cftemplates.escrow.onchain.CfEscrowValidator anyNameTie=1 spellingTie=0 residual=0 fullOrderChanges=false
+CENSUS com.example.cftemplates.factory.onchain.CfFactoryValidator library=112 reachable=11 equalKeyGroups=1 reachableTieGroups=0 m1aChangesReachableOrder=false residualUnreachableGroups=0
+T2 com.example.cftemplates.factory.onchain.CfFactoryValidator anyNameTie=1 spellingTie=0 residual=0 fullOrderChanges=false
+CENSUS com.example.cftemplates.factory.onchain.CfProductValidator library=112 reachable=8 equalKeyGroups=1 reachableTieGroups=0 m1aChangesReachableOrder=false residualUnreachableGroups=0
+T2 com.example.cftemplates.factory.onchain.CfProductValidator anyNameTie=1 spellingTie=0 residual=0 fullOrderChanges=false
+CENSUS com.example.cftemplates.htlc.onchain.CfHtlcValidator library=48 reachable=4 equalKeyGroups=0 reachableTieGroups=0 m1aChangesReachableOrder=false residualUnreachableGroups=0
+T2 com.example.cftemplates.htlc.onchain.CfHtlcValidator anyNameTie=0 spellingTie=0 residual=0 fullOrderChanges=false
+CENSUS com.example.cftemplates.identity.onchain.CfIdentityValidator library=123 reachable=5 equalKeyGroups=1 reachableTieGroups=0 m1aChangesReachableOrder=false residualUnreachableGroups=0
+T2 com.example.cftemplates.identity.onchain.CfIdentityValidator anyNameTie=1 spellingTie=0 residual=0 fullOrderChanges=false
+CENSUS com.example.cftemplates.lottery.onchain.CfLotteryValidator library=156 reachable=15 equalKeyGroups=1 reachableTieGroups=0 m1aChangesReachableOrder=false residualUnreachableGroups=0
+T2 com.example.cftemplates.lottery.onchain.CfLotteryValidator anyNameTie=1 spellingTie=0 residual=0 fullOrderChanges=false
+CENSUS com.example.cftemplates.paymentsplitter.onchain.CfPaymentSplitterValidator library=63 reachable=2 equalKeyGroups=1 reachableTieGroups=0 m1aChangesReachableOrder=false residualUnreachableGroups=0
+T2 com.example.cftemplates.paymentsplitter.onchain.CfPaymentSplitterValidator anyNameTie=1 spellingTie=0 residual=0 fullOrderChanges=false
+CENSUS com.example.cftemplates.pricebet.onchain.CfPriceBetValidator library=123 reachable=8 equalKeyGroups=1 reachableTieGroups=0 m1aChangesReachableOrder=false residualUnreachableGroups=0
+T2 com.example.cftemplates.pricebet.onchain.CfPriceBetValidator anyNameTie=1 spellingTie=0 residual=0 fullOrderChanges=false
+CENSUS com.example.cftemplates.simpletransfer.onchain.CfSimpleTransferValidator library=28 reachable=1 equalKeyGroups=0 reachableTieGroups=0 m1aChangesReachableOrder=false residualUnreachableGroups=0
+T2 com.example.cftemplates.simpletransfer.onchain.CfSimpleTransferValidator anyNameTie=0 spellingTie=0 residual=0 fullOrderChanges=false
+CENSUS com.example.cftemplates.simplewallet.onchain.CfSimpleWalletValidator library=112 reachable=8 equalKeyGroups=1 reachableTieGroups=0 m1aChangesReachableOrder=false residualUnreachableGroups=0
+T2 com.example.cftemplates.simplewallet.onchain.CfSimpleWalletValidator anyNameTie=1 spellingTie=0 residual=0 fullOrderChanges=false
+CENSUS com.example.cftemplates.simplewallet.onchain.CfWalletFundsValidator library=112 reachable=9 equalKeyGroups=1 reachableTieGroups=0 m1aChangesReachableOrder=false residualUnreachableGroups=0
+T2 com.example.cftemplates.simplewallet.onchain.CfWalletFundsValidator anyNameTie=1 spellingTie=0 residual=0 fullOrderChanges=false
+CENSUS com.example.cftemplates.storage.onchain.CfStorageValidator library=97 reachable=6 equalKeyGroups=1 reachableTieGroups=0 m1aChangesReachableOrder=false residualUnreachableGroups=0
+T2 com.example.cftemplates.storage.onchain.CfStorageValidator anyNameTie=1 spellingTie=0 residual=0 fullOrderChanges=false
+CENSUS com.example.cftemplates.tokentransfer.onchain.CfTokenTransferValidator library=87 reachable=12 equalKeyGroups=1 reachableTieGroups=0 m1aChangesReachableOrder=false residualUnreachableGroups=0
+T2 com.example.cftemplates.tokentransfer.onchain.CfTokenTransferValidator anyNameTie=1 spellingTie=0 residual=0 fullOrderChanges=false
+CENSUS com.example.cftemplates.upgradeableproxy.onchain.CfProxyValidator library=145 reachable=16 equalKeyGroups=1 reachableTieGroups=0 m1aChangesReachableOrder=false residualUnreachableGroups=0
+T2 com.example.cftemplates.upgradeableproxy.onchain.CfProxyValidator anyNameTie=1 spellingTie=0 residual=0 fullOrderChanges=false
+CENSUS com.example.cftemplates.upgradeableproxy.onchain.CfScriptLogicV1 library=63 reachable=9 equalKeyGroups=1 reachableTieGroups=0 m1aChangesReachableOrder=false residualUnreachableGroups=0
+T2 com.example.cftemplates.upgradeableproxy.onchain.CfScriptLogicV1 anyNameTie=1 spellingTie=0 residual=0 fullOrderChanges=false
+CENSUS com.example.cftemplates.upgradeableproxy.onchain.CfScriptLogicV2 library=63 reachable=9 equalKeyGroups=1 reachableTieGroups=0 m1aChangesReachableOrder=false residualUnreachableGroups=0
+T2 com.example.cftemplates.upgradeableproxy.onchain.CfScriptLogicV2 anyNameTie=1 spellingTie=0 residual=0 fullOrderChanges=false
+CENSUS com.example.cftemplates.vault.onchain.CfVaultValidator library=98 reachable=4 equalKeyGroups=1 reachableTieGroups=0 m1aChangesReachableOrder=false residualUnreachableGroups=0
+T2 com.example.cftemplates.vault.onchain.CfVaultValidator anyNameTie=1 spellingTie=0 residual=0 fullOrderChanges=false
+CENSUS com.example.cftemplates.vesting.onchain.CfVestingValidator library=39 reachable=2 equalKeyGroups=0 reachableTieGroups=0 m1aChangesReachableOrder=false residualUnreachableGroups=0
+T2 com.example.cftemplates.vesting.onchain.CfVestingValidator anyNameTie=0 spellingTie=0 residual=0 fullOrderChanges=false
+CENSUS com.example.lending.onchain.CollateralLoan library=123 reachable=5 equalKeyGroups=1 reachableTieGroups=0 m1aChangesReachableOrder=false residualUnreachableGroups=0
+T2 com.example.lending.onchain.CollateralLoan anyNameTie=1 spellingTie=0 residual=0 fullOrderChanges=false
+CENSUS com.example.linkedlist.onchain.LinkedListValidator library=144 reachable=27 equalKeyGroups=2 reachableTieGroups=0 m1aChangesReachableOrder=false residualUnreachableGroups=0
+T2 com.example.linkedlist.onchain.LinkedListValidator anyNameTie=1 spellingTie=0 residual=0 fullOrderChanges=false
+CENSUS com.example.nft.onchain.Cip68Nft library=111 reachable=4 equalKeyGroups=1 reachableTieGroups=0 m1aChangesReachableOrder=false residualUnreachableGroups=0
+T2 com.example.nft.onchain.Cip68Nft anyNameTie=1 spellingTie=0 residual=0 fullOrderChanges=false
+CENSUS com.example.swap.onchain.SwapOrder library=112 reachable=7 equalKeyGroups=1 reachableTieGroups=0 m1aChangesReachableOrder=false residualUnreachableGroups=0
+T2 com.example.swap.onchain.SwapOrder anyNameTie=1 spellingTie=0 residual=0 fullOrderChanges=false
+SKIP com.example.uverify.offchain.? org.julclang.compiler.CompilerException: Compilation failed with 100 error(s):
+CENSUS com.example.uverify.onchain.UVerifyFeePot library=116 reachable=16 equalKeyGroups=1 reachableTieGroups=0 m1aChangesReachableOrder=false residualUnreachableGroups=0
+T2 com.example.uverify.onchain.UVerifyFeePot anyNameTie=1 spellingTie=0 residual=0 fullOrderChanges=false
+CENSUS com.example.uverify.onchain.UVerifyProxy library=154 reachable=12 equalKeyGroups=1 reachableTieGroups=0 m1aChangesReachableOrder=false residualUnreachableGroups=0
+T2 com.example.uverify.onchain.UVerifyProxy anyNameTie=1 spellingTie=0 residual=0 fullOrderChanges=false
+CENSUS com.example.uverify.onchain.UVerifyV1 library=130 reachable=24 equalKeyGroups=1 reachableTieGroups=0 m1aChangesReachableOrder=false residualUnreachableGroups=0
+T2 com.example.uverify.onchain.UVerifyV1 anyNameTie=1 spellingTie=0 residual=0 fullOrderChanges=false
+CENSUS com.example.validators.AuctionValidator library=28 reachable=0 equalKeyGroups=0 reachableTieGroups=0 m1aChangesReachableOrder=false residualUnreachableGroups=0
+T2 com.example.validators.AuctionValidator anyNameTie=0 spellingTie=0 residual=0 fullOrderChanges=false
+CENSUS com.example.validators.EscrowValidator library=101 reachable=7 equalKeyGroups=1 reachableTieGroups=0 m1aChangesReachableOrder=false residualUnreachableGroups=0
+T2 com.example.validators.EscrowValidator anyNameTie=1 spellingTie=0 residual=0 fullOrderChanges=false
+CENSUS com.example.validators.GuardedMinting library=0 reachable=0 equalKeyGroups=0 reachableTieGroups=0 m1aChangesReachableOrder=false residualUnreachableGroups=0
+T2 com.example.validators.GuardedMinting anyNameTie=0 spellingTie=0 residual=0 fullOrderChanges=false
+CENSUS com.example.validators.MpfRegistryValidator library=59 reachable=35 equalKeyGroups=0 reachableTieGroups=0 m1aChangesReachableOrder=false residualUnreachableGroups=0
+T2 com.example.validators.MpfRegistryValidator anyNameTie=0 spellingTie=0 residual=0 fullOrderChanges=false
+CENSUS com.example.validators.MultiSigMinting library=28 reachable=0 equalKeyGroups=0 reachableTieGroups=0 m1aChangesReachableOrder=false residualUnreachableGroups=0
+T2 com.example.validators.MultiSigMinting anyNameTie=0 spellingTie=0 residual=0 fullOrderChanges=false
+CENSUS com.example.validators.MultiSigTreasury library=28 reachable=0 equalKeyGroups=0 reachableTieGroups=0 m1aChangesReachableOrder=false residualUnreachableGroups=0
+T2 com.example.validators.MultiSigTreasury anyNameTie=0 spellingTie=0 residual=0 fullOrderChanges=false
+CENSUS com.example.validators.OneShotMintPolicy library=87 reachable=2 equalKeyGroups=1 reachableTieGroups=0 m1aChangesReachableOrder=false residualUnreachableGroups=0
+T2 com.example.validators.OneShotMintPolicy anyNameTie=1 spellingTie=0 residual=0 fullOrderChanges=false
+CENSUS com.example.validators.OutputCheckValidator library=88 reachable=4 equalKeyGroups=1 reachableTieGroups=0 m1aChangesReachableOrder=false residualUnreachableGroups=0
+T2 com.example.validators.OutputCheckValidator anyNameTie=1 spellingTie=0 residual=0 fullOrderChanges=false
+CENSUS com.example.validators.TokenDistributionValidator library=87 reachable=1 equalKeyGroups=1 reachableTieGroups=0 m1aChangesReachableOrder=false residualUnreachableGroups=0
+T2 com.example.validators.TokenDistributionValidator anyNameTie=1 spellingTie=0 residual=0 fullOrderChanges=false
+CENSUS com.example.validators.VestingValidator library=88 reachable=2 equalKeyGroups=1 reachableTieGroups=0 m1aChangesReachableOrder=false residualUnreachableGroups=0
+T2 com.example.validators.VestingValidator anyNameTie=1 spellingTie=0 residual=0 fullOrderChanges=false
+CENSUS com.example.validators.WhitelistTreasuryValidator library=28 reachable=0 equalKeyGroups=0 reachableTieGroups=0 m1aChangesReachableOrder=false residualUnreachableGroups=0
+T2 com.example.validators.WhitelistTreasuryValidator anyNameTie=0 spellingTie=0 residual=0 fullOrderChanges=false
+TOTAL compiled=43 skipped=3 m1aChangesReachableOrder=0 withReachableTies=0 withResidualUnreachableTies=0

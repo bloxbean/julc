@@ -1,0 +1,45 @@
+// ADR-078 L-C12 / D5 fixture (Codex round 3, reproduced by the author on JuLC 0.1.0-pre21, r3-probes.txt).
+// Evidence, not part of the build. Compile with JulcCompiler over the library below; target PLUTUS_V3_PV11,
+// profile "pv11-safe", source maps off; evaluate with costs PLUTUS_V3_PV11_COSTS_V1, argument PlutusData.integer(5),
+// limit ExBudget(31_150_000, 110_000). The second variant replaces exactly the two `alpha` tokens (the declaration and
+// the call in c) with `zeta`.
+//
+// pre21 results:
+//   alpha: 1,010 B, FLAT sha256 c8489246…, unbounded Success 31,073,556 CPU / 101,566 mem, bounded Success
+//   zeta:  1,012 B, FLAT sha256 4ab65773…, unbounded Success 31,201,556 CPU / 102,366 mem, bounded BudgetExhausted
+// Cause (Codex): binding order alpha,c,beta vs beta,zeta,c puts the 12 headList uses at depth 125 vs 126;
+// ClosedValueSharing prices the index at depth+2 = 127 vs 128 (FLAT's extra byte) and shares headList only in the first.
+// Under M1a both spellings rank alpha/zeta (reached through c) before beta, so both are expected to give one program.
+
+// ---- library q/L.java (the c body is generated: v1..v121 and 12 head reads)
+package q;
+
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+import org.julclang.stdlib.annotation.OnchainLibrary;
+
+@OnchainLibrary
+public class L {
+    public static long alpha(long x) { return x; }
+    public static long beta(long y) { return y; }
+    public static long c(long n, JulcList<BigInteger> xs) {
+        long v0 = alpha(n);
+        long v1 = v0 + 1;
+        // ... long v{i} = v{i-1} + 1; for i = 2 .. 121
+        long v121 = v120 + 1;
+        return v121 + 0 + xs.head().longValue() + xs.head().longValue() + xs.head().longValue() + xs.head().longValue()
+                + xs.head().longValue() + xs.head().longValue() + xs.head().longValue() + xs.head().longValue()
+                + xs.head().longValue() + xs.head().longValue() + xs.head().longValue() + xs.head().longValue();
+    }
+}
+
+// ---- target v/T.java, compiled with compileMethod(TARGET, "f", List.of(library))
+package v;
+
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+import q.L;
+
+class T {
+    static long f(long n) { return L.c(n, JulcList.of(BigInteger.ONE)) + L.beta(n); }
+}

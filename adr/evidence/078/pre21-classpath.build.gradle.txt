@@ -1,0 +1,7 @@
+plugins { id 'java' }
+repositories { mavenCentral(); mavenLocal() }
+dependencies {
+  implementation 'org.julclang:julc-tools:0.1.0-pre21'
+  runtimeOnly 'org.julclang:julc-vm-java:0.1.0-pre21'
+}
+tasks.register('printCp') { doLast { new File(System.getenv('CP_OUT')).text = configurations.runtimeClasspath.files.join(':') } }

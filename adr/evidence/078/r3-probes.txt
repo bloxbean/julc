@@ -1,0 +1,48 @@
+# ADR-078 r4: Codex round-3 findings reproduced against JuLC 0.1.0-pre21 (R3Probes.java.txt), 2026-11-18.
+# FLAT lines: sha256 prefix and size of UplcFlatEncoder.encodeProgram.
+C12 alpha: FLAT c8489246affdc535 1010 B, unbounded Success cpu 31073556 mem 101566, limit (31,150,000, 110,000): Success
+C12 zeta: FLAT 4ab65773da337e91 1012 B, unbounded Success cpu 31201556 mem 102366, limit (31,150,000, 110,000): BudgetExhausted
+C19 [pv11-safe, source maps]
+    alpha(x), beta(y): 471fb25d23c281cb 45 B
+    zeta(x),  beta(y)  [method rename]: 18ed8febad9dec0a 45 B
+    alpha(x), beta(x)  [local y->x]: f210daa32d7b5d70 62 B
+    alpha(z), beta(y)  [local x->z]: 052920332d968f61 29 B
+C19 [pv11-safe]
+    alpha(x), beta(y): e2f3eac0da953ada 15 B
+    zeta(x),  beta(y)  [method rename]: e2f3eac0da953ada 15 B
+    alpha(x), beta(x)  [local y->x]: e2f3eac0da953ada 15 B
+    alpha(z), beta(y)  [local x->z]: e2f3eac0da953ada 15 B
+C19 [default profile]
+    alpha(x), beta(y): e2f3eac0da953ada 15 B
+    zeta(x),  beta(y)  [method rename]: e2f3eac0da953ada 15 B
+    alpha(x), beta(x)  [local y->x]: e2f3eac0da953ada 15 B
+    alpha(z), beta(y)  [local x->z]: e2f3eac0da953ada 15 B
+C19 [default profile, source maps]
+    alpha(x), beta(y): 471fb25d23c281cb 45 B
+    zeta(x),  beta(y)  [method rename]: 18ed8febad9dec0a 45 B
+    alpha(x), beta(x)  [local y->x]: f210daa32d7b5d70 62 B
+    alpha(z), beta(y)  [local x->z]: 052920332d968f61 29 B
+C19 [pv11-safe, source maps, o10 off]
+    alpha(x), beta(y): f210daa32d7b5d70 62 B
+    zeta(x),  beta(y)  [method rename]: f210daa32d7b5d70 62 B
+    alpha(x), beta(x)  [local y->x]: f210daa32d7b5d70 62 B
+    alpha(z), beta(y)  [local x->z]: f210daa32d7b5d70 62 B
+C19 [none, source maps]
+    alpha(x), beta(y): f210daa32d7b5d70 62 B
+    zeta(x),  beta(y)  [method rename]: f210daa32d7b5d70 62 B
+    alpha(x), beta(x)  [local y->x]: f210daa32d7b5d70 62 B
+    alpha(z), beta(y)  [local x->z]: f210daa32d7b5d70 62 B
+C19b [pv11-safe, source maps] reached alpha(x)+other(y): acee97b7744fa106 60 B | other(x): acee97b7744fa106 60 B
+C19b [pv11-safe] reached alpha(x)+other(y): 0e2dd5492b4e75cd 53 B | other(x): 0e2dd5492b4e75cd 53 B
+C19b [default profile] reached alpha(x)+other(y): 0e2dd5492b4e75cd 53 B | other(x): 0e2dd5492b4e75cd 53 B
+C19b [default profile, source maps] reached alpha(x)+other(y): acee97b7744fa106 60 B | other(x): acee97b7744fa106 60 B
+C19b [pv11-safe, source maps, o10 off] reached alpha(x)+other(y): acee97b7744fa106 60 B | other(x): acee97b7744fa106 60 B
+C19b [none, source maps] reached alpha(x)+other(y): acee97b7744fa106 60 B | other(x): acee97b7744fa106 60 B
+C19c [pv11-safe, source maps] reached, other's local y: 55b9de3737cbbcb5 45 B | renamed to x (collides with alpha's): 3c8648710267d233 78 B
+C19c [pv11-safe] reached, other's local y: 8c1ce72ec1ae1c0c 33 B | renamed to x (collides with alpha's): 015d9fb989a84125 73 B
+C19c [default profile] reached, other's local y: 8c1ce72ec1ae1c0c 33 B | renamed to x (collides with alpha's): 015d9fb989a84125 73 B
+C19c [default profile, source maps] reached, other's local y: 55b9de3737cbbcb5 45 B | renamed to x (collides with alpha's): 3c8648710267d233 78 B
+C19c [pv11-safe, source maps, o10 off] reached, other's local y: 3c8648710267d233 78 B | renamed to x (collides with alpha's): 3c8648710267d233 78 B
+C19c [none, source maps] reached, other's local y: 3c8648710267d233 78 B | renamed to x (collides with alpha's): 3c8648710267d233 78 B
+C20 [default] pool [B, A]: c1eb2ebab9e7600d 45 B | pool [A, B]: REJECTED CompilerException: Undefined variable: B
+C20 [none] pool [B, A]: c1eb2ebab9e7600d 45 B | pool [A, B]: REJECTED CompilerException: Undefined variable: B

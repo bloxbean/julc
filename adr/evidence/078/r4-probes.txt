@@ -1,0 +1,8 @@
+# ADR-078 r5: Codex round-4 findings C26 and C27 against JuLC 0.1.0-pre21 (R4Probes.java.txt), 2026-11-18. FLAT sha256 prefix and size.
+C26 [pv11-costed, source maps] alpha: d471844a4586b602 311 B | zeta: b378ec829f21afb4 311 B
+C26 [pv11-costed] alpha: 6609b8fe9cccaba2 121 B | zeta: 6609b8fe9cccaba2 121 B
+C26 [pv11-safe, source maps] alpha: 77eb73945ba62b12 477 B | zeta: 77eb73945ba62b12 477 B
+C26 [none, source maps] alpha: e9008c537844309a 509 B | zeta: e9008c537844309a 509 B
+C26 [pv11-costed, source maps, o9 off] alpha: 77eb73945ba62b12 477 B | zeta: 77eb73945ba62b12 477 B
+C27 [pv11-safe] magnitude: 24e075a45040e652 33 B | abs: 76dc5a0075c5638a 28 B
+C27 [none] magnitude: 3abbf798952c0b1d 37 B | abs: edb3696d25591a35 52 B

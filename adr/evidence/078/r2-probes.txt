@@ -1,0 +1,18 @@
+# ADR-078 r3: Codex round-2 findings reproduced against JuLC 0.1.0-pre21 (R2Probes.java.txt), 2026-11-18.
+# Each line: probe [mode] variant-a hash-prefix size | variant-b hash-prefix size. Modes: default profile, level NONE, source maps on.
+C11-unreachable-helper-reads-twin [default] 9483ed9c3ed627b8 56 B | 9483ed9c3ed627b8 56 B -> SAME
+C11-unreachable-helper-reads-twin [none] a4bb06c6ad047ab6 96 B | 2cd7edfa9e701d30 96 B -> DIFFERENT
+C11-unreachable-helper-reads-twin [sourcemap] f0b2a37b515aa076 94 B | c6271e28b2c60d22 94 B -> DIFFERENT
+C13-recursive-group-class-rename [default] 0e350313f9440332 146 B | 77b629544edfa34b 146 B -> DIFFERENT
+C13-recursive-group-class-rename [none] 63c7b60718be8360 160 B | 24a08caa18be7e5c 160 B -> DIFFERENT
+C13-recursive-group-class-rename [sourcemap] e64b46a9ff535b2c 155 B | cb18d5ba2561563f 155 B -> DIFFERENT
+C14-overload-family-member-renamed [default] 2c9a5c9e49f448de 88 B | d6c87f2c07f59c71 96 B -> DIFFERENT
+C14-overload-family-member-renamed [none] 3be9089f76adab6a 97 B | 2e978e75c6e41a33 105 B -> DIFFERENT
+C14-overload-family-member-renamed [sourcemap] 7b6483a370d9e7ad 96 B | 3fea16de89d67fe5 103 B -> DIFFERENT
+C15-unreachable-mutual-library [default] REJECTED CompilerException: Unbound variable: q.M.odd
+C15-reachable-mutual-library [default] REJECTED CompilerException: Unbound variable: q.M.odd
+C15-self-recursive-library [default] d038dbdc23919627 116 B
+C12 twin named alpha: 998 B, Success, cpu 30764348, mem 100264
+C12 twin named zeta: 998 B, Success, cpu 30764348, mem 100264
+C12 twin named alpha under cpu limit 30764348: Success
+C12 twin named zeta under cpu limit 30764348: Success

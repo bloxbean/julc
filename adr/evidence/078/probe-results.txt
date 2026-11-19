@@ -1,0 +1,60 @@
+case1-identical-bodies-a 105f1aabcbb2bcfd8c03e685d4ac6ddaaa39431fd8e946123b273b40 165 B
+case1-identical-bodies-b 16f6e954aeb5880d9ba9f6a7af23ff869cefeabc0462245a4830f6c2 165 B
+case1-identical-bodies: DIFFERENT
+case2a-shape-ids-class-rename-a 00705b87fbc59c28cee0e88fee0f10ef6dbd049a226e42cfb201e99c 347 B
+case2a-shape-ids-class-rename-b 63d9c7526e376af74c71ec7ee92550026157432b7a60d069c09ec5b3 347 B
+case2a-shape-ids-class-rename: DIFFERENT
+case2b-shape-ids-method-reorder-a 00705b87fbc59c28cee0e88fee0f10ef6dbd049a226e42cfb201e99c 347 B
+case2b-shape-ids-method-reorder-b 63d9c7526e376af74c71ec7ee92550026157432b7a60d069c09ec5b3 347 B
+case2b-shape-ids-method-reorder: DIFFERENT
+case3-helper-reorder-a 8e9b4a1e19224178a8425a7f9addbad3ccafd9844d165839985d8ebb 90 B
+case3-helper-reorder-b c57dcc72a84332ce930ffbdcb530ab6867d7e72f454ad09b378a2d88 90 B
+case3-helper-reorder: DIFFERENT
+case3b-validator-shape-helpers-reorder-a 00705b87fbc59c28cee0e88fee0f10ef6dbd049a226e42cfb201e99c 347 B
+case3b-validator-shape-helpers-reorder-b d9dd5db5619c87f442b162d52ea411c7e45072f4af96292c432ba0cc 347 B
+case3b-validator-shape-helpers-reorder: DIFFERENT
+control-helper-rename-a 8e9b4a1e19224178a8425a7f9addbad3ccafd9844d165839985d8ebb 90 B
+control-helper-rename-b 8e9b4a1e19224178a8425a7f9addbad3ccafd9844d165839985d8ebb 90 B
+control-helper-rename: SAME
+== case1-identical-bodies: name-stripped UPLC diff
+67c67
+< [i5
+---
+> [i4
+71c71
+< [i4
+---
+> [i5
+== case2a-shape-ids-class-rename: name-stripped UPLC diff
+99c99
+< 2)]
+---
+> 0)]
+126c126
+< 0)]
+---
+> 3)]
+212,220d211
+< [(lam
+< _
+< [[(builtin
+== case3-helper-reorder: name-stripped UPLC diff
+37c37
+< [i5
+---
+> [i4
+41c41
+< [i4
+---
+> [i5
+48c48
+< multiplyInteger)
+---
+> addInteger)
+== case2a variant a: the shared dispatcher (ids 0..3: Credential, ByteString, TxOutRef, Integer)
+(lam #__boundary-type (lam #__boundary-data (case [[(builtin equalsInteger) i2] (con integer 0)] (case [[(builtin equalsInteger) i2] (con integer 1)] (case [[(builtin equalsInteger) i2] (con integer 2)] (case [[(builtin equalsInteger) i2] (con integer 3)] (con bool False) [(lam #__integer
+[(lam #fromData (case [[i11 (con integer 2)] i1]
+[(lam #fromData (case [[i10 (con integer 0)] i1]
+== case2a variant b
+[(lam #fromData (case [[i11 (con integer 0)] i1]
+[(lam #fromData (case [[i10 (con integer 3)] i1]

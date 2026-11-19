@@ -1,0 +1,59 @@
+package probe;
+
+import org.julclang.compiler.*;
+import org.julclang.stdlib.StdlibRegistry;
+
+import java.nio.file.*;
+import java.util.*;
+import java.util.regex.Pattern;
+import java.util.stream.Stream;
+
+/** ADR-078 r2: the census over a source tree of validators (julc-examples). Args: srcRoot. */
+public class Adr078ExamplesCensus {
+    public static void main(String[] a) throws Exception {
+        List<Path> files;
+        try (Stream<Path> s = Files.walk(Path.of(a[0]))) { files = s.filter(p -> p.toString().endsWith(".java")).sorted().toList(); }
+        Map<String, LibrarySource> cp = LibrarySourceResolver.scanClasspathSources(Adr078ExamplesCensus.class.getClassLoader(), p -> {});
+        Map<String, LibrarySource> pool = new LinkedHashMap<>(cp);
+        var validators = new ArrayList<Path>();
+        var ann = Pattern.compile("@(Spending|Minting|Multi|Withdraw|Voting|Proposing|Certifying)Validator\\b");
+        for (Path f : files) {
+            String t = Files.readString(f);
+            var l = LibrarySourceResolver.librarySource(t);
+            if (l != null) pool.put(l.fqcn(), l);
+            if (ann.matcher(t).find()) validators.add(f);
+        }
+        var opts = OptimizationConfiguration.apply(new CompilerOptions().setTarget(CompilerTarget.PLUTUS_V3_PV11),
+                OptimizationLevel.DEFAULT_PROFILE_ID, null);
+        opts.setJarLibrarySources(LibrarySourceResolver.jarSourceTexts(pool, cp));
+        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), opts);
+        int ok = 0, failed = 0, changed = 0, ties = 0, residual = 0;
+        for (Path f : validators) {
+            String t = Files.readString(f);
+            var pkg = Pattern.compile("(?m)^package\\s+([\\w.]+);").matcher(t);
+            var cls = Pattern.compile("@\\w*Validator[^\\n]*\\n(?:\\s*@[^\\n]*\\n)*\\s*(?:public\\s+|final\\s+)*class\\s+(\\w+)").matcher(t);
+            String fqcn = (pkg.find() ? pkg.group(1) + "." : "") + (cls.find() ? cls.group(1) : "?");
+            try {
+                var libs = LibrarySourceResolver.resolveLibrarySources(t, pool);
+                var res = compiler.compileWithDetails(t, libs.stream().map(LibrarySource::source).toList());
+                if (res.hasErrors() || res.pirTerm() == null) { failed++; System.out.println("SKIP " + fqcn + " " + res.diagnostics()); continue; }
+                var c = Adr078Census.of(res.pirTerm(), fqcn);
+                ok++;
+                if (c.m1aChangesReachableOrder()) changed++;
+                if (c.reachableTieGroups() > 0) ties++;
+                if (c.residualGroups() > 0) residual++;
+                System.out.println("CENSUS " + fqcn + " library=" + c.library() + " reachable=" + c.reachable() + " equalKeyGroups="
+                        + c.equalKeyGroups() + " reachableTieGroups=" + c.reachableTieGroups() + " m1aChangesReachableOrder="
+                        + c.m1aChangesReachableOrder() + " residualUnreachableGroups=" + c.residualGroups());
+                if (!c.detail().isEmpty()) System.out.print(c.detail());
+                System.out.println("T2 " + fqcn + " anyNameTie=" + Adr078Census.T2_ANY_TIE.get() + " spellingTie=" + Adr078Census.T2_SPELLING_TIE.get() + " residual=" + Adr078Census.T2_RESIDUAL.get() + " fullOrderChanges=" + Adr078Census.FULL_CHANGES_ORDER.get());
+                System.out.print(Adr078Census.T2_DETAIL.get());
+            } catch (Throwable e) {
+                failed++;
+                System.out.println("SKIP " + fqcn + " " + e);
+            }
+        }
+        System.out.println("TOTAL compiled=" + ok + " skipped=" + failed + " m1aChangesReachableOrder=" + changed
+                + " withReachableTies=" + ties + " withResidualUnreachableTies=" + residual);
+    }
+}

@@ -1,0 +1,92 @@
+package org.julclang.state.toolchain;
+
+import org.julclang.clientlib.JulcScriptAdapter;
+import org.julclang.compiler.*;
+import org.julclang.stdlib.StdlibRegistry;
+
+import java.nio.file.*;
+import java.util.*;
+
+/** ADR-078 M0 diagnosis: compile a .jsc as committed and after renameAll, dump PIR/UPLC. Args: outDir file.jsc [mode]. */
+public class Adr078Diag {
+    public static void main(String[] a) throws Exception {
+        Path out = Path.of(a[0]);
+        Files.createDirectories(out);
+        List<String> names = new ArrayList<>();
+        if (a.length < 2 || a[1].equals("ALL")) for (Path p : JscV2HashStabilityTest.examples()) names.add(p.getFileName().toString());
+        else names.addAll(Arrays.asList(a).subList(1, a.length));
+        for (String file : names) {
+          try { one(out, file); } catch (Throwable t) { System.out.println(file + " FAILED " + t); }
+        }
+    }
+
+    static void one(Path out, String file) throws Exception {
+        oneInner(out, file);
+    }
+
+    static void oneInner(Path out, String file) throws Exception {
+        String src = Files.readString(JscV2HashStabilityTest.DSL.resolve(file));
+        Map<String, String> variants = new LinkedHashMap<>();
+        variants.put("base", src);
+        variants.put("renamed", JscV2HashStabilityTest.rename(src, JscV2HashStabilityTest.renameAll(src)));
+        if (Boolean.getBoolean("adr078.locals")) variants.put("locals", JscV2HashStabilityTest.rename(src, JscV2HashStabilityTest.renames(src)));
+        var seqs = new ArrayList<List<String>>();
+        var d1aSeqs = new ArrayList<List<String>>();
+        for (var v : variants.entrySet()) {
+            String tag = file.replace(".jsc", "") + "-" + v.getKey();
+            Files.writeString(out.resolve(tag + ".jsc"), v.getValue());
+            var files = new LinkedHashMap<String, String>(JscV2HashStabilityTest.libraries());
+            files.put(JscV2HashStabilityTest.PKG + file, v.getValue());
+            var others = JscV2HashStabilityTest.imported(v.getValue());
+            for (String o : others) files.put(JscV2HashStabilityTest.PKG + o + ".jsc", Files.readString(JscV2HashStabilityTest.DSL.resolve(o + ".jsc")));
+            var r = Toolchain.build(files, Map.of(), JscV2HashStabilityTest.javaSources());
+            if (!r.ok()) throw new IllegalStateException(r.diagnostics().toString());
+            var c = r.contracts().stream().filter(x -> !others.contains(x.name())).toList().get(0);
+            for (var x : r.contracts()) System.out.println(tag + " contract " + x.name() + " hash " + x.scriptHash() + " size " + x.scriptSizeBytes());
+            Files.writeString(out.resolve(tag + "-validator.java"), c.validatorSource());
+            for (var g : r.generated()) Files.writeString(out.resolve(tag + "-gen-" + g.javaFile().replace('/', '_')), g.java());
+            // Reproduce step 5 of Toolchain.build with details.
+            Map<String, LibrarySource> cp = LibrarySourceResolver.scanClasspathSources(Toolchain.class.getClassLoader(), p -> {});
+            Map<String, LibrarySource> pool = new LinkedHashMap<>(cp);
+            for (String t : JscV2HashStabilityTest.javaSources().values()) {
+                var l = LibrarySourceResolver.librarySource(t);
+                if (l != null) pool.put(l.fqcn(), l);
+            }
+            for (var g : r.generated()) {
+                var l = LibrarySourceResolver.librarySource(g.java());
+                if (l != null) pool.put(l.fqcn(), l);
+            }
+            var opts = OptimizationConfiguration.apply(new CompilerOptions().setTarget(CompilerTarget.PLUTUS_V3_PV11),
+                    OptimizationLevel.DEFAULT_PROFILE_ID, null);
+            opts.setJarLibrarySources(LibrarySourceResolver.jarSourceTexts(pool, cp));
+            var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), opts);
+            var resolved = LibrarySourceResolver.resolveLibrarySources(c.validatorSource(), pool);
+            Files.writeString(out.resolve(tag + "-libs.txt"), String.join("\n", resolved.stream().map(LibrarySource::fqcn).toList()) + "\n");
+            var res = compiler.compileContractWithDetails(c.validatorSource(), resolved.stream().map(LibrarySource::source).toList()).compileResult();
+            if (res.hasErrors()) throw new IllegalStateException(res.diagnostics().toString());
+            String h = JulcScriptAdapter.scriptHash(res.program());
+            System.out.println(tag + " details-compile hash " + h + " (toolchain " + c.scriptHash() + ") size " + res.scriptSizeBytes());
+            Files.writeString(out.resolve(tag + ".uplc"), res.uplcFormatted());
+            if (Boolean.getBoolean("adr078.pir")) Files.writeString(out.resolve(tag + ".pir"), res.pirPretty());
+            var census = probe.Adr078Census.of(res.pirTerm(), c.packageName() + "." + c.validatorName());
+            seqs.add(probe.Adr078Census.FULL_SEQ.get());
+            d1aSeqs.add(probe.Adr078Census.D1A_SEQ.get());
+            System.out.println("T2 " + tag + " anyNameTie=" + probe.Adr078Census.T2_ANY_TIE.get() + " spellingTie=" + probe.Adr078Census.T2_SPELLING_TIE.get() + " residual=" + probe.Adr078Census.T2_RESIDUAL.get() + " changesOrder=" + probe.Adr078Census.FULL_CHANGES_ORDER.get());
+            System.out.print(probe.Adr078Census.T2_DETAIL.get());
+            System.out.println("CENSUS " + tag + " library=" + census.library() + " reachable=" + census.reachable()
+                    + " equalKeyGroups=" + census.equalKeyGroups() + " reachableTieGroups=" + census.reachableTieGroups()
+                    + " m1aChangesOrder=" + census.m1aChangesOrder() + " m1aChangesReachableOrder=" + census.m1aChangesReachableOrder() + " residualUnreachableGroups=" + census.residualGroups());
+            if (!census.detail().isEmpty()) System.out.print(census.detail());
+            String uplc = res.uplcFormatted();
+            var survivors = census.unreachable().stream().filter(n -> uplc.contains("(lam " + n.replace('.', '_') + " ")).toList();
+            System.out.println("DEAD-SURVIVING " + tag + " " + survivors.size() + " " + survivors);
+            var present = new java.util.HashSet<String>();
+            for (var n : probe.Adr078Census.OLD_ORDER.get()) if (uplc.contains("(lam " + n.replace('.', '_') + " ")) present.add(n);
+            boolean defaultChanges = !probe.Adr078Census.OLD_ORDER.get().stream().filter(present::contains).toList()
+                    .equals(probe.Adr078Census.FULL_ORDER.get().stream().filter(present::contains).toList());
+            System.out.println("DEFAULT-LEVEL-ORDER-CHANGE " + tag + " " + defaultChanges);
+        }
+        System.out.println("D1A-ONLY " + file + " order name-independent (base vs renamed): " + d1aSeqs.get(0).equals(d1aSeqs.get(1)));
+        System.out.println("M1A " + file + " order name-independent (base vs renamed, key@rank, T and T2): " + seqs.get(0).equals(seqs.get(1)));
+    }
+}

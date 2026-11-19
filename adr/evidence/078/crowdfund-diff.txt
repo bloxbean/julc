@@ -1,0 +1,45 @@
+# Crowdfund.jsc: binders (outermost first) of the pre21 UPLC, as committed vs after renameAll
+# Only rows whose binder differs beyond the contract rename; positions are the n-th (lam ...) in UplcPrinter output.
+69: org_julclang_state_examples_dsl_Crowdfund_contribute__orElse1  ||  org_julclang_state_examples_dsl_Zqaan_refund__orElse2
+70: org_julclang_state_examples_dsl_Crowdfund_refund__orElse2  ||  org_julclang_state_examples_dsl_Zqaan_zqaai__orElse1
+80: org_julclang_state_examples_dsl_Crowdfund_close  ||  org_julclang_state_examples_dsl_Zqaan_zqaaj
+82: org_julclang_state_examples_dsl_Crowdfund_claim  ||  org_julclang_state_examples_dsl_Zqaan_zqaak
+86: org_julclang_state_examples_dsl_Crowdfund_contribute  ||  org_julclang_state_examples_dsl_Zqaan_zqaai
+92: org_julclang_state_examples_dsl_CrowdfundValidator_onContribute  ||  org_julclang_state_examples_dsl_ZqaanValidator_onZqaai
+98: org_julclang_state_examples_dsl_CrowdfundValidator_onClaim  ||  org_julclang_state_examples_dsl_ZqaanValidator_onZqaak
+99: org_julclang_state_examples_dsl_CrowdfundValidator_onClose  ||  org_julclang_state_examples_dsl_ZqaanValidator_onZqaaj
+134: signed_creator  ||  signed_zqaag
+148: signed_creator  ||  signed_zqaag
+269: prior  ||  zqaac
+545: goal  ||  zqaae
+546: deadline  ||  zqaaf
+547: minContribution  ||  zqaad
+
+# Name-stripped UPLC (every (lam NAME -> (lam _), one token per line): the only differences
+1946c1946
+< [i33
+---
+> [i32
+2487c2487
+< [i25
+---
+> [i26
+
+# The two methods that swap (JOUST-generated Java, as committed)
+    static BigInteger contribute__orElse1(Optional<BigInteger> o__) {
+        if (o__.isPresent()) {
+            return o__.get();
+        } else {
+            return BigInteger.valueOf(0L);
+        }
+    }
+    static BigInteger refund__orElse2(Optional<BigInteger> o__) {
+        if (o__.isPresent()) {
+            return o__.get();
+        } else {
+            return BigInteger.valueOf(0L);
+        }
+    }
+# Tips.jsc: same comparison
+69: org_julclang_state_examples_dsl_Tips_claim__orElse5  ||  org_julclang_state_examples_dsl_Zqaao_zqaak__orElse2
+70: org_julclang_state_examples_dsl_Tips_credit__orElse2  ||  org_julclang_state_examples_dsl_Zqaao_zqaam__orElse5

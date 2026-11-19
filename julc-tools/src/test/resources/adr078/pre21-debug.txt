@@ -1,0 +1,460 @@
+# ADR-078 D5 debug oracle: what JuLC 0.1.0-pre21's source debugger (SourceDebugService) shows for each fixture program:
+# executable Java lines; the line:column of every Java-breakpoint stop (a breakpoint on every executable line, continue
+# to the end); the visible locals at each stop (availability{name=value, ...}); every change of Java location over all
+# steps; the final status. Produced by Adr078DebugFixtures.main on the pre21 artifacts (adr/evidence/078/m1a-pre21-recording.md).
+twins | base | executable = [14, 16, 17, 18, 19]
+twins | base | hits = [16:16, 16:16, 16:16, 17:16, 17:16, 17:16, 18:16, 18:16, 18:23, 18:23, 18:23, 18:23, 18:23, 19:1, 19:1, 19:1, 19:1, 19:1, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:1]
+twins | base | locals 0 = available{ctx=unsupportedLowering, redeemer=unsupportedLowering}
+twins | base | locals 1 = unavailable{}
+twins | base | locals 2 = unavailable{}
+twins | base | locals 3 = available{n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+twins | base | locals 4 = unavailable{}
+twins | base | locals 5 = unavailable{}
+twins | base | locals 6 = available{a=5, n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+twins | base | locals 7 = unavailable{}
+twins | base | locals 8 = available{a=5, n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+twins | base | locals 9 = unavailable{}
+twins | base | locals 10 = unavailable{}
+twins | base | locals 11 = unavailable{}
+twins | base | locals 12 = unavailable{}
+twins | base | locals 13 = available{b=0, a=5, n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+twins | base | locals 14 = available{b=0, a=5, n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+twins | base | locals 15 = unavailable{}
+twins | base | locals 16 = unavailable{}
+twins | base | locals 17 = unavailable{}
+twins | base | locals 18 = available{b=0, a=5, n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+twins | base | locals 19 = available{b=0, a=5, n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+twins | base | locals 20 = unavailable{}
+twins | base | locals 21 = unavailable{}
+twins | base | locals 22 = unavailable{}
+twins | base | locals 23 = unavailable{}
+twins | base | locals 24 = unavailable{}
+twins | base | locals 25 = unavailable{}
+twins | base | locals 26 = unavailable{}
+twins | base | locals 27 = unavailable{}
+twins | base | locals 28 = unavailable{}
+twins | base | locals 29 = unavailable{}
+twins | base | locals 30 = unavailable{}
+twins | base | locals 31 = unavailable{}
+twins | base | locals 32 = unavailable{}
+twins | base | locals 33 = unavailable{}
+twins | base | locals 34 = unavailable{}
+twins | base | locals 35 = unavailable{}
+twins | base | locals 36 = unavailable{}
+twins | base | locals 37 = unavailable{}
+twins | base | steps = [16:16, 17:16, 18:16, 18:23, 19:1, 19:8, 19:1]
+twins | base | status = success
+twins | alpha -> zeta | executable = [14, 16, 17, 18, 19]
+twins | alpha -> zeta | hits = [16:16, 16:16, 16:16, 17:16, 17:16, 17:16, 18:16, 18:16, 18:23, 18:23, 18:23, 18:23, 18:23, 19:1, 19:1, 19:1, 19:1, 19:1, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:1]
+twins | alpha -> zeta | locals 0 = available{ctx=unsupportedLowering, redeemer=unsupportedLowering}
+twins | alpha -> zeta | locals 1 = unavailable{}
+twins | alpha -> zeta | locals 2 = unavailable{}
+twins | alpha -> zeta | locals 3 = available{n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+twins | alpha -> zeta | locals 4 = unavailable{}
+twins | alpha -> zeta | locals 5 = unavailable{}
+twins | alpha -> zeta | locals 6 = available{a=5, n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+twins | alpha -> zeta | locals 7 = unavailable{}
+twins | alpha -> zeta | locals 8 = available{a=5, n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+twins | alpha -> zeta | locals 9 = unavailable{}
+twins | alpha -> zeta | locals 10 = unavailable{}
+twins | alpha -> zeta | locals 11 = unavailable{}
+twins | alpha -> zeta | locals 12 = unavailable{}
+twins | alpha -> zeta | locals 13 = available{b=0, a=5, n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+twins | alpha -> zeta | locals 14 = available{b=0, a=5, n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+twins | alpha -> zeta | locals 15 = unavailable{}
+twins | alpha -> zeta | locals 16 = unavailable{}
+twins | alpha -> zeta | locals 17 = unavailable{}
+twins | alpha -> zeta | locals 18 = available{b=0, a=5, n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+twins | alpha -> zeta | locals 19 = available{b=0, a=5, n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+twins | alpha -> zeta | locals 20 = unavailable{}
+twins | alpha -> zeta | locals 21 = unavailable{}
+twins | alpha -> zeta | locals 22 = unavailable{}
+twins | alpha -> zeta | locals 23 = unavailable{}
+twins | alpha -> zeta | locals 24 = unavailable{}
+twins | alpha -> zeta | locals 25 = unavailable{}
+twins | alpha -> zeta | locals 26 = unavailable{}
+twins | alpha -> zeta | locals 27 = unavailable{}
+twins | alpha -> zeta | locals 28 = unavailable{}
+twins | alpha -> zeta | locals 29 = unavailable{}
+twins | alpha -> zeta | locals 30 = unavailable{}
+twins | alpha -> zeta | locals 31 = unavailable{}
+twins | alpha -> zeta | locals 32 = unavailable{}
+twins | alpha -> zeta | locals 33 = unavailable{}
+twins | alpha -> zeta | locals 34 = unavailable{}
+twins | alpha -> zeta | locals 35 = unavailable{}
+twins | alpha -> zeta | locals 36 = unavailable{}
+twins | alpha -> zeta | locals 37 = unavailable{}
+twins | alpha -> zeta | steps = [16:16, 17:16, 18:16, 18:23, 19:1, 19:8, 19:1]
+twins | alpha -> zeta | status = success
+crowdfund-like | base | executable = [14, 16, 17, 18, 19]
+crowdfund-like | base | hits = [16:16, 16:16, 16:16, 17:18, 17:18, 17:18, 17:18, 17:18, 17:18, 17:18, 17:18, 17:18, 17:18, 17:18, 17:18, 17:18, 17:18, 17:18, 17:18, 17:18, 17:18, 17:35, 17:35, 17:57, 17:57, 18:20, 18:20, 18:38, 18:38, 19:1, 19:1, 19:1, 19:1, 19:1, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:1]
+crowdfund-like | base | locals 0 = available{ctx=unsupportedLowering, redeemer=unsupportedLowering}
+crowdfund-like | base | locals 1 = unavailable{}
+crowdfund-like | base | locals 2 = unavailable{}
+crowdfund-like | base | locals 3 = available{r=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+crowdfund-like | base | locals 4 = available{r=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+crowdfund-like | base | locals 5 = unavailable{}
+crowdfund-like | base | locals 6 = unavailable{}
+crowdfund-like | base | locals 7 = unavailable{}
+crowdfund-like | base | locals 8 = available{r=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+crowdfund-like | base | locals 9 = unavailable{}
+crowdfund-like | base | locals 10 = unavailable{}
+crowdfund-like | base | locals 11 = unavailable{}
+crowdfund-like | base | locals 12 = unavailable{}
+crowdfund-like | base | locals 13 = unavailable{}
+crowdfund-like | base | locals 14 = unavailable{}
+crowdfund-like | base | locals 15 = unavailable{}
+crowdfund-like | base | locals 16 = unavailable{}
+crowdfund-like | base | locals 17 = unavailable{}
+crowdfund-like | base | locals 18 = unavailable{}
+crowdfund-like | base | locals 19 = unavailable{}
+crowdfund-like | base | locals 20 = unavailable{}
+crowdfund-like | base | locals 21 = available{r=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+crowdfund-like | base | locals 22 = unavailable{}
+crowdfund-like | base | locals 23 = available{r=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+crowdfund-like | base | locals 24 = unavailable{}
+crowdfund-like | base | locals 25 = available{got=5, r=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+crowdfund-like | base | locals 26 = unavailable{}
+crowdfund-like | base | locals 27 = available{got=5, r=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+crowdfund-like | base | locals 28 = unavailable{}
+crowdfund-like | base | locals 29 = available{prior=5, got=5, r=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+crowdfund-like | base | locals 30 = available{prior=5, got=5, r=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+crowdfund-like | base | locals 31 = unavailable{}
+crowdfund-like | base | locals 32 = unavailable{}
+crowdfund-like | base | locals 33 = unavailable{}
+crowdfund-like | base | locals 34 = available{prior=5, got=5, r=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+crowdfund-like | base | locals 35 = available{prior=5, got=5, r=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+crowdfund-like | base | locals 36 = unavailable{}
+crowdfund-like | base | locals 37 = unavailable{}
+crowdfund-like | base | locals 38 = unavailable{}
+crowdfund-like | base | locals 39 = unavailable{}
+crowdfund-like | base | locals 40 = unavailable{}
+crowdfund-like | base | locals 41 = unavailable{}
+crowdfund-like | base | locals 42 = unavailable{}
+crowdfund-like | base | locals 43 = unavailable{}
+crowdfund-like | base | locals 44 = unavailable{}
+crowdfund-like | base | locals 45 = unavailable{}
+crowdfund-like | base | locals 46 = unavailable{}
+crowdfund-like | base | locals 47 = unavailable{}
+crowdfund-like | base | locals 48 = unavailable{}
+crowdfund-like | base | locals 49 = unavailable{}
+crowdfund-like | base | locals 50 = unavailable{}
+crowdfund-like | base | locals 51 = unavailable{}
+crowdfund-like | base | locals 52 = unavailable{}
+crowdfund-like | base | locals 53 = unavailable{}
+crowdfund-like | base | steps = [16:16, 17:18, 17:35, 17:57, 18:20, 18:38, 19:1, 19:8, 19:1]
+crowdfund-like | base | status = success
+crowdfund-like | contribute -> zqaai | executable = [14, 16, 17, 18, 19]
+crowdfund-like | contribute -> zqaai | hits = [16:16, 16:16, 16:16, 17:18, 17:18, 17:18, 17:18, 17:18, 17:18, 17:18, 17:18, 17:18, 17:18, 17:18, 17:18, 17:18, 17:18, 17:18, 17:18, 17:18, 17:18, 17:35, 17:35, 17:52, 17:52, 18:20, 18:20, 18:38, 18:38, 19:1, 19:1, 19:1, 19:1, 19:1, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:1]
+crowdfund-like | contribute -> zqaai | locals 0 = available{ctx=unsupportedLowering, redeemer=unsupportedLowering}
+crowdfund-like | contribute -> zqaai | locals 1 = unavailable{}
+crowdfund-like | contribute -> zqaai | locals 2 = unavailable{}
+crowdfund-like | contribute -> zqaai | locals 3 = available{r=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+crowdfund-like | contribute -> zqaai | locals 4 = available{r=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+crowdfund-like | contribute -> zqaai | locals 5 = unavailable{}
+crowdfund-like | contribute -> zqaai | locals 6 = unavailable{}
+crowdfund-like | contribute -> zqaai | locals 7 = unavailable{}
+crowdfund-like | contribute -> zqaai | locals 8 = available{r=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+crowdfund-like | contribute -> zqaai | locals 9 = unavailable{}
+crowdfund-like | contribute -> zqaai | locals 10 = unavailable{}
+crowdfund-like | contribute -> zqaai | locals 11 = unavailable{}
+crowdfund-like | contribute -> zqaai | locals 12 = unavailable{}
+crowdfund-like | contribute -> zqaai | locals 13 = unavailable{}
+crowdfund-like | contribute -> zqaai | locals 14 = unavailable{}
+crowdfund-like | contribute -> zqaai | locals 15 = unavailable{}
+crowdfund-like | contribute -> zqaai | locals 16 = unavailable{}
+crowdfund-like | contribute -> zqaai | locals 17 = unavailable{}
+crowdfund-like | contribute -> zqaai | locals 18 = unavailable{}
+crowdfund-like | contribute -> zqaai | locals 19 = unavailable{}
+crowdfund-like | contribute -> zqaai | locals 20 = unavailable{}
+crowdfund-like | contribute -> zqaai | locals 21 = available{r=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+crowdfund-like | contribute -> zqaai | locals 22 = unavailable{}
+crowdfund-like | contribute -> zqaai | locals 23 = available{r=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+crowdfund-like | contribute -> zqaai | locals 24 = unavailable{}
+crowdfund-like | contribute -> zqaai | locals 25 = available{got=5, r=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+crowdfund-like | contribute -> zqaai | locals 26 = unavailable{}
+crowdfund-like | contribute -> zqaai | locals 27 = available{got=5, r=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+crowdfund-like | contribute -> zqaai | locals 28 = unavailable{}
+crowdfund-like | contribute -> zqaai | locals 29 = available{prior=5, got=5, r=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+crowdfund-like | contribute -> zqaai | locals 30 = available{prior=5, got=5, r=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+crowdfund-like | contribute -> zqaai | locals 31 = unavailable{}
+crowdfund-like | contribute -> zqaai | locals 32 = unavailable{}
+crowdfund-like | contribute -> zqaai | locals 33 = unavailable{}
+crowdfund-like | contribute -> zqaai | locals 34 = available{prior=5, got=5, r=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+crowdfund-like | contribute -> zqaai | locals 35 = available{prior=5, got=5, r=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+crowdfund-like | contribute -> zqaai | locals 36 = unavailable{}
+crowdfund-like | contribute -> zqaai | locals 37 = unavailable{}
+crowdfund-like | contribute -> zqaai | locals 38 = unavailable{}
+crowdfund-like | contribute -> zqaai | locals 39 = unavailable{}
+crowdfund-like | contribute -> zqaai | locals 40 = unavailable{}
+crowdfund-like | contribute -> zqaai | locals 41 = unavailable{}
+crowdfund-like | contribute -> zqaai | locals 42 = unavailable{}
+crowdfund-like | contribute -> zqaai | locals 43 = unavailable{}
+crowdfund-like | contribute -> zqaai | locals 44 = unavailable{}
+crowdfund-like | contribute -> zqaai | locals 45 = unavailable{}
+crowdfund-like | contribute -> zqaai | locals 46 = unavailable{}
+crowdfund-like | contribute -> zqaai | locals 47 = unavailable{}
+crowdfund-like | contribute -> zqaai | locals 48 = unavailable{}
+crowdfund-like | contribute -> zqaai | locals 49 = unavailable{}
+crowdfund-like | contribute -> zqaai | locals 50 = unavailable{}
+crowdfund-like | contribute -> zqaai | locals 51 = unavailable{}
+crowdfund-like | contribute -> zqaai | locals 52 = unavailable{}
+crowdfund-like | contribute -> zqaai | locals 53 = unavailable{}
+crowdfund-like | contribute -> zqaai | steps = [16:16, 17:18, 17:35, 17:52, 18:20, 18:38, 19:1, 19:8, 19:1]
+crowdfund-like | contribute -> zqaai | status = success
+C11-unread-helper | base | executable = [13, 15, 17, 18, 19]
+C11-unread-helper | base | hits = [13:5, 17:16, 17:16, 17:16, 18:16, 18:16, 18:16, 19:1, 19:1, 19:1, 19:1, 19:1, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:1]
+C11-unread-helper | base | locals 0 = available{}
+C11-unread-helper | base | locals 1 = available{ctx=unsupportedLowering, redeemer=unsupportedLowering}
+C11-unread-helper | base | locals 2 = unavailable{}
+C11-unread-helper | base | locals 3 = unavailable{}
+C11-unread-helper | base | locals 4 = available{n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+C11-unread-helper | base | locals 5 = unavailable{}
+C11-unread-helper | base | locals 6 = unavailable{}
+C11-unread-helper | base | locals 7 = available{b=5, n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+C11-unread-helper | base | locals 8 = available{b=5, n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+C11-unread-helper | base | locals 9 = unavailable{}
+C11-unread-helper | base | locals 10 = unavailable{}
+C11-unread-helper | base | locals 11 = unavailable{}
+C11-unread-helper | base | locals 12 = available{b=5, n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+C11-unread-helper | base | locals 13 = unavailable{}
+C11-unread-helper | base | locals 14 = unavailable{}
+C11-unread-helper | base | locals 15 = unavailable{}
+C11-unread-helper | base | locals 16 = unavailable{}
+C11-unread-helper | base | locals 17 = unavailable{}
+C11-unread-helper | base | locals 18 = unavailable{}
+C11-unread-helper | base | locals 19 = unavailable{}
+C11-unread-helper | base | locals 20 = unavailable{}
+C11-unread-helper | base | locals 21 = unavailable{}
+C11-unread-helper | base | locals 22 = unavailable{}
+C11-unread-helper | base | locals 23 = unavailable{}
+C11-unread-helper | base | locals 24 = unavailable{}
+C11-unread-helper | base | locals 25 = unavailable{}
+C11-unread-helper | base | steps = [13:5, 17:16, 18:16, 19:1, 19:8, 19:1]
+C11-unread-helper | base | status = success
+C11-unread-helper | alpha -> zeta | executable = [13, 15, 17, 18, 19]
+C11-unread-helper | alpha -> zeta | hits = [13:5, 17:16, 17:16, 17:16, 18:16, 18:16, 18:16, 19:1, 19:1, 19:1, 19:1, 19:1, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:1]
+C11-unread-helper | alpha -> zeta | locals 0 = available{}
+C11-unread-helper | alpha -> zeta | locals 1 = available{ctx=unsupportedLowering, redeemer=unsupportedLowering}
+C11-unread-helper | alpha -> zeta | locals 2 = unavailable{}
+C11-unread-helper | alpha -> zeta | locals 3 = unavailable{}
+C11-unread-helper | alpha -> zeta | locals 4 = available{n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+C11-unread-helper | alpha -> zeta | locals 5 = unavailable{}
+C11-unread-helper | alpha -> zeta | locals 6 = unavailable{}
+C11-unread-helper | alpha -> zeta | locals 7 = available{b=5, n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+C11-unread-helper | alpha -> zeta | locals 8 = available{b=5, n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+C11-unread-helper | alpha -> zeta | locals 9 = unavailable{}
+C11-unread-helper | alpha -> zeta | locals 10 = unavailable{}
+C11-unread-helper | alpha -> zeta | locals 11 = unavailable{}
+C11-unread-helper | alpha -> zeta | locals 12 = available{b=5, n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+C11-unread-helper | alpha -> zeta | locals 13 = unavailable{}
+C11-unread-helper | alpha -> zeta | locals 14 = unavailable{}
+C11-unread-helper | alpha -> zeta | locals 15 = unavailable{}
+C11-unread-helper | alpha -> zeta | locals 16 = unavailable{}
+C11-unread-helper | alpha -> zeta | locals 17 = unavailable{}
+C11-unread-helper | alpha -> zeta | locals 18 = unavailable{}
+C11-unread-helper | alpha -> zeta | locals 19 = unavailable{}
+C11-unread-helper | alpha -> zeta | locals 20 = unavailable{}
+C11-unread-helper | alpha -> zeta | locals 21 = unavailable{}
+C11-unread-helper | alpha -> zeta | locals 22 = unavailable{}
+C11-unread-helper | alpha -> zeta | locals 23 = unavailable{}
+C11-unread-helper | alpha -> zeta | locals 24 = unavailable{}
+C11-unread-helper | alpha -> zeta | locals 25 = unavailable{}
+C11-unread-helper | alpha -> zeta | steps = [13:5, 17:16, 18:16, 19:1, 19:8, 19:1]
+C11-unread-helper | alpha -> zeta | status = success
+C12-index-width | base | executable = [14, 16, 17, 18]
+C12-index-width | base | hits = [16:10, 16:10, 16:10, 17:14, 17:14, 17:14, 17:14, 17:14, 17:14, 17:14, 17:21, 17:21, 17:21, 17:21, 17:21, 17:33, 17:21, 17:21, 17:21, 17:52, 17:52, 17:52, 18:1, 18:1, 18:1, 18:1, 18:1, 18:1, 18:1]
+C12-index-width | base | locals 0 = available{ctx=unsupportedLowering, redeemer=unsupportedLowering}
+C12-index-width | base | locals 1 = unavailable{}
+C12-index-width | base | locals 2 = unavailable{}
+C12-index-width | base | locals 3 = available{n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+C12-index-width | base | locals 4 = unavailable{}
+C12-index-width | base | locals 5 = unavailable{}
+C12-index-width | base | locals 6 = available{n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+C12-index-width | base | locals 7 = unavailable{}
+C12-index-width | base | locals 8 = unavailable{}
+C12-index-width | base | locals 9 = unavailable{}
+C12-index-width | base | locals 10 = available{n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+C12-index-width | base | locals 11 = unavailable{}
+C12-index-width | base | locals 12 = unavailable{}
+C12-index-width | base | locals 13 = unavailable{}
+C12-index-width | base | locals 14 = unavailable{}
+C12-index-width | base | locals 15 = available{n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+C12-index-width | base | locals 16 = unavailable{}
+C12-index-width | base | locals 17 = unavailable{}
+C12-index-width | base | locals 18 = unavailable{}
+C12-index-width | base | locals 19 = available{n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+C12-index-width | base | locals 20 = unavailable{}
+C12-index-width | base | locals 21 = unavailable{}
+C12-index-width | base | locals 22 = available{total=143, n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+C12-index-width | base | locals 23 = available{total=143, n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+C12-index-width | base | locals 24 = unavailable{}
+C12-index-width | base | locals 25 = unavailable{}
+C12-index-width | base | locals 26 = unavailable{}
+C12-index-width | base | locals 27 = unavailable{}
+C12-index-width | base | locals 28 = unavailable{}
+C12-index-width | base | steps = [16:10, 17:14, 17:21, 17:33, 17:21, 17:52, 18:1]
+C12-index-width | base | status = success
+C12-index-width | alpha -> zeta | executable = [14, 16, 17, 18]
+C12-index-width | alpha -> zeta | hits = [16:10, 16:10, 16:10, 17:14, 17:14, 17:14, 17:14, 17:14, 17:14, 17:14, 17:21, 17:21, 17:21, 17:21, 17:21, 17:33, 17:21, 17:21, 17:21, 17:52, 17:52, 17:52, 18:1, 18:1, 18:1, 18:1, 18:1, 18:1, 18:1]
+C12-index-width | alpha -> zeta | locals 0 = available{ctx=unsupportedLowering, redeemer=unsupportedLowering}
+C12-index-width | alpha -> zeta | locals 1 = unavailable{}
+C12-index-width | alpha -> zeta | locals 2 = unavailable{}
+C12-index-width | alpha -> zeta | locals 3 = available{n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+C12-index-width | alpha -> zeta | locals 4 = unavailable{}
+C12-index-width | alpha -> zeta | locals 5 = unavailable{}
+C12-index-width | alpha -> zeta | locals 6 = available{n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+C12-index-width | alpha -> zeta | locals 7 = unavailable{}
+C12-index-width | alpha -> zeta | locals 8 = unavailable{}
+C12-index-width | alpha -> zeta | locals 9 = unavailable{}
+C12-index-width | alpha -> zeta | locals 10 = available{n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+C12-index-width | alpha -> zeta | locals 11 = unavailable{}
+C12-index-width | alpha -> zeta | locals 12 = unavailable{}
+C12-index-width | alpha -> zeta | locals 13 = unavailable{}
+C12-index-width | alpha -> zeta | locals 14 = unavailable{}
+C12-index-width | alpha -> zeta | locals 15 = available{n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+C12-index-width | alpha -> zeta | locals 16 = unavailable{}
+C12-index-width | alpha -> zeta | locals 17 = unavailable{}
+C12-index-width | alpha -> zeta | locals 18 = unavailable{}
+C12-index-width | alpha -> zeta | locals 19 = available{n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+C12-index-width | alpha -> zeta | locals 20 = unavailable{}
+C12-index-width | alpha -> zeta | locals 21 = unavailable{}
+C12-index-width | alpha -> zeta | locals 22 = available{total=143, n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+C12-index-width | alpha -> zeta | locals 23 = available{total=143, n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+C12-index-width | alpha -> zeta | locals 24 = unavailable{}
+C12-index-width | alpha -> zeta | locals 25 = unavailable{}
+C12-index-width | alpha -> zeta | locals 26 = unavailable{}
+C12-index-width | alpha -> zeta | locals 27 = unavailable{}
+C12-index-width | alpha -> zeta | locals 28 = unavailable{}
+C12-index-width | alpha -> zeta | steps = [16:10, 17:14, 17:21, 17:33, 17:21, 17:52, 18:1]
+C12-index-width | alpha -> zeta | status = success
+static-initialiser-only | base | executable = [13, 15, 17, 18, 19]
+static-initialiser-only | base | hits = [13:33, 13:33, 13:40, 17:16, 17:16, 17:16, 18:16, 18:16, 18:16, 18:16, 18:16, 18:16, 18:16, 19:1, 19:1, 19:1, 19:1, 19:1, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:1]
+static-initialiser-only | base | locals 0 = available{}
+static-initialiser-only | base | locals 1 = unavailable{}
+static-initialiser-only | base | locals 2 = available{}
+static-initialiser-only | base | locals 3 = available{ctx=unsupportedLowering, redeemer=unsupportedLowering}
+static-initialiser-only | base | locals 4 = unavailable{}
+static-initialiser-only | base | locals 5 = unavailable{}
+static-initialiser-only | base | locals 6 = available{n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+static-initialiser-only | base | locals 7 = unavailable{}
+static-initialiser-only | base | locals 8 = unavailable{}
+static-initialiser-only | base | locals 9 = available{n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+static-initialiser-only | base | locals 10 = unavailable{}
+static-initialiser-only | base | locals 11 = unavailable{}
+static-initialiser-only | base | locals 12 = unavailable{}
+static-initialiser-only | base | locals 13 = available{a=7, n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+static-initialiser-only | base | locals 14 = available{a=7, n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+static-initialiser-only | base | locals 15 = unavailable{}
+static-initialiser-only | base | locals 16 = unavailable{}
+static-initialiser-only | base | locals 17 = unavailable{}
+static-initialiser-only | base | locals 18 = available{a=7, n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+static-initialiser-only | base | locals 19 = unavailable{}
+static-initialiser-only | base | locals 20 = unavailable{}
+static-initialiser-only | base | locals 21 = unavailable{}
+static-initialiser-only | base | locals 22 = unavailable{}
+static-initialiser-only | base | locals 23 = unavailable{}
+static-initialiser-only | base | locals 24 = unavailable{}
+static-initialiser-only | base | locals 25 = unavailable{}
+static-initialiser-only | base | locals 26 = unavailable{}
+static-initialiser-only | base | locals 27 = unavailable{}
+static-initialiser-only | base | locals 28 = unavailable{}
+static-initialiser-only | base | locals 29 = unavailable{}
+static-initialiser-only | base | locals 30 = unavailable{}
+static-initialiser-only | base | locals 31 = unavailable{}
+static-initialiser-only | base | steps = [13:33, 13:40, 17:16, 18:16, 19:1, 19:8, 19:1]
+static-initialiser-only | base | status = success
+static-initialiser-only | zeta -> aaaa | executable = [13, 15, 17, 18, 19]
+static-initialiser-only | zeta -> aaaa | hits = [13:33, 13:33, 13:40, 17:16, 17:16, 17:16, 18:16, 18:16, 18:16, 18:16, 18:16, 18:16, 18:16, 19:1, 19:1, 19:1, 19:1, 19:1, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:8, 19:1]
+static-initialiser-only | zeta -> aaaa | locals 0 = available{}
+static-initialiser-only | zeta -> aaaa | locals 1 = unavailable{}
+static-initialiser-only | zeta -> aaaa | locals 2 = available{}
+static-initialiser-only | zeta -> aaaa | locals 3 = available{ctx=unsupportedLowering, redeemer=unsupportedLowering}
+static-initialiser-only | zeta -> aaaa | locals 4 = unavailable{}
+static-initialiser-only | zeta -> aaaa | locals 5 = unavailable{}
+static-initialiser-only | zeta -> aaaa | locals 6 = available{n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+static-initialiser-only | zeta -> aaaa | locals 7 = unavailable{}
+static-initialiser-only | zeta -> aaaa | locals 8 = unavailable{}
+static-initialiser-only | zeta -> aaaa | locals 9 = available{n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+static-initialiser-only | zeta -> aaaa | locals 10 = unavailable{}
+static-initialiser-only | zeta -> aaaa | locals 11 = unavailable{}
+static-initialiser-only | zeta -> aaaa | locals 12 = unavailable{}
+static-initialiser-only | zeta -> aaaa | locals 13 = available{a=7, n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+static-initialiser-only | zeta -> aaaa | locals 14 = available{a=7, n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+static-initialiser-only | zeta -> aaaa | locals 15 = unavailable{}
+static-initialiser-only | zeta -> aaaa | locals 16 = unavailable{}
+static-initialiser-only | zeta -> aaaa | locals 17 = unavailable{}
+static-initialiser-only | zeta -> aaaa | locals 18 = available{a=7, n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+static-initialiser-only | zeta -> aaaa | locals 19 = unavailable{}
+static-initialiser-only | zeta -> aaaa | locals 20 = unavailable{}
+static-initialiser-only | zeta -> aaaa | locals 21 = unavailable{}
+static-initialiser-only | zeta -> aaaa | locals 22 = unavailable{}
+static-initialiser-only | zeta -> aaaa | locals 23 = unavailable{}
+static-initialiser-only | zeta -> aaaa | locals 24 = unavailable{}
+static-initialiser-only | zeta -> aaaa | locals 25 = unavailable{}
+static-initialiser-only | zeta -> aaaa | locals 26 = unavailable{}
+static-initialiser-only | zeta -> aaaa | locals 27 = unavailable{}
+static-initialiser-only | zeta -> aaaa | locals 28 = unavailable{}
+static-initialiser-only | zeta -> aaaa | locals 29 = unavailable{}
+static-initialiser-only | zeta -> aaaa | locals 30 = unavailable{}
+static-initialiser-only | zeta -> aaaa | locals 31 = unavailable{}
+static-initialiser-only | zeta -> aaaa | steps = [13:33, 13:40, 17:16, 18:16, 19:1, 19:8, 19:1]
+static-initialiser-only | zeta -> aaaa | status = success
+multi-purpose-opposite-first-uses | base | executable = [12, 14, 15, 16, 21, 22, 23]
+multi-purpose-opposite-first-uses | base | hits = [14:24, 14:24, 14:24, 15:24, 15:24, 15:24, 16:9, 16:9, 16:9, 16:9, 16:9, 16:16, 16:16, 16:16, 16:16, 16:16, 16:16, 16:16, 16:16, 16:16, 16:16, 16:16, 16:16, 16:16, 16:9]
+multi-purpose-opposite-first-uses | base | locals 0 = available{ctx=unsupportedLowering, redeemer=unsupportedLowering}
+multi-purpose-opposite-first-uses | base | locals 1 = unavailable{}
+multi-purpose-opposite-first-uses | base | locals 2 = unavailable{}
+multi-purpose-opposite-first-uses | base | locals 3 = available{n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+multi-purpose-opposite-first-uses | base | locals 4 = unavailable{}
+multi-purpose-opposite-first-uses | base | locals 5 = unavailable{}
+multi-purpose-opposite-first-uses | base | locals 6 = available{s=5, n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+multi-purpose-opposite-first-uses | base | locals 7 = available{s=5, n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+multi-purpose-opposite-first-uses | base | locals 8 = unavailable{}
+multi-purpose-opposite-first-uses | base | locals 9 = unavailable{}
+multi-purpose-opposite-first-uses | base | locals 10 = unavailable{}
+multi-purpose-opposite-first-uses | base | locals 11 = available{s=5, n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+multi-purpose-opposite-first-uses | base | locals 12 = unavailable{}
+multi-purpose-opposite-first-uses | base | locals 13 = unavailable{}
+multi-purpose-opposite-first-uses | base | locals 14 = unavailable{}
+multi-purpose-opposite-first-uses | base | locals 15 = unavailable{}
+multi-purpose-opposite-first-uses | base | locals 16 = unavailable{}
+multi-purpose-opposite-first-uses | base | locals 17 = unavailable{}
+multi-purpose-opposite-first-uses | base | locals 18 = unavailable{}
+multi-purpose-opposite-first-uses | base | locals 19 = unavailable{}
+multi-purpose-opposite-first-uses | base | locals 20 = unavailable{}
+multi-purpose-opposite-first-uses | base | locals 21 = unavailable{}
+multi-purpose-opposite-first-uses | base | locals 22 = unavailable{}
+multi-purpose-opposite-first-uses | base | locals 23 = unavailable{}
+multi-purpose-opposite-first-uses | base | locals 24 = unavailable{}
+multi-purpose-opposite-first-uses | base | steps = [14:24, 15:24, 16:9, 16:16, 16:9]
+multi-purpose-opposite-first-uses | base | status = success
+multi-purpose-opposite-first-uses | alpha -> zeta | executable = [12, 14, 15, 16, 21, 22, 23]
+multi-purpose-opposite-first-uses | alpha -> zeta | hits = [14:24, 14:24, 14:24, 15:24, 15:24, 15:24, 16:9, 16:9, 16:9, 16:9, 16:9, 16:16, 16:16, 16:16, 16:16, 16:16, 16:16, 16:16, 16:16, 16:16, 16:16, 16:16, 16:16, 16:16, 16:9]
+multi-purpose-opposite-first-uses | alpha -> zeta | locals 0 = available{ctx=unsupportedLowering, redeemer=unsupportedLowering}
+multi-purpose-opposite-first-uses | alpha -> zeta | locals 1 = unavailable{}
+multi-purpose-opposite-first-uses | alpha -> zeta | locals 2 = unavailable{}
+multi-purpose-opposite-first-uses | alpha -> zeta | locals 3 = available{n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+multi-purpose-opposite-first-uses | alpha -> zeta | locals 4 = unavailable{}
+multi-purpose-opposite-first-uses | alpha -> zeta | locals 5 = unavailable{}
+multi-purpose-opposite-first-uses | alpha -> zeta | locals 6 = available{s=5, n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+multi-purpose-opposite-first-uses | alpha -> zeta | locals 7 = available{s=5, n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+multi-purpose-opposite-first-uses | alpha -> zeta | locals 8 = unavailable{}
+multi-purpose-opposite-first-uses | alpha -> zeta | locals 9 = unavailable{}
+multi-purpose-opposite-first-uses | alpha -> zeta | locals 10 = unavailable{}
+multi-purpose-opposite-first-uses | alpha -> zeta | locals 11 = available{s=5, n=5, ctx=unsupportedLowering, redeemer=unsupportedLowering}
+multi-purpose-opposite-first-uses | alpha -> zeta | locals 12 = unavailable{}
+multi-purpose-opposite-first-uses | alpha -> zeta | locals 13 = unavailable{}
+multi-purpose-opposite-first-uses | alpha -> zeta | locals 14 = unavailable{}
+multi-purpose-opposite-first-uses | alpha -> zeta | locals 15 = unavailable{}
+multi-purpose-opposite-first-uses | alpha -> zeta | locals 16 = unavailable{}
+multi-purpose-opposite-first-uses | alpha -> zeta | locals 17 = unavailable{}
+multi-purpose-opposite-first-uses | alpha -> zeta | locals 18 = unavailable{}
+multi-purpose-opposite-first-uses | alpha -> zeta | locals 19 = unavailable{}
+multi-purpose-opposite-first-uses | alpha -> zeta | locals 20 = unavailable{}
+multi-purpose-opposite-first-uses | alpha -> zeta | locals 21 = unavailable{}
+multi-purpose-opposite-first-uses | alpha -> zeta | locals 22 = unavailable{}
+multi-purpose-opposite-first-uses | alpha -> zeta | locals 23 = unavailable{}
+multi-purpose-opposite-first-uses | alpha -> zeta | locals 24 = unavailable{}
+multi-purpose-opposite-first-uses | alpha -> zeta | steps = [14:24, 15:24, 16:9, 16:16, 16:9]
+multi-purpose-opposite-first-uses | alpha -> zeta | status = success

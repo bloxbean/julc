@@ -1,0 +1,61 @@
+package probe5;
+
+import org.julclang.compiler.*;
+import org.julclang.core.flat.UplcFlatEncoder;
+import org.julclang.stdlib.StdlibRegistry;
+
+import java.security.MessageDigest;
+import java.util.*;
+
+/** ADR-078 r5: Codex round-4 findings C26 and C27 against JuLC 0.1.0-pre21. */
+public class R4Probes {
+    static CompilerOptions opts(String profile, boolean sourceMap) {
+        return OptimizationConfiguration.apply(new CompilerOptions().setTarget(CompilerTarget.PLUTUS_V3_PV11).setSourceMapEnabled(sourceMap), profile, null);
+    }
+
+    static String method(String target, String m, List<String> libs, CompilerOptions o) {
+        try {
+            var r = new JulcCompiler(StdlibRegistry.defaultRegistry(), o).compileMethod(target, m, libs);
+            if (r.hasErrors()) return "ERROR " + r.diagnostics();
+            byte[] bytes = UplcFlatEncoder.encodeProgram(r.program());
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)).substring(0, 16) + " " + bytes.length + " B";
+        } catch (Exception e) {
+            return "REJECTED " + e.getClass().getSimpleName() + ": " + String.valueOf(e.getMessage()).lines().findFirst().orElse("");
+        }
+    }
+
+    public static void main(String[] args) {
+        // C26: a root that is also its own library; alpha/beta identical bodies read xs.get(0) and xs.get(1).
+        String root = """
+                package q;
+                import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+                import org.julclang.core.types.JulcList;
+                import org.julclang.stdlib.annotation.OnchainLibrary;
+                @OnchainLibrary
+                public class R {
+                    public static BigInteger alpha(JulcList<BigInteger> xs, BigInteger k) { return xs.get(0).add(xs.get(1)).add(k); }
+                    public static BigInteger beta(JulcList<BigInteger> xs, BigInteger k) { return xs.get(0).add(xs.get(1)).add(k); }
+                    public static <U> BigInteger f(PlutusData d, BigInteger k) { return alpha((JulcList<BigInteger>) (Object) d, k); }
+                }
+                """;
+        String zeta = root.replace("alpha", "zeta");
+        for (String[] m : new String[][]{{"pv11-costed", "maps"}, {"pv11-costed", ""}, {"pv11-safe", "maps"}, {"none", "maps"}}) {
+            var o = opts(m[0], !m[1].isEmpty());
+            System.out.println("C26 [" + m[0] + (m[1].isEmpty() ? "" : ", source maps") + "] alpha: " + method(root, "f", List.of(root), o)
+                    + " | zeta: " + method(zeta, "f", List.of(zeta), o));
+        }
+        var off = opts("pv11-costed", true);
+        off.disableOptimizationRule("pv11.o9.list-to-array");
+        System.out.println("C26 [pv11-costed, source maps, o9 off] alpha: " + method(root, "f", List.of(root), off) + " | zeta: " + method(zeta, "f", List.of(zeta), off));
+
+        // C27: an unnamed-package library class Math; its method renamed to a stdlib intrinsic's name.
+        String lib = "import org.julclang.stdlib.annotation.OnchainLibrary;\n@OnchainLibrary\npublic class Math {\n    public static long %s(long a) { return a < 0 ? -a : a; }\n}\n";
+        String target = "class T {\n    static long f(long x) { return Math.%s(x); }\n}\n";
+        for (String p : List.of(OptimizationLevel.DEFAULT_PROFILE_ID, "none")) {
+            var o = opts(p, false);
+            System.out.println("C27 [" + p + "] magnitude: " + method(String.format(target, "magnitude"), "f", List.of(String.format(lib, "magnitude")), o)
+                    + " | abs: " + method(String.format(target, "abs"), "f", List.of(String.format(lib, "abs")), o));
+        }
+    }
+}

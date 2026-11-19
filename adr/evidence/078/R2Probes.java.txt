@@ -1,0 +1,108 @@
+package probe3;
+
+import org.julclang.clientlib.JulcScriptAdapter;
+import org.julclang.compiler.*;
+import org.julclang.core.PlutusData;
+import org.julclang.stdlib.StdlibRegistry;
+import org.julclang.vm.*;
+import org.julclang.vm.OptimizationCostProfiles;
+
+import java.util.*;
+
+/** ADR-078 r3: reproductions of Codex round-2 findings C11-C15 against JuLC 0.1.0-pre21. */
+public class R2Probes {
+    static CompilerOptions opts(String mode) {
+        var o = OptimizationConfiguration.apply(new CompilerOptions().setTarget(CompilerTarget.PLUTUS_V3_PV11), OptimizationLevel.DEFAULT_PROFILE_ID, null);
+        if (mode.equals("none")) o.setOptimizationLevel(OptimizationLevel.NONE);
+        if (mode.equals("sourcemap")) o.setSourceMapEnabled(true);
+        return o;
+    }
+
+    static String lib(String pkg, String cls, String imports, String body) {
+        return "package " + pkg + ";\nimport java.math.BigInteger;\nimport org.julclang.core.PlutusData;\nimport org.julclang.core.types.JulcList;\nimport java.util.Optional;\n" + imports
+                + "import org.julclang.stdlib.annotation.OnchainLibrary;\n@OnchainLibrary\npublic class " + cls + " {\n" + body + "\n}\n";
+    }
+
+    static String validator(String imports, String helpers, String expr) {
+        return "package v;\nimport java.math.BigInteger;\nimport org.julclang.core.PlutusData;\nimport org.julclang.ledger.*;\n"
+                + "import org.julclang.stdlib.annotation.*;\n" + imports + "\n@SpendingValidator\nclass Probe {\n" + helpers
+                + "\n    @Entrypoint\n    static boolean validate(PlutusData datum, PlutusData redeemer, ScriptContext ctx) {\n        return " + expr + ";\n    }\n}\n";
+    }
+
+    static String hash(String mode, String v, List<String> libs) {
+        try { return hash0(mode, v, libs); } catch (RuntimeException e) { return "REJECTED " + e.getClass().getSimpleName() + ": " + e.getMessage().lines().findFirst().orElse(""); }
+    }
+
+    static String hash0(String mode, String v, List<String> libs) {
+        var r = new JulcCompiler(StdlibRegistry.defaultRegistry(), opts(mode)).compileWithDetails(v, libs);
+        if (r.hasErrors()) return "ERROR " + r.diagnostics();
+        return JulcScriptAdapter.scriptHash(r.program()).substring(0, 16) + " " + r.scriptSizeBytes() + " B";
+    }
+
+    static void pair(String name, String va, List<String> la, String vb, List<String> lb) {
+        for (String mode : List.of("default", "none", "sourcemap")) {
+            String a = hash(mode, va, la), b = hash(mode, vb, lb);
+            System.out.println(name + " [" + mode + "] " + a + " | " + b + " -> " + (a.equals(b) ? "SAME" : "DIFFERENT"));
+        }
+    }
+
+    public static void main(String[] args) throws Exception {
+        // C11: an unreachable validator helper reads one of two twins.
+        String twins = "    public static long %s(long x) { return x + 1; }\n    public static long beta(long y) { return y + 1; }\n";
+        String helper = "    static long unused(long x) { return L.%s(x); }\n";
+        pair("C11-unreachable-helper-reads-twin",
+                validator("import q.L;", String.format(helper, "alpha"), "true"), List.of(lib("q", "L", "", String.format(twins, "alpha"))),
+                validator("import q.L;", String.format(helper, "zeta"), "true"), List.of(lib("q", "L", "", String.format(twins, "zeta"))));
+
+        // C13: a cross-unit recursive type group; renaming class A to Z changes registration order.
+        String ra = "    public record R(Optional<%s.S> s) {}\n    public static boolean isR(R r) { return r.s().isPresent(); }\n";
+        String sb = "    public record S(Optional<%s.R> r) {}\n    public static boolean isS(S s) { return s.r().isPresent(); }\n";
+        pair("C13-recursive-group-class-rename",
+                validator("import q.A;\nimport q.B;", "", "A.isR(new A.R(Optional.empty())) && B.isS(new B.S(Optional.empty()))").replace("import java.math.BigInteger;", "import java.math.BigInteger;\nimport java.util.Optional;"),
+                List.of(lib("q", "A", "", String.format(ra, "B")), lib("q", "B", "", String.format(sb, "A"))),
+                validator("import q.Z;\nimport q.B;", "", "Z.isR(new Z.R(Optional.empty())) && B.isS(new B.S(Optional.empty()))").replace("import java.math.BigInteger;", "import java.math.BigInteger;\nimport java.util.Optional;"),
+                List.of(lib("q", "Z", "", String.format(ra, "B")), lib("q", "B", "", String.format(sb, "Z"))));
+
+        // C14: an interchangeable overload family; renaming one member splits the binder.
+        String fam = "    public static long inc(int x) { return x + 1; }\n    public static long %s(long x) { return x + 1; }\n";
+        pair("C14-overload-family-member-renamed",
+                validator("import q.L;", "", "L.inc(1) + L.inc(2L) > 0"), List.of(lib("q", "L", "", String.format(fam, "inc"))),
+                validator("import q.L;", "", "L.inc(1) + L.inc2(2L) > 0"), List.of(lib("q", "L", "", String.format(fam, "inc2"))));
+
+        // C15: an unreachable mutually recursive library pair (expected rejection), and a self-recursive method.
+        String mutual = "    public static long even(long n) { return n == 0 ? 1 : odd(n - 1); }\n    public static long odd(long n) { return n == 0 ? 0 : even(n - 1); }\n";
+        System.out.println("C15-unreachable-mutual-library [default] " + hash("default", validator("import q.M;", "", "true"), List.of(lib("q", "M", "", mutual))));
+        System.out.println("C15-reachable-mutual-library [default] " + hash("default", validator("import q.M;", "", "M.even(4L) > 0"), List.of(lib("q", "M", "", mutual))));
+        String self = "    public static long sum(long n) { return n <= 0 ? 0 : n + sum(n - 1); }\n";
+        System.out.println("C15-self-recursive-library [default] " + hash("default", validator("import q.M;", "", "M.sum(4L) > 0"), List.of(lib("q", "M", "", self))));
+
+        // C12: an order change moves a body across a FLAT index-width threshold and flips a size-based decision.
+        var c = new StringBuilder("    public static long c(long n, JulcList<BigInteger> xs) {\n        long v0 = n;\n");
+        for (int i = 1; i <= 121; i++) c.append("        long v").append(i).append(" = v").append(i - 1).append(" + 1;\n");
+        c.append("        return v121");
+        for (int i = 0; i < 12; i++) c.append(" + xs.head().longValue()");
+        c.append(";\n    }\n");
+        String libC = "    public static long %s(long x) { return x; }\n    public static long beta(long y) { return y; }\n" + c;
+        String target = "package v;\nimport java.math.BigInteger;\nimport org.julclang.core.types.JulcList;\nimport q.L;\nclass T {\n"
+                + "    static long f(long n) { return L.c(n, JulcList.of(BigInteger.ONE)) + L.beta(n); }\n}\n";
+        var vm = JulcVm.create();
+        var profile = OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1;
+        vm.setCostModelParams(profile.costModelParameters(), profile.target());
+        long[] cpu = new long[2];
+        int k = 0;
+        for (String name : List.of("alpha", "zeta")) {
+            var r = new JulcCompiler(StdlibRegistry.defaultRegistry(), opts("default")).compileMethod(target, "f", List.of(lib("q", "L", "", String.format(libC, name))));
+            if (r.hasErrors()) { System.out.println("C12 " + name + " ERROR " + r.diagnostics()); return; }
+            var e = vm.evaluateWithArgs(r.program(), List.of(PlutusData.integer(5)));
+            ExBudget b = switch (e) { case EvalResult.Success s -> s.consumed(); case EvalResult.Failure f -> f.consumed(); default -> null; };
+            cpu[k++] = b.cpuSteps();
+            System.out.println("C12 twin named " + name + ": " + r.scriptSizeBytes() + " B, " + e.getClass().getSimpleName() + ", cpu " + b.cpuSteps() + ", mem " + b.memoryUnits());
+        }
+        long limit = (cpu[0] + cpu[1]) / 2;
+        for (String name : List.of("alpha", "zeta")) {
+            var r = new JulcCompiler(StdlibRegistry.defaultRegistry(), opts("default")).compileMethod(target, "f", List.of(lib("q", "L", "", String.format(libC, name))));
+            var e = vm.evaluateWithArgs(r.program(), List.of(PlutusData.integer(5)), new ExBudget(limit, 14_000_000_000L));
+            System.out.println("C12 twin named " + name + " under cpu limit " + limit + ": " + e.getClass().getSimpleName());
+        }
+    }
+}
