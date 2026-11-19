@@ -58,6 +58,10 @@ class FirstUseRanksTest {
         return term;
     }
 
+    private static ValidatorAssembly.StaticField field(String name, PirTerm value) {
+        return new ValidatorAssembly.StaticField(name, value);
+    }
+
     private static Roots entries(PirTerm... entries) {
         return new Roots(List.of(), List.of(entries), List.of());
     }
@@ -91,7 +95,7 @@ class FirstUseRanksTest {
                 entries(calls("q.L.beta"), calls("q.L.alpha")), null)).getLast());
         // A static initialiser comes before the handlers.
         assertEquals("q.L.beta", names(LibraryBindingOrder.innermostFirst(twins,
-                new Roots(List.of(calls("q.L.beta")), List.of(calls("q.L.alpha")), List.of()), null)).getLast());
+                new Roots(List.of(field("v.T.S", calls("q.L.beta"))), List.of(calls("q.L.alpha")), List.of()), null)).getLast());
     }
 
     /** C22: a helper and a library copy of one name are two bindings; references resolve lexically. */
@@ -109,8 +113,36 @@ class FirstUseRanksTest {
         assertEquals(List.of(new Selection("q.H.f", false, 2, Rule.UNREAD_BY_KEY), new Selection("q.H.g", false, 3, Rule.FIRST_USE)),
                 selections.subList(2, 4));
         // A static initialiser is bound outside the helpers: its read of q.H.g is the library copy's.
-        var fromStatic = selections(library, new Roots(List.of(calls("q.H.g")), List.of(), helpers));
+        var fromStatic = selections(library, new Roots(List.of(field("v.T.S", calls("q.H.g"))), List.of(), helpers));
         assertEquals(new Selection("q.H.g", false, 0, Rule.FIRST_USE), fromStatic.getFirst());
+    }
+
+    /**
+     * reviewer1's finding 1 (ADR-078 r12): the walk sees the static fields as the assembly nests them. A static field
+     * spelled like a library method shadows it in the later initialisers, the helpers and the entry points, but not in
+     * an earlier initialiser, nor in a library body, which starts in its own defining scope.
+     */
+    @Test
+    void staticFieldsAreInScopeWhereTheAssemblyBindsThem() {
+        var twins = List.of(method("q.L.alpha", 1, List.of()), method("q.L.beta", 1, List.of()));
+        PirTerm four = new PirTerm.Const(Constant.integer(BigInteger.valueOf(4)));
+        // static q.L.alpha = 4; static use = q.L.alpha; entry: q.L.beta(use). Only beta is called.
+        var shadowed = new Roots(List.of(field("q.L.alpha", four), field("use", new PirTerm.Var("q.L.alpha", INT))),
+                List.of(new PirTerm.App(new PirTerm.Var("q.L.beta", FUN), new PirTerm.Var("use", INT))), List.of());
+        assertEquals(new Selection("q.L.beta", false, 0, Rule.FIRST_USE), selections(twins, shadowed).getFirst());
+        // The field read in the entry point and in a helper is the field too.
+        var fromEntry = new Roots(List.of(field("q.L.alpha", four)), List.of(calls("q.L.alpha", "v.T.h")),
+                List.of(new ValidatorAssembly.Method("v.T.h", body(3, List.of("q.L.alpha", "q.L.beta")))));
+        assertEquals(List.of(new Selection("v.T.h", true, 0, Rule.FIRST_USE), new Selection("q.L.beta", false, 1, Rule.FIRST_USE)),
+                selections(twins, fromEntry).subList(0, 2));
+        // An initialiser before the field reads the library method.
+        var earlier = new Roots(List.of(field("use", calls("q.L.alpha")), field("q.L.alpha", four)), List.of(calls("q.L.beta")), List.of());
+        assertEquals(new Selection("q.L.alpha", false, 0, Rule.FIRST_USE), selections(twins, earlier).getFirst());
+        // A library body does not see the validator's fields: q.L.gamma's read of q.L.alpha is the library method's.
+        var library = List.of(method("q.L.alpha", 1, List.of()), method("q.L.beta", 1, List.of()), method("q.L.gamma", 2, List.of("q.L.alpha")));
+        var throughLibrary = new Roots(List.of(field("q.L.alpha", four)), List.of(calls("q.L.gamma", "q.L.beta")), List.of());
+        assertEquals(List.of(new Selection("q.L.gamma", false, 0, Rule.FIRST_USE), new Selection("q.L.alpha", false, 1, Rule.FIRST_USE)),
+                selections(library, throughLibrary).subList(0, 2));
     }
 
     /** C11, D1a′: a helper the root does not reach ranks the library methods it reads before D1b does. */

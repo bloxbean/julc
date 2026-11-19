@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -33,10 +34,13 @@ import java.util.function.Consumer;
  *       the qualified name decides; where every one is called by another (a cycle, which the backend rejects), the
  *       smallest by content key and name is taken.</li>
  * </ul>
- * A reference resolves lexically, to the binding its name has where it occurs: a local first, then, outside a library
- * body, a validator helper, then a library method. A helper and a library copy of the same name (a root compiled as its
- * own library) are two bindings. A static initialiser is bound outside the helpers, so it sees only library methods.
- * The walk uses a work list per walked body, never the Java stack (ADR-074).
+ * A reference resolves lexically, to the binding its name has where it occurs, as the assembly nests them (outermost
+ * first: library methods, static fields in declaration order, helpers, the entry point): a local first; then, outside
+ * a library body and a static initialiser, a validator helper; then a static field in scope; then a library method.
+ * A static initialiser sees the static fields declared before it; a helper and an entry point see every static field
+ * (ADR-078 r12, reviewer1's finding 1). A library body starts in its own defining scope, outside the statics and the
+ * helpers, so it sees only library methods. A helper and a library copy of the same name (a root compiled as its own
+ * library) are two bindings. The walk uses a work list per walked body, never the Java stack (ADR-074).
  */
 final class FirstUseRanks {
 
@@ -48,7 +52,7 @@ final class FirstUseRanks {
      * decoders are not walked: each is {@code PirHelpers.wrapDecode} over the raw argument's variable, and holds no
      * reference to a method (ADR-078 D1a).
      */
-    record Roots(List<PirTerm> statics, List<PirTerm> entries, List<ValidatorAssembly.Method> helpers) {
+    record Roots(List<ValidatorAssembly.StaticField> statics, List<PirTerm> entries, List<ValidatorAssembly.Method> helpers) {
 
         /** No root: every library method is ranked by D1b. */
         static final Roots NONE = new Roots(List.of(), List.of(), List.of());
@@ -110,10 +114,15 @@ final class FirstUseRanks {
      */
     static Map<String, Integer> of(Roots roots, Map<String, LibraryMethod> methods, Map<String, String> keys,
                                    Map<String, Set<String>> dependencies, Observer observer) {
-        var walk = new Walk(roots.helpers(), methods, observer);
-        // D1a: the static initialisers see only library methods; the entry points see the helpers too.
-        for (var value : roots.statics()) walk.walk(value, true);
-        for (var entry : roots.entries()) walk.walk(entry, false);
+        var walk = new Walk(roots.helpers(), roots.statics(), methods, observer);
+        // D1a: each static initialiser sees the library methods and the statics before it; the entry points see every
+        // static and the helpers too.
+        var before = new HashSet<String>();
+        for (var field : roots.statics()) {
+            walk.walk(field.value(), true, Set.copyOf(before));
+            before.add(field.name());
+        }
+        for (var entry : roots.entries()) walk.walk(entry, false, walk.fields);
         // D1a′: the helpers the root did not reach, in the order the assembly received them.
         for (var helper : roots.helpers()) {
             if (!walk.helperRanks.containsKey(helper.name())) walk.rankHelper(helper.name(), Rule.UNREAD_HELPER);
@@ -189,13 +198,18 @@ final class FirstUseRanks {
         record Unbind(List<String> names) implements Step {}
     }
 
-    /** One body being walked: its pending steps, its locals, and whether helpers are in scope. */
-    private record Frame(ArrayDeque<Step> steps, Map<String, Integer> locals, boolean library) {
+    /**
+     * One body being walked: its pending steps, its locals, whether helpers are in scope ({@code library} false), and
+     * the static fields in scope.
+     */
+    private record Frame(ArrayDeque<Step> steps, Map<String, Integer> locals, boolean library, Set<String> fields) {
     }
 
     /** The shared state of one artifact's walk: the ranks so far and the bodies still to walk. */
     private static final class Walk {
         final Map<String, PirTerm> helperBodies = new LinkedHashMap<>();
+        /** Every static field: in scope in a helper and an entry point. */
+        final Set<String> fields;
         final Map<String, LibraryMethod> methods;
         final Observer observer;
         final Map<String, Integer> helperRanks = new HashMap<>();
@@ -204,8 +218,12 @@ final class FirstUseRanks {
         Consumer<String> onLibraryRanked = name -> { };
         int next;
 
-        Walk(Collection<ValidatorAssembly.Method> helpers, Map<String, LibraryMethod> methods, Observer observer) {
+        Walk(Collection<ValidatorAssembly.Method> helpers, Collection<ValidatorAssembly.StaticField> statics,
+             Map<String, LibraryMethod> methods, Observer observer) {
             for (var helper : helpers) helperBodies.putIfAbsent(helper.name(), helper.body());
+            var names = new HashSet<String>();
+            for (var field : statics) names.add(field.name());
+            this.fields = Set.copyOf(names);
             this.methods = methods;
             this.observer = observer;
         }
@@ -214,7 +232,7 @@ final class FirstUseRanks {
             helperRanks.put(name, next);
             if (observer != null) observer.selected(new Selection(name, true, next, rule));
             next++;
-            walk(helperBodies.get(name), false);
+            walk(helperBodies.get(name), false, fields);
         }
 
         void rankLibrary(String name, Rule rule) {
@@ -222,13 +240,13 @@ final class FirstUseRanks {
             if (observer != null) observer.selected(new Selection(name, false, next, rule));
             next++;
             onLibraryRanked.accept(name);
-            walk(methods.get(name).body(), true);
+            walk(methods.get(name).body(), true, Set.of());
         }
 
         /** Walks {@code term} to the end, and every body it reaches first, each where it is reached. */
-        void walk(PirTerm term, boolean library) {
+        void walk(PirTerm term, boolean library, Set<String> fieldsInScope) {
             int depth = frames.size();
-            push(term, library);
+            push(term, library, fieldsInScope);
             while (frames.size() > depth) {
                 var frame = frames.peek();
                 if (frame.steps().isEmpty()) {
@@ -243,10 +261,10 @@ final class FirstUseRanks {
             }
         }
 
-        private void push(PirTerm term, boolean library) {
+        private void push(PirTerm term, boolean library, Set<String> fieldsInScope) {
             var steps = new ArrayDeque<Step>();
             steps.push(new Step.Visit(term));
-            frames.push(new Frame(steps, new HashMap<>(), library));
+            frames.push(new Frame(steps, new HashMap<>(), library, fieldsInScope));
         }
 
         /** Resolves a variable, ranking the method it names at its first use; otherwise schedules the children. */
@@ -260,16 +278,18 @@ final class FirstUseRanks {
                         helperRanks.put(name, next);
                         if (observer != null) observer.selected(new Selection(name, true, next, Rule.FIRST_USE));
                         next++;
-                        push(helperBodies.get(name), false);
+                        push(helperBodies.get(name), false, fields);
                     }
                     return;
                 }
+                // A static field in scope: bound inside the library methods, it shadows one of the same name.
+                if (frame.fields().contains(name)) return;
                 if (methods.containsKey(name) && !libraryRanks.containsKey(name)) {
                     libraryRanks.put(name, next);
                     if (observer != null) observer.selected(new Selection(name, false, next, Rule.FIRST_USE));
                     next++;
                     onLibraryRanked.accept(name);
-                    push(methods.get(name).body(), true);
+                    push(methods.get(name).body(), true, Set.of());
                 }
                 return;
             }

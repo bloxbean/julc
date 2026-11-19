@@ -241,7 +241,7 @@ public final class ValidatorAssembly {
                 ? validator.entries().stream().sorted(Comparator.comparingInt(Entry::tag)).map(Entry::function).toList()
                 : List.of(validator.entries().getFirst().function());
         var sortedLibMethods = topoSortLibraryMethods(validator.libraries(),
-                new FirstUseRanks.Roots(staticValues(validator.statics()), entries, validator.helpers()), frontend.observer());
+                new FirstUseRanks.Roots(validator.statics(), entries, validator.helpers()), frontend.observer());
         if (validator.autoDispatch()) {
             handlers.replaceAll((tag, handler) -> bindLibraries(sortedLibMethods, handler, frontend, tag));
         } else {
@@ -372,7 +372,7 @@ public final class ValidatorAssembly {
         body = bindStatics(program.statics(), body, frontend);
         // 15. Wrap library methods as Let bindings (equal content keys by first use from the target, ADR-078)
         body = bindLibraries(topoSortLibraryMethods(program.libraries(), new FirstUseRanks.Roots(
-                staticValues(program.statics()), List.of(new PirTerm.Var(program.binderName(), program.type())),
+                program.statics(), List.of(new PirTerm.Var(program.binderName(), program.type())),
                 program.methods()), frontend.observer()), body, frontend, -1);
         // 16. Wrap with outer @Param lambdas
         body = bindParams(program.params(), frontend.bindProgram(body), frontend);
@@ -471,9 +471,5 @@ public final class ValidatorAssembly {
                 observer.chose(choice.key(), choice.contenders(), choice.winner());
             }
         });
-    }
-
-    private static List<PirTerm> staticValues(List<StaticField> statics) {
-        return statics.stream().map(StaticField::value).toList();
     }
 }
