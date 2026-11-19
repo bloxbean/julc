@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """ADR-077 M4: runs the bash of native-image-release.yml's steps that decide the npm gates, the build-once check, the
-create-once release assets and their final verification, and julc-wasm/src/ci/release-assets.sh, locally, with a fake
+create-once release assets and their final verification, and julc-wasm/src/ci/npm-run.sh and npm-files.sh, locally, with a fake
 `gh` (no GitHub access) and throwaway git repositories. Also checks the job graph's static facts.
 
     python3 adr/evidence/077-m4/workflow-steps-test.py        (needs PyYAML, git, bash, sha256sum or shasum)
@@ -16,7 +16,16 @@ import yaml
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 WORKFLOW_FILE = os.path.join(ROOT, '.github/workflows/native-image-release.yml')
 WORKFLOW = yaml.safe_load(open(WORKFLOW_FILE))
-RELEASE_ASSETS = os.path.join(ROOT, 'julc-wasm/src/ci/release-assets.sh')
+NPM_FILES = os.path.join(ROOT, 'julc-wasm/src/ci/npm-files.sh')
+NPM_RUN = os.path.join(ROOT, 'julc-wasm/src/ci/npm-run.sh')
+RELEASE_GUARD = os.path.join(ROOT, 'julc-wasm/src/ci/release-guard.sh')
+
+
+def release_guard(state, work):
+    """The release check every build job runs first (release-guard.sh), with a read-only token."""
+    return subprocess.run(['bash', RELEASE_GUARD, V], cwd=work, text=True, capture_output=True,
+                          env={**os.environ, 'FAKE_GH': state, 'FAKE_TOKEN': 'read', 'GH_TOKEN': 'x',
+                               'GITHUB_REPOSITORY': 'bloxbean/julc'})
 V = '0.1.0-pre22'
 TAG_SHA = 'a' * 40
 failures = 0
@@ -61,14 +70,27 @@ elif args[:2] == ['release', 'upload']:
     save()
     open(os.path.join(state, 'uploads'), 'a').write(name + '\n')
 elif args[:2] == ['attestation', 'verify']:
-    data = open(args[2], 'rb').read()
+    # Attestations are statements: {subjects: {name: sha256}, source, signer, ref, run, attempt}.
+    digest = hashlib.sha256(open(args[2], 'rb').read()).hexdigest()
     attested_file = os.path.join(state, 'attested.json')
-    att = json.load(open(attested_file)) if os.path.exists(attested_file) else {}
-    entry = att.get(hashlib.sha256(data).hexdigest())
-    if not entry: sys.stderr.write('no attestation\n'); sys.exit(1)
-    for flag, key in [('--source-digest', 'source'), ('--signer-digest', 'signer'), ('--source-ref', 'ref')]:
-        if opt(flag) is not None and opt(flag) != entry[key]:
-            sys.stderr.write(f'{flag} {opt(flag)} != {entry[key]}\n'); sys.exit(1)
+    statements = json.load(open(attested_file)) if os.path.exists(attested_file) else []
+    covering = [st for st in statements if digest in st['subjects'].values()]
+    if not covering: sys.stderr.write('no attestation\n'); sys.exit(1)
+    verified = []
+    for st in covering:
+        wrong = [f'{flag} {opt(flag)} != {st[key]}' for flag, key in [('--source-digest', 'source'),
+                 ('--signer-digest', 'signer'), ('--source-ref', 'ref')] if opt(flag) is not None and opt(flag) != st[key]]
+        if not wrong: verified.append(st)
+    if not verified: sys.stderr.write(wrong[0] + '\n'); sys.exit(1)
+    raw_file = os.path.join(state, 'verify_raw')
+    if opt('--format') == 'json' and os.path.exists(raw_file):
+        sys.stdout.write(open(raw_file).read()); sys.exit(0)
+    if opt('--format') == 'json':
+        print(json.dumps([{'verificationResult': {
+            'statement': {'subject': [{'name': n, 'digest': {'sha256': d}} for n, d in st['subjects'].items()]},
+            'signature': {'certificate': {'runInvocationURI':
+                f"https://github.com/bloxbean/julc/actions/runs/{st['run']}/attempts/{st['attempt']}"}}}}
+            for st in verified]))
     sys.exit(0)
 elif args[0] == 'api':
     if opt('-X') == 'DELETE':
@@ -83,18 +105,67 @@ elif args[0] == 'api':
         releases.append({'id': new_id, 'tag': fields['tag_name'], 'draft': fields['draft'] == 'true', 'assets': [],
                          'fields': fields})
         save(); print(new_id); sys.exit(0)
-    if url.endswith('/releases?per_page=100'):
-        tag = re.search(r'tag_name == "([^"]+)"', jq).group(1)
-        for r in visible:
-            if r['tag'] != tag: continue
-            if '.assets[].name' in jq:
-                for a in r['assets']: print(a['name'])
-            elif '(.assets | length)' in jq:
-                print(f"{r['id']} {len(r['assets'])}")
-            elif '[.id, .draft]' in jq:
-                print(f"{r['id']}\t{'true' if r['draft'] else 'false'}")
-            else: sys.exit(3)
+    if '/releases/tags/' in url:
+        tag = url.split('/releases/tags/')[1]
+        matches = [r for r in visible if r['tag'] == tag]
+        if not matches:
+            sys.stderr.write('gh: Not Found (HTTP 404)\n'); sys.exit(1)
+        if not jq:
+            print(json.dumps({'draft': matches[0]['draft'], 'assets': [{'id': a['id'], 'name': a['name'], 'state': a['state'],
+                'digest': a.get('digest')} for a in matches[0]['assets']]})); sys.exit(0)
+        for a in matches[0]['assets']:
+            print(f"{a['name']} {a['state']} {a.get('digest', '')}")
         sys.exit(0)
+    faults_file = os.path.join(state, 'faults.json')
+    faults = json.load(open(faults_file)) if os.path.exists(faults_file) else {}
+    def emit(kind, pages):
+        """Answers pages as gh api --paginate --jq does: the script's own filter, run by jq on each page."""
+        import subprocess
+        for page in pages if kind is None else faults.get('pages', {}).get(kind, pages):
+            if page == '204':  # an empty answer: nothing for jq to read
+                continue
+            if not jq:
+                print(json.dumps(page)); continue
+            done = subprocess.run(['jq', '-r', jq], input=json.dumps(page), text=True, capture_output=True)
+            if done.returncode:
+                sys.stderr.write(done.stderr); sys.exit(1)
+            sys.stdout.write(done.stdout)
+        sys.exit(0)
+    runs_file = os.path.join(state, 'runs.json')
+    runs = json.load(open(runs_file)) if os.path.exists(runs_file) else []
+    if '/actions/workflows/native-image-release.yml/runs?' in url:
+        if faults.get('runs'):
+            sys.stderr.write('gh: Server Error (HTTP 502)\n'); sys.exit(1)
+        query = dict(part.split('=', 1) for part in url.split('?', 1)[1].split('&'))
+        matching = [r for r in runs if r['event'] == query['event'] and r['head_sha'] == query['head_sha']]
+        rows = matching[:faults.get('listed', len(matching))]
+        if 'duplicate' in faults:
+            rows += [r for r in matching if r['id'] == faults['duplicate']]
+        if faults.get('malformed'):
+            rows = [{**r, 'id': 'abc'} for r in rows]
+        emit('runs', [{'total_count': faults.get('total_count', len(matching)),
+                       'workflow_runs': [{'id': r['id'], 'head_branch': r['head_branch']} for r in rows]}])
+    if '/actions/runs/' in url:
+        run = {r['id']: r for r in runs}[int(url.split('/actions/runs/')[1].split('/')[0])]
+        if '/jobs?' in url:
+            assert 'filter=all' in url
+            if run['id'] in faults.get('jobs', []):
+                sys.stderr.write('gh: Forbidden (HTTP 403)\n'); sys.exit(1)
+            emit('jobs', [{'total_count': len(run['jobs']), 'jobs': run['jobs']}])
+        if '/artifacts?name=npm-packages' in url:
+            if faults.get('artifacts'):
+                sys.stderr.write('gh: Server Error (HTTP 500)\n'); sys.exit(1)
+            artifacts = run.get('artifacts', [])
+            emit('artifacts', [{'total_count': len(artifacts), 'artifacts': artifacts}])
+        sys.exit(2)
+    if '/releases?per_page=100' in url:
+        pages = faults.get('pages', {}).get('releases', [[{'id': r['id'], 'tag_name': r['tag'], 'draft': r['draft'],
+            'assets': [{k: a.get(k) for k in ('id', 'name', 'state', 'digest')} for a in r['assets']]} for r in visible]])
+        number = re.search(r'[?&]page=(\d+)', url)
+        if number:  # one page, as release-guard.sh reads them; past the last, an empty array
+            n = int(number.group(1))
+            pages = [pages[n - 1] if n <= len(pages) else []]
+        emit(None, pages)
     if '/assets?per_page=100' in url:
         i = int(url.split('/releases/')[1].split('/')[0])
         for r in visible:
@@ -120,8 +191,17 @@ def step(job, name):
     raise KeyError(f'{job}: {name}')
 
 
+# The steps' bash is GitHub's (5.x): mapfile needs bash 4 or later, which macOS's /bin/bash (3.2) is not.
+STEP_BASH = next((b for b in ['/opt/homebrew/bin/bash', '/usr/local/bin/bash', shutil.which('bash')]
+                  if b and os.path.exists(b) and subprocess.run([b, '-c', '((BASH_VERSINFO[0] >= 4))']).returncode == 0),
+                 None)
+
+
 def run(script, env, cwd):
-    return subprocess.run(['bash', '-e', '-o', 'pipefail', '-c', script], env={**os.environ, **env}, cwd=cwd, text=True,
+    assert STEP_BASH, 'the workflow steps need bash 4 or later'
+    if not os.path.exists(os.path.join(cwd, 'julc-wasm')):  # the job's sparse checkout of julc-wasm/src/ci
+        os.symlink(os.path.join(ROOT, 'julc-wasm'), os.path.join(cwd, 'julc-wasm'))
+    return subprocess.run([STEP_BASH, '-e', '-o', 'pipefail', '-c', script], env={**os.environ, **env}, cwd=cwd, text=True,
                           capture_output=True)
 
 
@@ -147,8 +227,28 @@ def tool_dir(tmp):
 def github(tmp, releases, attested=None):
     state = tempfile.mkdtemp(dir=tmp)
     json.dump(releases, open(os.path.join(state, 'releases.json'), 'w'))
-    json.dump(attested or {}, open(os.path.join(state, 'attested.json'), 'w'))
+    json.dump(attested or [], open(os.path.join(state, 'attested.json'), 'w'))
     return state
+
+
+ARTIFACT_RUN = 777
+
+
+LABELS = ['macos-aarch64', 'linux-x86_64', 'linux-arm64', 'windows-x86_64']
+
+
+def inventory(prefix=''):
+    """The 14 files github-release attaches (R23-C16), with distinct contents."""
+    names = ([f'julc-{V}-{l}.zip' for l in LABELS] + [f'julc-playground-{V}-{l}.zip' for l in LABELS]
+             + [f'julc-compiler-all-{V}-all.jar', f'julc-vm-java-all-{V}-all.jar', FILES[3], FILES[4],
+                f'julc-playground-static-{V}.tar.gz', f'julc-wasm-{V}-SHA256SUMS.txt'])
+    return {name: f'{prefix}bytes of {name}' for name in names}
+
+
+def statement(files, run=ARTIFACT_RUN, attempt=1, **identity):
+    """One attest statement over the five npm files (as attest-build-provenance makes it: five subjects)."""
+    return {'subjects': {f: sha(files[f]) for f in FILES}, 'source': TAG_SHA, 'signer': TAG_SHA,
+            'ref': f'refs/tags/v{V}', 'run': run, 'attempt': attempt, **identity}
 
 
 sha = lambda text: hashlib.sha256(text.encode()).hexdigest()
@@ -166,6 +266,7 @@ def gates(tmp):
         repo = tempfile.mkdtemp(dir=tmp)
         subprocess.run(['git', 'init', '-q', repo], check=True)
         open(os.path.join(repo, 'gradle.properties'), 'w').write(properties)
+        shutil.copytree(os.path.join(ROOT, 'julc-wasm', 'src', 'ci'), os.path.join(repo, 'julc-wasm', 'src', 'ci'))
         subprocess.run(['git', '-C', repo, 'add', '.'], check=True)
         subprocess.run(['git', '-C', repo, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'x'], check=True)
         head = subprocess.run(['git', '-C', repo, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
@@ -190,9 +291,32 @@ def gates(tmp):
          'publish')
     case('npm_publish_extra does not count', 'refs/tags/v0.1.0',
          'version = 0.1.0\ngithub_release = true\nnpm_publish_extra = true\n', 'dry-run')
-    case('a release candidate with npm_publish = true', f'refs/tags/v{V}-rc1', props(f'{V}-rc1'), 'dry-run')
-    case('a 1.0 release candidate', 'refs/tags/v1.0.0-rc.1', props('1.0.0-rc.1'), 'dry-run')
-    case('"source" is not a candidate', 'refs/tags/v0.1.0-source1', props('0.1.0-source1'), 'publish')
+    case('a release candidate of a prerelease (-preN-rcN) with npm_publish = true', f'refs/tags/v{V}-rc1',
+         props(f'{V}-rc1'), 'dry-run')
+    case('a release candidate of a final version (-rcN) is published', 'refs/tags/v0.1.0-rc1', props('0.1.0-rc1'),
+         'publish')
+    case('a 1.0 release candidate', 'refs/tags/v1.0.0-rc2', props('1.0.0-rc2'), 'publish')
+    case('a -betaN', 'refs/tags/v0.2.0-beta1', props('0.2.0-beta1'), 'publish')
+    case('a 1.x -preN', 'refs/tags/v1.1.0-pre1', props('1.1.0-pre1'), 'publish')
+    case('a -preN-rcN with npm_publish = false', f'refs/tags/v{V}-rc2', props(f'{V}-rc2', npm='false'), 'dry-run')
+    for form in ['0.1.0-rc.1', '0.1.0-RC1', '0.1.0-beta1-rc1', '0.1.0-source1', '0.1.0-alpha1', '0.1.0-pre.22',
+                 '0.1.0-rc0', '0.1.0-preview1']:
+        case(f'{form}: no npm rule', f'refs/tags/v{form}', props(form), expect_error='npm has no rule for')
+    case('an unsupported form without a GitHub release needs no rule', 'refs/tags/v0.1.0-rc.1',
+         props('0.1.0-rc.1', gh='false'), 'none')
+    # R23-C3: the gate and the publisher classify with one function, so they agree on every input, including those a
+    # bash pattern would have let through.
+    for form in ['0.1.0+x', '01.1.0', '0.1.0-', '0.1.9007199254740993', f"0.1.0-pre{'1' * 250}", '0.1.0-pre1+build']:
+        case(f'{form[:40]}: refused like the publisher refuses it', f'refs/tags/v{form}', props(form),
+             expect_error='npm has no rule for')
+    for form, mode in [('0.1.0', 'publish'), ('0.1.0-pre22', 'publish'), ('0.1.0-beta1', 'publish'),
+                       ('0.1.0-rc1', 'publish'), ('0.1.0-pre22-rc1', 'dry-run')]:
+        decided = subprocess.run(['node', '--input-type=module', '-e',
+                                  f"import {{versionKind}} from '{os.path.join(ROOT, 'julc-wasm/src/ci/npm-release.mjs')}';"
+                                  f"console.log(versionKind('{form}'))"], text=True, capture_output=True).stdout.strip()
+        check(f'npm-gates and the publisher agree on {form}: {decided} -> {mode}',
+              (decided == 'pre-rc') == (mode == 'dry-run'))
+        case(f'{form} (the publisher says {decided})', f'refs/tags/v{form}', props(form), mode)
     case('github_release = false', f'refs/tags/v{V}', props(V, gh='false'), 'none')
     case('a dispatch from a branch', 'refs/heads/main', props(V), expect_error='runs on a release tag, not refs/heads/main',
          event='workflow_dispatch')
@@ -202,13 +326,13 @@ def gates(tmp):
 
 
 def build_once(tmp):
-    def case(label, releases, expect_ok, expect_text):
+    def case(label, releases, expect_ok, expect_text, pages=None):
         state = github(tmp, releases)
+        if pages is not None:
+            json.dump({'pages': {'releases': pages}}, open(os.path.join(state, 'faults.json'), 'w'))
         work = tempfile.mkdtemp(dir=tmp)
-        result = run(step('wasm', 'Refuse to build a released version again'),
-                     {'FAKE_GH': state, 'FAKE_TOKEN': 'read', 'VERSION': V, 'GITHUB_REPOSITORY': 'bloxbean/julc',
-                      'RUNNER_TEMP': work}, work)
-        check(f'wasm build-once: {label}',
+        result = release_guard(state, work)
+        check(f'build-once (every build job): {label}',
               (result.returncode == 0) == expect_ok and expect_text in result.stdout + result.stderr,
               result.stdout + result.stderr)
         return result
@@ -223,11 +347,39 @@ def build_once(tmp):
          'already has a GitHub release')
     case('an empty release (created, then every upload failed)', [{'id': 1, 'tag': f'v{V}', 'draft': False, 'assets': []}],
          False, 'already has a GitHub release')
+    # R23-C19: a targeted re-run of one CLI matrix job after a partial release (its zip missing) builds nothing.
+    partial = [asset(i, n, c) for i, (n, c) in enumerate(inventory().items()) if n != f'julc-{V}-windows-x86_64.zip']
+    case('a targeted re-run of the Windows CLI job, its zip missing from the release', [{'id': 1, 'tag': f'v{V}',
+         'draft': False, 'assets': partial}], False, 'already has a GitHub release')
+    # R23-C29: a malformed answer is not "no release"; an empty one is.
+    malformed = 'release list is malformed'
+    case('an empty release list (no release of any tag)', [], True, 'building', pages=[[]])
+    case('an empty answer (HTTP 204, an empty body, R23-C36)', [], False, malformed, pages=['204'])
+    others = [{'id': 1000 + i, 'tag_name': f'v9.{i}.0', 'draft': False} for i in range(100)]
+    case('a full page, then an HTTP 204 (R23-C44)', [], False, 'page 2 is not a JSON array', pages=[others, '204'])
+    case('a full page, then an empty array: no release', [], True, 'building', pages=[others, []])
+    case('a full page, then this tag\'s release on page 2', [], False, 'already has a GitHub release (id 7)',
+         pages=[others, [{'id': 7, 'tag_name': f'v{V}', 'draft': False}]])
+    case('this tag\'s release with a null draft flag', [], False, malformed,
+         pages=[[{'id': 7, 'tag_name': f'v{V}', 'draft': None}]])
+    case('this tag\'s release with id 0', [], False, malformed, pages=[[{'id': 0, 'tag_name': f'v{V}', 'draft': False}]])
+    case('the same release on two pages (R23-C48)', [], False, 'Unstable GitHub release listing',
+         pages=[others[:99] + [{'id': 7, 'tag_name': f'v{V}', 'draft': False}], [{'id': 7, 'tag_name': f'v{V}', 'draft': False}]])
+    case('100 full pages (R23-C49)', [], False, '100 full pages of GitHub releases read; end of list unconfirmed',
+         pages=[others] * 100)
+    case('a release without a tag_name ([{}])', [], False, malformed, pages=[[{}]])
+    case('a release whose tag_name is not a string', [], False, malformed, pages=[[{'id': 1, 'tag_name': 7}]])
+    case('a release whose tag_name is empty', [], False, malformed, pages=[[{'id': 1, 'tag_name': ''}]])
+    case('a malformed row on a second page, beside another tag\'s release', [], False, malformed,
+         pages=[[{'id': 1000 + i, 'tag_name': f'v9.{i}.0', 'draft': False} for i in range(100)], [{'id': 2}]])
+    case('a page that is not an array', [], False, malformed, pages=[{'message': 'Bad credentials'}])
+    case('a page that is null', [], False, malformed, pages=[None])
 
 
-def create_step(tmp, state, local, fail_upload=''):
+def create_step(tmp, state, local, fail_upload='', prepare=None):
     work = tempfile.mkdtemp(dir=tmp)
     os.makedirs(os.path.join(work, 'dist'))
+    if prepare: prepare(work)
     for name, data in local.items():
         open(os.path.join(work, 'dist', name), 'w').write(data)
     return run(step('github-release', 'Create the release once and attach its assets'),
@@ -240,9 +392,12 @@ def releases_of(state):
 
 
 def create_once(tmp):
-    def case(label, local, releases, expect_ok, expect_text, expect_deleted=(), expect_uploads=None):
+    def case(label, local, releases, expect_ok, expect_text, expect_deleted=(), expect_uploads=None, pages=None,
+             prepare=None):
         state = github(tmp, releases)
-        result, _ = create_step(tmp, state, local)
+        if pages is not None:
+            json.dump({'pages': {'releases': pages}}, open(os.path.join(state, 'faults.json'), 'w'))
+        result, _ = create_step(tmp, state, local, prepare=prepare)
         deleted_file = os.path.join(state, 'deleted')
         deleted = open(deleted_file).read().split() if os.path.exists(deleted_file) else []
         uploads_file = os.path.join(state, 'uploads')
@@ -252,92 +407,263 @@ def create_once(tmp):
               and (expect_uploads is None or uploads == expect_uploads))
         check(f'github-release create-once: {label}', ok, result.stdout + result.stderr + repr((deleted, uploads)))
         return state
-    name = FILES[2]
+    name = FILES[4]
     rel = lambda assets, draft=False, i=7: {'id': i, 'tag': f'v{V}', 'draft': draft, 'assets': assets}
-    everything = {f'julc-{V}-linux-x86_64.zip': 'Z', FILES[3]: 'D', SUMS: 'S', FILES[0]: 'A', FILES[2]: 'C'}
-    state = case('no release yet: created published, npm files first', everything, [], True, 'Created release',
-                 expect_uploads=[FILES[2], FILES[0], FILES[3], SUMS, f'julc-{V}-linux-x86_64.zip'])
+    full = inventory()
+    state = case('no release yet: created published, every file of the inventory attached once', full, [], True,
+                 'Created release', expect_uploads=sorted(full))
     created = releases_of(state)[0]
     check('github-release create-once: the release is created published, prerelease, make_latest legacy',
           created['draft'] is False and created['fields'] == {'tag_name': f'v{V}', 'name': V, 'prerelease': 'true',
                                                                 'draft': 'false', 'make_latest': 'legacy'},
           repr(created))
-    case('the same bytes already attached (digest)', {name: 'A'}, [rel([asset(5, name, 'A')])], True, 'Keeping',
-         expect_uploads=[])
-    case('the same bytes already attached (no digest field: downloaded)', {name: 'A'},
-         [rel([asset(5, name, 'A', digest=False)])], True, 'Keeping', expect_uploads=[])
-    case('other bytes already attached: stops before uploading anything', {name: 'B', 'other.zip': 'C'},
-         [rel([asset(5, name, 'A')])], False, 'already attached with other bytes', expect_uploads=[])
-    case('a failed upload placeholder (HTTP 502) is deleted and uploaded again', {name: 'A'},
+    rest = sorted(n for n in full if n != name)
+    case('the same bytes already attached (digest)', full, [rel([asset(5, name, full[name])])], True, 'Keeping',
+         expect_uploads=rest)
+    case('the same bytes already attached (no digest field: downloaded)', full,
+         [rel([asset(5, name, full[name], digest=False)])], True, 'Keeping', expect_uploads=rest)
+    case('other bytes already attached: stops before uploading anything', full, [rel([asset(5, name, 'A')])], False,
+         'already attached with other bytes', expect_uploads=[])
+    case('a failed upload placeholder (HTTP 502) is deleted and uploaded again', full,
          [rel([asset(6, name, '', state='starter', digest=False)])], True, 'failed upload', expect_deleted=[6],
-         expect_uploads=[name])
-    case('a placeholder and a differing asset', {name: 'A', 'other.zip': 'C'},
-         [rel([asset(6, name, '', state='starter', digest=False), asset(8, 'other.zip', 'D')])], False, 'other bytes',
+         expect_uploads=sorted(full))
+    case('a placeholder and a differing asset', full,
+         [rel([asset(6, name, '', state='starter', digest=False), asset(8, FILES[3], 'D')])], False, 'other bytes',
          expect_deleted=[6], expect_uploads=[])
-    case('a draft with the tag (this workflow never makes one): refused', {name: 'A'}, [rel([], draft=True)], False,
+    case('a draft with the tag (this workflow never makes one): refused', full, [rel([], draft=True)], False,
          'is a draft')
-    case('two releases (a draft too) with the tag', {name: 'A'}, [rel([], i=7), rel([], draft=True, i=8)], False,
-         '2 releases')
-    case('another tag\'s release is not this one', {name: 'B'},
+    # R23-C37: "delete it" only for a well-formed draft record; anything else stops without advice to change it.
+    stop = 'Stop: preserve the published release and its tag'
+    for label, record in [('a null draft flag', {'id': 7, 'draft': None}), ('a draft flag that is a string',
+                          {'id': 7, 'draft': 'true'}), ('no id', {'draft': True}), ('id 0', {'id': 0, 'draft': False})]:
+        case(f'a malformed release record ({label}): stop, change nothing', full, [], False, stop, expect_uploads=[],
+             pages=[[{'tag_name': f'v{V}', 'assets': [], **record}]])
+    # R23-C47: a release list that cannot be read back stops; it never counts as none.
+    def write_only(work):
+        open(os.path.join(work, 'releases.tsv'), 'w').close()
+        os.chmod(os.path.join(work, 'releases.tsv'), 0o200)
+    state = case('the listing file is unreadable: stop, nothing created', full, [], False, 'Permission denied',
+                 expect_uploads=[], prepare=write_only)
+    check('github-release create-once: the listing file is unreadable: no release created', releases_of(state) == [],
+          repr(releases_of(state)))
+    # R23-C48: one release listed twice (pages shifted while read) is an unstable listing, not two releases.
+    shifted = [{'id': 1000 + i, 'tag_name': f'v9.{i}.0', 'draft': False} for i in range(99)]
+    shifted.append({'id': 7, 'tag_name': f'v{V}', 'draft': False, 'assets': []})
+    case('a release listed on two pages: unstable listing, retry', full, [], False, 'Unstable GitHub release listing',
+         expect_uploads=[], pages=[shifted, [{'id': 7, 'tag_name': f'v{V}', 'draft': False, 'assets': []}]])
+    case('two distinct releases of the tag: resolve by hand', full, [], False, '2 distinct releases', expect_uploads=[],
+         pages=[[{'id': 7, 'tag_name': f'v{V}', 'draft': False}, {'id': 8, 'tag_name': f'v{V}', 'draft': True}]])
+    # R23-C45: the release list itself is validated before "no release" can mean "create one".
+    for label, pages in [('a sole HTTP 204', ['204']), ('an object, not an array', [{}]),
+                         ('a release without a tag_name', [[{}]])]:
+        state = case(f'{label}: stop, nothing created', full, [], False, stop, expect_uploads=[], pages=pages)
+        check(f'github-release create-once: {label}: no release created', releases_of(state) == [],
+              repr(releases_of(state)))
+    case('two releases (a draft too) with the tag', full, [rel([], i=7), rel([], draft=True, i=8)], False, '2 distinct releases')
+    case('another tag\'s release is not this one', full,
          [{'id': 3, 'tag': f'v{V}0', 'draft': False, 'assets': [asset(5, name, 'A')]}], True, 'Created release')
+    # R23-C16: the inventory, before anything is created or changed.
+    lacking = {n: c for n, c in full.items() if 'windows' not in n or 'playground' in n}
+    state = case('a CLI zip missing from the download: nothing created', lacking, [], False,
+                 f'> julc-{V}-windows-x86_64.zip', expect_uploads=[])
+    check('github-release create-once: no release is created without the inventory', releases_of(state) == [],
+          repr(releases_of(state)))
+    case('a file outside the inventory (an npm tarball): nothing created', {**full, FILES[0]: 'npm'}, [], False,
+         f'< {FILES[0]}', expect_uploads=[])
 
 
 def failed_upload_recovery(tmp):
-    """M4-C9: an upload fails (HTTP 502), a whole-workflow re-run is refused, and the release is still finished from the
-    original bytes: by re-running the failed job, or by hand from the original run's artifacts plus a dispatch."""
-    data = {f: f'bytes of {f}' for f in FILES + [SUMS]}
-    data[f'julc-{V}-linux-x86_64.zip'] = 'cli'
-    attested = {sha(data[f]): {'source': TAG_SHA, 'signer': TAG_SHA, 'ref': f'refs/tags/v{V}'} for f in FILES}
-    for recovery in ['re-run failed jobs', 'by hand after a refused full re-run']:
+    """M4-C9: an upload fails (HTTP 502) and leaves a published, incomplete release. The one recovery is "Re-run failed
+    jobs" in the original run, before any whole-workflow re-run: github-release finishes the release from the original
+    bytes, and then the npm side checks its npm files against their attestation and the finished release's archives.
+    After a whole-workflow re-run (refused in every build job) the release cannot be finished, so the version is
+    abandoned: npm is refused (here, and by npm-run.sh's github-release check, R23-F10). There is no completion by hand
+    (r23 review round 5)."""
+    npm = {f: f'bytes of {f}' for f in FILES + [SUMS]}
+    data = {**inventory(), FILES[3]: npm[FILES[3]], FILES[4]: npm[FILES[4]]}
+    attested = [statement(npm)]
+    def failed_upload():
         state = github(tmp, [], attested)
         result, _ = create_step(tmp, state, data, fail_upload=FILES[3])
         partial = releases_of(state)[0]
-        check(f'C9 ({recovery}): the upload fails and leaves a published release with a starter placeholder',
-              result.returncode != 0 and not partial['draft']
-              and any(a['state'] == 'starter' and a['name'] == FILES[3] for a in partial['assets']),
-              result.stdout + result.stderr + repr(partial))
-        work = tempfile.mkdtemp(dir=tmp)
-        rerun = run(step('wasm', 'Refuse to build a released version again'),
-                    {'FAKE_GH': state, 'FAKE_TOKEN': 'read', 'VERSION': V, 'GITHUB_REPOSITORY': 'bloxbean/julc',
-                     'RUNNER_TEMP': work}, work)
-        check(f'C9 ({recovery}): a whole-workflow re-run stops in wasm, building nothing',
-              rerun.returncode != 0 and 'already has a GitHub release' in rerun.stderr, rerun.stdout + rerun.stderr)
-        if recovery == 're-run failed jobs':
-            again, _ = create_step(tmp, state, data)
-            check('C9 (re-run failed jobs): github-release deletes the placeholder and attaches the original bytes',
-                  again.returncode == 0, again.stdout + again.stderr)
-        else:
-            # RUNBOOK.md: delete the placeholder, attach the missing files from the original run's artifacts, never
-            # replacing a completed asset.
-            rel = releases_of(state)[0]
-            for a in [a for a in rel['assets'] if a['state'] == 'starter']:
-                subprocess.run(['gh', 'api', '-X', 'DELETE', f'repos/bloxbean/julc/releases/assets/{a["id"]}'],
-                               env={**os.environ, 'FAKE_GH': state, 'FAKE_TOKEN': 'write'}, check=True)
-            names = {a['name'] for a in releases_of(state)[0]['assets']}
-            artifacts = tempfile.mkdtemp(dir=tmp)
-            for f, content in data.items():
-                if f not in names:
-                    open(os.path.join(artifacts, f), 'w').write(content)
-                    subprocess.run(['gh', 'release', 'upload', f'v{V}', os.path.join(artifacts, f), '--repo',
-                                    'bloxbean/julc'], env={**os.environ, 'FAKE_GH': state, 'FAKE_TOKEN': 'write'},
-                                   check=True)
-        final_dir = tempfile.mkdtemp(dir=tmp)
-        os.makedirs(os.path.join(final_dir, 'dist'))
-        for f, content in data.items():
-            open(os.path.join(final_dir, 'dist', f), 'w').write(content)
-        final = run(step('github-release', "Verify the release's assets"),
-                    {'FAKE_GH': state, 'FAKE_TOKEN': 'write', 'VERSION': V, 'GITHUB_REPOSITORY': 'bloxbean/julc',
-                     'RUNNER_TEMP': final_dir}, final_dir)
-        check(f'C9 ({recovery}): the release is complete with the original bytes', final.returncode == 0,
-              final.stdout + final.stderr)
-        assets_dir = tempfile.mkdtemp(dir=tmp)
-        dispatch = subprocess.run(['bash', RELEASE_ASSETS, V, os.path.join(assets_dir, 'a')], text=True,
-                                  capture_output=True,
-                                  env={**os.environ, 'FAKE_GH': state, 'FAKE_TOKEN': 'read', 'GH_TOKEN': 'x',
-                                       'GITHUB_REPOSITORY': 'bloxbean/julc', 'SOURCE_DIGEST': TAG_SHA,
-                                       'SIGNER_DIGEST': TAG_SHA})
-        check(f'C9 ({recovery}): the npm jobs (a dispatch) find and verify all six npm files', dispatch.returncode == 0,
-              dispatch.stdout + dispatch.stderr)
+        return state, result.returncode != 0 and not partial['draft'] and any(
+            a['state'] == 'starter' and a['name'] == FILES[3] for a in partial['assets']), result.stdout + result.stderr
+    files_dir = npm_dir(tmp, npm)
+
+    # Recovery before a full re-run.
+    state, ok, detail = failed_upload()
+    check('C9 (recovery): the upload fails and leaves a published release with a starter placeholder', ok, detail)
+    early = npm_files(state, files_dir)
+    check('C9 (recovery): before the release is finished, npm is refused (an archive is not public)',
+          early.returncode != 0 and 'does not attach' in early.stderr, early.stdout + early.stderr)
+    again, _ = create_step(tmp, state, data)
+    check('C9 (recovery): "Re-run failed jobs" in github-release deletes the placeholder and attaches the original bytes',
+          again.returncode == 0, again.stdout + again.stderr)
+    final_dir = tempfile.mkdtemp(dir=tmp)
+    os.makedirs(os.path.join(final_dir, 'dist'))
+    for f, content in data.items():
+        open(os.path.join(final_dir, 'dist', f), 'w').write(content)
+    final = run(step('github-release', "Verify the release's assets"),
+                {'FAKE_GH': state, 'FAKE_TOKEN': 'write', 'VERSION': V, 'GITHUB_REPOSITORY': 'bloxbean/julc',
+                 'RUNNER_TEMP': final_dir}, final_dir)
+    check('C9 (recovery): the release is complete with the original bytes, and no npm file', final.returncode == 0
+          and not any(a['name'].startswith('julclang-') or a['name'] == SUMS for a in releases_of(state)[0]['assets']),
+          final.stdout + final.stderr)
+    later = npm_files(state, files_dir)
+    check('C9 (recovery): the npm jobs verify the six npm files and the public archives', later.returncode == 0,
+          later.stdout + later.stderr)
+
+    # Abandonment after a full re-run.
+    state, ok, detail = failed_upload()
+    check('C9 (abandonment): the upload fails and leaves a published release with a starter placeholder', ok, detail)
+    rerun = release_guard(state, tempfile.mkdtemp(dir=tmp))
+    check('C9 (abandonment): a whole-workflow re-run stops in every build job, building and attaching nothing',
+          rerun.returncode != 0 and 'already has a GitHub release' in rerun.stderr
+          and any(a['state'] == 'starter' for a in releases_of(state)[0]['assets']), rerun.stdout + rerun.stderr)
+    refused = npm_files(state, files_dir)
+    check('C9 (abandonment): the incomplete release never reaches npm', refused.returncode != 0
+          and 'does not attach' in refused.stderr, refused.stdout + refused.stderr)
+
+
+def npm_dir(tmp, files):
+    """A directory holding what actions/download-artifact puts there: the npm-packages artifact's files."""
+    directory = tempfile.mkdtemp(dir=tmp)
+    for f, content in files.items():
+        open(os.path.join(directory, f), 'w').write(content)
+    return directory
+
+
+def npm_files(state, directory):
+    return subprocess.run(['bash', NPM_FILES, V, directory], text=True, capture_output=True,
+                          env={**os.environ, 'FAKE_GH': state, 'FAKE_TOKEN': 'read', 'GH_TOKEN': 'x',
+                               'GITHUB_REPOSITORY': 'bloxbean/julc', 'SOURCE_DIGEST': TAG_SHA, 'SIGNER_DIGEST': TAG_SHA,
+                               'NPM_FILES_RUN': str(ARTIFACT_RUN)})
+
+
+def npm_run_lookup(tmp):
+    """npm-run.sh: the one artifact a recovery dispatch takes the npm files from (R23-C1, R23-C2)."""
+    attest = lambda conclusion, attempt=1, i=1: {'id': i, 'name': 'Attest the npm tarballs and engine archives',
+                                                 'status': 'queued' if conclusion is None else 'completed',
+                                                 'conclusion': conclusion, 'run_attempt': attempt}
+    live = [{'id': 900, 'name': 'npm-packages', 'expired': False}]
+    def run_(i, jobs, artifacts=live, sha_=TAG_SHA, branch=f'v{V}', event='push', release='success'):
+        released = [{'id': 99, 'name': 'Create GitHub release', 'status': 'completed', 'conclusion': release}]
+        return {'id': i, 'event': event, 'head_sha': sha_, 'head_branch': branch, 'artifacts': artifacts,
+                'jobs': jobs + (released if release else [])}
+    def case(label, runs, expect=None, expect_text='', faults=None):
+        state = github(tmp, [])
+        json.dump(runs, open(os.path.join(state, 'runs.json'), 'w'))
+        json.dump(faults or {}, open(os.path.join(state, 'faults.json'), 'w'))
+        out = os.path.join(tempfile.mkdtemp(dir=tmp), 'out')
+        open(out, 'w').close()
+        result = subprocess.run(['bash', NPM_RUN, V], text=True, capture_output=True,
+                                env={**os.environ, 'FAKE_GH': state, 'FAKE_TOKEN': 'read', 'GH_TOKEN': 'x',
+                                     'GITHUB_REPOSITORY': 'bloxbean/julc', 'SOURCE_DIGEST': TAG_SHA,
+                                     'GITHUB_OUTPUT': out})
+        found = open(out).read().strip()
+        ok = (result.returncode == 0 and found == f'run_id={expect[0]}\nartifact_id={expect[1]}') if expect else (
+            result.returncode != 0 and expect_text in result.stderr and not found)
+        check(f'npm-run.sh: {label}', ok, result.stdout + result.stderr + found)
+    gone = 'are no longer available (artifacts are kept 14 days)'
+    unreadable = 'Cannot read the run history'
+    case('the tag\'s push run, attested, artifact live', [run_(11, [attest('success')])], expect=(11, 900))
+    case('attested in attempt 1, a later attempt\'s attest skipped (one artifact)',
+         [run_(12, [attest('success', 1, 1), attest('skipped', 2, 2)])], expect=(12, 900))
+    case('a failed attest in attempt 1, then a second upload attested in attempt 2: two artifacts, refused',
+         [run_(23, [attest('failure', 1, 1), attest('success', 2, 2)],
+               artifacts=[{'id': 901, 'name': 'npm-packages', 'expired': False},
+                          {'id': 902, 'name': 'npm-packages', 'expired': False}])], expect_text='2 npm-packages artifacts')
+    case('the same, the first attempt\'s artifact expired: the live one', [run_(24, [attest('failure', 1, 1),
+         attest('success', 2, 2)], artifacts=[{'id': 901, 'name': 'npm-packages', 'expired': True},
+                                              {'id': 902, 'name': 'npm-packages', 'expired': False}])], expect=(24, 902))
+    case('a second run for the tag that stopped in wasm is not chosen',
+         [run_(13, [attest('success')]), run_(14, [attest('skipped')], artifacts=[])], expect=(13, 900))
+    case('a run of another tag on the same commit is not chosen',
+         [run_(15, [attest('success')]), run_(16, [attest('success')], branch=f'v{V}-rc1')], expect=(15, 900))
+    no_run = 'No run of native-image-release.yml for the push'
+    not_yet = 'has a successful attestation yet'
+    case('no run for the tag', [], expect_text=no_run)
+    case('a run whose attest failed: not expiry, re-run it', [run_(17, [attest('failure')])], expect_text=not_yet)
+    case('a run whose attest has not run yet', [run_(32, [attest(None)])], expect_text=not_yet)
+    case('a dispatch run is not the tag\'s push run', [run_(18, [attest('success')], event='workflow_dispatch')],
+         expect_text=no_run)
+    case('a run at another commit', [run_(19, [attest('success')], sha_='b' * 40)], expect_text=no_run)
+    case('the artifact has expired (14 days)', [run_(20, [attest('success')],
+                                                    artifacts=[{'id': 1, 'name': 'npm-packages', 'expired': True}])],
+         expect_text=gone)
+    case('two attested runs: a maintainer decides', [run_(21, [attest('success')]), run_(22, [attest('success')])],
+         expect_text='Several runs')
+    case('two attested runs, one\'s jobs unreadable (HTTP 403): nothing is chosen',
+         [run_(25, [attest('success')]), run_(26, [attest('success')])], expect_text=unreadable, faults={'jobs': [26]})
+    case('the run list unreadable (HTTP 502)', [run_(27, [attest('success')])], expect_text=unreadable,
+         faults={'runs': True})
+    case('more than 1,000 runs: completeness cannot be established', [run_(28, [attest('success')])],
+         expect_text='incomplete', faults={'total_count': 1001})
+    case('fewer runs read than the total', [run_(29, [attest('success')]), run_(30, [attest('skipped')])],
+         expect_text='1 distinct of 1 rows read, 2 reported', faults={'listed': 1})
+    case('the artifact list unreadable (HTTP 500)', [run_(31, [attest('success')])], expect_text=unreadable,
+         faults={'artifacts': True})
+    case('overlapping pages: a run listed twice, the total met by rows (R23-C8)',
+         [run_(33, [attest('skipped')], artifacts=[]), run_(34, [attest('success')]), run_(35, [attest('skipped')])],
+         expect_text='inconsistent', faults={'duplicate': 34, 'listed': 2})
+    case('a malformed run id', [run_(36, [attest('success')])], expect_text='malformed', faults={'malformed': True})
+    case('a valid candidate and an unclassifiable row (id null, R23-C15)',
+         [run_(37, [attest('success')]), {**run_(38, [attest('skipped')]), 'id': None}], expect_text='malformed')
+    malformed = 'a malformed answer'
+    case('a job row with no id (R23-C22)', [run_(41, [attest('success'), {'name': 'build', 'status': 'completed',
+         'conclusion': 'success'}])], expect_text=f'the jobs of run 41: {malformed}')
+    case('a pending job (conclusion null) is fine; the attested run is chosen',
+         [run_(42, [attest('success'), {'id': 9, 'name': 'npm-verify', 'status': 'in_progress', 'conclusion': None}])],
+         expect=(42, 900))
+    case('an artifact whose expired is null is unreadable, not expiry', [run_(43, [attest('success')],
+         artifacts=[{'id': 1, 'name': 'npm-packages', 'expired': None}])], expect_text=malformed)
+    case('an artifact with no id', [run_(44, [attest('success')], artifacts=[{'name': 'npm-packages', 'expired': False}])],
+         expect_text=malformed)
+    # R23-C30: every collection read completely (shape, total_count, distinct ids), and a job's conclusion present.
+    case('a job without a conclusion field', [run_(45, [attest('success'), {'id': 5, 'name': 'build',
+         'status': 'completed'}])], expect_text=malformed)
+    case('a completed job with a null conclusion', [run_(46, [attest('success'), {'id': 5, 'name': 'build',
+         'status': 'completed', 'conclusion': None}])], expect_text=malformed)
+    case('jobs that are not an array', [run_(47, [attest('success')])], expect_text=malformed,
+         faults={'pages': {'jobs': [{'total_count': 1, 'jobs': {}}]}})
+    case('fewer jobs read than their total', [run_(48, [attest('success')])],
+         expect_text='the jobs of run 48: incomplete or inconsistent, 1 distinct of 1 rows read, 2 reported',
+         faults={'pages': {'jobs': [{'total_count': 2, 'jobs': [attest('success')]}]}})
+    case('a job listed twice (overlapping pages)', [run_(49, [attest('success')])], expect_text='inconsistent',
+         faults={'pages': {'jobs': [{'total_count': 1, 'jobs': [attest('success')]},
+                                    {'total_count': 1, 'jobs': [attest('success')]}]}})
+    case('{"total_count":1,"artifacts":[]} is unreadable, not expiry', [run_(50, [attest('success')])],
+         expect_text='the artifacts of run 50: incomplete or inconsistent, 0 distinct of 0 rows read, 1 reported',
+         faults={'pages': {'artifacts': [{'total_count': 1, 'artifacts': []}]}})
+    case('pages that disagree on the total', [run_(51, [attest('success')])], expect_text='1 and 2 reported',
+         faults={'pages': {'artifacts': [{'total_count': 1, 'artifacts': live}, {'total_count': 2, 'artifacts': []}]}})
+    case('an artifact page with no total_count', [run_(52, [attest('success')])], expect_text=malformed,
+         faults={'pages': {'artifacts': [{'artifacts': live}]}})
+    case('an artifact page that is not an object', [run_(53, [attest('success')])],
+         expect_text='Cannot read the run history needed to recover v0.1.0-pre22\'s npm publication (the artifacts of run 53)',
+         faults={'pages': {'artifacts': [live]}})
+    # R23-F10: only a complete release (its github-release succeeded) reaches npm.
+    never = 'was never completed (run {}\'s github-release did not succeed)'
+    # R23-C43: a deciding job with a conclusion outside the workflow-job enum stops recovery, even beside a selectable run.
+    case('a selectable run beside an attest job concluded startup_failure', [run_(61, [attest('success')]),
+         run_(62, [attest('startup_failure')])], expect_text=malformed)
+    case('github-release failed (an incomplete release)', [run_(55, [attest('success')], release='failure')],
+         expect_text=never.format(55))
+    case('github-release never ran', [run_(56, [attest('success')], release=None)], expect_text=never.format(56))
+    case('github-release failed in attempt 1, succeeded in attempt 2 ("Re-run failed jobs")',
+         [run_(57, [attest('success'), {'id': 98, 'name': 'Create GitHub release', 'status': 'completed',
+                                         'conclusion': 'failure'}])], expect=(57, 900))
+    # R23-C41: the deciding jobs' status and conclusion must be ones GitHub documents.
+    case('an attest job whose conclusion is an empty string', [run_(58, [attest('')])], expect_text=malformed)
+    case('an attest job with an unknown status', [run_(59, [{**attest(None), 'status': 'paused'}])],
+         expect_text=malformed)
+    case('a github-release job with an unknown conclusion', [run_(60, [attest('success')], release='succeeded')],
+         expect_text=malformed)
+    case('a run page whose workflow_runs is null', [run_(54, [attest('success')])], expect_text=malformed,
+         faults={'pages': {'runs': [{'total_count': 0, 'workflow_runs': None}]}})
+    case('a valid candidate and a row with no branch', [run_(39, [attest('success')]),
+                                                       {**run_(40, [attest('skipped')]), 'head_branch': None}],
+         expect_text='malformed')
 
 
 def ref_check(tmp):
@@ -382,56 +708,104 @@ def release_verified(tmp):
          rel([complete[0], asset(2, FILES[3], '', 'starter', False)]), False, 'state starter')
     case('an asset with other bytes', local, rel([complete[0], asset(2, FILES[3], 'X')]), False, FILES[3])
     case('no release', local, [], False, 'Expected exactly one release')
+    case('an asset that is not this run\'s file (R23-C16)', local, rel(complete + [asset(9, FILES[0], 'npm')]), False,
+         f'< {FILES[0]}')
 
 
-def release_assets(tmp):
+def npm_files_check(tmp):
     data = {f: f'bytes of {f}' for f in FILES + [SUMS]}
-    good = {sha(data[f]): {'source': TAG_SHA, 'signer': TAG_SHA, 'ref': f'refs/tags/v{V}'} for f in FILES}
-    def case(label, assets, attested, expect_ok, expect_text, draft=False):
-        state = github(tmp, [{'id': 7, 'tag': f'v{V}', 'draft': draft, 'assets': assets}], attested)
-        work = tempfile.mkdtemp(dir=tmp)
-        result = subprocess.run(['bash', RELEASE_ASSETS, V, os.path.join(work, 'assets')], text=True, capture_output=True,
-                                env={**os.environ, 'FAKE_GH': state, 'FAKE_TOKEN': 'read', 'GH_TOKEN': 'x',
-                                     'GITHUB_REPOSITORY': 'bloxbean/julc', 'SOURCE_DIGEST': TAG_SHA,
-                                     'SIGNER_DIGEST': TAG_SHA})
+    good = [statement(data)]
+    released = [asset(1, FILES[3], data[FILES[3]]), asset(2, FILES[4], data[FILES[4]]), asset(3, 'other.zip', 'z')]
+    def case(label, files, attested, expect_ok, expect_text, releases=None, raw=None):
+        state = github(tmp, releases if releases is not None
+                       else [{'id': 7, 'tag': f'v{V}', 'draft': False, 'assets': released}], attested)
+        if raw is not None: open(os.path.join(state, 'verify_raw'), 'w').write(raw)
+        result = npm_files(state, npm_dir(tmp, files))
         calls_file = os.path.join(state, 'calls')
         calls = [json.loads(line) for line in open(calls_file)] if os.path.exists(calls_file) else []
         verified = [c for c in calls if c[:2] == ['attestation', 'verify']]
         flags_ok = all('--source-digest' in c and '--signer-digest' in c and '--deny-self-hosted-runners' in c
                        and c[c.index('--signer-workflow') + 1] == 'bloxbean/julc/.github/workflows/native-image-release.yml'
-                       and c[c.index('--source-ref') + 1] == f'refs/tags/v{V}' for c in verified)
-        check(f'release-assets.sh: {label}',
-              (result.returncode == 0) == expect_ok and expect_text in result.stdout + result.stderr and flags_ok,
-              result.stdout + result.stderr + json.dumps(verified[:1]))
+                       and c[c.index('--source-ref') + 1] == f'refs/tags/v{V}' and c[c.index('--format') + 1] == 'json'
+                       for c in verified)
+        texts = expect_text if isinstance(expect_text, tuple) else (expect_text,)
+        check(f'npm-files.sh: {label}',
+              (result.returncode == 0) == expect_ok and any(t in result.stdout + result.stderr for t in texts)
+              and flags_ok, result.stdout + result.stderr + json.dumps(verified[:1]))
         return verified
-    all_assets = [asset(i, f, data[f]) for i, f in enumerate(FILES + [SUMS])]
-    verified = case('all five files and the checksum file, attested', all_assets, good, True,
-                    f'attested: julc-wasm-{V}.tar.gz')
-    check('release-assets.sh verifies the attestation of all five files',
-          sorted(os.path.basename(c[2]) for c in verified) == sorted(FILES), repr(verified))
+    verified = case('the five files and the checksum file, one attested set of this run; the archives public', data,
+                    good, True, f'public: julc-wasm-{V}.tar.gz')
+    check('npm-files.sh verifies one attestation, the first file\'s, and reads its statement',
+          [os.path.basename(c[2]) for c in verified] == [FILES[0]], repr(verified))
     for missing in FILES + [SUMS]:
-        case(f'{missing} deleted from the release', [a for a in all_assets if a['name'] != missing], good, False,
-             f'has no asset {missing}')
+        case(f'{missing} missing from the artifact', {f: c for f, c in data.items() if f != missing}, good, False,
+             f'have no {missing}')
     for replaced in FILES:
-        case(f'{replaced} replaced in the release (fails its attestation)',
-             [asset(i, f, data[f] + (' edited' if f == replaced else '')) for i, f in enumerate(FILES + [SUMS])], good,
-             False, 'no attestation')
-    case('an attestation of the same tag at another commit (--source-digest)', all_assets,
-         {k: {**v, 'source': 'b' * 40} for k, v in good.items()}, False, '--source-digest')
-    case('an attestation by another commit\'s workflow (--signer-digest)', all_assets,
-         {k: {**v, 'signer': 'c' * 40} for k, v in good.items()}, False, '--signer-digest')
-    case('an attestation for another ref', all_assets, {k: {**v, 'ref': 'refs/heads/main'} for k, v in good.items()},
-         False, '--source-ref')
-    case('a draft release is not found by the read-only token', all_assets, good, False, 'release not found', draft=True)
+        case(f'{replaced} replaced (not the attested set)',
+             {f: c + (' edited' if f == replaced else '') for f, c in data.items()}, good, False,
+             ('no attestation', 'not one attested set'))
+    case('an attestation of the same tag at another commit (--source-digest)', data, [statement(data, source='b' * 40)],
+         False, '--source-digest')
+    case('an attestation by another commit\'s workflow (--signer-digest)', data, [statement(data, signer='c' * 40)],
+         False, '--signer-digest')
+    case('an attestation for another ref', data, [statement(data, ref='refs/heads/main')], False, '--source-ref')
+    case('an attestation of another run', data, [statement(data, run=999)], False, 'not one attested set')
+    case('a run invocation with attempt 0 (R23-C14)', data, [statement(data, attempt=0)], False, 'not one attested set')
+    case('a run invocation with a trailing path', data, [statement(data, attempt='1/extra')], False,
+         'not one attested set')
+    # R23-C21: exactly one JSON array, and the attempt number anchored as the whole string.
+    case('a run invocation with a trailing newline after the attempt', data, [statement(data, attempt='1\n')], False,
+         'not one attested set')
+    one = json.dumps([{'verificationResult': {'statement': {'subject': [{'name': f, 'digest': {'sha256': sha(data[f])}}
+          for f in FILES]}, 'signature': {'certificate': {'runInvocationURI':
+          f'https://github.com/bloxbean/julc/actions/runs/{ARTIFACT_RUN}/attempts/1'}}}}])
+    case('the matching statement, given as raw output: accepted', data, good, True, 'one set', raw=one)
+    case('an empty verification output', data, good, False, 'exactly one JSON array', raw='')
+    case('two JSON documents in the verification output', data, good, False, 'exactly one JSON array', raw=one + one)
+    case('a JSON object, not an array', data, good, False, 'exactly one JSON array', raw='{}')
+    case('a run invocation of a run whose id starts with this one\'s', data, [statement(data, run=7770)], False,
+         'not one attested set')
+    # R23-C7: two attempts that signed builds with identical archives but different client and wrapper bytes.
+    other = {**data, FILES[0]: 'client of attempt 2', FILES[1]: 'vm package of attempt 2', FILES[2]: 'full of attempt 2'}
+    both = [statement(data, attempt=1), statement(other, attempt=2)]
+    mixed = {**other, FILES[0]: data[FILES[0]]}
+    case('a set mixed from two attempts\' attested files is refused', mixed, both, False, 'not one attested set')
+    case('a set mixed the other way is refused', {**data, FILES[1]: other[FILES[1]]}, both, False, 'not one attested set')
+    case('the original artifact expired and the later attempt\'s remains: one set, accepted', other, both, True,
+         'the five files are one set')
+    case('a statement with a sixth subject is not this set', data,
+         [{**statement(data), 'subjects': {**statement(data)['subjects'], 'extra.tgz': sha('x')}}], False,
+         'not one attested set')
+    case('no published release (npm gets only versions whose archives are public)', data, good, False,
+         'has no published GitHub release', releases=[])
+    case('a draft release is invisible to the read-only token', data, good, False, 'has no published GitHub release',
+         releases=[{'id': 7, 'tag': f'v{V}', 'draft': True, 'assets': released}])
+    case('the release attaches another engine archive', data, good, False, f'does not attach {FILES[4]}',
+         releases=[{'id': 7, 'tag': f'v{V}', 'draft': False,
+                    'assets': [released[0], asset(2, FILES[4], 'rebuilt'), released[2]]}])
+    case('the release lacks an engine archive', data, good, False, f'does not attach {FILES[3]}',
+         releases=[{'id': 7, 'tag': f'v{V}', 'draft': False, 'assets': released[1:]}])
 
 
 def graph():
     jobs = WORKFLOW['jobs']
     text = open(WORKFLOW_FILE).read()
-    unpinned = [line.strip() for line in text.splitlines()
-                if re.match(r'\s*(- )?uses: ', line) and not re.search(r'@[0-9a-f]{40} # v\d', line)
-                and './.github/workflows/' not in line]
-    check('every action is pinned to a full commit SHA with its version', not unpinned, '\n'.join(unpinned))
+    # This workflow and every local reusable workflow it calls (R23-C11), followed transitively.
+    files, seen = [WORKFLOW_FILE], set()
+    unpinned = []
+    while files:
+        current = files.pop()
+        if current in seen: continue
+        seen.add(current)
+        for line in open(current).read().splitlines():
+            if not re.match(r'\s*(- )?uses: ', line): continue
+            local = re.search(r'uses: (\./\.github/workflows/[^\s@]+)', line)
+            if local:
+                files.append(os.path.join(ROOT, local.group(1)))
+            elif not re.search(r'@[0-9a-f]{40} # v\d', line):
+                unpinned.append(f'{os.path.relpath(current, ROOT)}: {line.strip()}')
+    check(f'every action is pinned to a full commit SHA with its version, in {len(seen)} workflow files',
+          not unpinned and len(seen) >= 2, '\n'.join(unpinned))
     with_id_token = sorted(j for j, s in jobs.items() if (s.get('permissions') or {}).get('id-token') == 'write')
     check('only attest and npm-publish hold id-token: write', with_id_token == ['attest', 'npm-publish'],
           repr(with_id_token))
@@ -440,10 +814,36 @@ def graph():
     check('npm-publish runs only in publish mode', "outputs.mode == 'publish'" in jobs['npm-publish']['if'])
     dry = jobs['npm-dry-run']
     check('npm-dry-run: no environment, no id-token, read-only, only in dry-run mode',
-          'environment' not in dry and dry['permissions'] == {'contents': 'read', 'attestations': 'read'}
+          'environment' not in dry and dry['permissions'] == {'contents': 'read', 'attestations': 'read', 'actions': 'read'}
           and "outputs.mode == 'dry-run'" in dry['if'])
     check('npm-verify: no environment, no id-token', 'environment' not in jobs['npm-verify']
-          and jobs['npm-verify']['permissions'] == {'contents': 'read', 'attestations': 'read'})
+          and jobs['npm-verify']['permissions'] == {'contents': 'read', 'attestations': 'read', 'actions': 'read'})
+    uploads = {s['with']['name']: s['with'] for s in jobs['wasm']['steps'] if 'upload-artifact' in str(s.get('uses', ''))}
+    npm_paths = uploads['npm-packages']['path'].split('\n')[:-1]
+    check('the npm files are the npm-packages artifact, kept 14 days, and not release assets',
+          uploads['npm-packages']['retention-days'] == 14 and len(npm_paths) == 6
+          and not any('julclang-' in p or 'julc-npm-' in p for p in uploads['release-wasm']['path'].split('\n')),
+          repr(uploads))
+    release_uploads = [s['with'] for j in jobs.values() for s in j.get('steps', [])
+                       if 'upload-artifact' in str(s.get('uses', '')) and s['with']['name'].startswith('release-')]
+    check('every release-* artifact is kept 14 days (for "Re-run failed jobs" in github-release)',
+          len(release_uploads) == 4 and all(u['retention-days'] == 14 for u in release_uploads), repr(release_uploads))
+    attest_download = [s for s in jobs['attest']['steps'] if 'download-artifact' in str(s.get('uses', ''))][0]
+    check('attest attests the npm-packages artifact', attest_download['with']['name'] == 'npm-packages')
+    for job in ['npm-dry-run', 'npm-publish', 'npm-verify']:
+        names = [s.get('name') for s in jobs[job]['steps']]
+        steps_by_name = {s.get('name'): s for s in jobs[job]['steps']}
+        check(f'{job}: npm files from this run (push) or the tag\'s run (dispatch), then verified',
+              steps_by_name["Download this run's npm files"]['if'] == "github.event_name == 'push'"
+              and steps_by_name["Download the npm files of the tag's run"]['with'].get('run-id')
+              == '${{ steps.run.outputs.run_id }}'
+              and steps_by_name["Download the npm files of the tag's run"]['with'].get('artifact-ids')
+              == '${{ steps.run.outputs.artifact_id }}'
+              and steps_by_name["Download the npm files of the tag's run"]['with'].get('merge-multiple') is True
+              and 'name' not in steps_by_name["Download the npm files of the tag's run"]['with']
+              and steps_by_name['Find the run that built the npm files']['if'] == "github.event_name == 'workflow_dispatch'"
+              and names.index('Verify the npm files against their attestation and the release\'s archives')
+              > names.index("Download the npm files of the tag's run"), repr(names))
     for job in ['npm-dry-run', 'npm-publish']:
         condition = jobs[job]['if']
         check(f'{job}: a status function, no bare always(), dispatch or both prerequisites',
@@ -455,6 +855,20 @@ def graph():
     check('every build job, attest, github-release and update-homebrew run only on push',
           all("github.event_name == 'push'" in str(jobs[j].get('if', '')) for j in pushed_only))
     check('github-release needs attest', 'attest' in jobs['github-release']['needs'])
+    producers = [j for j, spec in jobs.items() if any('upload-artifact' in str(st.get('uses', '')) and (
+        str(st['with']['name']).startswith('release-') or st['with']['name'] == 'npm-packages')
+        for st in spec.get('steps', []))]
+    def guarded_first(job):
+        steps_ = jobs[job]['steps']
+        return (str(steps_[0].get('uses', '')).startswith('actions/checkout@')
+                and steps_[1].get('name') == 'Refuse to build a released version again'
+                and steps_[1]['run'].strip() == 'bash julc-wasm/src/ci/release-guard.sh "$VERSION"'
+                and jobs[job].get('env', {}).get('VERSION') == '${{ needs.validate.outputs.version }}')
+    check(f'every job that uploads a release file checks for a release itself, right after checkout '
+          f'({", ".join(sorted(producers))}, R23-C19)',
+          sorted(producers) == ['native-image', 'native-image-playground', 'shadow-jars', 'wasm']
+          and all(guarded_first(j) for j in producers), repr(producers))
+    check('no separate release-guard job (each build job checks for itself)', 'release-guard' not in jobs)
     check('no draft-first release action', 'softprops/action-gh-release' not in text)
     check('one concurrency group for every npm publication, never cancelling a running one',
           jobs['npm-publish']['concurrency'] == {'group': 'npm-publish-julclang', 'cancel-in-progress': False},
@@ -469,7 +883,7 @@ def graph():
           jobs['npm-publish']['outputs'].get('tags') == '${{ steps.publish.outputs.tags }}'
           and '--published-tags' in [s for s in jobs['npm-verify']['steps'] if s.get('name', '').startswith('Compare')][0]['run'])
     check('wasm holds contents: read only', jobs['wasm']['permissions'] == {'contents': 'read'})
-    for job in ['npm-dry-run', 'npm-publish', 'npm-verify']:
+    for job in ['npm-dry-run', 'npm-publish', 'npm-verify', 'github-release']:
         checkout = [s for s in jobs[job]['steps'] if str(s.get('uses', '')).startswith('actions/checkout@')][0]
         check(f'{job} checks out only julc-wasm/src/ci without credentials',
               checkout['with'] == {'persist-credentials': False, 'sparse-checkout': 'julc-wasm/src/ci',
@@ -488,7 +902,8 @@ def main():
     failed_upload_recovery(tmp)
     ref_check(tmp)
     release_verified(tmp)
-    release_assets(tmp)
+    npm_run_lookup(tmp)
+    npm_files_check(tmp)
     graph()
     shutil.rmtree(tmp)
     print(f'{failures} failure(s)')

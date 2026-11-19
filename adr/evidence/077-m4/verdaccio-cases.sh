@@ -5,8 +5,9 @@
 # <scratch dir> holds npm11/ (npm 11.21.1 installed with --prefix), verdaccio.npmrc (a Verdaccio user's token,
 # fetch-retries=0), real/release/ (the three tarballs, two archives and julc-npm-0.1.0-pre22-SHA256SUMS.txt) and
 # real/other/ (the same with a rebuilt client), real/newer/ and real/older/ (the same packages as 0.1.0-pre23 and
-# 0.1.0-pre21) and real/edited/ (the release with an engine archive replaced). Verdaccio's config has no uplinks, publish: $authenticated, and
-# max_body_size 10mb (V1: the full engine is refused) or 100mb (the rest).
+# 0.1.0-pre21), real/edited/ (the release with an engine archive replaced) and real/v-<version> for each version of
+# V9. Verdaccio's config has no uplinks, publish: $authenticated, and max_body_size 10mb (V1: the full engine is
+# refused) or 100mb (the rest).
 set -uo pipefail
 S=$1; CI=$2; V=0.1.0-pre22; REG=http://127.0.0.1:48731
 NPM=$S/npm11/node_modules/.bin/npm
@@ -40,4 +41,13 @@ case $3 in
       "$NPM" dist-tag rm @julclang/julc-vm-wasm release-0.1.0-pre21 --registry $REG 2>&1 | tail -1
       node "$CI/npm-verify.mjs" --dir $S/real/older --version 0.1.0-pre21 --registry $REG --no-provenance \
         --work $S/real/verify-$RANDOM --npm "$NPM" --published-tags "$tags" 2>&1 | show; echo "verify exit=${PIPESTATUS[0]}" ;;
+  # D8: 0.1.0-rc1 (next), 0.1.0 (latest), 0.2.0-pre1 (preview: a final exists), 0.2.0-beta1 (beta), 0.2.0-rc1
+  # (next), 0.2.0 (latest); each verified with the
+  # tags the run chose.
+  V9) for v in 0.1.0-rc1 0.1.0 0.2.0-pre1 0.2.0-beta1 0.2.0-rc1 0.2.0; do
+        out=$(publish $S/real/v-$v $v 2>&1); show <<< "$out"; tags=$(sed -n 's/^output tags=//p' <<< "$out")
+        versions
+        node "$CI/npm-verify.mjs" --dir $S/real/v-$v --version $v --registry $REG --no-provenance \
+          --work $S/real/verify-$RANDOM --npm "$NPM" --published-tags "$tags" 2>&1 | show; echo "verify $v exit=${PIPESTATUS[0]}"
+      done ;;
 esac

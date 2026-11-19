@@ -8,6 +8,28 @@ its own exact version.
 **Experimental.** The JavaScript API is version 0 and may change in any release before 1.0; the release notes list
 every change. JuLC is a research project: do not treat a result as proof that a contract is safe to deploy.
 
+## Versions
+
+The npm version is the JuLC release version. Dist-tags:
+
+| Install | Gets |
+|---|---|
+| `npm install @julclang/wasm-client` | `latest`: the newest `-preN` until JuLC's first final release; then the newest final release, unless that final is older than the `-preN` on `latest` (see below) |
+| `npm install @julclang/wasm-client@preview` | the newest `-preN` prerelease after a final release |
+| `npm install @julclang/wasm-client@beta` | the newest `-betaN` |
+| `npm install @julclang/wasm-client@next` | the newest release candidate of a final release (`X.Y.Z-rcN`) |
+
+- A channel (`preview`, `beta`, `next`) exists only after its first version; until then installing it fails.
+- A final release does not reset the channels, so after one a channel can name a version older than `latest`.
+- No dist-tag ever moves to an older version: a version older than the one a tag names (a backfilled first final
+  after a `-preN` on `latest`, or a `-betaN` after a `-preN` of the same `X.Y.Z`, which semver orders below it) is on a
+  `release-<major>.<minor>` or `release-<version>` tag instead. Such a backfilled final leaves `latest` on that older
+  prerelease, and later `-preN`s go to `preview`, until a final higher than it is published.
+- Pin a prerelease exactly (`"@julclang/wasm-client": "0.1.0-pre22"`): a caret range such as `^0.1.0-pre21` also
+  matches a later `0.1.0-rcN`.
+
+An application usually installs an engine package, which depends on the client of its own version.
+
 ## Requirements
 
 - Node.js 22.3.0 or later, or a browser with WebAssembly GC and exception references (tested in Chromium

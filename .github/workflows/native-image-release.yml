@@ -14,18 +14,20 @@ name: Native Image Release
 # can change the published binaries. Every action is pinned to a full commit SHA.
 #
 # The npm packages (ADR-077 D8, D8a): the wasm job packs @julclang/wasm-client, @julclang/julc-vm-wasm and
-# @julclang/julc-wasm once; attest signs them and the engine archives with this workflow's identity; github-release
-# attaches them; npm-publish publishes those release assets, verified against the attestation, with npm_publish = true
-# in gradle.properties (otherwise npm-dry-run runs the same script with npm publish --dry-run, and always for a
-# release candidate); npm-verify then checks what npm serves. A release is built once: a re-run never rebuilds it (wasm stops first). Recovery is "Re-run failed jobs" in
-# the original run, or this workflow dispatched on the release tag, which runs only npm-gates, npm-dry-run or
-# npm-publish, and npm-verify (adr/evidence/077-m4/RUNBOOK.md).
+# @julclang/julc-wasm once, into the run's npm-packages artifact (kept 14 days; the tarballs are not release assets);
+# attest signs them and the engine archives with this workflow's identity; github-release attaches the archives;
+# npm-publish publishes the artifact's tarballs, verified against the attestation and the release's archives, with
+# npm_publish = true in gradle.properties (otherwise npm-dry-run runs the same script with npm publish --dry-run, and
+# always for a release candidate of a prerelease); npm-verify then checks what npm serves. A release is built once:
+# a re-run never rebuilds it (wasm stops first). Recovery is "Re-run failed jobs" in the original run, or, within the
+# artifact's 14 days, this workflow dispatched on the release tag, which runs only npm-gates, npm-dry-run or
+# npm-publish, and npm-verify on the tag's push run's artifact (adr/evidence/077-m4/RUNBOOK.md).
 
 on:
   push:
     tags:
       - 'v*'
-  # Recovery of a release's npm publication only, on its existing, attested release assets. Dispatch it on the tag
+  # Recovery of a release's npm publication only, from the tag's push run's attested npm files. Dispatch it on the tag
   # itself: gh workflow run native-image-release.yml --ref v<version>. Any other ref is refused (npm-gates).
   workflow_dispatch:
 
@@ -130,6 +132,14 @@ jobs:
       with:
         persist-credentials: false
 
+    # ADR-077 D8a: a release is built once; this job builds nothing when the tag already has a GitHub release, even in
+    # a targeted re-run (julc-wasm/src/ci/release-guard.sh).
+    - name: Refuse to build a released version again
+      env:
+        GH_TOKEN: ${{ github.token }}
+      shell: bash
+      run: bash julc-wasm/src/ci/release-guard.sh "$VERSION"
+
     - name: Set up GraalVM JDK 25
       uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
       with:
@@ -171,7 +181,7 @@ jobs:
         name: release-cli-${{ matrix.label }}
         path: julc-${{ env.VERSION }}-${{ matrix.label }}.zip
         if-no-files-found: error
-        retention-days: 7
+        retention-days: 14
 
 
   # The browser engine (julc-tools compiled to WebAssembly, ADR-054) is platform-independent, so it is
@@ -196,34 +206,17 @@ jobs:
       sha256_full_archive: ${{ steps.npm-files.outputs.sha256_full_archive }}
 
     steps:
-    # ADR-077 D8a: a release is built once. Web Image output is not byte-identical across builds, so a whole-workflow
-    # re-run would make different bytes from those already attached (and perhaps on npm). Stop before building when
-    # the tag has a GitHub release at all. github-release creates releases published from the start, never drafts, so
-    # this read-only token sees every release it made.
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      with:
+        persist-credentials: false
+
+    # ADR-077 D8a: a release is built once; this job builds nothing when the tag already has a GitHub release, even in
+    # a targeted re-run (julc-wasm/src/ci/release-guard.sh).
     - name: Refuse to build a released version again
       env:
         GH_TOKEN: ${{ github.token }}
       shell: bash
-      run: |
-        set -euo pipefail
-        if ! releases=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
-            --jq ".[] | select(.tag_name == \"v${VERSION}\") | \"\(.id) \(.assets | length)\"" 2> "$RUNNER_TEMP/releases.err"); then
-          cat "$RUNNER_TEMP/releases.err" >&2
-          echo "::error::Could not read the GitHub releases; refusing to build without knowing." >&2
-          exit 1
-        fi
-        if [[ -z "$releases" ]]; then
-          echo "No GitHub release of v${VERSION} yet: building."
-          exit 0
-        fi
-        echo "::error::v${VERSION} already has a GitHub release (id and asset count: ${releases//$'\n'/; })." \
-          "A release is built once (ADR-077 D8a): rebuilding would make different bytes. Use 'Re-run failed jobs' in" \
-          "the original run; after a whole-workflow re-run, see 'Recovery' in adr/evidence/077-m4/RUNBOOK.md." >&2
-        exit 1
-
-    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      with:
-        persist-credentials: false
+      run: bash julc-wasm/src/ci/release-guard.sh "$VERSION"
 
     # Web Image ships with the GraalVM 25.3 innovation release. Only graalvm/setup-graalvm resolves that line
     # (actions/setup-java only sees the 25.0 LTS line); it exports GRAALVM_HOME, which the Gradle build reads.
@@ -303,8 +296,9 @@ jobs:
         test "$(jq -r .julcVersion julc-wasm/build/wasm-bundle-vm/engine.json)" = "$VERSION"
         node julc-wasm/src/test/js/engine-identity.mjs julc-wasm/build/npm . "$VERSION" | tee -a "$GITHUB_STEP_SUMMARY"
 
-    # ADR-077 D8a: the three tarballs checked above become release assets, with a checksum file over them and the two
-    # engine archives, and their digests become this job's outputs. Nothing repacks them after this step.
+    # ADR-077 D8a: the three tarballs checked above, a checksum file over them and the two engine archives, and their
+    # digests as this job's outputs. They are the npm-packages artifact, not release assets: npm is published from it.
+    # Nothing repacks them after this step.
     - name: Checksums and digests of the npm tarballs
       id: npm-files
       shell: bash
@@ -344,12 +338,25 @@ jobs:
           julc-vm-wasm-${{ env.VERSION }}.tar.gz
           julc-playground-static-${{ env.VERSION }}.tar.gz
           julc-wasm-${{ env.VERSION }}-SHA256SUMS.txt
+        if-no-files-found: error
+        retention-days: 14
+
+    # ADR-077 D8a: what npm is published from, by this run or by a recovery dispatch on the tag within 14 days (not a
+    # release asset): the three tarballs, the two engine archives (their own copies, the bytes the release attaches) and
+    # the npm checksum file over all five. attest attests the five files.
+    - name: Upload the npm files
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      with:
+        name: npm-packages
+        path: |
           julclang-wasm-client-${{ env.VERSION }}.tgz
           julclang-julc-vm-wasm-${{ env.VERSION }}.tgz
           julclang-julc-wasm-${{ env.VERSION }}.tgz
+          julc-vm-wasm-${{ env.VERSION }}.tar.gz
+          julc-wasm-${{ env.VERSION }}.tar.gz
           julc-npm-${{ env.VERSION }}-SHA256SUMS.txt
         if-no-files-found: error
-        retention-days: 7
+        retention-days: 14
 
     # What wasm-package-checks loads: the three packed packages, both bundles and the VM parity fixtures.
     - name: Upload the files the package checks use
@@ -485,6 +492,14 @@ jobs:
       with:
         persist-credentials: false
 
+    # ADR-077 D8a: a release is built once; this job builds nothing when the tag already has a GitHub release, even in
+    # a targeted re-run (julc-wasm/src/ci/release-guard.sh).
+    - name: Refuse to build a released version again
+      env:
+        GH_TOKEN: ${{ github.token }}
+      shell: bash
+      run: bash julc-wasm/src/ci/release-guard.sh "$VERSION"
+
     - name: Set up GraalVM JDK 25
       uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
       with:
@@ -539,7 +554,7 @@ jobs:
         name: release-playground-${{ matrix.label }}
         path: julc-playground-${{ env.VERSION }}-${{ matrix.label }}.zip
         if-no-files-found: error
-        retention-days: 7
+        retention-days: 14
 
   shadow-jars:
     needs: validate
@@ -548,11 +563,21 @@ jobs:
     name: Build Shadow JARs
     permissions:
       contents: read
+    env:
+      VERSION: ${{ needs.validate.outputs.version }}
 
     steps:
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       with:
         persist-credentials: false
+
+    # ADR-077 D8a: a release is built once; this job builds nothing when the tag already has a GitHub release, even in
+    # a targeted re-run (julc-wasm/src/ci/release-guard.sh).
+    - name: Refuse to build a released version again
+      env:
+        GH_TOKEN: ${{ github.token }}
+      shell: bash
+      run: bash julc-wasm/src/ci/release-guard.sh "$VERSION"
 
     - name: Set up JDK 25
       uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
@@ -578,12 +603,14 @@ jobs:
         name: release-shadow-jars
         path: shadow-dist/*.jar
         if-no-files-found: error
-        retention-days: 7
+        retention-days: 14
 
-  # ADR-077 D8a: the durable anchor of the release's npm files. A GitHub artifact attestation, signed with Sigstore
-  # under this workflow's identity at this tag, of the three npm tarballs and the two engine archives, after checking
-  # them against the wasm job's digests. Every later check (npm-publish, npm-verify, a recovery run) verifies a release
-  # asset with gh attestation verify --signer-workflow ... --source-ref refs/tags/v<version>. No build, no checkout.
+  # ADR-077 D8a: the durable anchor of the npm files. One GitHub artifact attestation (one statement, five subjects),
+  # signed with Sigstore under this workflow's identity at this tag and kept in GitHub's attestation store, of the three
+  # npm tarballs and the two engine archives, after checking them against the wasm job's digests. The npm jobs require
+  # the five files to be exactly one statement's subjects, so files of two attempts can never be mixed. Every later check (npm-dry-run, npm-publish,
+  # npm-verify, a recovery dispatch) verifies each file of the npm-packages artifact with gh attestation verify
+  # --signer-workflow ... --source-ref refs/tags/v<version> --source-digest --signer-digest. No build, no checkout.
   attest:
     needs: [validate, wasm]
     if: github.event_name == 'push' && needs.validate.outputs.github_release == 'true'
@@ -595,10 +622,10 @@ jobs:
     env:
       VERSION: ${{ needs.validate.outputs.version }}
     steps:
-    - name: Download the wasm job's release files
+    - name: Download the wasm job's npm files
       uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
       with:
-        name: release-wasm
+        name: npm-packages
         path: dist
 
     - name: Check them against the wasm job's digests
@@ -644,6 +671,13 @@ jobs:
     env:
       VERSION: ${{ needs.validate.outputs.version }}
     steps:
+    # Only julc-wasm/src/ci (release-owner reviewed): release-guard.sh's validated reading of the release list.
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      with:
+        persist-credentials: false
+        sparse-checkout: julc-wasm/src/ci
+        sparse-checkout-cone-mode: false
+
     - name: Download release assets
       uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
       with:
@@ -658,8 +692,9 @@ jobs:
     # invisible to the read-only tokens of the build-once check and the npm jobs, and GET /releases/tags never returns
     # one). Then each file is attached unless it already is: a completed asset (state "uploaded") with the same bytes is
     # kept, one with other bytes stops the job before anything is uploaded, and a failed upload's placeholder (state
-    # "starter", which an HTTP 502 can leave) is deleted and uploaded again. The npm files go first. Uploading to a
-    # published release needs the repository's immutable releases off (they are, 2026-11-17).
+    # "starter", which an HTTP 502 can leave) is deleted and uploaded again. The npm files are not release assets: npm
+    # is published from the run's npm-packages artifact. Uploading to a published release needs the repository's
+    # immutable releases off (they are, 2026-11-17).
     - name: Create the release once and attach its assets
       env:
         GH_TOKEN: ${{ github.token }}
@@ -667,18 +702,35 @@ jobs:
       shell: bash
       run: |
         set -euo pipefail
-        gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
-          --jq ".[] | select(.tag_name == \"v${VERSION}\") | [.id, .draft] | @tsv" > "$RUNNER_TEMP/releases.tsv"
-        count=$(wc -l < "$RUNNER_TEMP/releases.tsv" | tr -d ' ')
+        # The release's inventory (14 files): exactly these, no more and none missing, before anything is created.
+        for label in macos-aarch64 linux-x86_64 linux-arm64 windows-x86_64; do
+          echo "julc-${VERSION}-${label}.zip"; echo "julc-playground-${VERSION}-${label}.zip"
+        done > "$RUNNER_TEMP/inventory.txt"
+        printf '%s\n' "julc-compiler-all-${VERSION}-all.jar" "julc-vm-java-all-${VERSION}-all.jar" \
+          "julc-wasm-${VERSION}.tar.gz" "julc-vm-wasm-${VERSION}.tar.gz" "julc-playground-static-${VERSION}.tar.gz" \
+          "julc-wasm-${VERSION}-SHA256SUMS.txt" >> "$RUNNER_TEMP/inventory.txt"
+        if ! diff <(find dist -mindepth 1 -maxdepth 1 -type f -exec basename {} \; | sort) \
+            <(sort "$RUNNER_TEMP/inventory.txt") > "$RUNNER_TEMP/inventory.diff"; then
+          echo "::error::The downloaded release files are not the release's inventory (< not in it, > missing):" >&2
+          cat "$RUNNER_TEMP/inventory.diff" >&2
+          exit 1
+        fi
+        # The tag's releases, from a reading that validates every page and record first (R23-C45): a malformed
+        # answer stops here, never reads as "no release".
+        bash julc-wasm/src/ci/release-guard.sh "$VERSION" --list > "$RUNNER_TEMP/releases.tsv"
+        # An unreadable file stops here (set -e), never counts as none (R23-C47).
+        mapfile -t rows < "$RUNNER_TEMP/releases.tsv"
+        count=${#rows[@]}
         if [[ "$count" -gt 1 ]]; then
-          echo "::error::${count} releases (drafts included) have tag v${VERSION}; resolve that by hand first." >&2
+          echo "::error::${count} distinct releases (drafts included) have tag v${VERSION}; resolve that by hand" \
+            "first." >&2
           exit 1
         fi
         if [[ "$count" == 1 ]]; then
-          IFS=$'\t' read -r id draft < "$RUNNER_TEMP/releases.tsv"
-          if [[ "$draft" != false ]]; then
-            echo "::error::Release ${id} for v${VERSION} is a draft, which this workflow never makes; check its" \
-              "assets and publish or delete it by hand first." >&2
+          IFS=$'\t' read -r id draft <<< "${rows[0]}"
+          if [[ "$draft" == true ]]; then
+            echo "::error::Release ${id} for v${VERSION} is a draft, which this workflow never makes: it was made" \
+              "by hand. Delete it, never publish it, then re-run this job (ADR-077 D8a)." >&2
             exit 1
           fi
           echo "Release ${id} for v${VERSION} exists."
@@ -691,16 +743,9 @@ jobs:
         fi
         gh api --paginate "repos/${GITHUB_REPOSITORY}/releases/${id}/assets?per_page=100" \
           --jq '.[] | [.id, .name, .state, (.digest // "")] | @tsv' > "$RUNNER_TEMP/assets.tsv"
-        # The npm files first: once any of them is attached, a release has what its npm publication needs, or a
-        # starter placeholder to retry.
-        ordered=()
-        for file in dist/julclang-*.tgz "dist/julc-vm-wasm-${VERSION}.tar.gz" "dist/julc-wasm-${VERSION}.tar.gz" \
-            "dist/julc-npm-${VERSION}-SHA256SUMS.txt" dist/*; do
-          if [[ -f "$file" && " ${ordered[*]-} " != *" ${file} "* ]]; then ordered+=("$file"); fi
-        done
         failed=0
         upload=()
-        for file in "${ordered[@]}"; do
+        for file in dist/*; do
           name=$(basename "$file")
           row=$(awk -F'\t' -v name="$name" '$2 == name' "$RUNNER_TEMP/assets.tsv")
           if [[ -z "$row" ]]; then
@@ -749,14 +794,14 @@ jobs:
       shell: bash
       run: |
         set -euo pipefail
-        gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
-          --jq ".[] | select(.tag_name == \"v${VERSION}\") | [.id, .draft] | @tsv" > "$RUNNER_TEMP/releases.tsv"
-        if [[ "$(wc -l < "$RUNNER_TEMP/releases.tsv" | tr -d ' ')" != 1 ]]; then
+        bash julc-wasm/src/ci/release-guard.sh "$VERSION" --list > "$RUNNER_TEMP/releases.tsv"
+        mapfile -t rows < "$RUNNER_TEMP/releases.tsv"
+        if [[ "${#rows[@]}" != 1 ]]; then
           echo "::error::Expected exactly one release for v${VERSION}:" >&2
-          cat "$RUNNER_TEMP/releases.tsv" >&2
+          printf '%s\n' "${rows[@]}" >&2
           exit 1
         fi
-        IFS=$'\t' read -r id draft < "$RUNNER_TEMP/releases.tsv"
+        IFS=$'\t' read -r id draft <<< "${rows[0]}"
         if [[ "$draft" != false ]]; then
           echo "::error::The release of v${VERSION} is still a draft." >&2
           exit 1
@@ -786,12 +831,20 @@ jobs:
             failed=1
           fi
         done
+        # Nothing else: the release's assets are exactly the files of this run (the inventory, checked above).
+        if ! diff <(cut -f2 "$RUNNER_TEMP/assets.tsv" | sort) \
+            <(find dist -mindepth 1 -maxdepth 1 -type f -exec basename {} \; | sort) > "$RUNNER_TEMP/assets.diff"; then
+          echo "::error::The release's assets are not this run's files (< extra on the release, > missing):" >&2
+          cat "$RUNNER_TEMP/assets.diff" >&2
+          failed=1
+        fi
         exit "$failed"
 
   # ADR-077 D8 and D8a: whether and how npm-publish runs, read without Gradle from gradle.properties at the tag, for a
   # tag push and for a recovery dispatch alike. The ref must be exactly refs/tags/v<version>, with the version
-  # gradle.properties holds at that tag. mode: publish (github_release and npm_publish true, not a release candidate:
-  # npm-publish), dry-run (github_release true otherwise: npm-dry-run), none (no GitHub release to publish from).
+  # gradle.properties holds at that tag. mode: publish (github_release and npm_publish true, and a form D8 publishes:
+  # npm-publish), dry-run (github_release true otherwise, including a release candidate of a prerelease: npm-dry-run),
+  # none (no GitHub release to publish from).
   npm-gates:
     runs-on: ubuntu-latest
     name: Read the npm gates
@@ -804,8 +857,15 @@ jobs:
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       with:
         persist-credentials: false
-        sparse-checkout: gradle.properties
+        sparse-checkout: |
+          gradle.properties
+          julc-wasm/src/ci
         sparse-checkout-cone-mode: false
+
+    - name: Set up Node.js
+      uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      with:
+        node-version: '24.22.3'
 
     - name: Check the ref and read the gates
       id: gates
@@ -836,11 +896,17 @@ jobs:
         # Default to false: a missing or unparseable property must not publish.
         GITHUB_RELEASE=$(prop github_release)
         NPM_PUBLISH=$(prop npm_publish)
-        RC=false
-        if [[ "${VERSION#*-}" != "$VERSION" && "-${VERSION#*-}" =~ [-.][rR][cC][0-9]*($|[-.]) ]]; then RC=true; fi
+        # D8's forms, with the publisher's own classifier (julc-wasm/src/ci/npm-gate.mjs, npm-release.mjs versionKind):
+        # X.Y.Z, -preN, -betaN and -rcN are published; -preN-rcN, a release candidate of a prerelease, only dry-runs
+        # (semver orders it above -preN); any other form, or a version outside npm's semver limits, has no npm rule.
         if [[ "${GITHUB_RELEASE:-false}" != true ]]; then
+          KIND=n/a
           MODE=none
-        elif [[ "${NPM_PUBLISH:-false}" == true && "$RC" == false ]]; then
+        elif ! KIND=$(node julc-wasm/src/ci/npm-gate.mjs "$VERSION"); then
+          echo "::error::npm has no rule for v${VERSION}: ADR-077 D8 publishes only X.Y.Z, X.Y.Z-preN, X.Y.Z-betaN and" \
+            "X.Y.Z-rcN, and dry-runs X.Y.Z-preN-rcN." >&2
+          exit 1
+        elif [[ "${NPM_PUBLISH:-false}" == true && "$KIND" == publishable ]]; then
           MODE=publish
         else
           MODE=dry-run
@@ -848,10 +914,10 @@ jobs:
         echo "version=$VERSION" >> "$GITHUB_OUTPUT"
         echo "mode=$MODE" >> "$GITHUB_OUTPUT"
         echo "v${VERSION} (${GITHUB_EVENT_NAME}): github_release=${GITHUB_RELEASE:-false}," \
-          "npm_publish=${NPM_PUBLISH:-false}, release candidate: ${RC}; npm: ${MODE}" | tee -a "$GITHUB_STEP_SUMMARY"
+          "npm_publish=${NPM_PUBLISH:-false}, form: ${KIND}; npm: ${MODE}" | tee -a "$GITHUB_STEP_SUMMARY"
 
-  # ADR-077 D8 and D8a: a dry run instead of a publication (npm_publish = false, or a release candidate). The same
-  # script, on the same verified release assets, with npm publish --dry-run; read-only, no environment, no id-token.
+  # ADR-077 D8 and D8a: a dry run instead of a publication (npm_publish = false, or X.Y.Z-preN-rcN). The same
+  # script, on the same verified npm files, with npm publish --dry-run; read-only, no environment, no id-token.
   npm-dry-run:
     needs: [npm-gates, wasm, attest, github-release]
     if: >-
@@ -864,6 +930,8 @@ jobs:
     permissions:
       contents: read
       attestations: read
+      # The npm-packages artifact of another run (a recovery dispatch): finding the run and downloading it.
+      actions: read
     env:
       VERSION: ${{ needs.npm-gates.outputs.version }}
     steps:
@@ -888,13 +956,45 @@ jobs:
         npm install -g --ignore-scripts --offline "$f"
         test "$(npm --version)" = 11.21.1
 
-    - name: Download the release's npm files and verify their attestation
+    # The npm files come from the npm-packages artifact of the run that built them (kept 14 days), not from the release:
+    # this run's own on a tag push, the tag's push run's on a recovery dispatch.
+    - name: Find the run that built the npm files
+      id: run
+      if: github.event_name == 'workflow_dispatch'
+      env:
+        GH_TOKEN: ${{ github.token }}
+        SOURCE_DIGEST: ${{ github.sha }}
+      shell: bash
+      run: bash julc-wasm/src/ci/npm-run.sh "$VERSION"
+
+    - name: Download this run's npm files
+      if: github.event_name == 'push'
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      with:
+        name: npm-packages
+        path: assets
+
+    # By the artifact id npm-run.sh inspected (its run's only live npm-packages), not by name. merge-multiple puts the
+    # files directly in assets/, as a download by name does.
+    - name: Download the npm files of the tag's run
+      if: github.event_name == 'workflow_dispatch'
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      with:
+        artifact-ids: ${{ steps.run.outputs.artifact_id }}
+        merge-multiple: true
+        path: assets
+        run-id: ${{ steps.run.outputs.run_id }}
+        github-token: ${{ github.token }}
+
+    - name: Verify the npm files against their attestation and the release's archives
       env:
         GH_TOKEN: ${{ github.token }}
         SOURCE_DIGEST: ${{ github.sha }}
         SIGNER_DIGEST: ${{ github.workflow_sha }}
+        # The run the artifact came from: the one attest statement covering the five files must be that run's.
+        NPM_FILES_RUN: ${{ steps.run.outputs.run_id || github.run_id }}
       shell: bash
-      run: bash julc-wasm/src/ci/release-assets.sh "$VERSION" assets
+      run: bash julc-wasm/src/ci/npm-files.sh "$VERSION" assets
 
     - name: Dry run
       env:
@@ -916,7 +1016,7 @@ jobs:
         fi
         node julc-wasm/src/ci/npm-publish.mjs --dir assets --version "$VERSION" --mode dry-run "${digests[@]}"
 
-  # ADR-077 D8a. Publishes the release's three npm tarballs, verified against attest's attestation (and, in the tag's
+  # ADR-077 D8a. Publishes the run's three npm tarballs, verified against attest's attestation (and, in the tag's
   # own run, the wasm job's digests), with npm trusted publishing: npm exchanges this job's GitHub OIDC token for
   # publish credentials, so there is no npm token. Each package's trusted publisher on npmjs.com names bloxbean/julc,
   # this workflow file and the release-staging environment (release-ops' environment for release jobs). npm checks no
@@ -947,6 +1047,8 @@ jobs:
       contents: read
       id-token: write
       attestations: read
+      # The npm-packages artifact of another run (a recovery dispatch): finding the run and downloading it.
+      actions: read
     outputs:
       published: ${{ steps.publish.outputs.published }}
       # The dist-tag chosen for each package this run published (JSON), which npm-verify checks.
@@ -989,13 +1091,45 @@ jobs:
         npm install -g --ignore-scripts --offline "$f"
         test "$(npm --version)" = 11.21.1
 
-    - name: Download the release's npm files and verify their attestation
+    # The npm files come from the npm-packages artifact of the run that built them (kept 14 days), not from the release:
+    # this run's own on a tag push, the tag's push run's on a recovery dispatch.
+    - name: Find the run that built the npm files
+      id: run
+      if: github.event_name == 'workflow_dispatch'
+      env:
+        GH_TOKEN: ${{ github.token }}
+        SOURCE_DIGEST: ${{ github.sha }}
+      shell: bash
+      run: bash julc-wasm/src/ci/npm-run.sh "$VERSION"
+
+    - name: Download this run's npm files
+      if: github.event_name == 'push'
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      with:
+        name: npm-packages
+        path: assets
+
+    # By the artifact id npm-run.sh inspected (its run's only live npm-packages), not by name. merge-multiple puts the
+    # files directly in assets/, as a download by name does.
+    - name: Download the npm files of the tag's run
+      if: github.event_name == 'workflow_dispatch'
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      with:
+        artifact-ids: ${{ steps.run.outputs.artifact_id }}
+        merge-multiple: true
+        path: assets
+        run-id: ${{ steps.run.outputs.run_id }}
+        github-token: ${{ github.token }}
+
+    - name: Verify the npm files against their attestation and the release's archives
       env:
         GH_TOKEN: ${{ github.token }}
         SOURCE_DIGEST: ${{ github.sha }}
         SIGNER_DIGEST: ${{ github.workflow_sha }}
+        # The run the artifact came from: the one attest statement covering the five files must be that run's.
+        NPM_FILES_RUN: ${{ steps.run.outputs.run_id || github.run_id }}
       shell: bash
-      run: bash julc-wasm/src/ci/release-assets.sh "$VERSION" assets
+      run: bash julc-wasm/src/ci/npm-files.sh "$VERSION" assets
 
     - name: Publish
       id: publish
@@ -1030,6 +1164,8 @@ jobs:
     permissions:
       contents: read
       attestations: read
+      # The npm-packages artifact of another run (a recovery dispatch): finding the run and downloading it.
+      actions: read
     env:
       VERSION: ${{ needs.npm-gates.outputs.version }}
     steps:
@@ -1054,13 +1190,45 @@ jobs:
         npm install -g --ignore-scripts --offline "$f"
         test "$(npm --version)" = 11.21.1
 
-    - name: Download the release's npm files and verify their attestation
+    # The npm files come from the npm-packages artifact of the run that built them (kept 14 days), not from the release:
+    # this run's own on a tag push, the tag's push run's on a recovery dispatch.
+    - name: Find the run that built the npm files
+      id: run
+      if: github.event_name == 'workflow_dispatch'
+      env:
+        GH_TOKEN: ${{ github.token }}
+        SOURCE_DIGEST: ${{ github.sha }}
+      shell: bash
+      run: bash julc-wasm/src/ci/npm-run.sh "$VERSION"
+
+    - name: Download this run's npm files
+      if: github.event_name == 'push'
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      with:
+        name: npm-packages
+        path: assets
+
+    # By the artifact id npm-run.sh inspected (its run's only live npm-packages), not by name. merge-multiple puts the
+    # files directly in assets/, as a download by name does.
+    - name: Download the npm files of the tag's run
+      if: github.event_name == 'workflow_dispatch'
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      with:
+        artifact-ids: ${{ steps.run.outputs.artifact_id }}
+        merge-multiple: true
+        path: assets
+        run-id: ${{ steps.run.outputs.run_id }}
+        github-token: ${{ github.token }}
+
+    - name: Verify the npm files against their attestation and the release's archives
       env:
         GH_TOKEN: ${{ github.token }}
         SOURCE_DIGEST: ${{ github.sha }}
         SIGNER_DIGEST: ${{ github.workflow_sha }}
+        # The run the artifact came from: the one attest statement covering the five files must be that run's.
+        NPM_FILES_RUN: ${{ steps.run.outputs.run_id || github.run_id }}
       shell: bash
-      run: bash julc-wasm/src/ci/release-assets.sh "$VERSION" assets
+      run: bash julc-wasm/src/ci/npm-files.sh "$VERSION" assets
 
     - name: Compare the registry with the release, audit signatures, check provenance
       env:

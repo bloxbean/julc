@@ -7,7 +7,7 @@
 //   JULC_TEST_NPM=<npm command> selects the npm CLI (default: npm on PATH).
 import assert from 'node:assert/strict';
 import {spawn, spawnSync} from 'node:child_process';
-import {mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync} from 'node:fs';
+import {cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -53,26 +53,42 @@ function npmEnv(registry, work) {
 
 /** The three packages of a release, packed by npm as the wasm job packs them, with the checksum file. `salt` changes
  *  the bytes of a package without changing its name or version. */
-function release(version, {salt = {}} = {}) {
+function release(version, {salt = {}, build = 'A'} = {}) {
   const dir = scratch(`release-${version}`);
   const env = npmEnv('http://127.0.0.1:1/', dir);
+  // The engines of one build: the engine packages' engine/ files and the archives' are the same bytes (I1).
+  const engines = {};
+  for (const [name, variant] of [[VM, 'vm'], [FULL, 'full']]) {
+    const launcher = `julc-${variant}-${createHash('sha256').update(variant + build).digest('hex').slice(0, 12)}.js`;
+    const bundle = path.join(dir, 'bundle', variant);
+    mkdirSync(bundle, {recursive: true});
+    writeFileSync(path.join(bundle, 'engine.json'), JSON.stringify({launcher, variant, julcVersion: version}) + '\n');
+    writeFileSync(path.join(bundle, launcher), `// launcher ${variant} ${version} ${build}\n`);
+    writeFileSync(path.join(bundle, launcher + '.wasm'), `wasm ${variant} ${version} ${build}\n`);
+    engines[name] = bundle;
+  }
   for (const name of [CLIENT, VM, FULL]) {
     const source = path.join(dir, 'src', name.split('/')[1]);
     mkdirSync(source, {recursive: true});
     const pkg = {name, version, type: 'module', license: 'MIT', repository: {type: 'git', url: 'git+https://github.com/bloxbean/julc.git', directory: 'julc-wasm'},
-      files: ['index.js'],
+      files: name === CLIENT ? ['index.js'] : ['index.js', 'engine/'],
       ...(name === CLIENT ? {} : {dependencies: {[CLIENT]: version}})};
     writeFileSync(path.join(source, 'package.json'), JSON.stringify(pkg, null, 2) + '\n');
     writeFileSync(path.join(source, 'index.js'), `export const name = ${JSON.stringify(name)};\n// ${salt[name] ?? ''}\n`);
+    if (engines[name]) cpSync(engines[name], path.join(source, 'engine'), {recursive: true});
     const pack = spawnSync(NPM, ['pack', '--ignore-scripts', '--pack-destination', dir], {cwd: source, env, encoding: 'utf8'});
     assert.equal(pack.status, 0, pack.stderr);
   }
   const archives = [`julc-vm-wasm-${version}.tar.gz`, `julc-wasm-${version}.tar.gz`];
-  for (const archive of archives) writeFileSync(path.join(dir, archive), `archive ${archive}\n`);
+  for (const [archive, name] of [[archives[0], VM], [archives[1], FULL]]) {
+    const tar = spawnSync('tar', ['czf', path.join(dir, archive), '-C', engines[name], '.'], {encoding: 'utf8'});
+    assert.equal(tar.status, 0, tar.stderr);
+  }
   const files = [...[CLIENT, VM, FULL].map(name => tarballName(name, version)), ...archives];
-  writeFileSync(path.join(dir, `julc-npm-${version}-SHA256SUMS.txt`),
+  const writeSums = () => writeFileSync(path.join(dir, `julc-npm-${version}-SHA256SUMS.txt`),
     files.map(file => `${sha256(readFileSync(path.join(dir, file)))}  ${file}\n`).join(''));
-  return {dir, version, bytes: name => readFileSync(path.join(dir, tarballName(name, version))),
+  writeSums();
+  return {dir, version, bytes: name => readFileSync(path.join(dir, tarballName(name, version))), writeSums,
     digests: () => files.map(file => `--digest=${file}=${sha256(readFileSync(path.join(dir, file)))}`)};
 }
 
@@ -214,7 +230,7 @@ test('a failure after the first package stops the job; re-running it skips the c
     assert.match(first.text, /npm publish failed for @julclang\/julc-vm-wasm@0\.1\.0-pre22; nothing more is published/);
     assert.deepEqual(registry.publishes, [`${CLIENT}@${VERSION}`, `${VM}@${VERSION}`]);
     assert.equal(first.outputs.published, 'false');
-    assert.equal(registry.packages.get(FULL), undefined, 'the full engine was never attempted');
+    assert.equal(registry.packages.get(FULL).versions[VERSION], undefined, 'the full engine was never attempted');
 
     // "Re-run failed jobs": the same job on the same files.
     registry.failPublish.clear();
@@ -251,22 +267,21 @@ test('files that differ from the checksum file or the wasm job\'s digests are re
   } finally { await registry.close(); }
 });
 
-test('dry runs publish nothing: a release candidate uses its final release\'s tag, and is refused for real', async () => {
+test('dry runs publish nothing: a candidate of a prerelease uses its prerelease\'s tag, and is refused for real', async () => {
   const registry = await startRegistry();
   try {
     const rc = release('0.1.0-pre22-rc1');
     const dry = await run('npm-publish.mjs', registry, ['--dir', rc.dir, '--version', rc.version, '--mode', 'dry-run',
       '--no-provenance', ...rc.digests()]);
     assert.equal(dry.status, 0, show(dry));
-    assert.match(dry.text, /0\.1\.0-pre22-rc1 is a release candidate: never published \(D8\)\. Dry run with its final release's tag, latest/);
+    assert.match(dry.text, /0\.1\.0-pre22-rc1 is a release candidate of a prerelease: never published \(D8\)\. Dry run with the tags 0\.1\.0-pre22 would get/);
     assert.equal(dry.text.match(/--tag latest --ignore-scripts --dry-run/g)?.length, 3, show(dry));
     assert.match(dry.text, /julclang-julc-wasm-0\.1\.0-pre22-rc1\.tgz|julc-wasm@0\.1\.0-pre22-rc1/);
     assert.deepEqual(dry.outputs, {published: 'false', tags: '{}'}, 'a dry run publishes, so chooses, nothing');
     const real = await publish(registry, rc);
     assert.equal(real.status, 1, show(real));
-    assert.match(real.text, /release candidate, which is never published/);
+    assert.match(real.text, /release candidate of a prerelease, which is never published/);
     assert.deepEqual(registry.publishes, []);
-    assert.equal(registry.packages.size, 0);
   } finally { await registry.close(); }
 });
 
@@ -301,15 +316,17 @@ test('npm-verify: a registry tarball that differs, a deleted release asset, or a
     assert.match(result.text, /the tarball the registry serves differs from the release's julclang-julc-wasm-0\.1\.0-pre22\.tgz/);
 
     // A dist-tag that names an older version.
+    // (A dist-tag always names a version the document lists: seed the versions the tags are moved to.)
+    registry.seed(VM, '0.1.0-pre21', release('0.1.0-pre21').bytes(VM), {tag: 'old'});
+    registry.seed(VM, '0.1.0-pre23', release('0.1.0-pre23').bytes(VM), {tag: 'new'});
     registry.packages.get(VM)['dist-tags'].latest = '0.1.0-pre21';
     result = await verify(registry, rel, verifyWork());
     assert.equal(result.status, 1, show(result));
-    assert.match(result.text, /julc-vm-wasm@0\.1\.0-pre22: dist-tag latest names 0\.1\.0-pre21, expected 0\.1\.0-pre22/);
-    // A later version on the tag is a note, not a failure (a recovery run for an older release).
+    assert.match(result.text, /julc-vm-wasm@0\.1\.0-pre22: none of the dist-tags latest, preview, release-0\.1, release-0\.1\.0-pre22 names 0\.1\.0-pre22 or later/);
+    // A later version on the tag is no failure (a recovery run for an older release).
     registry.packages.get(VM)['dist-tags'].latest = '0.1.0-pre23';
     result = await verify(registry, rel, verifyWork());
     assert.equal(result.status, 0, show(result));
-    assert.match(result.text, /note @julclang\/julc-vm-wasm@0\.1\.0-pre22: dist-tag latest names the later 0\.1\.0-pre23/);
 
     // A release asset deleted after publication.
     rmSync(path.join(rel.dir, tarballName(CLIENT, VERSION)));
@@ -356,7 +373,6 @@ test('a version older than latest goes to release-<major>.<minor>, per package; 
       [CLIENT]: {latest: VERSION}, [VM]: {latest: '0.1.0-pre23', 'release-0.1': VERSION}, [FULL]: {latest: VERSION}});
     const verified = await verify(registry, rel, ['--work', scratch('verify-work')]);
     assert.equal(verified.status, 0, show(verified));
-    assert.match(verified.text, /note @julclang\/julc-vm-wasm@0\.1\.0-pre22: dist-tag latest names the later 0\.1\.0-pre23; release-0\.1 names 0\.1\.0-pre22/);
   } finally { await registry.close(); }
 });
 
@@ -433,6 +449,7 @@ test('npm-verify checks the tag npm-publish chose for each package it published 
 
     // A chosen tag that later moves forward is legitimate.
     clientTags['release-0.1.8'] = '0.1.8';
+    registry.seed(VM, '0.2.0', release('0.2.0').bytes(VM), {tag: 'later'});
     registry.packages.get(VM)['dist-tags'].latest = '0.2.0';
     verified = await check();
     assert.equal(verified.status, 0, 'latest advanced\n' + show(verified));
@@ -441,6 +458,165 @@ test('npm-verify checks the tag npm-publish chose for each package it published 
     assert.equal(malformed.status, 1);
     assert.match(malformed.text, /--published-tags must map package names to dist-tags/);
   } finally { await registry.close(); }
+});
+
+/** Publishes a version on the registry and verifies it with the tags the run chose; returns the client's tags. */
+let lastVerifyText = '';
+const publishStep = registry => async (version, expected) => {
+  registry.provenanceOnPublish = identity(version);
+  const rel = release(version);
+  const result = await publish(registry, rel);
+  assert.equal(result.status, 0, version + '\n' + show(result));
+  assert.deepEqual(JSON.parse(result.outputs.tags), {[CLIENT]: expected, [VM]: expected, [FULL]: expected}, version);
+  const verified = await verify(registry, rel, ['--work', scratch('verify-work'), '--published-tags', result.outputs.tags]);
+  assert.equal(verified.status, 0, version + '\n' + show(verified));
+  lastVerifyText = verified.text;
+  return tagsOf(registry)[CLIENT];
+};
+
+test('D8: -preN on latest until a final version exists, then on preview; finals on latest; nothing moves back', async () => {
+  const registry = await startRegistry();
+  const step = publishStep(registry);
+  try {
+    assert.deepEqual(await step('0.1.0-pre22', 'latest'), {latest: '0.1.0-pre22'}, 'no final yet');
+    assert.deepEqual(await step('0.1.0', 'latest'), {latest: '0.1.0'});
+    assert.deepEqual(await step('0.2.0-pre1', 'preview'), {latest: '0.1.0', preview: '0.2.0-pre1'}, 'latest stays');
+    assert.deepEqual(await step('0.2.0-pre2', 'preview'), {latest: '0.1.0', preview: '0.2.0-pre2'});
+    // A prerelease below latest never takes preview (a channel is what comes after latest): the fallback instead.
+    assert.deepEqual(await step('0.1.0-pre23', 'release-0.1'),
+      {latest: '0.1.0', preview: '0.2.0-pre2', 'release-0.1': '0.1.0-pre23'});
+    // preview never moves backwards either: semver orders pre10 below pre2 (open question 8).
+    assert.deepEqual(await step('0.2.0-pre10', 'release-0.2'),
+      {latest: '0.1.0', preview: '0.2.0-pre2', 'release-0.1': '0.1.0-pre23', 'release-0.2': '0.2.0-pre10'});
+    assert.deepEqual(await step('0.2.0', 'latest'),
+      {latest: '0.2.0', preview: '0.2.0-pre2', 'release-0.1': '0.1.0-pre23', 'release-0.2': '0.2.0-pre10'});
+    assert.match(lastVerifyText, /note @julclang\/wasm-client: dist-tag preview names 0\.2\.0-pre2, behind latest 0\.2\.0/,
+      'a channel behind latest after a final release is noted');
+    // A final below latest (a maintenance release) goes to its fallback.
+    assert.equal((await step('0.1.1', 'release-0.1'))['release-0.1'], '0.1.1');
+  } finally { await registry.close(); }
+});
+
+test('D8: -betaN on beta, X.Y.Z-rcN on next, for any major; neither moves back, nor stays behind latest', async () => {
+  const registry = await startRegistry();
+  const step = publishStep(registry);
+  try {
+    assert.deepEqual(await step('1.0.0', 'latest'), {latest: '1.0.0'});
+    assert.deepEqual(await step('1.1.0-beta2', 'beta'), {latest: '1.0.0', beta: '1.1.0-beta2'});
+    assert.deepEqual(await step('1.1.0-rc2', 'next'), {latest: '1.0.0', beta: '1.1.0-beta2', next: '1.1.0-rc2'});
+    assert.deepEqual(await step('1.1.0-pre1', 'preview'),
+      {latest: '1.0.0', beta: '1.1.0-beta2', next: '1.1.0-rc2', preview: '1.1.0-pre1'}, 'a 1.x -preN, after a final');
+    // Lower than the channel's holder: the fallback.
+    assert.equal((await step('1.1.0-beta1', 'release-1.1'))['release-1.1'], '1.1.0-beta1');
+    assert.equal((await step('1.1.0-rc1', 'release-1.1'))['release-1.1'], '1.1.0-rc1', 'release-1.1 moves forward');
+    // Below beta and release-1.1 too (semver orders beta10 below beta2): release-<version>.
+    assert.equal((await step('1.1.0-beta10', 'release-1.1.0-beta10'))['release-1.1.0-beta10'], '1.1.0-beta10');
+    // A candidate of a final already on latest never takes next.
+    assert.equal((await step('1.1.0', 'latest')).latest, '1.1.0');
+    assert.deepEqual(await step('1.1.0-rc3', 'release-1.1'), {latest: '1.1.0', beta: '1.1.0-beta2', next: '1.1.0-rc2',
+      preview: '1.1.0-pre1', 'release-1.1': '1.1.0-rc3', 'release-1.1.0-beta10': '1.1.0-beta10'});
+  } finally { await registry.close(); }
+});
+
+test('D8: a first final below a -preN on latest goes to a fallback; a same-core beta after a -preN too', async () => {
+  const registry = await startRegistry();
+  const step = publishStep(registry);
+  try {
+    assert.deepEqual(await step('0.2.0-pre1', 'latest'), {latest: '0.2.0-pre1'}, 'no final yet');
+    // A backfilled first final: 0.1.0 < 0.2.0-pre1, so latest does not move back.
+    assert.deepEqual(await step('0.1.0', 'release-0.1'), {latest: '0.2.0-pre1', 'release-0.1': '0.1.0'});
+    // Within one X.Y.Z the order is beta < pre < rc: 0.2.0-beta1 is behind latest (0.2.0-pre1), so not beta.
+    assert.deepEqual(await step('0.2.0-beta1', 'release-0.2'),
+      {latest: '0.2.0-pre1', 'release-0.1': '0.1.0', 'release-0.2': '0.2.0-beta1'});
+  } finally { await registry.close(); }
+});
+
+test('npm-verify: a final version must be on latest or behind a later one; a prerelease on one of its tags', async () => {
+  const registry = await startRegistry({provenanceOnPublish: identity('0.2.0')});
+  try {
+    const rel = release('0.2.0');
+    assert.equal((await publish(registry, rel)).status, 0);
+    registry.seed(VM, '0.1.0', release('0.1.0').bytes(VM), {provenance: identity('0.1.0')});
+    registry.packages.get(VM)['dist-tags'].latest = '0.1.0';
+    const result = await verify(registry, rel, ['--work', scratch('verify-work')]);
+    assert.equal(result.status, 1, show(result));
+    assert.match(result.text, /julc-vm-wasm@0\.2\.0: dist-tag latest names 0\.1\.0, expected 0\.2\.0 or later/);
+  } finally { await registry.close(); }
+});
+
+test('npm files of two builds are refused: an engine tarball must carry its archive\'s engine (I1, R23-C2)', async () => {
+  const registry = await startRegistry({provenanceOnPublish: identity(VERSION)});
+  try {
+    const a = release(VERSION);
+    const b = release(VERSION, {build: 'B'});
+    // A's tarballs with B's VM archive, under a checksum file over exactly these bytes.
+    writeFileSync(path.join(a.dir, `julc-vm-wasm-${VERSION}.tar.gz`), readFileSync(path.join(b.dir, `julc-vm-wasm-${VERSION}.tar.gz`)));
+    a.writeSums();
+    const result = await publish(registry, a);
+    assert.equal(result.status, 1, show(result));
+    assert.match(result.text, /@julclang\/julc-vm-wasm: engine\/engine\.json differs from julc-vm-wasm-0\.1\.0-pre22\.tar\.gz's \(I1\)/);
+    assert.deepEqual(registry.publishes, []);
+  } finally { await registry.close(); }
+});
+
+test('an incomplete registry answer with HTTP 200 stops publication and verification, never "unpublished"', async () => {
+  for (const [label, body] of [
+    ['dist-tags without versions', JSON.stringify({name: CLIENT, 'dist-tags': {latest: '1.0.0'}})],
+    ['null', 'null'], ['an empty object', '{}'], ['an error body', JSON.stringify({error: 'internal'})],
+    ['not JSON', '<html>busy</html>'],
+    // At the packageTag/hasFinalVersion boundary: none of these may yield "no final yet" or "latest".
+    ['empty versions and dist-tags', JSON.stringify({name: CLIENT, versions: {}, 'dist-tags': {}})],
+    ['an array dist-tag holder', JSON.stringify({name: CLIENT, versions: {'0.1.0-pre21': {name: CLIENT,
+      version: '0.1.0-pre21'}}, 'dist-tags': {latest: ['0.1.0-pre21']}})],
+    ['no latest for a bootstrapped package', JSON.stringify({name: CLIENT, versions: {'0.1.0-pre21': {name: CLIENT,
+      version: '0.1.0-pre21'}}, 'dist-tags': {bootstrap: '0.1.0-pre21'}})],
+    ['HTTP 206', {status: 206, body: JSON.stringify({name: CLIENT, versions: {}, 'dist-tags': {}})}],
+    // A foreign entry posing as a final would make d8Tag choose preview (R23-C23).
+    ['a foreign final version entry', JSON.stringify({name: CLIENT, 'dist-tags': {latest: '0.1.0-pre21'}, versions: {
+      '0.1.0-pre21': {name: CLIENT, version: '0.1.0-pre21'}, '0.1.0': {name: '@other/package', version: '0.1.0'}}})],
+  ]) {
+    const registry = await startRegistry({provenanceOnPublish: identity(VERSION)});
+    try {
+      const rel = release(VERSION);
+      registry.overrides.set(CLIENT, body);
+      const result = await publish(registry, rel);
+      assert.equal(result.status, 1, label + '\n' + show(result));
+      assert.match(result.text, /the registry's (document for @julclang\/wasm-client|answer)|HTTP 206/, label);
+      assert.deepEqual(registry.publishes, [], label);
+      // The same answer makes npm-verify fail, after a good publication.
+      registry.overrides.clear();
+      assert.equal((await publish(registry, rel)).status, 0, label);
+      registry.overrides.set(VM, body);
+      const verified = await verify(registry, rel, ['--work', scratch('verify-work')]);
+      assert.equal(verified.status, 1, label + '\n' + show(verified));
+    } finally { await registry.close(); }
+  }
+});
+
+test('a 404 for one of the three packages is never "unpublished": asked again briefly, then the job fails (R23-C31)', async () => {
+  // A final version exists, so 0.1.0-pre22 belongs on preview: a 404 must never make it "no final yet", on latest.
+  for (const firstGood of [0, 1]) {
+    const label = firstGood ? 'a 404 after a valid read' : 'a 404 at the first read';
+    const registry = await startRegistry({provenanceOnPublish: identity(VERSION)});
+    try {
+      const rel = release(VERSION);
+      registry.seed(CLIENT, '0.0.1', release('0.0.1').bytes(CLIENT), {provenance: identity('0.0.1')});
+      let reads = 0;
+      registry.overrides.set(CLIENT, () => ++reads > firstGood ? {status: 404, body: '{"error":"not found"}'} : null);
+      const result = await publish(registry, rel);
+      assert.equal(result.status, 1, label + '\n' + show(result));
+      assert.match(result.text, /HTTP 404 for a bootstrapped package/, label);
+      assert.ok(reads >= 3, `${label}: asked again (${reads} reads)`);
+      assert.equal(result.outputs.published, 'false', label);
+      if (firstGood) {
+        // Published with the tag of the one valid read, then the 404 stops the job instead of passing as published.
+        assert.deepEqual(registry.publishes, [`${CLIENT}@${VERSION}`], label);
+        assert.deepEqual(registry.packages.get(CLIENT)['dist-tags'], {latest: '0.0.1', preview: VERSION}, label);
+      } else {
+        assert.deepEqual(registry.publishes, [], label);
+      }
+    } finally { await registry.close(); }
+  }
 });
 
 test('an engine archive deleted from or replaced in the release stops publication and verification', async () => {

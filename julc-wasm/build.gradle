@@ -761,7 +761,8 @@ tasks.register('jsTest', Exec) {
     outputs.upToDateWhen { false }
     commandLine 'node', '--test', '--test-concurrency=1', 'src/test/js/codec.test.mjs', 'src/test/js/worker.test.mjs',
             'src/test/js/client.test.mjs', 'src/test/js/runtime-identity.test.mjs', 'src/test/js/package.test.mjs',
-            'src/test/js/npm-release.test.mjs', 'src/test/js/npm-publish.test.mjs'
+            'src/test/js/npm-release.test.mjs', 'src/test/js/npm-publish.test.mjs',
+            'src/test/js/release-inventory.test.mjs'
 }
 tasks.register('vmParityExpected', JavaExec) {
     dependsOn 'testClasses', 'wasmParityExpected'

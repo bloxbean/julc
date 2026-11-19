@@ -3,7 +3,7 @@
 **Status:** Accepted (2026-11-16) by the maintainer, after design approval from reviewer1 (r4) and the internal
 Fable and Codex reviews (r9; r10 applies their last shared finding). Design only; the implementation follows in
 milestones M0 to M5.
-**Date:** 2026-11-16 to 2026-11-17 (r1 to r22)
+**Date:** 2026-11-16 to 2026-11-18 (r1 to r23)
 **Risk class:** **medium**.
 - This is a public distribution with a lasting API. Package names and exported type names are hard to change once
   published.
@@ -180,7 +180,7 @@ Reasons for this split:
 - An application that only evaluates scripts does not download the full engine: 24.5 MB in pre20, and 34.5 MB built
   from main at M3. The VM engine is about 14.5 MB.
 - An engine an embedder builds (ADR-064) can depend on the client alone instead of copying it, when the engine is built
-  on a published JuLC release (D1a). An embedder built on a JuLC release candidate or snapshot, which npm never gets
+  on a published JuLC release (D1a). An embedder built on a JuLC prerelease candidate or snapshot, which npm never gets
   (D8), keeps using the client files from the `julc-wasm` jar.
 - JOUST today uses neither the client nor a manifest: `load.js` loads `engine/joust-runtime.js` on the main thread.
   Moving it onto `wasm-client` is a larger change, for JOUST to decide (M5).
@@ -766,47 +766,84 @@ refers to itself without consuming data`.
 - JuLC's images report that version as `version()` (D1a).
 - Snapshot and development builds (`native-image-dev.yml`) are not published.
 
-**Which versions go to npm, and with which tag:**
-1. **A release candidate (`-rc`) is not published.** The release job runs only a dry run for it.
-   - Semver orders `0.1.0-pre21-rc2` above `0.1.0-pre21`, checked with npm's own `semver`.
-   - So once a candidate is on npm, a range such as `^0.1.0-pre20` resolves to the candidate instead of the final
-     release, and Dependabot would propose it.
-   - JOUST, which matches `-pre` first, publishes its candidates to `latest` (`0.1.0-pre1-rc9` is its `latest`). JuLC
-     deliberately differs.
-2. **A `-beta` version** goes to `beta`. JuLC uses no `-beta` versions before 1.0. Semver compares `beta1` as text, so
-   it sorts below every `preN`.
-3. **Before 1.0, any other prerelease (`-preN`)** goes to `latest`.
-4. **A version with no prerelease part** (for example `0.1.0`, or `1.0.0`) goes to `latest`.
+**Which versions go to npm, and with which tag** (the table is r23's; r2 to r22 published every `-preN` to `latest`,
+refused every release candidate and every 1.x prerelease other than `-beta`). The form is read from the whole
+prerelease part, as written (case-sensitive, `N` from 1):
+
+| Version | Dist-tag |
+|---|---|
+| `X.Y.Z` (final) | `latest` |
+| `X.Y.Z-preN`, while the package has no final version on the registry | `latest` |
+| `X.Y.Z-preN`, once the package has a final version (any major) | `preview` |
+| `X.Y.Z-betaN` | `beta` |
+| `X.Y.Z-rcN`, a release candidate of a final version (`0.1.0-rc1`, `1.0.0-rc2`) | `next` |
+| `X.Y.Z-preN-rcN`, a release candidate of a prerelease (`0.1.0-pre22-rc1`) | not published: dry run only |
+| a snapshot | refused |
+| any other form (`-rc.1`, `-RC1`, `-beta1-rc1`, `-rc1-pre2`, `-alpha1`, `-pre.22`, `-preview1`, `-rc0`, ...) | refused: nothing is guessed |
+
+1. **Tag names are constants** in `julc-wasm/src/ci/npm-release.mjs` (`LATEST_TAG`, `PREVIEW_TAG`, `BETA_TAG`,
+   `CANDIDATE_TAG`). `preview` and `beta` match Yaci DevKit's channels.
+2. **The two candidate forms differ in semver order.** `X.Y.Z-rcN` sorts below `X.Y.Z` (`1.0.0-rc1 < 1.0.0`), so ranges
+   never prefer it to its release, and it is published to `next`. `X.Y.Z-preN-rcN` sorts above `X.Y.Z-preN`
+   (`0.1.0-pre21-rc2 > 0.1.0-pre21`, checked with npm's own `semver`), so once on npm a range such as `^0.1.0-pre20`
+   would resolve to the candidate and Dependabot would propose it: it is never published, and its release run only
+   dry-runs, with the tags its prerelease would get. `npm-gates` applies the same form rules (`-preN-rcN` → dry run;
+   any other unsupported form fails the gate when a GitHub release is made). JOUST publishes its `-pre1-rc9`
+   candidates to `latest`; JuLC deliberately differs.
+3. **`preview` once a final exists.** The job reads the package's registry `versions` at publication time: until
+   JuLC's first final release, `npm install` gets the newest `-preN`; after a final higher than the `-preN` on
+   `latest`, the newest final release, and `npm install <name>@preview` the newest `-preN` ahead of it. A first final
+   backfilled below the `-preN` on `latest` leaves `latest` on that older prerelease (rule 7), and later `-preN`s go
+   to `preview`, until a final higher than it is published. Semver compares `betaN` as text, so `beta1` sorts below
+   every `preN`.
+4. **Channels are ahead of `latest`.** `preview`, `beta` and `next` are taken only by a version ahead of `latest`.
 5. **No dist-tag ever moves backwards** (r19, M4-F1; per package and with a third candidate from r20, M4-C10/C11).
-   For each package, immediately before publishing it, the job reads the registry's dist-tags and publishes to the
-   first of these that does not already name a higher version of that package:
-   - the tag the rules above choose;
+   For each package, immediately before publishing it, the job reads the registry's document for it (validated:
+   once per package, and that one read decides both whether the version is there and its tag; a 404 means "not
+   published" for no package of this release, which are all bootstrapped: it is asked again briefly, then fails the
+   job; any other status, or an incomplete 200 answer, fails it too, r23, R23-C31) and
+   publishes to the first of these that does not already name a higher version of that package:
+   - the table's tag (a channel only if the version is also ahead of `latest`, rule 4);
    - `release-<major>.<minor>` (for example `release-0.1`);
    - `release-<version>` (for example `release-0.1.0-pre21`), which can only ever name that version.
 
    None of the three forms is a valid semver range, checked with npm's own `semver`. This covers a recovery of release
-   N after N+1 is out, a maintenance release, and a newer release that reached only some packages. Because the choice
-   is per package, the three packages of one version may carry different tags, and `npm-verify` checks each
-   package's own rule.
+   N after N+1 is out, a maintenance release, a candidate or beta older than the channel's holder, and a newer release
+   that reached only some packages. Because the choice is per package, the three packages of one version may carry
+   different tags, and `npm-verify` checks each package's own rule: a final version is named by `latest` or a later
+   version; a prerelease by one of the tags it may get (`latest` or `preview` for a `-preN`, `beta`, `next`,
+   `release-<major>.<minor>`, `release-<version>`) or a later version (r23).
 
    Monotonicity holds among the workflow's own publications (r21, M4-C13). Dist-tags are changed by hand only with
    publications quiesced: nothing pending or running in the `npm-publish-julclang` concurrency group, and no new
    release tag or dispatch. They are read back before publications resume. An intentional emergency rollback of
    `latest` is the named exception.
-6. **After 1.0, a prerelease other than `-beta` is refused** until this table is revisited (M4).
-
-At 1.0 this table is revisited.
+6. **A package's first version** becomes `latest` whatever `--tag` says (npm's behaviour, seen by JOUST and on
+   Verdaccio); JuLC's packages already have `latest`, so this no longer applies to them.
+7. **What users see** (r23, R23-F1/C6; the package READMEs say the same):
+   - A channel exists only after its first version: `@preview`, `@beta` and `@next` fail to install until then.
+   - Channels are not reset by a final release, so after one a channel can name a version older than `latest`;
+     `npm-verify` notes it. The maintainer may move it by hand (`npm dist-tag add <name>@<final> <channel>`, with 2FA
+     and publications quiesced, rule 5).
+   - Rule 5 can put a version on a fallback tag: a first final backfilled below a `-preN` on `latest` (`0.1.0` after
+     `0.2.0-pre1` goes to `release-0.1`, and `latest` stays on the prerelease until a final higher than it is
+     published), or a beta of the same `X.Y.Z` after a `-preN` (within one `X.Y.Z` semver
+     orders `beta < pre < rc`, so `0.1.0-beta1` after `0.1.0-pre21` goes to `release-0.1`, never `beta`). A beta
+     series therefore belongs to a new `X.Y.Z`.
+   - Prereleases should be pinned exactly: a caret range such as `^0.1.0-pre21` also matches a later `0.1.0-rcN`
+     (and `0.1.0-pre22`), checked with npm's own `semver`.
 
 The reasons are npm's resolution rules:
-- `npm install <name>` without a tag or range installs the `latest` tag.
+- `npm install <name>` without a tag or range installs the `latest` tag; `npm install <name>@<tag>` another tag.
 - A caret range admits prereleases of the same `major.minor.patch` only: `^0.1.0-pre20` accepts `0.1.0-pre22`, but
   `^0.1.0` accepts no prerelease.
 - JOUST's workflow records that a package's first published version became `latest`, whatever `--tag` said. M4 checks
   this on the registry for the first publication.
 - A published version number can never be used again, even after unpublishing.
 
-Semver compares `preN` as text, so `0.1.0-pre100` sorts below `0.1.0-pre20` (open question 8). Under rule 5 that
-becomes behaviour: from `pre100`, a new release would go to a fallback tag while `latest` stays on `pre99`.
+Semver compares `preN` (and `betaN`, `rcN`) as text, so `0.1.0-pre100` sorts below `0.1.0-pre20` (open question 8).
+Under rule 5 that becomes behaviour: from `pre100`, a new release would go to a fallback tag while `latest` (or
+`preview`) stays on `pre99`.
 
 The publishing jobs are specified in D8a.
 
@@ -823,72 +860,111 @@ that do not run the Gradle build get write access or credentials (`native-image-
   - it compares their engine files byte for byte;
   - it checks that both copies of the manifest in `engine.js` equal `engine/engine.json`.
 - It writes `julc-npm-<version>-SHA256SUMS.txt`, covering the three tarballs and the two archives.
-- It uploads all of them as the job's artifact.
+- It uploads the three tarballs, its own copies of the two archives and that checksum file as the run's
+  **`npm-packages` artifact, kept 14 days** (r23). They are not release assets.
 - It also emits the five SHA-256 digests as job outputs, for the checks within the same run.
+- **Source of record** (r23). npm is published only from the tag run's `npm-packages` artifact, anchored by `attest`'s
+  attestation, which lives in GitHub's attestation store, independent of release assets. The release keeps only its
+  own files (the archives and their checksum file, the CLI and playground zips, the static playground, the shadow
+  jars), as before npm. r8 to r22 attached the npm files to the release for good; r23 drops them, so the npm
+  publication of a version must happen within the artifact's 14 days. Once npm holds a version, npm is the durable
+  record. The release's other artifacts (`release-*`) are kept 14 days too, for "Re-run failed jobs" in
+  `github-release` (the only recovery of an incomplete release; r23 review round 5).
 
 **A new `attest` job** (r8) makes the durable anchor.
-- It has no build. It downloads the `wasm` artifact, and holds only `id-token: write` and `attestations: write`.
+- It has no build. It downloads the `npm-packages` artifact, and holds only `id-token: write` and
+  `attestations: write`.
 - It creates a GitHub artifact attestation, signed with Sigstore under this workflow's identity, for the three
-  tarballs and the two archives.
-- This attestation, not a checksum file from the release, is what every later check trusts. A checksum file in the
-  release proves only that the download arrived intact: anyone able to edit release assets could replace both the
-  file and the tarballs. Job outputs belong to a single run attempt.
-- Every later check verifies a release asset with `gh attestation verify --repo bloxbean/julc --signer-workflow
+  tarballs and the two archives: one statement with the five files as its subjects (confirmed on v0.1.0-pre21's
+  attestation, whose predicate names run 44242452143, attempt 1).
+- This attestation, not a checksum file, is what every later check trusts. A checksum file proves only that the
+  download arrived intact: anyone able to replace the files could replace both. Job outputs belong to a single run
+  attempt.
+- Every later check verifies the `npm-packages` artifact (r23; release assets in r8 to r22) with `gh attestation
+  verify --format json --repo bloxbean/julc --signer-workflow
   bloxbean/julc/.github/workflows/native-image-release.yml --source-ref refs/tags/v<version> --source-digest
   <tag commit> --signer-digest <workflow commit> --deny-self-hosted-runners` (digests added in r19, M4-C6).
   - That checks the identity in the Sigstore certificate, not strings in the attestation's predicate. So an attestation
     from another branch, another tag, another commit under the same tag, or another version of the workflow fails.
   - Every check covers all five data files (three tarballs, two archives) and requires the checksum file (r19, M4-C5),
-    so a deleted or replaced archive stops publication and verification.
-  - Every job that verifies an attestation also holds `attestations: read`. From r20 the build-once check in `wasm`
-    only looks for a release, and `wasm` holds `contents: read` alone.
+    so a missing or replaced file stops publication and verification. From r23 (R23-C7) the five must be exactly the
+    subjects of ONE verified statement, by name and SHA-256, whose signing certificate's run invocation is the run
+    the artifact came from (this run on a tag push, the looked-up run on a dispatch; any attempt, so "Re-run failed
+    jobs" still works). Files of two attempts or builds, each attested on its own, can never be mixed. It also requires the published GitHub release
+    to attach the same two engine archives (r23), so npm never gets a version whose archives are not public (I1).
+  - Every job that verifies an attestation also holds `attestations: read`. From r20 the build-once check only
+    looks for a release (in `wasm` until r23, in every build job from r23), and those jobs hold `contents: read`
+    alone.
   - `attest` runs only when `github_release` is `true`: with no release, there is nothing to anchor.
 - `github-release` runs only after `attest` succeeds, so a release never exists without its attestation. `attest` is
   added to its existing prerequisites, which stay as they are: `needs: [validate, native-image, wasm,
   native-image-playground, shadow-jars, attest]` (`native-image-release.yml`, line 382).
 
-**The `github-release` job** attaches the three tarballs and their checksum file to the GitHub release, beside the
-archives.
+**The `github-release` job** attaches the release's files. From r23 it attaches no npm file: not the three tarballs,
+nor their checksum file (r19 to r22 did).
 - **Create-once.**
   - **The workflow creates the release itself, published from the start, never as a draft** (r20, M4-C9). The pinned
     release action created a final release as a draft and published it only after uploading, so a failed upload left
     a draft that the read-only build-once check could not see and that recovery could not download. That action is
     no longer used. The release keeps `prerelease` as before, and `make_latest=legacy`.
-  - It refuses an existing draft for the tag, or more than one release for it.
-  - It attaches each file at most once, npm files first. For each existing asset, by release id, using GitHub's asset
-    `state`:
+  - It refuses an existing draft for the tag, or more than one release for it. It reads the tag's releases, before
+    creating and in its final check, with `release-guard.sh --list` (a sparse checkout of `julc-wasm/src/ci`, as
+    the npm jobs do): page by page, each page a JSON array and every record well formed (a non-empty string
+    `tag_name`; for this tag a positive id and a boolean `draft`), so an empty or malformed answer stops the job
+    and never reads as "no release, create one" (R23-C44, R23-C45). It advises deleting a draft only for such a
+    well-formed record; a malformed one stops it with "preserve the published release and its tag; investigate"
+    (R23-C37).
+  - It attaches each file at most once. For each existing asset, by release id, using GitHub's asset `state`:
     - a completed asset (`uploaded`) with the same name and different bytes stops the job, and nothing is replaced;
     - a failed upload's placeholder (`starter`, which GitHub documents an HTTP 502 can leave behind, and which is safe
       to delete) is deleted, and only then are the original bytes uploaded again.
   - If the repository ever enables immutable releases, uploading to a published release is refused; the workflow
     says so.
   - A release is public, possibly marked Latest, while its assets upload: the accepted cost of never using drafts. A
-    GitHub release or draft is never created for the tag by hand, since it would stop the build-once check (r21).
+    GitHub release or draft is never created for the tag by hand (r21): a published one stops every build job's
+    release check, and a draft, which that read-only check cannot see, stops `github-release` (R23-C24, R23-C34).
   - After the upload, it checks that exactly one release exists for the tag, that it is published, and that every
     file is attached as `uploaded` with this run's SHA-256 (r19).
 - **A release is built once.**
-  - The `wasm` job starts by checking whether the tag has any GitHub release. If it does, the job stops before
-    building, with a message pointing to recovery (r20; this workflow never makes drafts, so the read-only token sees
-    every release it makes).
-  - So a whole-workflow re-run, which would rebuild different bytes (ADR-057, open question 4), changes nothing.
-  - After a refused whole-workflow re-run, a release whose upload failed is completed by hand from the original run's
-    artifacts (`adr/evidence/077-m4/RUNBOOK.md`), then published to npm by a dispatch (r21, M4-F13):
-    - each attached asset is checked against those artifacts by `state` and SHA-256 `digest`;
-    - the Homebrew formulas are updated by hand, since `update-homebrew` does not run on this path or on a dispatch;
-    - the artifacts are kept for 7 days; after that an incomplete release cannot be completed with its attested bytes,
-      and the version is spent.
+  - Every job that builds a release file (`native-image`, `wasm`, `native-image-playground`, `shadow-jars`) first
+    runs `julc-wasm/src/ci/release-guard.sh`, before building (r23, R23-C13/C19; only `wasm` checked before): if the
+    tag has a published GitHub release, the job stops with a message pointing to recovery. Each job checks for
+    itself, so a targeted re-run of one job after the release exists builds nothing either; a retry of a failed
+    build before the release exists still builds. The check uses the read-only token, which cannot see drafts
+    (listing drafts needs push access); this workflow never makes drafts, and `github-release`, with its write
+    token, refuses one (R23-C24).
+  - So a whole-workflow re-run, which would rebuild different bytes (ADR-057, open question 4; no native image or jar
+    is reproducible either), changes nothing: no second upload of any `release-*` or `npm-packages` artifact.
+  - `github-release` requires the 14-file inventory (4 CLI zips, 4 playground zips, 2 shadow jars, the 2 engine
+    archives, the static playground, the archives' `SHA256SUMS`) before creating or changing the release, and after
+    uploading requires the release's assets to be exactly those files (R23-C16).
+  - **An incomplete release has one recovery** (r23 review round 5, replacing r21's completion by hand, M4-F13):
+    "Re-run failed jobs" in the original run, where `github-release` attaches the missing files from that run's own
+    `release-*` artifacts under the create-once rules above. A release is never completed or patched by hand. If
+    that re-run is impossible (a whole-workflow re-run was made, or the artifacts expired after 14 days), the version
+    is abandoned: the release's assets stay as they are (its title and notes may say it is abandoned and name the
+    next version), npm is not dispatched for it (a dispatch refuses it, R23-F10), any npm package of it already
+    published is deprecated and any non-`latest` dist-tag naming it is moved back or removed (none should exist: a
+    normal run publishes npm only after `github-release` succeeded), and the next version is released. Abandonment
+    covers the GitHub release and npm only; the version's Maven artifacts remain valid. The build jobs' release
+    check is what keeps "Re-run failed jobs" from rebuilding.
+  - A complete release whose `update-homebrew` did not run (a whole-workflow re-run after `github-release`
+    succeeded) has its Homebrew formulas updated by hand, since that job does not run on a dispatch.
 - **Recovery never rebuilds.** It has two paths, chosen by the state:
   - **Within the original attempt,** before any full re-run, "re-run failed jobs" recovers. It keeps that attempt's
     assets, artifacts and job outputs.
   - **After a refused full re-run, or once the original attempt can no longer be re-run,** only the manual
-    `workflow_dispatch` entry recovers. After the early stop in `wasm`, "re-run failed jobs" would hit the same stop,
-    and the downstream jobs would lack their artifacts.
+    `workflow_dispatch` entry recovers, and only the npm publication of a complete release (the original run's
+    `github-release` succeeded); an incomplete release is abandoned (above). After the early stop in the build jobs,
+    "re-run failed jobs" would hit the same stop, and the downstream jobs would lack their artifacts.
 - **The `workflow_dispatch` entry's contract:**
   - It is dispatched on the tag itself: its execution ref must be exactly `refs/tags/v<version>`. A run on a branch,
-    or whose ref does not match the version, is refused before anything runs.
+    or whose ref does not match the version, is refused: by `npm-gates`, after its pinned checkout and Node set-up,
+    before its classifier runs, and again by `npm-publish`'s first step, before its checkout.
   - It reads the version from the tag name, and the gates from `gradle.properties` at that tag, using `git show`,
-    with no Gradle: `npm_publish`, `github_release`, and the release-candidate rule (D8).
-    - With `npm_publish = false`, or on a release-candidate tag, it publishes nothing.
+    with no Gradle: `npm_publish`, `github_release`, and D8's form rules (r23: `X.Y.Z-preN-rcN` only dry-runs; a form
+    D8 has no rule for fails the gate).
+    - With `npm_publish = false`, or on an `X.Y.Z-preN-rcN` tag, it publishes nothing.
   - On dispatch, every build, `attest`, `github-release` and Homebrew job is skipped (`if: github.event_name ==
     'push'`).
   - `npm-publish` admits dispatch explicitly:
@@ -900,28 +976,49 @@ archives.
     - There is no bare `always()`, so a normal run whose `github-release` or `attest` failed never publishes.
   - `npm-verify` uses the same form:
     `if: !cancelled() && needs.npm-publish.result == 'success' && needs.npm-publish.outputs.published == 'true'`.
-  - It runs only `npm-publish` and `npm-verify`, on the release's existing assets, after verifying them against their
-    attestation.
+  - It runs only `npm-publish` (or `npm-dry-run`) and `npm-verify`, on the `npm-packages` artifact of the tag's push
+    run (r23), after verifying it against its attestation and the release's archives. That run is the run of this
+    workflow with event `push`, head branch `v<version>` and head commit the tag's commit, whose `attest` job succeeded
+    in any attempt, and whose `github-release` job succeeded in any attempt, so only a complete release reaches npm
+    (R23-F10). Exactly one must exist (a release is built once, so a second run stops before `attest`), with
+    exactly one live `npm-packages` artifact, which is downloaded by its id. The outcomes are told apart (R23-C10):
+    - no push run for the tag: an error naming that;
+    - runs, but none with a successful `attest` (failed, queued or not run): "no successful attestation yet", to
+      be fixed by "Re-run failed jobs" in the push run, then dispatching again;
+    - an attested run whose `github-release` never succeeded: "The GitHub release of v<version> was never
+      completed", to be fixed by "Re-run failed jobs" in that run, or the version is abandoned;
+    - several attested runs, or several live artifacts: a maintainer decides;
+    - the artifact expired or was deleted after a successful `attest`: the npm files of `v<version>` are no longer
+      available (artifacts are kept 14 days), and the version can no longer be published to npm;
+    - any API answer unreadable, or any list (runs, jobs, artifacts) incomplete or inconsistent (a page that is not
+      an object with a numeric `total_count`, the same on every page, and an array; more than 1,000 results; distinct
+      ids other than the reported total; duplicate or malformed rows; a job whose `conclusion` is missing, or null
+      once it completed; an `attest` or `github-release` job whose status or conclusion GitHub does not document):
+      "Cannot read the run history", nothing chosen and nothing called expired (R23-C30, R23-C41).
+
+    The npm jobs hold `actions: read` to find the run and download its artifact.
   - The entry lives in the same `native-image-release.yml`, because npm's trusted publisher validates the workflow
     file.
 - **Release assets are never deleted** to recover, and a release is never recreated. I11 relies on this, and M4 tests
   that a deleted asset is detected.
-- Once a release exists, its exact npm files are kept there for good. Every publication and every retry takes them
-  from there, never from a run artifact, which expires, and never from a rebuild.
+- Every publication and every retry takes the npm files from the tag run's `npm-packages` artifact, never from a
+  rebuild (r23; from the release in r8 to r22). After the artifact's 14 days, a version not yet on npm can no longer be
+  published.
 
 **A `npm-dry-run` job** (r19, M4-F4) runs the same publish script with `--dry-run` whenever `github_release` is
-`true` but the version is not published for real: `npm_publish = false`, or a release candidate. It has
+`true` but the version is not published for real: `npm_publish = false`, or an `X.Y.Z-preN-rcN` candidate. It has
 `contents: read` and `attestations: read`, no environment and no `id-token`, so a rehearsal never holds the publishing
-identity. It verifies the release assets exactly as `npm-publish` does.
+identity. It verifies the npm files exactly as `npm-publish` does.
 
 **A new `npm-publish` job:**
 - **Gate.**
   - It runs only when both `npm_publish` and `github_release` are `true` in `gradle.properties`, and the version is not
-    a release candidate (mode `publish`); the default for `npm_publish` is `false`.
+    an `X.Y.Z-preN-rcN` candidate (mode `publish`); the default for `npm_publish` is `false`.
   - In a normal run, it runs only after `github-release` and `attest` have succeeded. Otherwise it runs only from the
     recovery entry, under its contract above.
-  - It verifies each downloaded release asset against its attestation (`gh attestation verify`). In a normal run it
-    also compares the asset with the `wasm` job's digest outputs. Any difference stops it.
+  - It verifies each file of the `npm-packages` artifact against its attestation (`gh attestation verify`), and
+    requires the published release to attach the same two engine archives. In a normal run it also compares the files
+    with the `wasm` job's digest outputs. Any difference stops it.
   - So npm never gets a version whose archives are not public, and users can always check I1.
 - **Credentials.**
   - It runs in the `release-staging` environment (r22), release-ops' environment for release jobs, as JOUST's npm job
@@ -940,8 +1037,9 @@ identity. It verifies the release assets exactly as `npm-publish` does.
     existing one, and if the environment ever refuses a release tag, it is corrected in Settings and "re-run failed
     jobs" completes the publication, because environment settings are read when the job starts and are not part of
     the tag's workflow. The control against a dispatch from `main` or `release/**` is the jobs' exact-ref check.
-  - It gets `id-token: write` for npm trusted publishing (OIDC), `contents: read` to download the release assets, and
-    `attestations: read`, and nothing else. No npm token exists.
+  - It gets `id-token: write` for npm trusted publishing (OIDC), `contents: read`, `attestations: read`, and
+    `actions: read` to find the tag's run and download its artifact on a dispatch (r23), and nothing else. No npm
+    token exists.
 - **Concurrency** (r20, M4-C8). Every npm publication of these packages, of any version, runs in one concurrency
   group (`npm-publish-julclang`), without cancelling a run in progress. With a per-tag group, two releases could both
   read `latest` before either published, and the slower one would move it back. Tags are chosen inside the group, per
@@ -954,7 +1052,7 @@ identity. It verifies the release assets exactly as `npm-publish` does.
     SHA-256, with `--offline --ignore-scripts`.
   - Every action in the release workflow is pinned to a full commit SHA (r19, M4-C3).
 - **What it doesn't do.** It runs no Gradle, no `npm install` and no package scripts, and it builds nothing. It
-  downloads the tarballs, the archives and the checksum file from the GitHub release's assets, and verifies them.
+  downloads the tarballs, the archives and the checksum file from the `npm-packages` artifact, and verifies them.
   - **It runs only release-owner-reviewed code** (r19, M4-C1). It sparse-checks-out `julc-wasm/src/ci/` at the tag's
     own commit, with `persist-credentials: false`, to run the publish scripts. That directory is the scripts' whole
     import closure (they import only each other and Node built-ins), and `.github/CODEOWNERS` assigns it to
@@ -973,14 +1071,15 @@ identity. It verifies the release assets exactly as `npm-publish` does.
   - if it is present with the same tarball integrity (`dist.integrity` equals the tarball's SHA-512) and with a
     provenance attestation from this workflow, the job skips it.
     - Here the attestation is read from the registry's metadata: its predicate's repository, workflow and ref. Its
-      signature is verified later, by `npm-verify`.
+      signature is verified later, by `npm-verify`. It is read only from the configured registry's origin, with no
+      redirect followed, and only from an HTTP 200 answer (a 404 means none; R23-C32).
   - if it is present with different contents, or without that provenance (for example, published by hand), the job
     fails and publishes nothing more.
 - If a publish fails with "cannot publish over the previously published version", the registry was slow to show the
   version. The job then checks integrity and provenance as above, and counts a match as success.
 - A retry is the same job, run again on the same files.
 - The job outputs `published = true` when it published or skipped (as verified) every package. For a dry run, such as
-  a release candidate (D8), it outputs `published = false`.
+  an `X.Y.Z-preN-rcN` candidate (D8), it outputs `published = false`.
 
 **A `wasm-package-checks` job** (M1) runs the browser CSP smoke, the TypeScript checks, and the package smoke on Node
 22.3.0 and 24 against the `wasm` job's packed output. It has a read-only token, no secrets and no Gradle, and
@@ -991,12 +1090,12 @@ identity. It verifies the release assets exactly as `npm-publish` does.
 - `npm-publish` outputs the dist-tag it chose for each package it published in the run. `npm-verify` requires each of
   those tags to name the version or a later one, so a deleted or regressed chosen tag fails. A package skipped as
   already published is held only to D8's rule (r21, M4-C12).
-- It has `contents: read` and `attestations: read`, as every verifying job does: no `id-token`, no environment and
-  no secrets.
+- It has `contents: read`, `attestations: read` and `actions: read` (r23), as every npm job does: no `id-token`, no
+  environment and no secrets.
 - It installs the three exact versions into a fixture with `--ignore-scripts`, and runs `npm audit signatures`.
-- It downloads each published tarball (`npm pack name@version`) and compares it with the release asset. That asset is
-  itself verified against its attestation, and, in a normal run, against the `wasm` job's digest outputs, so the final
-  check does not rest on the release alone.
+- It downloads each published tarball (`npm pack name@version`) and compares it with the `npm-packages` artifact's
+  (r23). That file is itself verified against its attestation, and, in a normal run, against the `wasm` job's digest
+  outputs.
 - It requires each version to carry a provenance attestation whose identity is this repository
   (`bloxbean/julc`), this workflow file (`.github/workflows/native-image-release.yml`) and this tag
   (`refs/tags/v<version>`). It verifies the attestation's signature (`npm audit signatures` checks the attestations
@@ -1119,12 +1218,14 @@ provenance; only the first real publication does (M4).
   that pass D2a's checks. No mode loads a path taken from the
   manifest's `launcher` field. Constrains D2a.
 - **I11 (no rebuild, no overwrite).**
-  - A publication or a retry uses only the tarballs packed by the build job. They are taken from the GitHub release
-    and verified against their attestation (and, in the same run, the digest outputs).
+  - A publication or a retry uses only the tarballs packed by the build job. They are taken from the tag run's
+    `npm-packages` artifact, kept 14 days, and verified against their attestation (and, in the same run, the digest
+    outputs) (r23; from the GitHub release in r8 to r22).
   - A tag's release is built once, as long as its release and assets are not deleted. Deleting and recreating a
     release, or its assets, is forbidden by the release procedure (D8a).
   - Once npm holds a version, npm is the durable record. `npm-verify` compares the registry's tarballs with the
-    release assets, so a recreated release that differs is detected.
+    attested artifact files, and the npm jobs require the release's engine archives to equal the attested ones, so a
+    recreated release that differs is detected.
   - A completed release asset is never replaced. Only an incomplete upload's `starter` placeholder is ever removed.
   - A version already on npm with different contents, or without this workflow's provenance, stops the job.
 
@@ -1159,8 +1260,9 @@ provenance; only the first real publication does (M4).
 - **Constructor-index dispatch as the meaning of `anyOf`.** It is wrong for primitive branches and for branches that
   share an index (D6b).
 - **Making `rest` opt-in everywhere** (r1's D4). That would break archive applications that call `rest` (I9).
-- **Every prerelease on `latest`, as JOUST does,** or release candidates on `next`. Semver orders a candidate above its
-  final release, so either way ranges would keep choosing the candidate (D8).
+- **Every prerelease on `latest`, as JOUST does,** or `X.Y.Z-preN-rcN` candidates on `next`. Semver orders such a
+  candidate above its prerelease, so either way ranges would keep choosing the candidate (D8). (r23 publishes
+  `X.Y.Z-rcN` candidates of final versions to `next`: semver orders those below their release.)
 - **`@julclang/wasm-client` as a peer dependency.** npm installs peers itself, but it only warns on a version mismatch.
   An exact dependency, plus the run-time check (D1a), is stricter.
 - **One package with sub-path exports for both engines.** Every install would carry both engines, about 49 MB, as with one
@@ -1277,8 +1379,19 @@ provenance; only the first real publication does (M4).
   `new URL(…, import.meta.url)`. Mitigated by building fixture applications in CI, in development and production modes,
   from the packed tarballs (M1, M3).
 - **API churn under version 0** (D7). Mitigated by listing every change in the release notes.
-- **Version ordering.** Semver sorts `pre100` below `pre20` (D8). Releases up to `pre99` sort correctly. Open question
-  8 records the choice to make before then.
+- **Version ordering** (corrected in r23). Semver compares `preN`, `betaN` and `rcN` as text: `pre10 < pre9` and
+  `pre100 < pre99`; and `pre.N` starts with the identifier `pre`, which sorts below `preN` as text, so
+  `0.1.0-pre.100 < 0.1.0-pre100 < 0.1.0-pre99`.
+  The versions on npm start at `pre21`, so every two-digit `preN` from there sorts correctly among them; `pre100`
+  would sort below all of them and go to a fallback tag (D8 rule 5). Open question 8 records the choice to make
+  before then.
+- **The npm publication window** (r23). The npm files are a run artifact, kept 14 days, not release assets. A version
+  whose publication fails and is not recovered within 14 days of its tag's run can never be published to npm; the next
+  version is released instead. The runbook shows how to check an artifact's expiry.
+- **Channels after a final release** (r23). A `-preN` published after a final version goes to `preview`, a `-betaN`
+  to `beta`, an `X.Y.Z-rcN` to `next`, so `npm install` keeps the final and early adopters opt in. A channel is never
+  moved backwards, and a final release does not reset it, so it can name a prerelease older than `latest` until the
+  next one. `X.Y.Z-preN-rcN` candidates are never on npm.
 - **`vm.applyParams` mistakes are expensive.** A wrong hash means funds sent to the wrong address. Mitigated by:
   - refusing guesses (D6a);
   - the always-on checks;
@@ -1410,13 +1523,14 @@ provenance; only the first real publication does (M4).
   - The recovery sequences, against a test repository:
     1. Attempt 1 releases and attests bytes A, then fails in `npm-publish`. "Re-run failed jobs" in attempt 1
        publishes A.
-    2. Attempt 1 fails the same way. A whole-workflow re-run stops in `wasm` before building, so no bytes B ever
-       exist. The `workflow_dispatch` entry on the tag then publishes A.
+    2. Attempt 1 fails the same way. A whole-workflow re-run stops in every build job before building, so no bytes
+       B ever exist. The `workflow_dispatch` entry on the tag then publishes A (its release is complete).
   - Dispatch negatives:
     - a dispatch from a branch is refused;
     - a tag that does not match the version is refused;
     - an attestation from a modified workflow fails verification;
-    - a dispatch on a release-candidate tag, or with `npm_publish = false`, publishes nothing.
+    - a dispatch on a release-candidate tag (`X.Y.Z-preN-rcN` from r23), or with `npm_publish = false`, publishes
+      nothing.
   - A normal run whose `attest` or `github-release` fails does not publish. An `attest` failure creates no release.
   - The job conditions are tested against the real dependency graph: on dispatch, `npm-publish` and `npm-verify` run
     although their `needs` were skipped. In a normal run, they don't run after a failed prerequisite.
@@ -1427,6 +1541,11 @@ provenance; only the first real publication does (M4).
   - A release candidate's dry run runs no `npm-verify`: it installs nothing and looks up no provenance.
   - `npm-publish`'s exact-ref check refuses `main`, `release/**` and another tag (r22), and `npm-verify` fails when a
     chosen tag is deleted or moved backwards (r21).
+  - r23: the release attaches no npm file; the npm jobs take the `npm-packages` artifact, from their own run or, on a
+    dispatch, from the tag's push run (exactly one, attested, not expired; otherwise the dispatch fails saying the
+    version can no longer be published), and require the release's engine archives to equal it. D8's r23 table: each
+    row, the no-backwards fallbacks for `preview`, `beta` and `next`, a channel never behind `latest`, the
+    `-preN-rcN` dry run, and the refused forms; `npm-gates` classifies the forms the same way.
   - Then, immediately before the first real release, the maintainer configures each trusted publisher, with direct
     publishing allowed (D8a, Timing). The first real publication follows within 2 days, by the maintainer's decision.
   - That publication is the only proof of authentication and provenance. Its tags, provenance (I12) and registry
@@ -1557,6 +1676,12 @@ Independent evidence, not values the code under test produced:
   - The publish job's retry cases against a local registry (I11): identical with provenance (skipped), identical
     without provenance (fails), different contents (fails), "already exists" with a match (success), and a failure
     after the first package.
+  - The dist-tag sequence of D8 (r23) against a local registry and Verdaccio: `0.1.0-rc1` (`next`), `0.1.0`
+    (`latest`), `0.2.0-pre1` (`preview`), `0.2.0-beta1` (`beta`), `0.2.0-rc1` (`next`), `0.2.0` (`latest`), each
+    verified with the tags the run chose.
+  - The recovery run lookup (r23): the tag's push run whose `attest` succeeded in any attempt is chosen; a second run
+    that stopped in `wasm`, another tag on the same commit, a dispatch run, another commit, a failed `attest`, an
+    expired artifact and two attested runs are each handled (chosen, ignored, or refused with the message).
   - `npm-verify` after the first real publication: the registry comparison, `npm audit signatures`, and the provenance
     identity of each version (I12).
 - **No regression.** The existing `julc-wasm` tests, `wasmSmoke{Full,Vm}`, the embedder smoke test and the
@@ -1592,6 +1717,11 @@ choosing the recommendation recorded with each.
    `0.1.0-pre.N`, which semver compares as a number, before `pre99`?
    - That changes the Maven versions too, so it is a release-process decision.
    - **Decided** (maintainer, 2026-11-16, r3): decide before `pre90`.
+   - r23: the same text ordering holds for `betaN` and `rcN`, and under D8 rule 5 it becomes behaviour: a `pre100`
+     (or `rc10`) would go to a fallback tag, not `latest`, `preview` or `next`.
+   - r23: a dotted `pre.N` sorts below every `preN` of the same `X.Y.Z` (`0.1.0-pre.100 < 0.1.0-pre100 < 0.1.0-pre99`:
+     its first identifier, `pre`, sorts below `preN` as text). So a move to `pre.N` must start on a higher `X.Y.Z` (for example
+     `0.2.0-pre.1`), never inside `0.1.0`. r23 keeps refusing dotted forms (D8's table) until that decision.
 9. **Schema checks for inputs without a blueprint.** Should `vm.applyParams` accept the parameter schemas in the
    request, so that a staged application (a partial result, then the rest) keeps being checked?
    - **Decided** (maintainer, 2026-11-16, r3): later, if asked for.
@@ -1900,3 +2030,129 @@ choosing the recommendation recorded with each.
   and its `actions: read` are removed. The controls are the jobs' exact-ref checks, the tag ruleset with
   `tag-release.yml`'s release-owner authorisation, and code-owner review on `main` and `release/**`. The trusted
   publisher names `release-staging`.
+- r23 (2026-11-18, maintainer decisions after 0.1.0-pre21 was published to npm):
+  - **The npm files are not release assets.** The `wasm` job uploads the three tarballs, its copies of the two engine
+    archives and the npm checksum file as the `npm-packages` artifact, kept 14 days; `attest` attests them as before,
+    in GitHub's attestation store. `github-release` attaches no npm file, so a release has the same files as before
+    npm. `npm-dry-run`, `npm-publish` and `npm-verify` take the artifact from their own run, or, on a dispatch, from
+    the tag's push run (exactly one with a successful `attest`), verify it against the attestation and require the
+    published release to attach the same engine archives. After 14 days a version not yet on npm can no longer be
+    published. The `release-*` artifacts are kept 14 days too, for "Re-run failed jobs" in `github-release`. The npm
+    jobs hold `actions: read`. D8a's source of record, recovery and verification, I11, M4's exit, Verification and Risks are
+    updated.
+  - **D8's table:** final → `latest`; `-preN` → `latest` while the package has no final version on the registry, then
+    `preview` (any major: the 1.x `-preN` refusal is lifted); `-betaN` → `beta`; `X.Y.Z-rcN` → `next` (published:
+    semver orders it below its release); `X.Y.Z-preN-rcN` → never published, dry run only (it sorts above its
+    prerelease); a snapshot or any other form is refused, in the script and in `npm-gates`. The tag names are
+    constants. Channels are taken only ahead of `latest`, and no tag moves backwards. `npm-verify` checks each
+    package's own rule.
+  - **Review round 1 of r23** (Codex R23-C1 to C6, Fable R23-F1 to F4), amending r23 before it merged:
+    - R23-C1: the recovery run lookup checks every API answer (runs, each run's jobs, artifacts), refuses an
+      incomplete or over-1,000-run history, and tells an unreadable history from an expired artifact.
+    - R23-C2: recovery downloads the one live `npm-packages` artifact it inspected, by artifact id; a run with
+      several live ones is refused. Every npm job checks I1 within the set (each engine tarball's `engine/` files equal
+      its archive's), so with the archives equal to the published release's, the five files are one build's.
+    - R23-C3: `npm-gates` classifies with the publisher's own function (`npm-gate.mjs`), within npm's semver limits
+      (256 characters, safe integers, no leading zeros, no build metadata).
+    - R23-C4, R23-F2: the version-ordering risk and open question 8 are corrected (`pre.N` must start on a higher
+      `X.Y.Z`).
+    - R23-C5, R23-F3, R23-F4, R23-F1, R23-C6: the runbook's manual check walks `gh run download`'s nested layout and
+      fails on any difference; D8 rule 7; the READMEs; recovery after expiry; `npm-verify` notes a stale channel.
+  - **Review round 2 of r23** (Codex R23-C7 to C12, Fable R23-F5, F6):
+    - R23-C7: the five npm files must be exactly the subjects of one verified attest statement of the artifact's
+      run; two attempts' files are never mixed.
+    - R23-C8: the run list's distinct ids must equal GitHub's total; duplicate or malformed rows are refused.
+    - R23-C9, R23-F5: the runbook's release check requires the 14-file inventory on both sides, finds `shasum` when
+      there is no `sha256sum`, and checks its tools first.
+    - R23-C10: "no successful attestation yet" is told apart from expiry.
+    - R23-C11: `ndc-uplc.yml`, called by the release workflow, pins its actions too; the graph test follows local
+      reusable workflows.
+    - R23-C12: a backfilled first final leaves `latest` on the prerelease until a higher final is published.
+    - R23-F6: the rehearsal states what a dispatch's by-id download should show.
+    - The dispatch contract's ref check is described as it runs: after `npm-gates`' pinned checkout and Node set-up.
+  - **Review round 3 of r23** (Codex R23-C13 to C18; Fable R23-F7, a symptom-to-action table in the runbook):
+    - R23-C13: a build-free `release-guard` job, needed by every job that builds a release file (moved into each job
+      in round 4), stops a whole-workflow re-run when the tag has a release; manual completion downloads the original run's `release-*`
+      artifacts by id and refuses a name that occurs twice.
+    - R23-C14: the attestation check compares structured {name, sha256} arrays, checks each hash, and requires the
+      run invocation to be exactly the artifact's run with a positive attempt.
+    - R23-C15: run rows are classified only from well-typed fields; anything else is unreadable history.
+    - R23-C16: `github-release` requires the 14-file inventory before and after uploading.
+    - R23-C17: an empty artifact answer means expiry only after `attest` succeeded.
+    - R23-C18: after a backfilled final, `latest` can keep naming an older prerelease (D8 rule 3, the READMEs).
+    - Registry answers are validated before use (found by Codex in JOUST's port of the same logic): a package
+      document must come with exactly HTTP 200 and be an object for the requested name, with a non-empty
+      object-valued `versions` (version keys, each with its own metadata) and `dist-tags` (each a string naming one of
+      those versions), including `latest` for the three bootstrapped packages; an attestations answer must carry an
+      attestations list. Anything else (a 206, an empty or latest-less 200, an array holder) fails the job; only a
+      404 means "not published", so an incomplete answer can never make a prerelease look like "no final version
+      yet" or switch the no-backwards check off.
+  - **Review round 4 of r23** (Codex R23-C19 to C24, Fable R23-F8):
+    - R23-C19: the release check runs inside every build job, before building (`release-guard.sh`), so a targeted
+      re-run of one job after the release exists builds nothing; the separate `release-guard` job is gone.
+    - R23-C20: manual completion binds the run to the workflow, push event, tag and commit, requires positive
+      artifact ids and `expired == false`, and checks the inventory and every completed asset before changing
+      anything.
+    - R23-C21: the attestation answer must be exactly one JSON array, the match is a `jq -e` boolean, and the attempt
+      number is anchored as the whole string (a trailing newline fails).
+    - R23-C22: job and artifact rows are classified from well-typed fields; an `expired` that is null is unreadable
+      history, not expiry; a pending job's null conclusion is accepted.
+    - R23-C23: each version entry must name the package itself.
+    - R23-C24, R23-F8: the read-only check and the draft refusal are described apart; the rehearsal runs the
+      manual completion's preparation once, and a build test ties the runbook's artifact and file lists to the
+      workflow.
+  - **Review round 5 of r23** (Fable approved with F9; Codex R23-C26 to C34). Maintainer decision: completing a
+    GitHub release by hand is removed.
+    - R23-C26, R23-C27, R23-C28 (the manual completion's preparation script): resolved by removing it, with its
+      final check, its tests and its rehearsal item (round 4's R23-C20 and the runbook half of R23-F8 go with it).
+      An incomplete release's one recovery is "Re-run failed jobs" in the original run; when that is impossible
+      (a whole-workflow re-run, or the artifacts expired) the version is abandoned: the release is not patched,
+      npm is not dispatched for it, any npm package of it is deprecated, and the next version is released (D8a).
+      The build jobs' release check stays: it keeps "Re-run failed jobs" from rebuilding.
+    - R23-C29: the release check requires every page to be an array and every release to carry a non-empty
+      string `tag_name`; a malformed answer refuses to build instead of reading as "no release".
+    - R23-C30: the recovery lookup reads runs, jobs and artifacts the same way: every page an object with one
+      numeric `total_count` and an array, distinct ids exactly that total, each once; a job's `conclusion` present,
+      null only before it completed. Anything else is unreadable history, so expiry is decided only on a completely
+      read artifact list.
+    - R23-C31: `npm-publish` reads each package's document once, for both the version's presence and its tag, and
+      a 404 for one of the three (bootstrapped) packages is asked again briefly, then fails the job.
+    - R23-C32: the provenance bundle is read only from the registry's origin, with no redirect, from exactly HTTP
+      200.
+    - R23-C33: the build test compares each release-* and npm-packages upload step's `path` entries with what the
+      artifact must hold, and their files with `github-release`'s inventory.
+    - R23-C34: the rehearsal's criterion is that no build job builds (`native-image-playground` is skipped when
+      `wasm` stops); the draft sentence says which check a draft stops.
+    - R23-F9: the release check's message says a build job cannot be re-run once the release exists, to re-run a
+      failed job instead, and that the version may have to be abandoned.
+  - **Review round 6 of r23** (Codex R23-C35 to C42; Fable approved 216501c3, with F10 and F11):
+    - R23-C35: `gradle.properties`' `npm_publish` comment says `X.Y.Z-rcN` is published (to `next`) and only
+      `X.Y.Z-preN-rcN` dry-runs.
+    - R23-C36: the release check requires at least one page, each a JSON array; an empty answer (HTTP 204, an empty
+      body) refuses to build, while `[]` still means no release.
+    - R23-C37: `github-release` advises deleting a draft only for a well-formed record (a positive id, `draft` JSON
+      `true`); any other record stops it with "preserve the published release and its tag; investigate".
+    - R23-C38, R23-F11: the runbook's abandonment deprecates every published exact version of the three packages,
+      moves back or removes any non-`latest` tag naming it, and may edit the release's title and notes (not its
+      assets); abandonment does not touch the version's Maven artifacts.
+    - R23-C39: the placeholders are published before the rehearsal, since every npm job refuses a 404 for the three
+      packages; the trusted publishers stay just before the first real release.
+    - R23-C40, R23-F10: a dispatch publishes only when the tag's push run's `github-release` succeeded (`npm-run.sh`),
+      so only a complete release reaches npm; the runbook says so beside the dispatch command.
+    - R23-C41: an `attest` or `github-release` job with an undocumented status or conclusion (an empty string
+      included) is unreadable history.
+    - R23-C42: the recovery test is split into recovery before a whole-workflow re-run and abandonment after one;
+      the r23 summary no longer mentions completing a release by hand.
+  - **Review round 7 of r23** (Codex approved 9d9964e7 with R23-C43 to C46):
+    - R23-C43: a deciding job's conclusion must be one of the workflow-job values (`stale` and `startup_failure`
+      are not); otherwise recovery stops, even beside a selectable run.
+    - R23-C44: `release-guard.sh` reads the release list page by page, validating each page (a JSON array) before
+      asking for the next, so a valid page followed by an empty answer refuses.
+    - R23-C45: `github-release` reads the list through the same validated reading (`release-guard.sh --list`)
+      before creating and in its final check; a sole empty answer, `{}` or `[{}]` stops it instead of creating a
+      release, and a draft flag that is not a boolean is malformed, not "still a draft".
+    - R23-C46: a build test requires the job names `npm-run.sh` gives the ATTESTED and RELEASED roles to be the
+      names of `attest` and `github-release`, each in its role.
+  - **Review round 8 of r23** (Codex approved 92b5c253; R23-C47 to C49): `github-release` counts the listing with
+    `mapfile` (an unreadable file stops, never counts as none); a release id listed twice is an unstable listing to
+    retry, and only distinct ids of the tag need resolving by hand; the page cap says the end of the list is unconfirmed.
