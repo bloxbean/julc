@@ -78,6 +78,21 @@ hash moves from `28e115b5…` to `f338eb56…` (`crowdfund-diff.txt`).
   binding supplied to assembly, and each validator helper. A helper and a library copy that share a name are distinct
   (C22: such a pair exists under `compileMethod` with the root as its own library).
 - **Resolution.** References resolve **lexically**, to the innermost binding of that name in scope.
+- **Scopes (r12, reviewer1's finding 1).** The walk sees the bindings as the assembly nests them. From outermost to
+  innermost, they are:
+  1. library methods;
+  2. static fields, in declaration order;
+  3. helpers;
+  4. the handler or target.
+
+  So:
+  - a static initialiser sees the library methods and the fields declared before it;
+  - a helper and the root see every field, and a field shadows a library method of the same name;
+  - a library body starts in its own defining scope: it sees library methods only, never the validator's fields or
+    helpers.
+
+  The javac frontend's field binders are plain field names and its method binders are qualified, so no Java
+  program's ranks change. This matters only for PIR from another frontend.
 - **Visiting.** A method is marked before its body is walked. Calls from one helper to another are followed.
 
 **D1a. The root walk.** It visits:
@@ -278,21 +293,24 @@ A single failure blocks pre22. Attributing a failure to a known limit diagnoses 
 **Oracles:**
 - **Debug (I4).** For every mapped DFS index, the source location is compared through the rewrite mapping. Breakpoint
   hits, step locations and visible locals are compared against pre21's.
-- **Semantic (I6a, C30, C39).**
+- **Semantic (I6a, C30, C39; r11 and r12).**
   - Results are compared structurally. A returned function is applied, on both sides, to the same fixture arguments,
-    and the results are compared.
-  - Observable failure reasons and traces are compared.
-  - Budgets are reported separately.
-  - A case that exhausts the budget on one side only is replayed at a higher limit. If it still exhausts, it is
-    reported as inconclusive.
-  - **Refined in r11 (Codex M1a C30, C36, C37):**
-    - Any case that exhausts the transaction limit, on either side or both, is decided by its higher-limit replays.
-      A transaction-limit exhaustion's partial traces are superseded by the replay.
-    - Where both replays terminate, results and complete traces must be equal.
-    - Where an exhaustion persists, the case is inconclusive only if what it traced is a prefix of the other side's
-      complete traces (or, both exhausted, one is a prefix of the other). Otherwise the traces already disagree, and
-      it is a mismatch.
-    - A returned function whose evaluation exhausted is recovered from the replay and applied.
+    and the results are compared. A returned function whose evaluation exhausted is recovered from the replay and
+    applied.
+  - Observable failure reasons and traces are compared as separate fields. A trace list is never read out of a
+    failure reason.
+  - Budgets are reported separately, the completed retries' budgets included.
+  - **Exhaustion.** Any case that exhausts the transaction limit, on either side or both, is replayed at a higher
+    limit, and the replays decide it:
+    1. An exhausted run's traces must be a prefix of its own replay's. Otherwise it is a mismatch.
+    2. Each side's evidence is its transaction-limit run, or its replay where that run exhausted. A transaction-limit
+       exhaustion's partial traces are superseded.
+    3. Where both terminate, results and complete traces must be equal.
+    4. Where both still exhaust with the same traces, the case is **bounded**, and it is reported apart.
+    5. Otherwise an exhaustion persists. The case is **inconclusive** only if what it traced is a prefix of the other
+       side's complete traces (or, both exhausted, one is a prefix of the other). Otherwise the traces already
+       disagree, and it is a mismatch.
+  - The fixture oracle (D5) and the corpus comparator apply the same rule, in the same categories.
 
 **Unit tests:**
 - Lemmas 1–4 on random DAGs.
@@ -404,13 +422,13 @@ JOUST's D12 is an M3 deliverable.
     - `./gradlew build` is green.
 - **M3. JOUST with the local M1a build.**
   - It runs the gate's JOUST half.
-  - **Status: complete.** The gate run passed on the final main code, `6c68f45a`
-    (`adr/evidence/078/m3-joust-gate-6c68f45a.txt`).
+  - **Status: complete** on `6c68f45a` (`adr/evidence/078/m3-joust-gate-6c68f45a.txt`). r12 changes main code
+    (D1 scopes; no byte change for Java programs), so M3 is re-run on the r12 head.
     - 67 contracts × 10 edits, `renameAll` included; the renamed-file check; the Pledges swap; a package move.
     - Crowdfund keeps `28e115b5…` and Tips keeps `80648854…`.
     - Source-map mode is 67/67 identical, Steward included.
     - Every `[hash]` line is identical across the three runs: `4bac295d` (`m3-joust-gate.txt`), `2c0edb6e` (after
-      r8's one lexical graph) and `6c68f45a` (after round 3's observer refactor). Main code is frozen at `6c68f45a`.
+      r8's one lexical graph) and `6c68f45a` (after round 3's observer refactor). Main code was frozen at `6c68f45a` until r12.
   - Its JOUST deliverables (JOUST's pins and docs, and D12 citing the known limits) follow when `0.1.0-pre22` is
     published.
   - F-ID opens as OQ9 says.
@@ -483,3 +501,18 @@ JOUST's D12 is an M3 deliverable.
     only when its traces are prefix-compatible with the other side's (C36). A returned function is recovered from the
     replay (C37).
   - Test and evidence changes only; the decision is unchanged.
+- **r12 (2026-11-19).** After reviewer1's implementation review of `ceffc261` and Codex's follow-ups (C42–C46).
+  - **D1 scopes** (reviewer1's finding 1, main code): the first-use walk keeps the static field binders.
+    - A static initialiser sees the fields declared before it, and a helper and the root see every field.
+    - A field shadows a library method of the same name.
+    - A library body starts in its own defining scope.
+    - No byte change for Java programs: the corpus replay, the julc-examples gate and the debug oracle are
+      identical to pre21's.
+  - **I6a oracle** (reviewer1's finding 2, C42–C46):
+    - traces are a separate field, the pre21 recording included;
+    - an exhausted run is checked against its own replay;
+    - the applied ids wait for their parent;
+    - the completed retries are counted;
+    - "bounded" is one category in both oracles;
+    - the exhaustion text is consolidated.
+  - The decision is unchanged.

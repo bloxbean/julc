@@ -421,6 +421,61 @@ Main code stays frozen at `6c68f45a`; test sources, evidence and docs only.
   diagnostic checks and the two-way id check.
 - **ADR r11** states the refined I6a exhaustion rule (C30, C36, C37).
 
+## Changes after reviewer1's implementation review of `ceffc261` and Codex's follow-ups (r12)
+
+**reviewer1's finding 1 (P2, main code): static field binders in the first-use walk.**
+
+`FirstUseRanks` now walks each body in the scopes the assembly gives it. In `ValidatorAssembly.wrap` and `method` the
+nesting is, outermost first: library methods (`bindLibraries`), static fields in declaration order (`bindStatics`,
+:304), helpers (`wrapMethodBindings`), then the handler or target.
+- `Roots` carries the `StaticField`s, names included. The `staticValues()` that dropped the names is gone.
+- **Static initialisers.** Each one is walked with the fields declared before it in scope, and with no helpers
+  (`FirstUseRanks.of`, :120–123).
+- **Entry points and helper bodies.** These see every field (:125, :235, :281).
+- **Shadowing.** A field in scope shadows a library method of the same name. It is checked after the locals and the
+  helpers and before the library methods (:286).
+- **Library bodies.** A library body starts in its own defining scope, with no fields and no helpers (:243, :292).
+
+The regressions:
+- **`ValidatorAssemblyFrontendTest.aStaticFieldSpelledLikeALibraryMethodIsTheField`**, through
+  `ValidatorAssembly.method`, is reviewer1's program: `static q.L.alpha = 4; static use = q.L.alpha;
+  T.f = q.L.beta(use)`. Beta wins under both field spellings (`q.L.alpha` and `field`), and the two FLAT programs at
+  `NONE` are identical.
+- **`FirstUseRanksTest.staticFieldsAreInScopeWhereTheAssemblyBindsThem`** covers shadowing in a later initialiser,
+  in an entry point and in a helper. It also checks that an earlier initialiser and a library body do not see the
+  field.
+- **The mutation.** With the field check disabled, both tests fail (alpha wins).
+
+There is no byte change for Java programs. The javac frontend's field binders are plain field names, and its method
+binders are qualified. On the new classes (ValidatorAssembly `d9e76165…`, FirstUseRanks `6be5465f…`):
+- the corpus replay is byte-identical to pre21's (sha `e04953cd…`, 0 unaccepted, 0 budget-only, 0 inconclusive,
+  112 bounded);
+- the julc-examples gate is GATE-SAME and MAPS-SAME for all 43 programs;
+- `LibraryTieDebugOracleTest` passes (3/3).
+
+**reviewer1's finding 2 (P2, test) and Codex's follow-ups C42–C46.**
+- **Separate fields (finding 2, C43).** `Adr078Fixtures.Evaluation` keeps the outcome (result, failure reason or
+  `EXHAUSTED`) and the trace list as separate fields. The pre21 recording has a separate `traces …` line, re-recorded
+  on the pre21 class path: 7,880 lines. Every former line equals the new outcome plus its traces line (2,320 checked,
+  0 differences).
+  - The oracle compares `Run(outcome, traces)` records, and never reads traces out of a reason.
+  - reviewer1's exact case is a control: a failure whose reason reads `example traces=["B"]`, with traces `["A"]`,
+    against an exhaustion that traced `["B"]`. It is a mismatch, both ways round.
+- **C42.** Where the parent `eval 0` still exhausts at both limits on either side, the parent is decided, and the
+  `applied` ids are not required of both sides.
+- **C44.** An exhausted transaction-limit run's traces must be a prefix of its own retry's, in D5 (`againstItsRetry`)
+  and in the comparator. Controls: `["lost"]` against its retry's `["kept"]` is rejected, on either side.
+- **C45.** A completed retry counts in the compared, applied and traced totals.
+- **C46.**
+  - Both oracles have one category, **bounded**, for "both exhaust at both limits with the same traces".
+  - The ADR's older exhaustion sentence and r11's refinement are consolidated into one numbered rule (ADR r12).
+- **Re-runs.**
+  - The adr078 tests: 19 and 1 green. I6a: 1,152 compared, 296 applied, 32 with traces, 0 mismatches, 0 bounded,
+    0 inconclusive.
+  - The codegen tests are green.
+  - The comparator controls: 38, as expected (`m1a-replay-comparator-controls.txt`).
+  - The comparator on the archived outputs and on the r12 replay: 0 unaccepted.
+
 ## M3 (JOUST's half of the gate)
 
 M3 passed on `4bac295d` (`m3-joust-gate.txt`):
@@ -438,7 +493,8 @@ refactor. It passed:
 - Crowdfund `28e115b5…`, Tips `80648854…`;
 - maps-on 67/67.
 
-**M3 is complete.** Its JOUST deliverables (JOUST's pins, and D12 citing the known limits) follow when
+**M3 is complete** on `6c68f45a`. r12 changes main code (reviewer1's finding 1), so the coordinator re-runs M3 on
+the r12 head. Its JOUST deliverables (JOUST's pins, and D12 citing the known limits) follow when
 `0.1.0-pre22` is published. F-ID opens as the ADR's OQ9 says.
 
 ## Not done in M1a

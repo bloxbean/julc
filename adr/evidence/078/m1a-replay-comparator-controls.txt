@@ -1,11 +1,11 @@
 # ADR-078 M1a: the replay comparator's and runner's negative controls, after Codex's fourth and fifth M1a reviews
-# (C29, C30, C31, C34; C36, C39, C40). 2026-11-19. compare_replay_controls.py.txt edits a copy of the head's archived
+# (C29, C30, C31, C34; C36, C39, C40) and r12 (C44, C46, reviewer1's finding 2). 2026-11-19. compare_replay_controls.py.txt edits a copy of the head's archived
 # replay output (r7-head.jsonl), or both archived outputs ("both sides"), and runs compare_replay.py.txt with the
 # corpus against pre21's output (r5-pre21.jsonl).
 # Exit 1: any unaccepted difference; a schema or digest error, a boolean where an integer belongs (C40); a record the
 # corpus calls for missing, or one it does not call for (C29, checked on each side); a harness error, even one both
 # sides share; a missing or orphan higher-limit retry; a change in the pinned exclusions; traces that disagree before
-# an exhaustion (C36).
+# an exhaustion (C36); an exhausted run whose traces are not a prefix of its own retry's (C44).
 # Exit 0, reported: budget-only differences, including every one-sided exhaustion the higher limit resolves (C34);
 # inconclusive cases (an exhaustion persists at the higher limit, and what it traced is a prefix of the other side's
 # traces, ADR-078 I6a as refined in r11); transaction-limit traces that differ where the retries agree (C36's reverse).
@@ -47,6 +47,8 @@ C36, both exhaust at both limits: ["AB"] against ["A"]: exit 1; ['unaccepted dif
 C36, the reverse: transaction-limit traces [] against ["start"], both retries succeed alike with ["start","done"]: exit 0; ['unaccepted differences: 0', 'budget-only differences (I6b): 0', 'inconclusive (an exhaustion that persists at the higher limit): 0']
 C40, both sides: a vector written as true: exit 1; ['ctl-a.jsonl:8: vector is not an integer']
 C40, both sides: a budget written as true: exit 1; ['ctl-a.jsonl:7: mem is not an integer']
+C44: an exhausted run traced ["lost"], its own retry ["kept"]: exit 1; ["ctl-b.jsonl: exhausted evaluation ('00131a41e259748168f04280bab8ef60dbb77802e34945f0c10cc50bf1e7f4fc', 'BASELINE', 'eval', 0, 'transaction') traced ['lost'], its own retry ['kept']"]
+reviewer1 finding 2: a retry that fails tracing ["A"] against one that exhausts having traced ["B"] (reasons are digests, kept apart from traces): exit 1; ['unaccepted differences: 1', 'budget-only differences (I6b): 0', 'inconclusive (an exhaustion that persists at the higher limit): 0', "('traces disagree before an exhaustion', ('00131a41e259748168f04280bab8ef60dbb77802e34945f0c10cc50bf1e7f4fc', 'BASELINE', 'eval', 0, 'transaction'), {"]
 
 C21: a path-staging failure. Adr078Replay with -Dadr078.tmp set to a regular file, on three corpus manifests (two
 compilePath, one compileMethod):

@@ -14,7 +14,8 @@ evaluations; bounded comparisons (both sides exhaust at both limits with the sam
 rule, inconclusive cases (an exhaustion persists at the higher limit, and what it traced is a prefix of the other
 side's traces). Where the transaction limit exhausted, the higher-limit retry is each side's evidence: where both
 terminate, results and complete traces must be equal; traces that are not prefix-compatible are a mismatch (C36).
-Vectors and budgets must be JSON integers, not booleans (C40). Where the higher limit resolves a one-sided exhaustion to
+Vectors and budgets must be JSON integers, not booleans (C40). An exhausted run's traces must be a prefix of its own
+retry's (C44). The fixture oracle (D5) uses the same categories: bounded, inconclusive, mismatch (C46). Where the higher limit resolves a one-sided exhaustion to
 the same result, the two completed evaluations' budgets are reported as budget-only (C34). Everything else that
 differs is unaccepted.
 Usage: compare_replay.py corpus a.jsonl b.jsonl
@@ -115,8 +116,12 @@ def load(path):
     # Exactly one higher-limit retry for each transaction-limit exhaustion, and none for anything else.
     for rid, r in records.items():
         if r["kind"] != "eval": continue
-        if rid[4] == "transaction" and r["outcome"] == "exhausted" and rid[:4] + ("high",) not in records:
-            fail(f"{path}: exhausted evaluation {rid} has no higher-limit retry")
+        if rid[4] == "transaction" and r["outcome"] == "exhausted":
+            retry = records.get(rid[:4] + ("high",))
+            if retry is None: fail(f"{path}: exhausted evaluation {rid} has no higher-limit retry")
+            # C44: the retry runs the same program further, so it traces at least what the exhausted run traced.
+            if retry.get("traces", [])[:len(r["traces"])] != r["traces"]:
+                fail(f"{path}: exhausted evaluation {rid} traced {r['traces']}, its own retry {retry.get('traces')}")
         if rid[4] == "high":
             t = records.get(rid[:4] + ("transaction",))
             if t is None or t["outcome"] != "exhausted": fail(f"{path}: orphan higher-limit retry {rid}")

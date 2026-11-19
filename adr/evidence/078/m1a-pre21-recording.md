@@ -5,7 +5,7 @@ pair of committed recordings, both produced by the test sources themselves:
 
 | Recording | Producer | What it holds |
 |---|---|---|
-| `julc-compiler/src/test/resources/adr078/pre21-fixtures.txt` | `Adr078Fixtures.main` | For every fixed fixture, variant and mode (4 levels, with and without source maps): the compilation (SHA-256 of the FLAT program and its size, or `REJECTED` and the whole rejection); the sorted multiset of method binders (I3); with source maps, the complete map. For every compiled `compileMethod` variant, the evaluation of each argument vector at `REPLAY_LIMIT` and at `HIGH_LIMIT`: the result as a FLAT term, the whole failure reason or exhaustion, and the traces as a JSON array. The first vector is empty, so its result is the function itself, which is then applied to the next vector, at both limits. Budgets are on separate lines, and C12 also has its tight-limit outcome. For each rejected variant, the exact diagnostic with `julc.verifyBinderNamespace` off and on, which `rejectionsSayWhatPre21Said` compares exactly. The tests compare 1,152 evaluations against it, and check that the evaluation ids made equal the recorded ones, both ways. |
+| `julc-compiler/src/test/resources/adr078/pre21-fixtures.txt` | `Adr078Fixtures.main` | For every fixed fixture, variant and mode (4 levels, with and without source maps): the compilation (SHA-256 of the FLAT program and its size, or `REJECTED` and the whole rejection); the sorted multiset of method binders (I3); with source maps, the complete map. For every compiled `compileMethod` variant, the evaluation of each argument vector at `REPLAY_LIMIT` and at `HIGH_LIMIT`: the result as a FLAT term, the whole failure reason or exhaustion, and, on a separate `traces` line, the traces as a JSON array (r12). The first vector is empty, so its result is the function itself, which is then applied to the next vector, at both limits. Budgets are on separate lines, and C12 also has its tight-limit outcome. For each rejected variant, the exact diagnostic with `julc.verifyBinderNamespace` off and on, which `rejectionsSayWhatPre21Said` compares exactly. The tests compare 1,152 evaluations against it, and check that the evaluation ids made equal the recorded ones, both ways. |
 | `julc-compiler/src/test/resources/adr078/pre21-programs.txt` | `Adr078Programs.main` | The digest of every generated source (a stale recording fails the test), and, for each generated program (seed 78, 10 programs, 40 rewrites each, alternately an exact reversal of the base's qualified-name order and a random renaming) and mode, how many rewrites compile and how many give the base's bytes. |
 | `julc-tools/src/test/resources/adr078/pre21-debug.txt` | `Adr078DebugFixtures.main` | For each debug fixture program, as JuLC's source debugger (`SourceDebugService`) shows it: the executable lines; the line and column of every Java-breakpoint stop, with a breakpoint on every executable line; the visible locals at each stop; every change of Java location over all steps; the final status. |
 
@@ -48,10 +48,15 @@ The header lines were then prepended. `pre21-debug.txt` is in `julc-tools/src/te
 - **Evaluations.** The recordings evaluate under a transaction's maximum budget (`REPLAY_LIMIT`) and, for every
   evaluation, again at `HIGH_LIMIT`. The tests compare 1,152 evaluations (296 returned functions applied, 32 with
   traces), and check that the evaluation ids made equal the recorded ones, both ways. An evaluation that exhausts the
-  transaction limit on either side is decided by the higher-limit replays (`afterAnExhaustion`): where both terminate,
-  results and complete traces must be equal; where an exhaustion persists, the case is inconclusive only if its traces
-  are a prefix of the other side's, and otherwise a mismatch. A returned function whose evaluation exhausted is
+  transaction limit on either side is decided by the higher-limit replays (`afterAnExhaustion`, ADR-078 r12's I6a
+  rule): an exhausted run's traces must be a prefix of its own replay's; where both terminate, results and complete
+  traces must be equal; where both still exhaust alike, the case is bounded; where an exhaustion persists, the case
+  is inconclusive only if its traces are a prefix of the other side's, and otherwise a mismatch. A returned function whose evaluation exhausted is
   recovered from the replay and applied (C37). No fixture evaluation exhausts the transaction limit (C12's tight limit
   apart), so none is inconclusive.
 - **Re-recorded after C37.** `Adr078Fixtures.main` run again on the pre21 class path after C37 gives the committed
   `pre21-fixtures.txt`, header lines apart.
+- **Re-recorded in r12 (reviewer1's finding 2, Codex M1A-C43).** Each evaluation's traces are now a separate
+  `traces …` line, never part of the outcome text. The recording was made again on the pre21 class path. It has
+  7,880 lines, with 2,320 new `traces` lines. Every former `eval`/`applied` line equals the new outcome followed by
+  ` traces=` and the new traces line (2,320 checked, 0 differences), and every other line is unchanged.

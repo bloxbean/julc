@@ -1,5 +1,5 @@
 # ADR-078 M1a: ADR-075's corpus replay, corrected after Codex's third M1a review (C20, C21, C23, C24, C27, C28) and
-# fourth (C29, C30, C31, C34) and fifth (C36, C39, C40).
+# fourth (C29, C30, C31, C34) and fifth (C36, C39, C40), and re-run on r12's main code (reviewer1's finding 1).
 # 2026-11-19. pre21: the 0.1.0-pre21 Maven artifacts (julc-tools + julc-vm-java class path). Head: this branch's
 # julc-compiler test runtime class path, built from the working tree that became the final head (round 3: the observer
 # carried in the Frontend record, F9/C26; the LibraryBindingOrder Javadoc, C28).
@@ -22,13 +22,17 @@
 # where both sides exhaust, a higher-limit exhaustion on one side only is inconclusive, as in the fixture oracle (C30).
 # Round 5: where the transaction limit exhausted, the retry is each side's evidence; where an exhaustion persists, the
 # case is inconclusive only if its traces are a prefix of the other side's, and otherwise a mismatch (C36); vectors
-# and budgets must be JSON integers, not booleans (C40).
+# and budgets must be JSON integers, not booleans (C40). r12: an exhausted run's traces must be a prefix of its own
+# retry's (C44); bounded is one category with the fixture oracle (C46).
 
 Commands (class paths as in m1a-pre21-recording.md; both runs sequential, with the same -Dadr078.tmp directory, since a
 compilePath diagnostic carries the staged file's path):
   java -Xmx6g -Dadr078.tmp=<tmp> -cp "<runner>:<pre21 class path>" replay.Adr078Replay <corpus> r5-pre21.jsonl
   java -Xmx6g -Dadr078.tmp=<tmp> -cp "<runner>:<julc-compiler test class path>" replay.Adr078Replay <corpus> r7-head.jsonl
   python3 compare_replay.py.txt <corpus> r5-pre21.jsonl r7-head.jsonl   (rounds 4 and 5: re-run on these archived outputs)
+  r12, after the static-scope fix in main code: the round-5 runner on the new classes, the same tmp directory:
+  java -Xmx6g -Dadr078.tmp=<tmp> -cp "<runner>:<julc-compiler test class path>" replay.Adr078Replay <corpus> r12-head.jsonl
+  python3 compare_replay.py.txt <corpus> r5-pre21.jsonl r12-head.jsonl
 
 Compiler class files loaded (SHA-256, from the run logs):
   pre21 (julc-compiler-0.1.0-pre21.jar)
@@ -41,9 +45,12 @@ Compiler class files loaded (SHA-256, from the run logs):
     LibraryBindingOrder  defab323b293067d…
     ValidatorAssembly    ee8201bb6338c863…
     FirstUseRanks        4916e359d7d0878d…
+  r12 head (after the static-scope fix): JulcCompiler 4ec3a0d3…, LibraryBindingOrder defab323…, ValidatorAssembly
+    d9e76165…, FirstUseRanks 6be5465f… (r12-head.log).
   JulcCompiler's class file is the same on both sides; the replay therefore checks the classes that changed.
 
 Output: both files 341,651 records, byte-identical (sha256 e04953cd026364434b3a519407e49c268501cfba51653be1457347250356eb84).
+r12: r12-head.jsonl is byte-identical to them too (same sha256); the comparator exits 0 with the counts below.
 
 Counts (from the manifests and records):
   manifests                                     20,407

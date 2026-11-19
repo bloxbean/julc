@@ -112,3 +112,12 @@ show('C36, the reverse: transaction-limit traces [] against ["start"], both retr
      *bounded({**ok_high, 'traces': ['start', 'done']}, {**ok_high, 'traces': ['start', 'done']}, [], ['start']))
 both('C40, both sides: a vector written as true', setf(lambda r: r['kind'] == 'eval' and r['vector'] == 1, 'vector', True))
 both('C40, both sides: a budget written as true', setf(ok_eval, 'mem', True))
+def lost_against_kept(out):
+    """C44: one side's exhausted run traced ["lost"], its own retry ["kept"]."""
+    i = idx(lambda r: r['kind'] == 'eval' and r['limit'] == 'transaction' and r['outcome'] == 'ok'); r = recs[i]
+    base = {k: r[k] for k in ('case', 'level', 'kind', 'vector')}
+    out[i] = dump({**base, 'limit': 'transaction', 'outcome': 'exhausted', 'traces': ['lost'], 'cpu': 10000000001, 'mem': 500})
+    out.append(dump({**base, 'limit': 'high', 'outcome': 'ok', 'result': '1' * 64, 'traces': ['kept'], 'cpu': 20000000000, 'mem': 500}))
+head_only('C44: an exhausted run traced ["lost"], its own retry ["kept"]', lost_against_kept)
+show('reviewer1 finding 2: a retry that fails tracing ["A"] against one that exhausts having traced ["B"] (reasons are digests, kept apart from traces)',
+     *bounded({**fail_high, 'traces': ['A']}, {**ex_high, 'traces': ['B']}))
