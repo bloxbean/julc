@@ -25,8 +25,10 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -36,6 +38,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -69,14 +72,49 @@ class LibraryTieOrderFixturesTest {
             for (String line : new String(in.readAllBytes(), StandardCharsets.UTF_8).split("\n")) {
                 if (line.isBlank() || line.startsWith("#")) continue;
                 int at = line.indexOf(" = ");
-                PRE21.put(line.substring(0, at), line.substring(at + 3));
+                if (PRE21.put(line.substring(0, at), line.substring(at + 3)) != null) {
+                    throw new IllegalStateException("a duplicate pre21 row: " + line.substring(0, at));
+                }
             }
         }
+        // Codex M1a C49: exactly one trace row per recorded evaluation (higher and tight limits included), none orphan.
+        var problems = traceRowProblems(PRE21.keySet());
+        if (!problems.isEmpty()) throw new IllegalStateException("pre21 trace rows: " + problems);
         for (var fixture : Adr078Fixtures.fixtures()) {
             for (var variant : fixture.variants()) {
                 for (var mode : Adr078Fixtures.modes()) NOW.put(key(fixture, variant, mode), Adr078Fixtures.compile(variant, mode));
             }
         }
+    }
+
+    /**
+     * The recorded evaluation rows ({@code … | eval i [high | c12-limit]}, {@code … | applied [high]}) without exactly
+     * one {@code … | traces <id>} row, and the trace rows without an evaluation row (C49).
+     */
+    static List<String> traceRowProblems(Collection<String> keys) {
+        var problems = new ArrayList<String>();
+        var all = new HashSet<>(keys);
+        for (String key : keys) {
+            int bar = key.lastIndexOf(" | ");
+            if (bar < 0) continue;
+            String head = key.substring(0, bar), part = key.substring(bar + 3);
+            if (part.startsWith("traces ")) {
+                if (!all.contains(head + " | " + part.substring("traces ".length()))) problems.add("an orphan trace row: " + key);
+            } else if (part.startsWith("eval ") || part.startsWith("applied")) {
+                if (!all.contains(head + " | traces " + part)) problems.add("no trace row for " + key);
+            }
+        }
+        return problems;
+    }
+
+    /** C49's control: a missing trace row and an orphan one are both found. */
+    @Test
+    void everyRecordedEvaluationHasExactlyOneTraceRow() {
+        assertEquals(List.of(), traceRowProblems(PRE21.keySet()));
+        assertEquals(List.of("no trace row for f | v | none | eval 0 high"),
+                traceRowProblems(List.of("f | v | none | eval 0", "f | v | none | traces eval 0", "f | v | none | eval 0 high")));
+        assertEquals(List.of("an orphan trace row: f | v | none | traces applied"),
+                traceRowProblems(List.of("f | v | none | traces applied")));
     }
 
     private static String key(Fixture fixture, Variant variant, Mode mode) {
@@ -654,6 +692,12 @@ class LibraryTieOrderFixturesTest {
                     var made = new TreeSet<>(now.keySet());
                     if (exhaustsAtBothLimits(pre21Run(prefix, "eval 0"), pre21Run(prefix, "eval 0 high"))
                             || exhaustsAtBothLimits(nowRun(now.get("eval 0")), nowRun(now.get("eval 0 high")))) {
+                        // C48: before the applied ids leave the cross-side comparison, each side's own applications are
+                        // checked against their own retries.
+                        String pre21Applied = againstItsRetry("pre21", pre21Run(prefix, "applied"), pre21Run(prefix, "applied high"));
+                        String nowApplied = againstItsRetry("now", nowRun(now.get("applied")), nowRun(now.get("applied high")));
+                        if (pre21Applied != null) mismatches.add(prefix + "applied: " + pre21Applied);
+                        if (nowApplied != null) mismatches.add(prefix + "applied: " + nowApplied);
                         recorded.removeIf(id -> id.startsWith("applied"));
                         made.removeIf(id -> id.startsWith("applied"));
                     }
@@ -670,7 +714,14 @@ class LibraryTieOrderFixturesTest {
                             String verdict = afterAnExhaustion(pre21, pre21Run(prefix, suffix + " high"), mine, nowRun(high));
                             switch (verdict) {
                                 case INCONCLUSIVE -> inconclusive++;
-                                case BOUNDED -> bounded++;
+                                case BOUNDED -> {
+                                    bounded++;
+                                    // C50: both retries exhausted alike; their budgets are still reported (I6b).
+                                    var retry = now.get(suffix + " high");
+                                    String budget = retry.budget().cpuSteps() + " cpu, " + retry.budget().memoryUnits() + " mem";
+                                    String pre21Budget = PRE21.get(prefix + "budget " + suffix + " high");
+                                    if (!budget.equals(pre21Budget)) budgets.append(prefix).append(suffix).append(" high: ").append(pre21Budget).append(" -> ").append(budget).append('\n');
+                                }
                                 case COMPARED -> {
                                     // C45: a completed retry counts as an evaluation compared, applied and traced.
                                     var completed = mine.exhausted() ? high : evaluation;
@@ -757,8 +808,8 @@ class LibraryTieOrderFixturesTest {
     }
 
     /** C44: an exhausted transaction-limit run must have traced a prefix of what its own retry traced. */
-    private static String againstItsRetry(String side, Run transaction, Run high) {
-        if (!transaction.exhausted()) return null;
+    static String againstItsRetry(String side, Run transaction, Run high) {
+        if (transaction == null || !transaction.exhausted()) return null;
         if (high == null || high.outcome() == null) return side + ": an exhaustion with no higher-limit replay";
         return isPrefix(transaction.traces(), high.traces()) ? null
                 : side + ": the transaction-limit run traced " + transaction.traces() + ", its own retry " + high.traces();
@@ -814,6 +865,9 @@ class LibraryTieOrderFixturesTest {
         assertEquals("now: the transaction-limit run traced [\"lost\"], its own retry [\"kept\"]",
                 afterAnExhaustion(exhausted, kept, lost, kept));
         assertTrue(afterAnExhaustion(lost, kept, kept, null).startsWith("pre21: the transaction-limit run traced"));
+        // C48: an application whose parent is dropped from the cross-side comparison is still checked on its own side.
+        assertEquals("now: the transaction-limit run traced [\"lost\"], its own retry [\"kept\"]", againstItsRetry("now", lost, kept));
+        assertNull(againstItsRetry("now", null, null));
     }
 
     /** A report of the fixtures whose bytes M1a changed from pre21: only programs with equal-key methods may change. */
