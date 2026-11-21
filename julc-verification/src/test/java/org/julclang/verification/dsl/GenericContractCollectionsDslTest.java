@@ -60,6 +60,37 @@ class GenericContractCollectionsDslTest {
     }
 
     @Test
+    void listQuantifiersRenderAsFirstOrderRecursors() {
+        // ADR-030 R.1b: Blaster refutes the recursor form in seconds; the higher-order
+        // `List.any xs (fun ...)` form did not finish within 30 minutes.
+        var compiled = new JulcCompiler().compileContract(source());
+        var projection = ContractTypeProjection.project(compiled.contractSchema());
+        var datum = (NominalTypeRef) projection.datumType();
+        var valuesType = (ListTypeRef) field(definition(projection, datum), "values");
+        String hash = ContractTypeProjection.sha256(projection);
+
+        var guarantee = TypedExpressions.optionalRoot("typedDatum", datum).exists(value -> {
+            var values = new TypedListExpr(TypedExpressions.field(
+                    value, datum, "values", valuesType).node(), valuesType.elementType());
+            return values.exists(item -> new IntegerExpr(item.node()).gt(integer(0)))
+                    .and(values.all(item -> new IntegerExpr(item.node()).lt(integer(10))))
+                    .and(values.none(item -> new IntegerExpr(item.node()).eq(integer(5))));
+        });
+        var normalized = DslPropertyValidator.validateAndNormalize(
+                DslPropertySet.schema1(DslPurpose.SPENDING, hash,
+                        property("quantifiers", DslDomain.NONE, guarantee)),
+                compiled.contractSchema(), 200);
+        String lean = TypedPropertyLeanRenderer.renderExpression(
+                normalized.properties().getFirst().expression(), projection);
+
+        assertTrue(lean.contains("(Recursor.any "), lean);
+        assertTrue(lean.contains("(Recursor.all "), lean);
+        assertTrue(lean.contains("!(Recursor.any "), lean);
+        assertFalse(lean.contains("List.any"), lean);
+        assertFalse(lean.contains("List.all"), lean);
+    }
+
+    @Test
     void forgedContainerApplicationAndStringBytesCoercionFailInParent() {
         var compiled = new JulcCompiler().compileContract(source());
         var projection = ContractTypeProjection.project(compiled.contractSchema());

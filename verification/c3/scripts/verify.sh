@@ -51,7 +51,7 @@ verify_workspace() {
   local purpose="$3"
   local output="${VERIFY_DIR}/generated/${purpose}"
 
-  java -jar "${JULC_JAR}" build "${VERIFY_DIR}/fixtures/${fixture}"
+  java -jar "${JULC_JAR}" build --optimization baseline "${VERIFY_DIR}/fixtures/${fixture}"
   java -jar "${JULC_JAR}" verify init "${VERIFY_DIR}/fixtures/${fixture}" \
     --validator "${validator}" \
     --purpose "${purpose}" \

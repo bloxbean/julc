@@ -2,7 +2,6 @@ package org.julclang.cli.cmd.verify;
 
 import org.julclang.clientlib.JulcScriptAdapter;
 import org.julclang.compiler.CompilerException;
-import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.schema.ContractSchema;
 import org.julclang.stdlib.StdlibRegistry;
@@ -13,12 +12,10 @@ import org.julclang.verification.StatefulSpendingResolver;
 import org.julclang.verification.VerificationProperty;
 import org.julclang.verification.ControlledMintProperty;
 import org.julclang.verification.ControlledMintResolver;
-import org.julclang.cli.cmd.BuildCommand;
 import org.julclang.cli.cmd.blueprint.ArtifactCommand;
 import org.julclang.cli.project.ProjectLayout;
 import org.julclang.cli.project.ProjectScanner;
 import org.julclang.cli.project.ProjectSourceResolver;
-import picocli.CommandLine;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -35,12 +32,13 @@ final class AnnotatedVerificationWorkflow {
             int fuel,
             int recursiveDepth,
             boolean force,
+            VerificationBuild build,
             VerificationProgress progress) throws Exception {
         Path project = projectDirectory.toAbsolutePath().normalize();
         if (!Files.isRegularFile(ProjectLayout.tomlFile(project))) {
             throw new IllegalArgumentException("Not a JuLC project: " + project);
         }
-        int buildExit = new CommandLine(new BuildCommand()).execute(project.toString());
+        int buildExit = build.runOrdinaryBuild(project);
         if (buildExit != 0) {
             throw new IllegalStateException("Ordinary JuLC build failed; verification was not run");
         }
@@ -59,7 +57,7 @@ final class AnnotatedVerificationWorkflow {
             var pool = ProjectSourceResolver.buildPool(scan.libraries());
             var resolvedLibraries = ProjectSourceResolver.resolve(source, pool);
             var compiled = new JulcCompiler(StdlibRegistry.defaultRegistry(),
-                    ProjectSourceResolver.options(new CompilerOptions(), pool))
+                    ProjectSourceResolver.options(build.compilerOptions(), pool))
                     .compileContract(source, resolvedLibraries);
             if (compiled.compileResult().hasErrors()) {
                 throw new CompilerException(compiled.compileResult().diagnostics());

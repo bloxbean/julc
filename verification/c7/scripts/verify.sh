@@ -15,10 +15,10 @@ run_fixture() {
   mkdir -p "${workspace}"
   if [[ "${fixture}" != "mint" ]]; then
     [[ -d "${workspace}/.lake" ]] || cp -R "${C7_DIR}/generated/mint/.lake" "${workspace}/"
-    [[ -d "${workspace}/.julc" ]] || cp -R "${C7_DIR}/generated/mint/.julc" "${workspace}/"
+    [[ -d "${workspace}/.julc" ]] || [[ ! -d "${C7_DIR}/generated/mint/.julc" ]] || cp -R "${C7_DIR}/generated/mint/.julc" "${workspace}/"
   fi
   set +e
-  "${JULC[@]}" verify "${C7_DIR}/fixtures/${fixture}" --validator "${validator}" \
+  "${JULC[@]}" verify --optimization baseline "${C7_DIR}/fixtures/${fixture}" --validator "${validator}" \
     --backend local --fuel "${fuel}" --out-dir "${workspace}" --force
   local actual_exit=$?
   set -e

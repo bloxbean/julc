@@ -21,7 +21,7 @@ run_fixture() {
   local workspace="${C5_DIR}/generated/${fixture}"
 
   set +e
-  "${JULC[@]}" verify "${C5_DIR}/fixtures/${fixture}" \
+  "${JULC[@]}" verify --optimization baseline "${C5_DIR}/fixtures/${fixture}" \
     --validator "${validator}" --backend local --out-dir "${workspace}" --force
   local actual_exit=$?
   set -e

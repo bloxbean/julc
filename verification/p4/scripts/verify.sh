@@ -22,7 +22,7 @@ FIXTURE="${P4_DIR}/fixture"
 SPEND_WORKSPACE="${P4_DIR}/generated/spend"
 MINT_WORKSPACE="${P4_DIR}/generated/mint"
 
-"${JULC[@]}" build "${FIXTURE}"
+"${JULC[@]}" build --optimization baseline "${FIXTURE}"
 BLUEPRINT="${FIXTURE}/build/plutus/plutus.json"
 
 jq -e '
