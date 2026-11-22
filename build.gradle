@@ -144,6 +144,15 @@ subprojects {
 //        jvmArgs '--enable-preview'
         jvmArgs '--enable-native-access=ALL-UNNAMED'
         maxHeapSize = '1g'
+        // Tests leave javac output and scratch projects in java.io.tmpdir. Each test task gets its own, emptied before
+        // it runs, so they never pile up in the system's temp directory (where they made Gradle's launcher run out of
+        // memory listing it) and `clean` removes them.
+        def testTmpDir = new File(temporaryDir, 'java.io.tmpdir')
+        systemProperty 'java.io.tmpdir', testTmpDir.absolutePath
+        doFirst {
+            testTmpDir.deleteDir()
+            testTmpDir.mkdirs()
+        }
         // ADR-060 G2: every compilation in tests checks the generated-binder namespace.
         systemProperty 'julc.verifyBinderNamespace', 'true'
         // ADR-068 M0: `-Pjulc.corpus.record=<dir>` records every source these modules' tests compile through a
