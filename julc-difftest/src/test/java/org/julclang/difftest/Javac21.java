@@ -109,7 +109,8 @@ final class Javac21 {
             try (InputStream in = Javac21.class.getResourceAsStream("/javac21/Javac21Driver.java")) {
                 Files.copy(in, driver);
             }
-            var process = new ProcessBuilder(java.toString(), driver.toString(), casesDir.toString())
+            var process = new ProcessBuilder(java.toString(), "-Djava.io.tmpdir=" + System.getProperty("java.io.tmpdir"),
+                    driver.toString(), casesDir.toString())
                     .redirectError(ProcessBuilder.Redirect.INHERIT).start();
             String out = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
             if (!process.waitFor(30, TimeUnit.MINUTES) || process.exitValue() != 0) {
